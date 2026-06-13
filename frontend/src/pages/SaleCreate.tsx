@@ -276,6 +276,8 @@ type LineEditorProps<L> = {
 
 function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
   const { title, lines, setLines, options, getId, getName, setLine, empty, idKey, nameKey } = props;
+  // HTML id must be ascii; derive a slug from the title.
+  const datalistId = `${(idKey as string) || "x"}-options`;
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
@@ -297,7 +299,7 @@ function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
             <div key={i} className="flex gap-2">
               <input
                 className="input flex-1"
-                list={`${title}-list`}
+                list={datalistId}
                 placeholder="Имя (выбери или впиши)"
                 value={matchedById ? matchedById.label : name}
                 onChange={(e) => {
@@ -316,11 +318,7 @@ function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
                   setLines(next);
                 }}
               />
-              <datalist id={`${title}-list`}>
-                {options.map((o) => (
-                  <option key={o.id} value={o.label} />
-                ))}
-              </datalist>
+              {/* datalist renders once below the lines, not per-row */}
               {(() => {
                 const hasName = !!(id || name.trim());
                 const amt = Number(line.amount);
@@ -364,6 +362,11 @@ function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
           );
         })}
       </div>
+      <datalist id={datalistId}>
+        {options.map((o) => (
+          <option key={o.id} value={o.label} />
+        ))}
+      </datalist>
       <div className="text-xs text-gray-500 dark:text-slate-400 mt-2">
         {lines.filter((l) => !getId(l) && getName(l).trim()).length > 0 &&
           "Новые имена добавятся автоматически при сохранении."}

@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from django.db.models import Count, Q, QuerySet, Sum
 
-from .models import Sale
+from .models import Sale, SaleOperator
 
 
 def sale_queryset(*, include_deleted: bool = False) -> QuerySet[Sale]:
@@ -31,11 +31,17 @@ def sale_list(
             Q(imei__icontains=search)
             | Q(phone_model__icontains=search)
             | Q(operator__full_name__icontains=search)
-        )
+            | Q(operator_lines__operator__full_name__icontains=search)
+        ).distinct()
     if operator_id:
-        qs = qs.filter(operator_id=operator_id)
+        # Sale matches if the operator is the primary OR a line credit.
+        qs = qs.filter(
+            Q(operator_id=operator_id) | Q(operator_lines__operator_id=operator_id)
+        ).distinct()
     if channel_id:
-        qs = qs.filter(channel_id=channel_id)
+        qs = qs.filter(
+            Q(channel_id=channel_id) | Q(partner_lines__partner_id=channel_id)
+        ).distinct()
     if date_from:
         qs = qs.filter(sold_at__gte=date_from)
     if date_to:
@@ -65,16 +71,20 @@ def operator_sales_aggregate(
     date_from: dt.datetime,
     date_to: dt.datetime,
 ) -> dict:
-    """Net of returned and deleted sales — used by payroll + dashboards."""
-    qs = Sale.objects.filter(
+    """
+    Per-operator credit for payroll / dashboards.
+
+    Aggregates the SaleOperator allocation amounts (not the Sale.amount FK
+    shortcut), so when one sale is split across N operators every one of
+    them only gets their share. Net of returned / deleted / pending sales.
+    """
+    qs = SaleOperator.objects.filter(
         operator_id=operator_id,
-        sold_at__gte=date_from,
-        sold_at__lte=date_to,
-        is_returned=False,
-        is_deleted=False,
-        status="confirmed",
+        sale__sold_at__gte=date_from,
+        sale__sold_at__lte=date_to,
+        sale__is_returned=False,
+        sale__is_deleted=False,
+        sale__status="confirmed",
     )
-    agg = qs.aggregate(total=Sum("amount"), count=Count("id"))
-    total = agg["total"] or Decimal("0")
-    count = agg["count"] or 0
-    return {"total": total, "count": count}
+    agg = qs.aggregate(total=Sum("amount"), count=Count("sale", distinct=True))
+    return {"total": agg["total"] or Decimal("0"), "count": agg["count"] or 0}

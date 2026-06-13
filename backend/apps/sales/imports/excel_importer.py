@@ -37,7 +37,7 @@ from django.utils import timezone
 
 from apps.catalog.models import Channel
 from apps.operators.models import Operator, OperatorStatus
-from apps.sales.models import Sale, SaleStatus
+from apps.sales.models import Sale, SaleOperator, SalePartner, SaleStatus
 
 # Header words found in the first cell of non-sale rows — used to skip them.
 _HEADER_TOKENS = {
@@ -361,7 +361,7 @@ def _import_sales_sheet(ws, result: ImportResult) -> None:
                 result.sales_skipped += 1
                 continue
 
-            Sale.objects.create(
+            sale = Sale.objects.create(
                 imei=imei,
                 phone_model=model_name,
                 operator=operator,
@@ -371,6 +371,11 @@ def _import_sales_sheet(ws, result: ImportResult) -> None:
                 sold_at=sold_at,
                 status=SaleStatus.CONFIRMED,
             )
+            # Each Excel row maps to ONE operator + ONE partner with the full
+            # amount as a single line. Split payments (Birzum+Hamroh + a+b)
+            # are already broken into separate rows above, so this stays 1:1.
+            SaleOperator.objects.create(sale=sale, operator=operator, amount=amount)
+            SalePartner.objects.create(sale=sale, partner=channel, amount=amount)
             result.sales_created += 1
 
 

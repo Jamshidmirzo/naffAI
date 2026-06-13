@@ -3,6 +3,7 @@ from rest_framework.generics import ListCreateAPIView, RetrieveUpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.common.exceptions import ApplicationError
 from apps.users.permissions import IsTeamLead, IsTeamLeadOrManagerReadOnly
 
 from .imei_service import imei_lookup
@@ -12,6 +13,12 @@ from .services import channel_create, channel_update
 
 
 class ChannelSerializer(serializers.ModelSerializer):
+    # Override `name` with no validators so the DRF auto UniqueValidator
+    # (English-ish "channel с таким name уже существует") does not pre-empt
+    # our service's nicer ApplicationError ("Партнёр «X» уже существует"
+    # with reactivation logic).
+    name = serializers.CharField(max_length=64, validators=[])
+
     class Meta:
         model = Channel
         fields = ["id", "name", "is_active", "created_at", "updated_at"]
@@ -26,13 +33,20 @@ class ChannelListCreateApi(ListCreateAPIView):
         active_only = self.request.query_params.get("active_only") == "1"
         return channel_list(active_only=active_only)
 
-    def perform_create(self, serializer):
-        instance = channel_create(
-            user=self.request.user,
-            name=serializer.validated_data["name"],
-            is_active=serializer.validated_data.get("is_active", True),
-        )
-        serializer.instance = instance
+    def create(self, request, *args, **kwargs):
+        ser = self.get_serializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            instance = channel_create(
+                user=request.user,
+                name=ser.validated_data["name"],
+                is_active=ser.validated_data.get("is_active", True),
+            )
+        except ApplicationError as exc:
+            return Response(
+                {"detail": exc.message, **exc.extra}, status=status.HTTP_400_BAD_REQUEST
+            )
+        return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
 
 
 class ChannelDetailApi(RetrieveUpdateAPIView):

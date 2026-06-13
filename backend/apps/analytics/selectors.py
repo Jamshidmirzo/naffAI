@@ -8,7 +8,7 @@ from django.db.models.functions import TruncDate
 from django.utils import timezone
 
 from apps.operators.models import Operator, OperatorStatus
-from apps.sales.models import Sale
+from apps.sales.models import Sale, SaleOperator, SalePartner
 
 
 def _base_qs(date_from: dt.datetime | None = None, date_to: dt.datetime | None = None):
@@ -17,6 +17,23 @@ def _base_qs(date_from: dt.datetime | None = None, date_to: dt.datetime | None =
         qs = qs.filter(sold_at__gte=date_from)
     if date_to:
         qs = qs.filter(sold_at__lte=date_to)
+    return qs
+
+
+def _line_qs(
+    model,
+    *,
+    date_from: dt.datetime | None = None,
+    date_to: dt.datetime | None = None,
+):
+    """SaleOperator / SalePartner queryset gated to confirmed, non-deleted, non-returned sales."""
+    qs = model.objects.filter(
+        sale__is_deleted=False, sale__is_returned=False, sale__status="confirmed"
+    )
+    if date_from:
+        qs = qs.filter(sale__sold_at__gte=date_from)
+    if date_to:
+        qs = qs.filter(sale__sold_at__lte=date_to)
     return qs
 
 
@@ -34,9 +51,9 @@ def kpi_snapshot() -> dict:
     operators_trainee = Operator.objects.filter(status=OperatorStatus.TRAINEE).count()
 
     top = (
-        _base_qs(date_from=start_of_month)
+        _line_qs(SaleOperator, date_from=start_of_month)
         .values("operator_id", "operator__full_name")
-        .annotate(total=Sum("amount"), count=Count("id"))
+        .annotate(total=Sum("amount"), count=Count("sale", distinct=True))
         .order_by("-total")
         .first()
     )
@@ -63,10 +80,11 @@ def kpi_snapshot() -> dict:
 def leaderboard(
     *, date_from: dt.datetime | None = None, date_to: dt.datetime | None = None, limit: int = 20
 ) -> list[dict]:
-    qs = _base_qs(date_from=date_from, date_to=date_to)
+    """Per-operator credit aggregated from SaleOperator lines (multi-op aware)."""
     rows = (
-        qs.values("operator_id", "operator__full_name", "operator__status")
-        .annotate(total=Sum("amount"), count=Count("id"), avg_ticket=Avg("amount"))
+        _line_qs(SaleOperator, date_from=date_from, date_to=date_to)
+        .values("operator_id", "operator__full_name", "operator__status")
+        .annotate(total=Sum("amount"), count=Count("sale", distinct=True), avg_ticket=Avg("amount"))
         .order_by("-total")[:limit]
     )
     return [
@@ -83,16 +101,17 @@ def leaderboard(
 
 
 def by_channel(*, date_from=None, date_to=None) -> list[dict]:
-    qs = _base_qs(date_from=date_from, date_to=date_to)
+    """Per-partner totals aggregated from SalePartner lines (multi-partner aware)."""
     rows = (
-        qs.values("channel_id", "channel__name")
-        .annotate(total=Sum("amount"), count=Count("id"))
+        _line_qs(SalePartner, date_from=date_from, date_to=date_to)
+        .values("partner_id", "partner__name")
+        .annotate(total=Sum("amount"), count=Count("sale", distinct=True))
         .order_by("-total")
     )
     return [
         {
-            "channel_id": r["channel_id"],
-            "channel_name": r["channel__name"],
+            "channel_id": r["partner_id"],
+            "channel_name": r["partner__name"],
             "total": str(r["total"] or 0),
             "count": r["count"],
         }

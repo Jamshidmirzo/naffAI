@@ -110,8 +110,32 @@ export default function Sales() {
                 <td className="px-4 py-2 text-gray-600 dark:text-slate-400">{formatDate(s.sold_at)}</td>
                 <td className="px-4 py-2 font-mono text-xs">{s.imei}</td>
                 <td className="px-4 py-2">{s.phone_model}</td>
-                <td className="px-4 py-2">{s.operator_name}</td>
-                <td className="px-4 py-2 text-gray-600 dark:text-slate-400">{s.channel_name}</td>
+                <td className="px-4 py-2">
+                  {s.operator_name}
+                  {s.operator_lines?.length > 1 && (
+                    <span
+                      className="ml-1 text-xs text-gray-400 dark:text-slate-500"
+                      title={s.operator_lines
+                        .map((l: any) => `${l.operator_name}: ${l.amount}`)
+                        .join("\n")}
+                    >
+                      +{s.operator_lines.length - 1}
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-2 text-gray-600 dark:text-slate-400">
+                  {s.channel_name}
+                  {s.partner_lines?.length > 1 && (
+                    <span
+                      className="ml-1 text-xs text-gray-400 dark:text-slate-500"
+                      title={s.partner_lines
+                        .map((l: any) => `${l.partner_name}: ${l.amount}`)
+                        .join("\n")}
+                    >
+                      +{s.partner_lines.length - 1}
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-2 text-right">{formatUZS(s.amount)}</td>
                 <td className="px-4 py-2 text-center">
                   {s.is_returned ? (
