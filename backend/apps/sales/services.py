@@ -34,14 +34,14 @@ def sale_create(
 ) -> Sale:
     """
     Create a sale with full validation pipeline:
-      1. IMEI Luhn check
+      1. IMEI format check (15 digits)
       2. Duplicate IMEI gate (override requires explicit flag + comment)
       3. Auto-fill phone_model from TAC if missing
       4. Audit log with the actor
     """
     imei = (imei or "").strip()
     if not is_valid_imei(imei):
-        raise ApplicationError("IMEI не прошёл проверку Luhn", {"field": "imei"})
+        raise ApplicationError("IMEI должен быть из 15 цифр", {"field": "imei"})
 
     if amount is None or Decimal(amount) <= 0:
         raise ApplicationError("Сумма должна быть положительной", {"field": "amount"})
@@ -112,7 +112,7 @@ def sale_update(
     if "imei" in fields:
         new_imei = (fields["imei"] or "").strip()
         if not is_valid_imei(new_imei):
-            raise ApplicationError("IMEI не прошёл проверку Luhn", {"field": "imei"})
+            raise ApplicationError("IMEI должен быть из 15 цифр", {"field": "imei"})
         fields["imei"] = new_imei
 
     old = {k: getattr(sale, k) for k in fields}

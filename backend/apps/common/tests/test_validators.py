@@ -1,25 +1,17 @@
-from apps.common.validators import extract_tac, is_valid_imei, luhn_checksum
+from apps.common.validators import extract_tac, is_valid_imei
 
 
-def test_luhn_known_good_imeis():
-    # Real-world valid IMEIs (each ends in correct checksum digit)
+def test_valid_imei_accepts_any_15_digits():
     assert is_valid_imei("490154203237518")
-    assert is_valid_imei("356938035643809")
+    assert is_valid_imei("490154203237519")  # checksum no longer enforced
+    assert is_valid_imei("123456789012345")
 
 
-def test_luhn_known_bad_imeis():
-    assert not is_valid_imei("490154203237519")  # last digit flipped
-    assert not is_valid_imei("12345678901234")  # 14 digits, no checksum
+def test_invalid_imei_rejects_wrong_shape():
     assert not is_valid_imei("")
-    assert not is_valid_imei("abc154203237518")
+    assert not is_valid_imei("12345678901234")  # 14 digits
     assert not is_valid_imei("4901542032375180")  # 16 digits
-
-
-def test_luhn_checksum_value():
-    # Whole 15-digit IMEI computed against the parity rule -> 0 means valid
-    assert luhn_checksum("490154203237518") == 0
-    # Flipping last digit breaks validity
-    assert luhn_checksum("490154203237510") != 0
+    assert not is_valid_imei("abc154203237518")  # has letters
 
 
 def test_extract_tac():

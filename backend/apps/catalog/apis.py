@@ -56,7 +56,7 @@ class ImeiLookupApi(APIView):
         result = imei_lookup(imei)
         if not result.valid:
             return Response(
-                {"valid": False, "detail": "IMEI не прошёл проверку Luhn"},
+                {"valid": False, "detail": "IMEI должен быть из 15 цифр"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(result.as_dict())

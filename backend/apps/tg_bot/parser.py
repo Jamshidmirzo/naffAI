@@ -8,7 +8,7 @@ Lightweight, dependency-free message parser used by the Telegram bot
 
 We deliberately keep the regex loose — the parser is a *hint generator*,
 not a validator. The actual save still runs through `sale_create` with
-full IMEI/Luhn/duplicate checks.
+full IMEI/duplicate checks.
 """
 
 from __future__ import annotations
