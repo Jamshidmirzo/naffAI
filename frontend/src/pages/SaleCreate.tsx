@@ -26,6 +26,14 @@ export default function SaleCreate() {
     queryKey: ["partners-list"],
     queryFn: () => api.get("/channels/?active_only=1").then((r) => r.data),
   });
+  const modelsQ = useQuery({
+    queryKey: ["models-suggest", model],
+    queryFn: () =>
+      api
+        .get(`/imei/models/`, { params: model ? { q: model } : undefined })
+        .then((r) => r.data),
+    staleTime: 60_000,
+  });
 
   useEffect(() => {
     if (imei.length >= 6 && /^\d+$/.test(imei) && imei.length === 15) {
@@ -120,7 +128,24 @@ export default function SaleCreate() {
 
         <div>
           <label className="label">Модель</label>
-          <input className="input" value={model} onChange={(e) => setModel(e.target.value)} />
+          <input
+            className="input"
+            list="phone-models-list"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="Начни вводить — выпадет список. Нет в списке? Впиши свой"
+            autoComplete="off"
+          />
+          <datalist id="phone-models-list">
+            {((modelsQ.data?.results as string[]) || []).map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+          {model && !((modelsQ.data?.results as string[]) || []).includes(model) && (
+            <div className="text-xs text-gray-500 mt-1">
+              «{model}» — новая модель, сохранится как есть.
+            </div>
+          )}
         </div>
 
         <LineEditor

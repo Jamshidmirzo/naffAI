@@ -1,5 +1,8 @@
 from django.urls import path
 
-from .apis import ImeiLookupApi
+from .apis import ImeiLookupApi, PhoneModelSuggestApi
 
-urlpatterns = [path("<str:imei>/lookup/", ImeiLookupApi.as_view())]
+urlpatterns = [
+    path("models/", PhoneModelSuggestApi.as_view()),
+    path("<str:imei>/lookup/", ImeiLookupApi.as_view()),
+]
