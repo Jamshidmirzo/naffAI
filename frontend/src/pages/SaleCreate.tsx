@@ -48,10 +48,16 @@ export default function SaleCreate() {
     }
   }, [imei]);
 
-  const total = useMemo(
+  const opTotal = useMemo(
+    () => operators.reduce((s, o) => s + (Number(o.amount) || 0), 0),
+    [operators],
+  );
+  const partnerTotal = useMemo(
     () => partners.reduce((s, p) => s + (Number(p.amount) || 0), 0),
     [partners],
   );
+  const mismatch = opTotal > 0 && partnerTotal > 0 && opTotal !== partnerTotal;
+  const total = partnerTotal;
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,6 +74,27 @@ export default function SaleCreate() {
     }
     if (okPartners.length === 0) {
       setError("Добавьте минимум одного партнёра с суммой > 0");
+      return;
+    }
+    // Each line in BOTH lists must have a positive amount (no half-filled rows).
+    if (operators.some((o) => (o.operator_id || o.operator_name?.trim()) && !(Number(o.amount) > 0))) {
+      setError("У всех операторов должна быть положительная сумма");
+      return;
+    }
+    if (partners.some((p) => (p.partner_id || p.partner_name?.trim()) && !(Number(p.amount) > 0))) {
+      setError("У всех партнёров должна быть положительная сумма");
+      return;
+    }
+    // Min amount per line guard (matches backend min_value=1000).
+    if ([...operators, ...partners].some((l) => Number(l.amount) > 0 && Number(l.amount) < 1000)) {
+      setError("Минимальная сумма по строке — 1 000 сум");
+      return;
+    }
+    if (mismatch) {
+      setError(
+        `Сумма по операторам (${opTotal.toLocaleString("ru-RU")}) ≠ ` +
+          `сумма по партнёрам (${partnerTotal.toLocaleString("ru-RU")})`,
+      );
       return;
     }
     try {
@@ -116,7 +143,7 @@ export default function SaleCreate() {
             required
           />
           {imei.length >= 6 && (
-            <div className="text-xs text-gray-500 mt-1">
+            <div className="text-xs text-gray-500 dark:text-slate-400 mt-1">
               {imei.length === 15 && model
                 ? `→ ${model}`
                 : imei.length === 15
@@ -142,7 +169,7 @@ export default function SaleCreate() {
             ))}
           </datalist>
           {model && !((modelsQ.data?.results as string[]) || []).includes(model) && (
-            <div className="text-xs text-gray-500 mt-1">
+            <div className="text-xs text-gray-500 dark:text-slate-400 mt-1">
               «{model}» — новая модель, сохранится как есть.
             </div>
           )}
@@ -174,10 +201,30 @@ export default function SaleCreate() {
           nameKey="partner_name"
         />
 
-        <div className="flex justify-between items-baseline">
-          <div className="text-sm text-gray-600">Итого по партнёрам:</div>
-          <div className="text-lg font-semibold">
-            {total.toLocaleString("ru-RU")} сум
+        <div
+          className={`rounded-lg border p-3 text-sm ${
+            mismatch
+              ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700/40"
+              : "bg-gray-50 dark:bg-slate-800/40 border-gray-200 dark:border-slate-700"
+          }`}
+        >
+          <div className="flex justify-between">
+            <span className="text-gray-600 dark:text-slate-400">Сумма по операторам:</span>
+            <span className="font-medium">{opTotal.toLocaleString("ru-RU")} сум</span>
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-gray-600 dark:text-slate-400">Сумма по партнёрам:</span>
+            <span className="font-medium">{partnerTotal.toLocaleString("ru-RU")} сум</span>
+          </div>
+          {mismatch && (
+            <div className="mt-2 text-xs text-amber-800 dark:text-amber-300">
+              Суммы не совпадают на {Math.abs(opTotal - partnerTotal).toLocaleString("ru-RU")} сум.
+              Проверьте строки.
+            </div>
+          )}
+          <div className="border-t border-gray-200 dark:border-slate-700 mt-2 pt-2 flex justify-between">
+            <span className="text-gray-700 dark:text-slate-300 font-medium">Итого продажи:</span>
+            <span className="text-lg font-semibold">{total.toLocaleString("ru-RU")} сум</span>
           </div>
         </div>
 
@@ -187,8 +234,8 @@ export default function SaleCreate() {
         </div>
 
         {allowDup && (
-          <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 space-y-2">
-            <div className="text-sm text-amber-800">
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 p-3 space-y-2">
+            <div className="text-sm text-amber-800 dark:text-amber-300">
               IMEI уже встречался. Подтвердите дубликат с комментарием:
             </div>
             <input
@@ -200,7 +247,7 @@ export default function SaleCreate() {
           </div>
         )}
 
-        {error && <div className="text-sm text-red-600">{error}</div>}
+        {error && <div className="text-sm text-red-600 dark:text-red-400">{error}</div>}
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" className="btn-ghost" onClick={() => nav(-1)}>
             Отмена
@@ -274,17 +321,36 @@ function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
                   <option key={o.id} value={o.label} />
                 ))}
               </datalist>
-              <input
-                className="input w-44"
-                inputMode="numeric"
-                placeholder="Сумма"
-                value={line.amount}
-                onChange={(e) => {
-                  const next = [...lines];
-                  next[i] = setLine(line, { amount: e.target.value.replace(/\D/g, "") } as any);
-                  setLines(next);
-                }}
-              />
+              {(() => {
+                const hasName = !!(id || name.trim());
+                const amt = Number(line.amount);
+                const invalid = hasName && (line.amount === "" || amt < 1000);
+                return (
+                  <div className="w-48">
+                    <input
+                      className={`input ${invalid ? "is-invalid" : ""}`}
+                      inputMode="numeric"
+                      placeholder="Сумма"
+                      value={line.amount}
+                      onChange={(e) => {
+                        const next = [...lines];
+                        next[i] = setLine(line, { amount: e.target.value.replace(/\D/g, "") } as any);
+                        setLines(next);
+                      }}
+                    />
+                    {line.amount && amt > 0 && (
+                      <div className="text-[10px] text-gray-500 dark:text-slate-500 mt-0.5 text-right">
+                        ≈ {amt.toLocaleString("ru-RU")}
+                      </div>
+                    )}
+                    {invalid && line.amount !== "" && (
+                      <div className="text-[10px] text-red-600 dark:text-red-400 mt-0.5 text-right">
+                        мин 1 000
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               {lines.length > 1 && (
                 <button
                   type="button"
@@ -298,7 +364,7 @@ function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
           );
         })}
       </div>
-      <div className="text-xs text-gray-500 mt-2">
+      <div className="text-xs text-gray-500 dark:text-slate-400 mt-2">
         {lines.filter((l) => !getId(l) && getName(l).trim()).length > 0 &&
           "Новые имена добавятся автоматически при сохранении."}
       </div>

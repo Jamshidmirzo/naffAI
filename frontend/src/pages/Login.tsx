@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Moon, Sun } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../store/auth";
+import { useTheme } from "../store/theme";
 
 export default function Login() {
   const [username, setU] = useState("");
@@ -11,6 +12,7 @@ export default function Login() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const setAuth = useAuth((s) => s.setAuth);
+  const theme = useTheme();
   const nav = useNavigate();
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -29,11 +31,19 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-900 dark:bg-slate-950 relative">
+      <button
+        type="button"
+        onClick={theme.toggle}
+        className="absolute top-4 right-4 btn-ghost"
+        aria-label="Переключить тему"
+      >
+        {theme.theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+      </button>
       <form onSubmit={onSubmit} className="card p-8 w-full max-w-sm space-y-5">
         <div>
           <div className="text-xl font-semibold">naffAI</div>
-          <div className="text-sm text-gray-500">учёт продаж колл-центра</div>
+          <div className="text-sm text-gray-500 dark:text-slate-400">учёт продаж колл-центра</div>
         </div>
         <div>
           <label className="label">Логин</label>
@@ -58,7 +68,7 @@ export default function Login() {
             <button
               type="button"
               onClick={() => setShowPwd((v) => !v)}
-              className="absolute inset-y-0 right-2 flex items-center text-gray-400 hover:text-gray-700"
+              className="absolute inset-y-0 right-2 flex items-center text-gray-400 dark:text-slate-500 hover:text-gray-700"
               aria-label={showPwd ? "Скрыть пароль" : "Показать пароль"}
               tabIndex={-1}
             >
@@ -66,7 +76,7 @@ export default function Login() {
             </button>
           </div>
         </div>
-        {error && <div className="text-sm text-red-600">{error}</div>}
+        {error && <div className="text-sm text-red-600 dark:text-red-400">{error}</div>}
         <button className="btn-primary w-full" disabled={busy}>
           {busy ? "Вход…" : "Войти"}
         </button>

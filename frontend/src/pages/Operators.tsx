@@ -39,7 +39,7 @@ export default function Operators() {
 
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-xs uppercase text-gray-600">
+          <thead className="bg-gray-50 dark:bg-slate-900 text-xs uppercase text-gray-600 dark:text-slate-400">
             <tr>
               <th className="px-4 py-2 text-left">Имя</th>
               <th className="px-4 py-2 text-left">Телефон</th>
@@ -49,17 +49,17 @@ export default function Operators() {
           </thead>
           <tbody>
             {(ops.data?.results || []).map((o: any) => (
-              <tr key={o.id} className="border-t border-gray-100 hover:bg-gray-50">
+              <tr key={o.id} className="border-t border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/40">
                 <td className="px-4 py-2">{o.full_name}</td>
-                <td className="px-4 py-2 text-gray-600">{o.phone || "—"}</td>
+                <td className="px-4 py-2 text-gray-600 dark:text-slate-400">{o.phone || "—"}</td>
                 <td className="px-4 py-2">
                   <span
                     className={`badge ${
                       o.status === "active"
-                        ? "bg-emerald-100 text-emerald-700"
+                        ? "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300"
                         : o.status === "trainee"
-                        ? "bg-blue-100 text-blue-700"
-                        : "bg-gray-100 text-gray-600"
+                        ? "bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300"
+                        : "bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400"
                     }`}
                   >
                     {o.status === "active" ? "активен" : o.status === "trainee" ? "стажёр" : "неактивен"}
@@ -82,7 +82,7 @@ export default function Operators() {
       </div>
 
       {show && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
           <form
             onSubmit={(e) => {
               e.preventDefault();

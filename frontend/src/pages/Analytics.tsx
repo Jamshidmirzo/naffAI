@@ -78,7 +78,7 @@ export default function Analytics() {
         <div className="card overflow-hidden">
           <div className="px-5 py-4 border-b text-sm font-medium">Топ моделей</div>
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-xs uppercase text-gray-600">
+            <thead className="bg-gray-50 dark:bg-slate-900 text-xs uppercase text-gray-600 dark:text-slate-400">
               <tr>
                 <th className="px-4 py-2 text-left">Модель</th>
                 <th className="px-4 py-2 text-right">Кол-во</th>
@@ -87,7 +87,7 @@ export default function Analytics() {
             </thead>
             <tbody>
               {(md.data || []).slice(0, 12).map((r: any, i: number) => (
-                <tr key={i} className="border-t border-gray-100">
+                <tr key={i} className="border-t border-gray-100 dark:border-slate-800">
                   <td className="px-4 py-2">{r.phone_model}</td>
                   <td className="px-4 py-2 text-right">{formatNumber(r.count)}</td>
                   <td className="px-4 py-2 text-right">{formatUZS(r.total)}</td>

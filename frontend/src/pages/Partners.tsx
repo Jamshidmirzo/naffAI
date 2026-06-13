@@ -43,7 +43,7 @@ export default function Partners() {
 
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-xs uppercase text-gray-600">
+          <thead className="bg-gray-50 dark:bg-slate-900 text-xs uppercase text-gray-600 dark:text-slate-400">
             <tr>
               <th className="px-4 py-2 text-left">Название</th>
               <th className="px-4 py-2 text-left">Статус</th>
@@ -52,12 +52,12 @@ export default function Partners() {
           </thead>
           <tbody>
             {(list.data?.results || []).map((p: any) => (
-              <tr key={p.id} className="border-t border-gray-100 hover:bg-gray-50">
+              <tr key={p.id} className="border-t border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/40">
                 <td className="px-4 py-2">{p.name}</td>
                 <td className="px-4 py-2">
                   <span
                     className={`badge ${
-                      p.is_active ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"
+                      p.is_active ? "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300" : "bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400"
                     }`}
                   >
                     {p.is_active ? "активен" : "выключен"}
@@ -78,7 +78,7 @@ export default function Partners() {
       </div>
 
       {show && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
           <form
             onSubmit={(e) => {
               e.preventDefault();

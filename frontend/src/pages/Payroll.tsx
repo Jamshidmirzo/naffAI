@@ -56,23 +56,23 @@ export default function Payroll() {
                 <div className="text-sm font-medium flex items-center gap-2">
                   {l.operator_name}
                   {l.is_trainee && (
-                    <span className="badge bg-blue-100 text-blue-700">стажёр</span>
+                    <span className="badge bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300">стажёр</span>
                   )}
                   {l.threshold_reached && (
-                    <span className="badge bg-emerald-100 text-emerald-700">порог достигнут</span>
+                    <span className="badge bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">порог достигнут</span>
                   )}
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
+                <div className="text-xs text-gray-500 dark:text-slate-400 mt-1">
                   {l.sales_count} продаж · {formatUZS(l.total_sales)}
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-xs text-gray-500">Премия</div>
+                <div className="text-xs text-gray-500 dark:text-slate-400">Премия</div>
                 <div className="text-lg font-semibold">{formatUZS(l.payout)}</div>
               </div>
             </div>
             <div className="mt-4">
-              <div className="flex justify-between text-xs text-gray-500 mb-1">
+              <div className="flex justify-between text-xs text-gray-500 dark:text-slate-400 mb-1">
                 <span>Прогресс к порогу {formatUZS(l.threshold)}</span>
                 <span>{l.progress_percent}%</span>
               </div>

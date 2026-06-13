@@ -62,9 +62,9 @@ export default function Dashboard() {
 
       {kpi.data?.top_of_month && (
         <div className="card p-5">
-          <div className="text-xs uppercase tracking-wide text-gray-500">Топ месяца</div>
+          <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Топ месяца</div>
           <div className="mt-1 text-lg font-semibold">{kpi.data.top_of_month.operator_name}</div>
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-gray-600 dark:text-slate-400">
             {formatUZS(kpi.data.top_of_month.total)} · {kpi.data.top_of_month.count} продаж
           </div>
         </div>
@@ -93,11 +93,11 @@ export default function Dashboard() {
       </div>
 
       <div className="card overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-200 text-sm font-medium">
+        <div className="px-5 py-4 border-b border-gray-200 dark:border-slate-800 text-sm font-medium">
           Последние продажи
         </div>
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-600 text-xs uppercase">
+          <thead className="bg-gray-50 dark:bg-slate-900 text-gray-600 dark:text-slate-400 text-xs uppercase">
             <tr>
               <th className="px-5 py-2 text-left">Дата</th>
               <th className="px-5 py-2 text-left">IMEI</th>
@@ -108,8 +108,8 @@ export default function Dashboard() {
           </thead>
           <tbody>
             {(recent.data?.results || []).map((s: any) => (
-              <tr key={s.id} className="border-t border-gray-100 hover:bg-gray-50">
-                <td className="px-5 py-2 text-gray-600">{formatDate(s.sold_at)}</td>
+              <tr key={s.id} className="border-t border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/40">
+                <td className="px-5 py-2 text-gray-600 dark:text-slate-400">{formatDate(s.sold_at)}</td>
                 <td className="px-5 py-2 font-mono text-xs">{s.imei}</td>
                 <td className="px-5 py-2">{s.phone_model}</td>
                 <td className="px-5 py-2">{s.operator_name}</td>

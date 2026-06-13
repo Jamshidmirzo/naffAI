@@ -77,7 +77,7 @@ export default function Sales() {
       </div>
 
       {importMsg && (
-        <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-2 text-sm text-blue-800">
+        <div className="rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-700/40 px-4 py-2 text-sm text-blue-800 dark:text-blue-300">
           {importMsg}
         </div>
       )}
@@ -93,7 +93,7 @@ export default function Sales() {
 
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-600 text-xs uppercase">
+          <thead className="bg-gray-50 dark:bg-slate-900 text-gray-600 dark:text-slate-400 text-xs uppercase">
             <tr>
               <th className="px-4 py-2 text-left">Дата</th>
               <th className="px-4 py-2 text-left">IMEI</th>
@@ -106,20 +106,20 @@ export default function Sales() {
           </thead>
           <tbody>
             {(sales.data?.results || []).map((s: any) => (
-              <tr key={s.id} className="border-t border-gray-100 hover:bg-gray-50">
-                <td className="px-4 py-2 text-gray-600">{formatDate(s.sold_at)}</td>
+              <tr key={s.id} className="border-t border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/40">
+                <td className="px-4 py-2 text-gray-600 dark:text-slate-400">{formatDate(s.sold_at)}</td>
                 <td className="px-4 py-2 font-mono text-xs">{s.imei}</td>
                 <td className="px-4 py-2">{s.phone_model}</td>
                 <td className="px-4 py-2">{s.operator_name}</td>
-                <td className="px-4 py-2 text-gray-600">{s.channel_name}</td>
+                <td className="px-4 py-2 text-gray-600 dark:text-slate-400">{s.channel_name}</td>
                 <td className="px-4 py-2 text-right">{formatUZS(s.amount)}</td>
                 <td className="px-4 py-2 text-center">
                   {s.is_returned ? (
-                    <span className="badge bg-red-100 text-red-700">возврат</span>
+                    <span className="badge bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300">возврат</span>
                   ) : s.status === "pending" ? (
-                    <span className="badge bg-amber-100 text-amber-700">ожидает</span>
+                    <span className="badge bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300">ожидает</span>
                   ) : (
-                    <span className="badge bg-emerald-100 text-emerald-700">ОК</span>
+                    <span className="badge bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">ОК</span>
                   )}
                 </td>
               </tr>
@@ -127,7 +127,7 @@ export default function Sales() {
           </tbody>
         </table>
         {sales.data?.results?.length === 0 && (
-          <div className="px-4 py-12 text-center text-gray-500 text-sm">Нет продаж</div>
+          <div className="px-4 py-12 text-center text-gray-500 dark:text-slate-400 text-sm">Нет продаж</div>
         )}
       </div>
     </div>
