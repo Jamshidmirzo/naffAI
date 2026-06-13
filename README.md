@@ -55,16 +55,30 @@ cp .env.example .env
 docker compose up --build -d
 
 # 3. Открываем
-#   - Дашборд:  http://localhost:5173
-#   - API:      http://localhost:8000/api/
-#   - Swagger:  http://localhost:8000/api/docs/
-#   - Admin:    http://localhost:8000/admin/
+#   - Дашборд:  http://localhost:5180
+#   - API:      http://localhost:8010/api/
+#   - Swagger:  http://localhost:8010/api/docs/
+#   - Admin:    http://localhost:8010/admin/
 #
-# Дефолтный логин: admin / admin (создаётся на старте, смени в .env)
+# Дефолтный логин: dostik / tostik (создаётся на старте, смени в .env)
 ```
 
-`entrypoint.sh` сам прогоняет миграции, сидит каналы (Telegram/Instagram/…)
-и генерит ~120 демо-продаж за последние 40 дней.
+`entrypoint.sh` сам прогоняет миграции и сидит каналы
+(Alif / Uzum / WhatsApp / Walk-in / Phone-call) и TAC-словарь.
+Демо-данные не сидаются — загружай реальную таблицу через
+кнопку «Импорт Excel» на странице Продаж или
+`python manage.py import_excel --file file.xlsx [--wipe]`.
+
+## Production-деплой
+
+* **Backend** на VPS — `bash deploy/deploy.sh` (см. `deploy/deploy.sh`).
+  Поднимает Postgres + Django (gunicorn) на 80 порту с авто-сгенерёнными
+  паролем БД и `DJANGO_SECRET_KEY`. Жёлтый прод-стэк описан в
+  `docker-compose.prod.yml`.
+* **Frontend** на Vercel — `cd frontend && vercel --prod`. Конфиг
+  `frontend/vercel.json` проксирует `/api/*` на backend по HTTP, чтобы
+  браузер видел только HTTPS-вызовы к `*.vercel.app`. Базовый URL берётся
+  из `frontend/.env.production` (`VITE_API_BASE_URL=/api`).
 
 ## Локальная разработка без Docker
 
