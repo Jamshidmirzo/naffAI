@@ -182,6 +182,68 @@ def _get_or_create_channel(name: str, *, result: ImportResult) -> Channel:
     return obj
 
 
+_DATE_STR_RE = re.compile(r"^\s*(\d{1,2})[.,/\-](\d{1,2})[.,/\-](\d{2,4})\s*$")
+
+
+def _parse_date_string(s: str) -> dt.datetime | None:
+    """Parse strings like '06,13,26' or '06.13.26' as MM,DD,YY (with DD,MM fallback)."""
+    m = _DATE_STR_RE.match(s or "")
+    if not m:
+        return None
+    a, b, c = (int(x) for x in m.groups())
+    year = 2000 + c if c < 100 else c
+    try:
+        return dt.datetime(year, a, b)  # MM, DD
+    except ValueError:
+        try:
+            return dt.datetime(year, b, a)  # DD, MM fallback
+        except ValueError:
+            return None
+
+
+def _detect_dates_in_sheet(rows: list, tz) -> dict[int, dt.datetime]:
+    """
+    Walk rows once, collecting section-date markers and deciding whether
+    openpyxl swallowed them as DD.MM.YY when the user meant MM.DD.YY.
+
+    Heuristic: if every Excel-parsed datetime marker shares the same `day`
+    and the `month` values vary, the user actually entered them as
+    MM.DD.YY — swap month↔day. Confirmed when a sibling string-form marker
+    like '06,13,26' exists that wouldn't parse as DD.MM (day 13 invalid).
+    """
+    parsed: list[tuple[int, dt.datetime]] = []
+    strings: list[tuple[int, dt.datetime]] = []
+    for i, row in enumerate(rows):
+        if i == 0 or not row:
+            continue
+        a = row[0]
+        if isinstance(a, dt.datetime):
+            parsed.append((i, a))
+        elif isinstance(a, str):
+            d = _parse_date_string(a.strip())
+            if d:
+                strings.append((i, d))
+
+    needs_swap = False
+    if len(parsed) >= 2:
+        days = {m.day for _, m in parsed}
+        months = {m.month for _, m in parsed}
+        if len(days) == 1 and len(months) > 1:
+            needs_swap = True
+
+    date_by_row: dict[int, dt.datetime] = {}
+    for ri, d in parsed:
+        if needs_swap:
+            try:
+                d = d.replace(month=d.day, day=d.month)
+            except ValueError:
+                pass
+        date_by_row[ri] = d if d.tzinfo else d.replace(tzinfo=tz)
+    for ri, d in strings:
+        date_by_row[ri] = d if d.tzinfo else d.replace(tzinfo=tz)
+    return date_by_row
+
+
 def _is_header_row(cell_a: str) -> bool:
     s = cell_a.strip().lower()
     if not s:
@@ -210,18 +272,20 @@ def _import_operators_sheet(ws, result: ImportResult) -> None:
 
 
 def _import_sales_sheet(ws, result: ImportResult) -> None:
-    current_date: dt.datetime | None = None
     tz = timezone.get_current_timezone()
-    for i, row in enumerate(ws.iter_rows(values_only=True)):
-        if i == 0:
+    rows = list(ws.iter_rows(values_only=True))
+    date_by_row = _detect_dates_in_sheet(rows, tz)
+
+    current_date: dt.datetime | None = None
+    for i, row in enumerate(rows):
+        if i == 0 or not row:
             continue
+
+        if i in date_by_row:
+            current_date = date_by_row[i]
+            continue
+
         a = row[0]
-
-        # Section / day marker.
-        if isinstance(a, dt.datetime):
-            current_date = a if a.tzinfo else a.replace(tzinfo=tz)
-            continue
-
         cell_a = "" if a is None else str(a)
         if _is_header_row(cell_a):
             continue
