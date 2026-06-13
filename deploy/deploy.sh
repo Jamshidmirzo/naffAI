@@ -8,7 +8,7 @@ set -euo pipefail
 REPO_URL="${REPO_URL:-https://github.com/Jamshidmirzo/naffAI.git}"
 TARGET="${TARGET:-/opt/naffAI}"
 PUBLIC_IP="${PUBLIC_IP:-46.101.112.215}"
-VERCEL_DOMAIN="${VERCEL_DOMAIN:-naff.vercel.app}"
+VERCEL_DOMAIN="${VERCEL_DOMAIN:-naffcrm.vercel.app}"
 
 echo "[deploy] installing prerequisites (docker, git)..."
 if ! command -v docker >/dev/null 2>&1; then
@@ -35,8 +35,8 @@ if [ ! -f .env ]; then
   cat > .env <<EOF
 DJANGO_SECRET_KEY=${SECRET}
 DJANGO_DEBUG=0
-DJANGO_ALLOWED_HOSTS=${PUBLIC_IP},localhost,127.0.0.1,web,${VERCEL_DOMAIN}
-DJANGO_CSRF_TRUSTED_ORIGINS=https://${VERCEL_DOMAIN},http://${PUBLIC_IP}
+DJANGO_ALLOWED_HOSTS=${PUBLIC_IP},localhost,127.0.0.1,web,${VERCEL_DOMAIN},.trycloudflare.com
+DJANGO_CSRF_TRUSTED_ORIGINS=https://${VERCEL_DOMAIN},http://${PUBLIC_IP},https://*.trycloudflare.com
 DJANGO_TIME_ZONE=Asia/Tashkent
 DJANGO_LANGUAGE_CODE=ru
 
