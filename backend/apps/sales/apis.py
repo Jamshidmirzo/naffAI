@@ -4,12 +4,14 @@ from decimal import Decimal
 from django.utils.dateparse import parse_datetime
 from rest_framework import serializers, status
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.common.exceptions import ApplicationError
 from apps.users.permissions import IsTeamLead, IsTeamLeadOrManagerReadOnly
 
+from .imports.excel_importer import import_xlsx
 from .models import GiftItem, Sale
 from .selectors import sale_get, sale_list
 from .services import sale_confirm, sale_create, sale_mark_returned, sale_soft_delete, sale_update
@@ -166,3 +168,19 @@ class SaleConfirmApi(APIView):
             return Response({"detail": "Not found"}, status=404)
         sale_confirm(sale=sale, user=request.user)
         return Response(SaleSerializer(sale).data)
+
+
+class SaleImportExcelApi(APIView):
+    permission_classes = [IsTeamLead]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        upload = request.FILES.get("file")
+        if not upload:
+            return Response({"detail": "Прикрепите файл в поле 'file'"}, status=400)
+        wipe = str(request.data.get("wipe", "0")).lower() in ("1", "true", "yes")
+        try:
+            result = import_xlsx(upload, wipe_existing=wipe)
+        except Exception as exc:  # noqa: BLE001 — surface parser errors to the UI
+            return Response({"detail": f"Не удалось разобрать файл: {exc}"}, status=400)
+        return Response(result.as_dict(), status=status.HTTP_200_OK)

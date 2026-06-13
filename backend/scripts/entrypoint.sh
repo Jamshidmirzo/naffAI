@@ -8,7 +8,7 @@ python manage.py migrate --noinput
 
 echo "[entrypoint] seeding base data (idempotent)..."
 python manage.py seed_channels || true
-python manage.py seed_demo --only-if-empty || true
+python manage.py seed_tac --builtin || true
 
 if [ -n "${DJANGO_SUPERUSER_USERNAME:-}" ]; then
   echo "[entrypoint] ensuring superuser ${DJANGO_SUPERUSER_USERNAME}..."
