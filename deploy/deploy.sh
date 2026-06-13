@@ -7,7 +7,7 @@ set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/Jamshidmirzo/naffAI.git}"
 TARGET="${TARGET:-/opt/naffAI}"
-PUBLIC_IP="${PUBLIC_IP:-139.59.136.18}"
+PUBLIC_IP="${PUBLIC_IP:-46.101.112.215}"
 VERCEL_DOMAIN="${VERCEL_DOMAIN:-naff.vercel.app}"
 
 echo "[deploy] installing prerequisites (docker, git)..."
