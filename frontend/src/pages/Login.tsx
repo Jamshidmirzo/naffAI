@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Eye, EyeOff } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../store/auth";
 
 export default function Login() {
-  const [username, setU] = useState("admin");
-  const [password, setP] = useState("admin");
+  const [username, setU] = useState("");
+  const [password, setP] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const setAuth = useAuth((s) => s.setAuth);
@@ -35,11 +37,34 @@ export default function Login() {
         </div>
         <div>
           <label className="label">Логин</label>
-          <input className="input" value={username} onChange={(e) => setU(e.target.value)} />
+          <input
+            className="input"
+            value={username}
+            onChange={(e) => setU(e.target.value)}
+            autoComplete="username"
+            autoFocus
+          />
         </div>
         <div>
           <label className="label">Пароль</label>
-          <input className="input" type="password" value={password} onChange={(e) => setP(e.target.value)} />
+          <div className="relative">
+            <input
+              className="input pr-10"
+              type={showPwd ? "text" : "password"}
+              value={password}
+              onChange={(e) => setP(e.target.value)}
+              autoComplete="current-password"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPwd((v) => !v)}
+              className="absolute inset-y-0 right-2 flex items-center text-gray-400 hover:text-gray-700"
+              aria-label={showPwd ? "Скрыть пароль" : "Показать пароль"}
+              tabIndex={-1}
+            >
+              {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
         {error && <div className="text-sm text-red-600">{error}</div>}
         <button className="btn-primary w-full" disabled={busy}>
