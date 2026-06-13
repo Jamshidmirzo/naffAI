@@ -9,9 +9,13 @@ single source of truth.
 from __future__ import annotations
 
 
+IMEI_MIN_LEN = 6
+IMEI_MAX_LEN = 15
+
+
 def is_valid_imei(imei: str) -> bool:
-    """True iff `imei` is exactly 15 digits. No checksum check."""
-    return bool(imei) and len(imei) == 15 and imei.isdigit()
+    """True iff `imei` is digits-only and 6–15 chars long."""
+    return bool(imei) and IMEI_MIN_LEN <= len(imei) <= IMEI_MAX_LEN and imei.isdigit()
 
 
 def extract_tac(imei: str) -> str:

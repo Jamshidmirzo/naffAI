@@ -70,3 +70,47 @@ class GiftItem(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} (sale#{self.sale_id})"
+
+
+class SaleOperator(models.Model):
+    """
+    Allocation row: one of possibly several operators credited on a Sale,
+    each with their own share of the sale amount (for payroll splits).
+    """
+
+    sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name="operator_lines")
+    operator = models.ForeignKey(
+        "operators.Operator",
+        on_delete=models.PROTECT,
+        related_name="sale_lines",
+    )
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+
+    class Meta:
+        ordering = ["id"]
+        indexes = [models.Index(fields=["sale", "operator"])]
+
+    def __str__(self) -> str:
+        return f"{self.operator_id} = {self.amount} (sale#{self.sale_id})"
+
+
+class SalePartner(models.Model):
+    """
+    Allocation row: one of possibly several partners (Alif / Birzum / Hamroh /
+    cash / ...) the customer used to pay, each with their own share.
+    """
+
+    sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name="partner_lines")
+    partner = models.ForeignKey(
+        "catalog.Channel",
+        on_delete=models.PROTECT,
+        related_name="sale_lines",
+    )
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+
+    class Meta:
+        ordering = ["id"]
+        indexes = [models.Index(fields=["sale", "partner"])]
+
+    def __str__(self) -> str:
+        return f"{self.partner_id} = {self.amount} (sale#{self.sale_id})"

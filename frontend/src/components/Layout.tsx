@@ -7,6 +7,7 @@ import {
   LineChart,
   Wallet,
   History,
+  Handshake,
   LogOut,
 } from "lucide-react";
 
@@ -14,6 +15,7 @@ const items = [
   { to: "/", label: "Дашборд", icon: LayoutDashboard, end: true },
   { to: "/sales", label: "Продажи", icon: ShoppingCart },
   { to: "/operators", label: "Операторы", icon: Users },
+  { to: "/partners", label: "Партнёры", icon: Handshake },
   { to: "/analytics", label: "Аналитика", icon: LineChart },
   { to: "/payroll", label: "Зарплата", icon: Wallet },
   { to: "/audit", label: "Журнал", icon: History },

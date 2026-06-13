@@ -36,7 +36,7 @@ export default function Sales() {
       const d = r.data;
       setImportMsg(
         `Импорт: создано ${d.sales_created}, пропущено ${d.sales_skipped}, ` +
-          `новых операторов ${d.operators_created}, каналов ${d.channels_created}`,
+          `новых операторов ${d.operators_created}, партнёров ${d.channels_created}`,
       );
       qc.invalidateQueries({ queryKey: ["sales"] });
     } catch (err: any) {
@@ -99,7 +99,7 @@ export default function Sales() {
               <th className="px-4 py-2 text-left">IMEI</th>
               <th className="px-4 py-2 text-left">Модель</th>
               <th className="px-4 py-2 text-left">Оператор</th>
-              <th className="px-4 py-2 text-left">Канал</th>
+              <th className="px-4 py-2 text-left">Партнёр</th>
               <th className="px-4 py-2 text-right">Сумма</th>
               <th className="px-4 py-2 text-center">Статус</th>
             </tr>

@@ -4,6 +4,7 @@ import Dashboard from "./pages/Dashboard";
 import Sales from "./pages/Sales";
 import SaleCreate from "./pages/SaleCreate";
 import Operators from "./pages/Operators";
+import Partners from "./pages/Partners";
 import Analytics from "./pages/Analytics";
 import Payroll from "./pages/Payroll";
 import Audit from "./pages/Audit";
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="/sales" element={<Sales />} />
         <Route path="/sales/new" element={<SaleCreate />} />
         <Route path="/operators" element={<Operators />} />
+        <Route path="/partners" element={<Partners />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/payroll" element={<Payroll />} />
         <Route path="/audit" element={<Audit />} />

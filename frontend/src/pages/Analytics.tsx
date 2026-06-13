@@ -57,7 +57,7 @@ export default function Analytics() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="card p-5">
-          <div className="text-sm font-medium mb-4">По каналам</div>
+          <div className="text-sm font-medium mb-4">По партнёрам</div>
           <ResponsiveContainer width="100%" height={240}>
             <PieChart>
               <Pie

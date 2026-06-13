@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Iterable
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.utils import timezone
@@ -12,8 +12,78 @@ from apps.catalog.imei_service import imei_lookup
 from apps.common.exceptions import ApplicationError, DuplicateError
 from apps.common.validators import is_valid_imei
 
-from .models import GiftItem, Sale, SaleStatus
+from apps.catalog.models import Channel
+from apps.operators.models import Operator, OperatorStatus
+
+from .models import GiftItem, Sale, SaleOperator, SalePartner, SaleStatus
 from .selectors import sale_imei_duplicate_count
+
+
+def _resolve_operator(line: dict) -> Operator:
+    """Resolve an operator-line entry by id, else by trimmed name (create if missing)."""
+    if line.get("operator_id"):
+        return Operator.objects.get(pk=int(line["operator_id"]))
+    name = (line.get("operator_name") or line.get("name") or "").strip()
+    if not name:
+        raise ApplicationError("Укажите оператора", {"field": "operators"})
+    op = Operator.objects.filter(full_name__iexact=name).first()
+    if op:
+        return op
+    return Operator.objects.create(full_name=name[:128], status=OperatorStatus.ACTIVE)
+
+
+def _resolve_partner(line: dict) -> Channel:
+    if line.get("partner_id"):
+        return Channel.objects.get(pk=int(line["partner_id"]))
+    if line.get("channel_id"):  # legacy key
+        return Channel.objects.get(pk=int(line["channel_id"]))
+    name = (line.get("partner_name") or line.get("name") or "").strip()
+    if not name:
+        raise ApplicationError("Укажите партнёра", {"field": "partners"})
+    ch, _ = Channel.objects.get_or_create(name=name[:64], defaults={"is_active": True})
+    if not ch.is_active:
+        ch.is_active = True
+        ch.save(update_fields=["is_active", "updated_at"])
+    return ch
+
+
+def _coerce_lines(
+    raw_lines: list[dict] | None,
+    *,
+    fallback_id: int | None,
+    fallback_amount: Decimal,
+    role: str,
+) -> list[tuple]:
+    """
+    Normalise create-form payload:
+      - if `raw_lines` is given, return [(model, amount), ...] using the resolver.
+      - else fall back to a single line built from the legacy single-FK + amount.
+    """
+    if raw_lines:
+        out = []
+        for line in raw_lines:
+            try:
+                amount_raw = line.get("amount", 0)
+                amount = Decimal(str(amount_raw)) if amount_raw not in ("", None) else Decimal(0)
+            except (InvalidOperation, TypeError) as exc:
+                raise ApplicationError(
+                    f"Некорректная сумма у {role}", {"field": role}
+                ) from exc
+            if amount <= 0:
+                raise ApplicationError(
+                    f"Сумма у каждого {role} должна быть > 0", {"field": role}
+                )
+            obj = _resolve_operator(line) if role == "operators" else _resolve_partner(line)
+            out.append((obj, amount))
+        return out
+    if not fallback_id:
+        raise ApplicationError(f"Укажите минимум одного: {role}", {"field": role})
+    obj = (
+        Operator.objects.get(pk=fallback_id)
+        if role == "operators"
+        else Channel.objects.get(pk=fallback_id)
+    )
+    return [(obj, fallback_amount)]
 
 
 @transaction.atomic
@@ -22,9 +92,11 @@ def sale_create(
     user=None,
     imei: str,
     phone_model: str | None = None,
-    operator_id: int,
-    channel_id: int,
-    amount: Decimal,
+    operator_id: int | None = None,
+    channel_id: int | None = None,
+    amount: Decimal | None = None,
+    operators: list[dict] | None = None,
+    partners: list[dict] | None = None,
     sold_at: dt.datetime | None = None,
     comment: str = "",
     status: str = SaleStatus.CONFIRMED,
@@ -33,18 +105,19 @@ def sale_create(
     duplicate_override_comment: str = "",
 ) -> Sale:
     """
-    Create a sale with full validation pipeline:
-      1. IMEI format check (15 digits)
-      2. Duplicate IMEI gate (override requires explicit flag + comment)
-      3. Auto-fill phone_model from TAC if missing
-      4. Audit log with the actor
+    Create a sale.
+
+    Multi-allocation: pass `operators=[{operator_id|operator_name, amount}, ...]`
+    and `partners=[{partner_id|partner_name, amount}, ...]`. Names that don't
+    match an existing record are auto-created (operator → status=active,
+    partner → is_active=True).
+
+    Legacy single-FK payload (`operator_id`, `channel_id`, `amount`) is still
+    accepted and wrapped into a single allocation line per role.
     """
     imei = (imei or "").strip()
     if not is_valid_imei(imei):
-        raise ApplicationError("IMEI должен быть из 15 цифр", {"field": "imei"})
-
-    if amount is None or Decimal(amount) <= 0:
-        raise ApplicationError("Сумма должна быть положительной", {"field": "amount"})
+        raise ApplicationError("IMEI должен быть из 6–15 цифр", {"field": "imei"})
 
     duplicates = sale_imei_duplicate_count(imei=imei)
     if duplicates and not allow_duplicate_imei:
@@ -58,6 +131,18 @@ def sale_create(
             {"field": "duplicate_override_comment"},
         )
 
+    legacy_amount = Decimal(str(amount)) if amount not in (None, "") else Decimal(0)
+    operator_lines = _coerce_lines(
+        operators, fallback_id=operator_id, fallback_amount=legacy_amount, role="operators"
+    )
+    partner_lines = _coerce_lines(
+        partners, fallback_id=channel_id, fallback_amount=legacy_amount, role="partners"
+    )
+
+    total = sum(amt for _, amt in partner_lines)
+    if total <= 0:
+        raise ApplicationError("Сумма должна быть положительной", {"field": "amount"})
+
     if not phone_model:
         lookup = imei_lookup(imei)
         if lookup.valid and (lookup.brand or lookup.model):
@@ -65,16 +150,26 @@ def sale_create(
     if not phone_model:
         phone_model = "Не определена"
 
+    primary_op = operator_lines[0][0]
+    primary_partner = partner_lines[0][0]
+
     sale = Sale.objects.create(
         imei=imei,
         phone_model=phone_model[:128],
-        operator_id=operator_id,
-        channel_id=channel_id,
-        amount=Decimal(amount),
+        operator=primary_op,
+        channel=primary_partner,
+        amount=total,
         comment=comment,
         sold_at=sold_at or timezone.now(),
         created_by=user if user and getattr(user, "is_authenticated", False) else None,
         status=status,
+    )
+
+    SaleOperator.objects.bulk_create(
+        [SaleOperator(sale=sale, operator=o, amount=a) for o, a in operator_lines]
+    )
+    SalePartner.objects.bulk_create(
+        [SalePartner(sale=sale, partner=p, amount=a) for p, a in partner_lines]
     )
 
     if gifts:
@@ -94,8 +189,13 @@ def sale_create(
         changes={
             "imei": sale.imei,
             "phone_model": sale.phone_model,
-            "operator_id": sale.operator_id,
-            "amount": str(sale.amount),
+            "operators": [
+                {"id": o.id, "name": o.full_name, "amount": str(a)} for o, a in operator_lines
+            ],
+            "partners": [
+                {"id": p.id, "name": p.name, "amount": str(a)} for p, a in partner_lines
+            ],
+            "total": str(total),
         },
         comment=duplicate_override_comment if duplicates else "",
     )
@@ -112,7 +212,7 @@ def sale_update(
     if "imei" in fields:
         new_imei = (fields["imei"] or "").strip()
         if not is_valid_imei(new_imei):
-            raise ApplicationError("IMEI должен быть из 15 цифр", {"field": "imei"})
+            raise ApplicationError("IMEI должен быть из 6–15 цифр", {"field": "imei"})
         fields["imei"] = new_imei
 
     old = {k: getattr(sale, k) for k in fields}

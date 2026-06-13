@@ -12,7 +12,7 @@ from apps.common.exceptions import ApplicationError
 from apps.users.permissions import IsTeamLead, IsTeamLeadOrManagerReadOnly
 
 from .imports.excel_importer import import_xlsx
-from .models import GiftItem, Sale
+from .models import GiftItem, Sale, SaleOperator, SalePartner
 from .selectors import sale_get, sale_list
 from .services import sale_confirm, sale_create, sale_mark_returned, sale_soft_delete, sale_update
 
@@ -23,10 +23,28 @@ class GiftItemSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "cost"]
 
 
+class SaleOperatorLineSerializer(serializers.ModelSerializer):
+    operator_name = serializers.CharField(source="operator.full_name", read_only=True)
+
+    class Meta:
+        model = SaleOperator
+        fields = ["operator", "operator_name", "amount"]
+
+
+class SalePartnerLineSerializer(serializers.ModelSerializer):
+    partner_name = serializers.CharField(source="partner.name", read_only=True)
+
+    class Meta:
+        model = SalePartner
+        fields = ["partner", "partner_name", "amount"]
+
+
 class SaleSerializer(serializers.ModelSerializer):
     operator_name = serializers.CharField(source="operator.full_name", read_only=True)
     channel_name = serializers.CharField(source="channel.name", read_only=True)
     gifts = GiftItemSerializer(many=True, read_only=True)
+    operator_lines = SaleOperatorLineSerializer(many=True, read_only=True)
+    partner_lines = SalePartnerLineSerializer(many=True, read_only=True)
 
     class Meta:
         model = Sale
@@ -39,6 +57,8 @@ class SaleSerializer(serializers.ModelSerializer):
             "channel",
             "channel_name",
             "amount",
+            "operator_lines",
+            "partner_lines",
             "comment",
             "sold_at",
             "status",
@@ -55,6 +75,8 @@ class SaleSerializer(serializers.ModelSerializer):
             "operator_name",
             "channel_name",
             "gifts",
+            "operator_lines",
+            "partner_lines",
             "is_deleted",
             "is_returned",
             "returned_at",
@@ -65,15 +87,20 @@ class SaleSerializer(serializers.ModelSerializer):
 
 
 class SaleCreateInputSerializer(serializers.Serializer):
-    imei = serializers.CharField(max_length=15)
+    imei = serializers.CharField(min_length=6, max_length=15)
     phone_model = serializers.CharField(max_length=128, required=False, allow_blank=True)
-    operator_id = serializers.IntegerField()
-    channel_id = serializers.IntegerField()
+    # Multi-allocation (preferred): each line has {operator_id|operator_name, amount}
+    operators = serializers.ListField(child=serializers.DictField(), required=False, default=list)
+    partners = serializers.ListField(child=serializers.DictField(), required=False, default=list)
+    # Legacy single-FK (back-compat)
+    operator_id = serializers.IntegerField(required=False)
+    channel_id = serializers.IntegerField(required=False)
     amount = serializers.DecimalField(
         max_digits=14,
         decimal_places=2,
         min_value=Decimal("1000"),
         max_value=Decimal("999999999999.99"),
+        required=False,
     )
     comment = serializers.CharField(required=False, allow_blank=True, default="")
     sold_at = serializers.DateTimeField(required=False)
@@ -82,7 +109,6 @@ class SaleCreateInputSerializer(serializers.Serializer):
     duplicate_override_comment = serializers.CharField(required=False, allow_blank=True, default="")
 
     def to_internal_value(self, data):
-        # Frontend may still send the FK-name keys (`operator`, `channel`) — accept both.
         if isinstance(data, dict):
             data = dict(data)
             if "operator" in data and "operator_id" not in data:
