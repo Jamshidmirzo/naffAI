@@ -21,7 +21,7 @@ def sale_create(
     *,
     user=None,
     imei: str,
-    phone_model: str | None,
+    phone_model: str | None = None,
     operator_id: int,
     channel_id: int,
     amount: Decimal,

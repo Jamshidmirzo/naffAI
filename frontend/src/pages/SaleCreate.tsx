@@ -43,13 +43,30 @@ export default function SaleCreate() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    const amountNum = Number(amount);
+    if (!amount || isNaN(amountNum) || amountNum < 1000) {
+      setError("Введите сумму не меньше 1 000 сум");
+      return;
+    }
+    if (amountNum > 999_999_999_999) {
+      setError("Сумма слишком большая");
+      return;
+    }
+    if (!operator) {
+      setError("Выберите оператора");
+      return;
+    }
+    if (!channel) {
+      setError("Выберите канал");
+      return;
+    }
     try {
       await api.post("/sales/", {
         imei,
         phone_model: model,
-        operator: Number(operator),
-        channel: Number(channel),
-        amount,
+        operator_id: Number(operator),
+        channel_id: Number(channel),
+        amount: amountNum.toFixed(2),
         comment,
         gifts: gifts.filter((g) => g.name),
         allow_duplicate_imei: allowDup,
@@ -58,7 +75,14 @@ export default function SaleCreate() {
       nav("/sales");
     } catch (err: any) {
       const d = err.response?.data || {};
-      setError(d.detail || "Ошибка сохранения");
+      const fieldErr =
+        d.amount?.[0] ||
+        d.imei?.[0] ||
+        d.operator_id?.[0] ||
+        d.channel_id?.[0] ||
+        d.detail ||
+        "Ошибка сохранения";
+      setError(typeof fieldErr === "string" ? fieldErr : "Ошибка сохранения");
       if (d.duplicate_count) setAllowDup(true);
     }
   };
@@ -118,13 +142,17 @@ export default function SaleCreate() {
           <label className="label">Сумма (сум)</label>
           <input
             className="input"
-            type="number"
+            inputMode="numeric"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            min="0"
-            step="1000"
+            onChange={(e) => setAmount(e.target.value.replace(/\D/g, ""))}
+            placeholder="например 4 500 000"
             required
           />
+          {amount && Number(amount) > 0 && (
+            <div className="text-xs text-gray-500 mt-1">
+              ≈ {Number(amount).toLocaleString("ru-RU")} сум
+            </div>
+          )}
         </div>
 
         <div>

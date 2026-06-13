@@ -1,4 +1,5 @@
 import datetime as dt
+from decimal import Decimal
 
 from django.utils.dateparse import parse_datetime
 from rest_framework import serializers, status
@@ -64,14 +65,29 @@ class SaleSerializer(serializers.ModelSerializer):
 class SaleCreateInputSerializer(serializers.Serializer):
     imei = serializers.CharField(max_length=15)
     phone_model = serializers.CharField(max_length=128, required=False, allow_blank=True)
-    operator = serializers.IntegerField()
-    channel = serializers.IntegerField()
-    amount = serializers.DecimalField(max_digits=14, decimal_places=2)
+    operator_id = serializers.IntegerField()
+    channel_id = serializers.IntegerField()
+    amount = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        min_value=Decimal("1000"),
+        max_value=Decimal("999999999999.99"),
+    )
     comment = serializers.CharField(required=False, allow_blank=True, default="")
     sold_at = serializers.DateTimeField(required=False)
     gifts = serializers.ListField(child=serializers.DictField(), required=False, default=list)
     allow_duplicate_imei = serializers.BooleanField(required=False, default=False)
     duplicate_override_comment = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def to_internal_value(self, data):
+        # Frontend may still send the FK-name keys (`operator`, `channel`) — accept both.
+        if isinstance(data, dict):
+            data = dict(data)
+            if "operator" in data and "operator_id" not in data:
+                data["operator_id"] = data.pop("operator")
+            if "channel" in data and "channel_id" not in data:
+                data["channel_id"] = data.pop("channel")
+        return super().to_internal_value(data)
 
 
 def _parse_dt(value: str | None) -> dt.datetime | None:
