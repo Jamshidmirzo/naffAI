@@ -340,43 +340,43 @@ def _import_sales_sheet(ws, result: ImportResult) -> None:
 
         # Deterministic fallback so re-importing the same workbook is idempotent.
         sold_at = current_date or dt.datetime(1970, 1, 1, tzinfo=tz)
+        total_amount = sum(amt for _, amt in pairs)
+        primary_channel_name = pairs[0][0]
+        primary_channel = _get_or_create_channel(primary_channel_name, result=result)
+        imei = _imei_from_code(
+            row[1] if len(row) > 1 else None,
+            fallback_seed=(
+                f"{model_name}|{operator.id}|{primary_channel_name}|"
+                f"{total_amount}|{sold_at.isoformat()}"
+            ),
+        )
 
-        for channel_name, amount in pairs:
-            channel = _get_or_create_channel(channel_name, result=result)
-            imei = _imei_from_code(
-                row[1] if len(row) > 1 else None,
-                fallback_seed=(
-                    f"{model_name}|{operator.id}|{channel_name}|"
-                    f"{amount}|{sold_at.isoformat()}"
-                ),
-            )
+        # Idempotency: a sale uniquely identified by (operator, sold_at, total,
+        # imei) — the same Excel row can't import twice.
+        if Sale.objects.filter(
+            operator=operator, sold_at=sold_at, amount=total_amount, imei=imei
+        ).exists():
+            result.sales_skipped += 1
+            continue
 
-            # Idempotency: skip if same operator+sold_at+amount+imei already exists.
-            if Sale.objects.filter(
-                operator=operator,
-                sold_at=sold_at,
-                amount=amount,
-                imei=imei,
-            ).exists():
-                result.sales_skipped += 1
-                continue
-
-            sale = Sale.objects.create(
-                imei=imei,
-                phone_model=model_name,
-                operator=operator,
-                channel=channel,
-                amount=amount,
-                comment=comment,
-                sold_at=sold_at,
-                status=SaleStatus.CONFIRMED,
-            )
-            # Each Excel row maps to ONE operator + ONE partner with the full
-            # amount as a single line. Split payments (Birzum+Hamroh + a+b)
-            # are already broken into separate rows above, so this stays 1:1.
-            SaleOperator.objects.create(sale=sale, operator=operator, amount=amount)
-            SalePartner.objects.create(sale=sale, partner=channel, amount=amount)
-            result.sales_created += 1
+        # One Sale per Excel row. Split payments become N partner_lines on
+        # the same sale, not N separate sales (which would double-count
+        # in KPIs / leaderboard / export).
+        sale = Sale.objects.create(
+            imei=imei,
+            phone_model=model_name,
+            operator=operator,
+            channel=primary_channel,
+            amount=total_amount,
+            comment=comment,
+            sold_at=sold_at,
+            status=SaleStatus.CONFIRMED,
+        )
+        SaleOperator.objects.create(sale=sale, operator=operator, amount=total_amount)
+        for ch_name, amt in pairs:
+            ch = _get_or_create_channel(ch_name, result=result)
+            SalePartner.objects.create(sale=sale, partner=ch, amount=amt)
+        result.sales_created += 1
 
 
 @transaction.atomic
