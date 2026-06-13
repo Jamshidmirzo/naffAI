@@ -24,7 +24,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "8010:8000"
     volumes:
       - ./backend:/app
       - media-data:/app/media
@@ -36,7 +36,7 @@ services:
       dockerfile: Dockerfile
     env_file: .env
     ports:
-      - "5173:5173"
+      - "5180:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules
