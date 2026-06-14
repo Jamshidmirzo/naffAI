@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { api } from "../lib/api";
 import { formatDate, formatUZS } from "../lib/format";
@@ -15,6 +15,7 @@ import {
 } from "recharts";
 
 export default function Dashboard() {
+  const nav = useNavigate();
   const kpi = useQuery({
     queryKey: ["kpi"],
     queryFn: () => api.get("/analytics/kpi/").then((r) => r.data),
@@ -108,7 +109,11 @@ export default function Dashboard() {
           </thead>
           <tbody>
             {(recent.data?.results || []).map((s: any) => (
-              <tr key={s.id} className="border-t border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/40">
+              <tr
+                key={s.id}
+                className="border-t border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/40 cursor-pointer"
+                onClick={() => nav(`/sales/${s.id}`)}
+              >
                 <td className="px-5 py-2 text-gray-600 dark:text-slate-400">{formatDate(s.sold_at)}</td>
                 <td className="px-5 py-2 font-mono text-xs">{s.imei}</td>
                 <td className="px-5 py-2">{s.phone_model}</td>

@@ -1,11 +1,12 @@
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Download, Plus, Upload } from "lucide-react";
 import { api, API_BASE_URL } from "../lib/api";
 import { formatDate, formatUZS } from "../lib/format";
 
 export default function Sales() {
+  const nav = useNavigate();
   const [search, setSearch] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
@@ -106,7 +107,11 @@ export default function Sales() {
           </thead>
           <tbody>
             {(sales.data?.results || []).map((s: any) => (
-              <tr key={s.id} className="border-t border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/40">
+              <tr
+                key={s.id}
+                className="border-t border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/40 cursor-pointer"
+                onClick={() => nav(`/sales/${s.id}`)}
+              >
                 <td className="px-4 py-2 text-gray-600 dark:text-slate-400">{formatDate(s.sold_at)}</td>
                 <td className="px-4 py-2 font-mono text-xs">{s.imei}</td>
                 <td className="px-4 py-2">{s.phone_model}</td>

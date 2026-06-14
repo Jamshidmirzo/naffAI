@@ -3,6 +3,7 @@ import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Sales from "./pages/Sales";
 import SaleCreate from "./pages/SaleCreate";
+import SaleDetail from "./pages/SaleDetail";
 import Operators from "./pages/Operators";
 import Partners from "./pages/Partners";
 import Analytics from "./pages/Analytics";
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/sales" element={<Sales />} />
         <Route path="/sales/new" element={<SaleCreate />} />
+        <Route path="/sales/:id" element={<SaleDetail />} />
         <Route path="/operators" element={<Operators />} />
         <Route path="/partners" element={<Partners />} />
         <Route path="/analytics" element={<Analytics />} />
