@@ -1,19 +1,22 @@
 """
-Step-by-step Telegram bot for adding sales.
+Step-by-step Telegram bot for adding sales (multi-allocation aware).
 
-Replaces the old free-text parser. Conversation flow:
+Conversation:
+  /start | /new
+    → model → IMEI → amount (total)
+    → pick operator → [Этому весь объём] | [Добавить ещё]
+        if split: type amount → pick next operator → amount → loop
+    → pick partner → same fan-out as operator
+    → date (today / yesterday / day-before / custom)
+    → comment (or '-' to skip)
+    → preview → ✅ Save / ❌ Cancel
 
-  /start | /new → model → IMEI → amount → operator → partner
-                 → date → (optional) comment → preview → confirm/cancel
-
-State is kept per-chat in `MemoryStorage`. Every screen except the free-text
-prompts uses an inline keyboard so the user can tap their way through. On
-confirm we call the same `sale_create` service the UI uses — multi-line
-operator/partner support is baked in but exposed in single-line form for
-the bot, which is what the shop actually needs day-to-day.
+State per chat is kept in MemoryStorage. On confirm we call the same
+`sale_create` service the web API uses so audit log + allocation lines
+land in the canonical place.
 
 Run via `docker compose --profile bot up bot` after setting
-`TELEGRAM_BOT_TOKEN` in `.env`.
+TELEGRAM_BOT_TOKEN in `.env`.
 """
 
 from __future__ import annotations
@@ -67,8 +70,12 @@ async def main() -> None:
         model = State()
         imei = State()
         amount = State()
-        operator = State()
-        partner = State()
+        operator_pick = State()           # waiting for op (inline tap OR free-text name)
+        operator_split_choice = State()   # after 1st op picked: «весь объём / поделить»
+        operator_split_amount = State()   # waiting for amount text for last picked op
+        partner_pick = State()
+        partner_split_choice = State()
+        partner_split_amount = State()
         date = State()
         comment = State()
         confirming = State()
@@ -112,10 +119,17 @@ async def main() -> None:
 
         return await asyncio.to_thread(_q)
 
-    def operator_kb(ops: list[tuple[int, str]]) -> InlineKeyboardMarkup:
+    def fmt_money(value) -> str:
+        try:
+            return f"{int(Decimal(str(value))):,}".replace(",", " ") + " сум"
+        except (InvalidOperation, TypeError, ValueError):
+            return str(value)
+
+    def operator_kb(ops: list[tuple[int, str]], picked_ids: set[int]) -> InlineKeyboardMarkup:
         rows = []
-        for i in range(0, len(ops), 2):
-            chunk = ops[i : i + 2]
+        available = [(oid, name) for oid, name in ops if oid not in picked_ids]
+        for i in range(0, len(available), 2):
+            chunk = available[i : i + 2]
             rows.append(
                 [
                     InlineKeyboardButton(text=name, callback_data=f"{OP_CALLBACK_PREFIX}{oid}")
@@ -127,10 +141,11 @@ async def main() -> None:
         )
         return InlineKeyboardMarkup(inline_keyboard=rows)
 
-    def partner_kb(partners: list[tuple[int, str]]) -> InlineKeyboardMarkup:
+    def partner_kb(partners: list[tuple[int, str]], picked_ids: set[int]) -> InlineKeyboardMarkup:
         rows = []
-        for i in range(0, len(partners), 2):
-            chunk = partners[i : i + 2]
+        available = [(pid, name) for pid, name in partners if pid not in picked_ids]
+        for i in range(0, len(available), 2):
+            chunk = available[i : i + 2]
             rows.append(
                 [
                     InlineKeyboardButton(
@@ -147,6 +162,25 @@ async def main() -> None:
             ]
         )
         return InlineKeyboardMarkup(inline_keyboard=rows)
+
+    def split_choice_kb(role: str, total_label: str) -> InlineKeyboardMarkup:
+        """role: 'op' | 'partner'"""
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=f"✅ Весь объём ({total_label})",
+                        callback_data=f"{role}-split:all",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="➕ Поделить с другим",
+                        callback_data=f"{role}-split:split",
+                    )
+                ],
+            ]
+        )
 
     def date_kb() -> InlineKeyboardMarkup:
         today = timezone.localdate()
@@ -186,20 +220,73 @@ async def main() -> None:
             ]
         )
 
-    def fmt_money(value) -> str:
-        try:
-            return f"{int(value):,}".replace(",", " ") + " сум"
-        except (TypeError, ValueError):
-            return str(value)
+    def _allocated(lines: list[dict]) -> Decimal:
+        total = Decimal(0)
+        for line in lines:
+            amt = line.get("amount")
+            if amt is not None:
+                total += Decimal(str(amt))
+        return total
+
+    def _line_label(line: dict) -> str:
+        return line.get("label") or "?"
+
+    def _lines_summary(lines: list[dict]) -> str:
+        return "\n".join(
+            f"  • {_line_label(line)}: {fmt_money(line.get('amount') or 0)}"
+            for line in lines
+            if line.get("amount") is not None
+        )
+
+    async def _ask_partner_picker(target_msg: Message, state: FSMContext) -> None:
+        partners = await fetch_partners()
+        if not partners:
+            await target_msg.answer("Нет активных партнёров. Создай их в дашборде сначала.")
+            await state.clear()
+            return
+        data = await state.get_data()
+        picked_ids = {p.get("partner_id") for p in data.get("partner_lines", []) if p.get("partner_id")}
+        await target_msg.answer(
+            "Через какого партнёра оплата? (Alif/Birzum/Hamroh/Cash/...)",
+            reply_markup=partner_kb(partners, picked_ids),
+        )
+        await state.set_state(NewSale.partner_pick)
+
+    async def _ask_operator_picker(target_msg: Message, state: FSMContext) -> None:
+        ops = await fetch_operators()
+        if not ops:
+            await target_msg.answer("Нет активных операторов. Создай их в дашборде сначала.")
+            await state.clear()
+            return
+        data = await state.get_data()
+        picked_ids = {o.get("operator_id") for o in data.get("op_lines", []) if o.get("operator_id")}
+        await target_msg.answer(
+            "Кто продал? Выбери из списка или впиши имя.",
+            reply_markup=operator_kb(ops, picked_ids),
+        )
+        await state.set_state(NewSale.operator_pick)
+
+    async def _ask_date(target_msg: Message, state: FSMContext) -> None:
+        await target_msg.answer("Какая дата продажи?", reply_markup=date_kb())
+        await state.set_state(NewSale.date)
+
+    async def _ask_comment(target_msg: Message, state: FSMContext) -> None:
+        await target_msg.answer(
+            "Комментарий? Напиши текст или `-` чтобы пропустить.",
+            parse_mode="Markdown",
+        )
+        await state.set_state(NewSale.comment)
 
     async def show_preview(target: Message, data: dict) -> None:
+        op_summary = _lines_summary(data.get("op_lines", []))
+        partner_summary = _lines_summary(data.get("partner_lines", []))
         text = (
             "📋 *Проверь продажу:*\n\n"
             f"📱 *Модель:* {data['model']}\n"
             f"🔢 *IMEI:* `{data['imei']}`\n"
-            f"💰 *Сумма:* {fmt_money(data['amount'])}\n"
-            f"👤 *Оператор:* {data['operator_label']}\n"
-            f"🤝 *Партнёр:* {data['partner_label']}\n"
+            f"💰 *Сумма:* {fmt_money(data['amount'])}\n\n"
+            f"👤 *Операторы:*\n{op_summary}\n\n"
+            f"🤝 *Партнёры:*\n{partner_summary}\n\n"
             f"📅 *Дата:* {data['date_iso']}\n"
             f"📝 *Комментарий:* {data.get('comment') or '—'}\n"
         )
@@ -233,10 +320,7 @@ async def main() -> None:
             await msg.answer("Модель не может быть пустой. Напиши ещё раз.")
             return
         await state.update_data(model=text)
-        await msg.answer(
-            "Теперь *IMEI* (6–15 цифр).",
-            parse_mode="Markdown",
-        )
+        await msg.answer("Теперь *IMEI* (6–15 цифр).", parse_mode="Markdown")
         await state.set_state(NewSale.imei)
 
     @dp.message(NewSale.imei)
@@ -255,86 +339,262 @@ async def main() -> None:
         if amt is None or amt < 1000:
             await msg.answer("Сумма должна быть числом ≥ 1 000. Попробуй ещё раз.")
             return
-        await state.update_data(amount=str(amt))
-        ops = await fetch_operators()
-        if not ops:
-            await msg.answer("Нет активных операторов. Создай их в дашборде сначала.")
-            await state.clear()
-            return
-        await msg.answer("Кто продал? Выбери из списка или впиши имя.", reply_markup=operator_kb(ops))
-        await state.set_state(NewSale.operator)
+        await state.update_data(amount=str(amt), op_lines=[], partner_lines=[])
+        await _ask_operator_picker(msg, state)
 
-    @dp.callback_query(F.data.startswith(OP_CALLBACK_PREFIX), NewSale.operator)
+    # ----- Operator selection -----
+
+    async def _after_operator_picked(target_msg: Message, state: FSMContext) -> None:
+        """Common code path after an operator is picked (by id OR by name)."""
+        data = await state.get_data()
+        op_lines = data.get("op_lines", [])
+        total = Decimal(data["amount"])
+        allocated = _allocated(op_lines[:-1])  # excl. the one we just picked
+        remaining = total - allocated
+
+        if not op_lines or len(op_lines) == 1:
+            # First operator picked → offer "Весь объём / Поделить"
+            label = fmt_money(remaining)
+            await target_msg.answer(
+                f"Сколько для *{op_lines[-1]['label']}*?",
+                parse_mode="Markdown",
+                reply_markup=split_choice_kb("op", label),
+            )
+            await state.set_state(NewSale.operator_split_choice)
+        else:
+            # 2nd+ operator: ask their amount directly (remaining shown).
+            await target_msg.answer(
+                f"Сколько для *{op_lines[-1]['label']}*? "
+                f"Осталось распределить: *{fmt_money(remaining)}*.",
+                parse_mode="Markdown",
+            )
+            await state.set_state(NewSale.operator_split_amount)
+
+    @dp.callback_query(F.data.startswith(OP_CALLBACK_PREFIX), NewSale.operator_pick)
     async def cb_operator(cb: CallbackQuery, state: FSMContext) -> None:
         payload = cb.data.removeprefix(OP_CALLBACK_PREFIX)
         if payload == "new":
             await cb.message.answer("Впиши имя оператора.")
-        else:
-            from apps.operators.models import Operator
+            await cb.answer()
+            return
 
-            def _g():
-                return Operator.objects.filter(pk=int(payload)).values("id", "full_name").first()
+        from apps.operators.models import Operator
 
-            row = await asyncio.to_thread(_g)
-            if not row:
-                await cb.answer("Не нашёл оператора", show_alert=True)
-                return
-            await state.update_data(operator_id=row["id"], operator_label=row["full_name"])
-            await _ask_partner(cb.message, state)
+        def _g():
+            return Operator.objects.filter(pk=int(payload)).values("id", "full_name").first()
+
+        row = await asyncio.to_thread(_g)
+        if not row:
+            await cb.answer("Не нашёл оператора", show_alert=True)
+            return
+
+        data = await state.get_data()
+        op_lines = data.get("op_lines", [])
+        op_lines.append({"operator_id": row["id"], "label": row["full_name"], "amount": None})
+        await state.update_data(op_lines=op_lines)
+        await _after_operator_picked(cb.message, state)
         await cb.answer()
 
-    @dp.message(NewSale.operator)
+    @dp.message(NewSale.operator_pick)
     async def step_operator_name(msg: Message, state: FSMContext) -> None:
         name = (msg.text or "").strip()
         if not name:
             await msg.answer("Имя не может быть пустым.")
             return
-        await state.update_data(operator_name=name, operator_label=name)
-        await _ask_partner(msg, state)
+        data = await state.get_data()
+        op_lines = data.get("op_lines", [])
+        op_lines.append({"operator_name": name, "label": name, "amount": None})
+        await state.update_data(op_lines=op_lines)
+        await _after_operator_picked(msg, state)
 
-    async def _ask_partner(target_msg: Message, state: FSMContext) -> None:
-        partners = await fetch_partners()
-        if not partners:
-            await target_msg.answer("Нет активных партнёров. Создай их в дашборде сначала.")
-            await state.clear()
-            return
-        await target_msg.answer(
-            "Через какого партнёра оплата? (Alif/Birzum/Hamroh/Cash/...)",
-            reply_markup=partner_kb(partners),
+    @dp.callback_query(F.data == "op-split:all", NewSale.operator_split_choice)
+    async def cb_op_take_all(cb: CallbackQuery, state: FSMContext) -> None:
+        data = await state.get_data()
+        op_lines = data.get("op_lines", [])
+        total = Decimal(data["amount"])
+        allocated = _allocated(op_lines[:-1])
+        op_lines[-1]["amount"] = str(total - allocated)
+        await state.update_data(op_lines=op_lines)
+        await cb.answer("Записал на одного.")
+        await _ask_partner_picker(cb.message, state)
+
+    @dp.callback_query(F.data == "op-split:split", NewSale.operator_split_choice)
+    async def cb_op_split(cb: CallbackQuery, state: FSMContext) -> None:
+        data = await state.get_data()
+        op_lines = data.get("op_lines", [])
+        await cb.message.answer(
+            f"Сколько для *{op_lines[-1]['label']}*? Напиши сумму.",
+            parse_mode="Markdown",
         )
-        await state.set_state(NewSale.partner)
+        await state.set_state(NewSale.operator_split_amount)
+        await cb.answer()
 
-    @dp.callback_query(F.data.startswith(PARTNER_CALLBACK_PREFIX), NewSale.partner)
+    @dp.message(NewSale.operator_split_choice)
+    async def step_operator_split_choice_text(msg: Message, state: FSMContext) -> None:
+        # User typed instead of tapping — interpret as amount for current op.
+        await state.set_state(NewSale.operator_split_amount)
+        await step_operator_amount(msg, state)
+
+    @dp.message(NewSale.operator_split_amount)
+    async def step_operator_amount(msg: Message, state: FSMContext) -> None:
+        amt = parse_amount(msg.text or "")
+        if amt is None or amt < 1000:
+            await msg.answer("Сумма должна быть числом ≥ 1 000. Попробуй ещё раз.")
+            return
+        data = await state.get_data()
+        op_lines = data.get("op_lines", [])
+        total = Decimal(data["amount"])
+        allocated_before = _allocated(op_lines[:-1])
+        max_for_current = total - allocated_before
+        if amt > max_for_current:
+            await msg.answer(
+                f"Слишком много — осталось всего *{fmt_money(max_for_current)}*. "
+                f"Попробуй ещё раз.",
+                parse_mode="Markdown",
+            )
+            return
+        op_lines[-1]["amount"] = str(amt)
+        await state.update_data(op_lines=op_lines)
+
+        new_remaining = total - _allocated(op_lines)
+        if new_remaining == 0:
+            await msg.answer(
+                f"👤 Операторы распределены:\n{_lines_summary(op_lines)}",
+                parse_mode="Markdown",
+            )
+            await _ask_partner_picker(msg, state)
+        else:
+            await msg.answer(
+                f"Осталось *{fmt_money(new_remaining)}* — кому?",
+                parse_mode="Markdown",
+            )
+            await _ask_operator_picker(msg, state)
+
+    # ----- Partner selection (mirrors operator) -----
+
+    async def _after_partner_picked(target_msg: Message, state: FSMContext) -> None:
+        data = await state.get_data()
+        partner_lines = data.get("partner_lines", [])
+        total = Decimal(data["amount"])
+        allocated = _allocated(partner_lines[:-1])
+        remaining = total - allocated
+
+        if not partner_lines or len(partner_lines) == 1:
+            label = fmt_money(remaining)
+            await target_msg.answer(
+                f"Сколько через *{partner_lines[-1]['label']}*?",
+                parse_mode="Markdown",
+                reply_markup=split_choice_kb("partner", label),
+            )
+            await state.set_state(NewSale.partner_split_choice)
+        else:
+            await target_msg.answer(
+                f"Сколько через *{partner_lines[-1]['label']}*? "
+                f"Осталось распределить: *{fmt_money(remaining)}*.",
+                parse_mode="Markdown",
+            )
+            await state.set_state(NewSale.partner_split_amount)
+
+    @dp.callback_query(F.data.startswith(PARTNER_CALLBACK_PREFIX), NewSale.partner_pick)
     async def cb_partner(cb: CallbackQuery, state: FSMContext) -> None:
         payload = cb.data.removeprefix(PARTNER_CALLBACK_PREFIX)
         if payload == "new":
             await cb.message.answer("Впиши название партнёра.")
-        else:
-            from apps.catalog.models import Channel
+            await cb.answer()
+            return
 
-            def _g():
-                return Channel.objects.filter(pk=int(payload)).values("id", "name").first()
+        from apps.catalog.models import Channel
 
-            row = await asyncio.to_thread(_g)
-            if not row:
-                await cb.answer("Не нашёл партнёра", show_alert=True)
-                return
-            await state.update_data(partner_id=row["id"], partner_label=row["name"])
-            await _ask_date(cb.message, state)
+        def _g():
+            return Channel.objects.filter(pk=int(payload)).values("id", "name").first()
+
+        row = await asyncio.to_thread(_g)
+        if not row:
+            await cb.answer("Не нашёл партнёра", show_alert=True)
+            return
+
+        data = await state.get_data()
+        partner_lines = data.get("partner_lines", [])
+        partner_lines.append({"partner_id": row["id"], "label": row["name"], "amount": None})
+        await state.update_data(partner_lines=partner_lines)
+        await _after_partner_picked(cb.message, state)
         await cb.answer()
 
-    @dp.message(NewSale.partner)
+    @dp.message(NewSale.partner_pick)
     async def step_partner_name(msg: Message, state: FSMContext) -> None:
         name = (msg.text or "").strip()
         if not name:
             await msg.answer("Название не может быть пустым.")
             return
-        await state.update_data(partner_name=name, partner_label=name)
-        await _ask_date(msg, state)
+        data = await state.get_data()
+        partner_lines = data.get("partner_lines", [])
+        partner_lines.append({"partner_name": name, "label": name, "amount": None})
+        await state.update_data(partner_lines=partner_lines)
+        await _after_partner_picked(msg, state)
 
-    async def _ask_date(target_msg: Message, state: FSMContext) -> None:
-        await target_msg.answer("Какая дата продажи?", reply_markup=date_kb())
-        await state.set_state(NewSale.date)
+    @dp.callback_query(F.data == "partner-split:all", NewSale.partner_split_choice)
+    async def cb_partner_take_all(cb: CallbackQuery, state: FSMContext) -> None:
+        data = await state.get_data()
+        partner_lines = data.get("partner_lines", [])
+        total = Decimal(data["amount"])
+        allocated = _allocated(partner_lines[:-1])
+        partner_lines[-1]["amount"] = str(total - allocated)
+        await state.update_data(partner_lines=partner_lines)
+        await cb.answer("Записал на одного.")
+        await _ask_date(cb.message, state)
+
+    @dp.callback_query(F.data == "partner-split:split", NewSale.partner_split_choice)
+    async def cb_partner_split(cb: CallbackQuery, state: FSMContext) -> None:
+        data = await state.get_data()
+        partner_lines = data.get("partner_lines", [])
+        await cb.message.answer(
+            f"Сколько через *{partner_lines[-1]['label']}*? Напиши сумму.",
+            parse_mode="Markdown",
+        )
+        await state.set_state(NewSale.partner_split_amount)
+        await cb.answer()
+
+    @dp.message(NewSale.partner_split_choice)
+    async def step_partner_split_choice_text(msg: Message, state: FSMContext) -> None:
+        await state.set_state(NewSale.partner_split_amount)
+        await step_partner_amount(msg, state)
+
+    @dp.message(NewSale.partner_split_amount)
+    async def step_partner_amount(msg: Message, state: FSMContext) -> None:
+        amt = parse_amount(msg.text or "")
+        if amt is None or amt < 1000:
+            await msg.answer("Сумма должна быть числом ≥ 1 000. Попробуй ещё раз.")
+            return
+        data = await state.get_data()
+        partner_lines = data.get("partner_lines", [])
+        total = Decimal(data["amount"])
+        allocated_before = _allocated(partner_lines[:-1])
+        max_for_current = total - allocated_before
+        if amt > max_for_current:
+            await msg.answer(
+                f"Слишком много — осталось всего *{fmt_money(max_for_current)}*. "
+                f"Попробуй ещё раз.",
+                parse_mode="Markdown",
+            )
+            return
+        partner_lines[-1]["amount"] = str(amt)
+        await state.update_data(partner_lines=partner_lines)
+
+        new_remaining = total - _allocated(partner_lines)
+        if new_remaining == 0:
+            await msg.answer(
+                f"🤝 Партнёры распределены:\n{_lines_summary(partner_lines)}",
+                parse_mode="Markdown",
+            )
+            await _ask_date(msg, state)
+        else:
+            await msg.answer(
+                f"Осталось *{fmt_money(new_remaining)}* — через кого?",
+                parse_mode="Markdown",
+            )
+            await _ask_partner_picker(msg, state)
+
+    # ----- Date -----
 
     @dp.callback_query(F.data.startswith(DATE_CALLBACK_PREFIX), NewSale.date)
     async def cb_date(cb: CallbackQuery, state: FSMContext) -> None:
@@ -363,12 +623,7 @@ async def main() -> None:
         await state.update_data(date_iso=d.isoformat())
         await _ask_comment(msg, state)
 
-    async def _ask_comment(target_msg: Message, state: FSMContext) -> None:
-        await target_msg.answer(
-            "Комментарий? Напиши текст или `-` чтобы пропустить.",
-            parse_mode="Markdown",
-        )
-        await state.set_state(NewSale.comment)
+    # ----- Comment + Confirm -----
 
     @dp.message(NewSale.comment)
     async def step_comment(msg: Message, state: FSMContext) -> None:
@@ -392,7 +647,7 @@ async def main() -> None:
         await cb.answer("Сохраняю…")
         try:
             sale = await asyncio.to_thread(_create_sale, data)
-        except Exception as exc:  # noqa: BLE001 — surface anything cleanly
+        except Exception as exc:  # noqa: BLE001
             logger.exception("sale create failed")
             await cb.message.answer(
                 f"❌ Не получилось сохранить: `{exc}`", parse_mode="Markdown"
@@ -410,33 +665,39 @@ async def main() -> None:
 
 def _create_sale(data: dict):
     """
-    Sync entry — runs inside `asyncio.to_thread` so the Django ORM call
-    doesn't block the event loop. Wraps the same `sale_create` service the
-    web API uses, so audit log + line allocations come for free.
+    Wraps the same `sale_create` service the web API uses, so audit log +
+    line allocations come for free. `op_lines` / `partner_lines` from
+    FSM state are already in the {operator_id|operator_name, amount}
+    shape the service expects.
     """
     from apps.sales.services import sale_create
 
     tz = timezone.get_current_timezone()
-    date_iso = data["date_iso"]
-    sold_at = dt.datetime.fromisoformat(date_iso).replace(hour=12, tzinfo=tz)
+    sold_at = dt.datetime.fromisoformat(data["date_iso"]).replace(hour=12, tzinfo=tz)
 
-    op_line = {"amount": str(data["amount"])}
-    if data.get("operator_id"):
-        op_line["operator_id"] = data["operator_id"]
-    else:
-        op_line["operator_name"] = data["operator_name"]
+    op_payload = []
+    for line in data["op_lines"]:
+        item = {"amount": str(line["amount"])}
+        if line.get("operator_id"):
+            item["operator_id"] = line["operator_id"]
+        else:
+            item["operator_name"] = line["operator_name"]
+        op_payload.append(item)
 
-    partner_line = {"amount": str(data["amount"])}
-    if data.get("partner_id"):
-        partner_line["partner_id"] = data["partner_id"]
-    else:
-        partner_line["partner_name"] = data["partner_name"]
+    partner_payload = []
+    for line in data["partner_lines"]:
+        item = {"amount": str(line["amount"])}
+        if line.get("partner_id"):
+            item["partner_id"] = line["partner_id"]
+        else:
+            item["partner_name"] = line["partner_name"]
+        partner_payload.append(item)
 
     return sale_create(
         imei=data["imei"],
         phone_model=data["model"],
-        operators=[op_line],
-        partners=[partner_line],
+        operators=op_payload,
+        partners=partner_payload,
         comment=data.get("comment", ""),
         sold_at=sold_at,
         allow_duplicate_imei=True,
