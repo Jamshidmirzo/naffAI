@@ -98,6 +98,8 @@ def sale_create(
     operators: list[dict] | None = None,
     partners: list[dict] | None = None,
     sold_at: dt.datetime | None = None,
+    client_name: str = "",
+    client_phone: str = "",
     comment: str = "",
     status: str = SaleStatus.CONFIRMED,
     gifts: Iterable[dict] | None = None,
@@ -159,6 +161,8 @@ def sale_create(
         operator=primary_op,
         channel=primary_partner,
         amount=total,
+        client_name=(client_name or "").strip()[:128],
+        client_phone=(client_phone or "").strip()[:32],
         comment=comment,
         sold_at=sold_at or timezone.now(),
         created_by=user if user and getattr(user, "is_authenticated", False) else None,
@@ -203,29 +207,94 @@ def sale_create(
 
 
 @transaction.atomic
-def sale_update(
+def sale_full_update(
     *,
     sale: Sale,
     user=None,
-    **fields,
+    imei: str,
+    phone_model: str | None = None,
+    operator_id: int | None = None,
+    channel_id: int | None = None,
+    amount: Decimal | None = None,
+    operators: list[dict] | None = None,
+    partners: list[dict] | None = None,
+    sold_at: dt.datetime | None = None,
+    client_name: str = "",
+    client_phone: str = "",
+    comment: str = "",
+    gifts: Iterable[dict] | None = None,
+    allow_duplicate_imei: bool = False,
+    duplicate_override_comment: str = "",
+    **_kwargs,
 ) -> Sale:
-    if "imei" in fields:
-        new_imei = (fields["imei"] or "").strip()
-        if not is_valid_imei(new_imei):
-            raise ApplicationError("IMEI должен быть из 6–15 цифр", {"field": "imei"})
-        fields["imei"] = new_imei
+    imei = (imei or "").strip()
+    if not is_valid_imei(imei):
+        raise ApplicationError("IMEI должен быть из 6–15 цифр", {"field": "imei"})
 
-    old = {k: getattr(sale, k) for k in fields}
-    for k, v in fields.items():
-        setattr(sale, k, v)
+    if imei != sale.imei:
+        duplicates = sale_imei_duplicate_count(imei=imei, exclude_id=sale.id)
+        if duplicates and not allow_duplicate_imei:
+            raise DuplicateError(
+                "Продажа с таким IMEI уже существует",
+                {"field": "imei", "duplicate_count": duplicates},
+            )
+
+    legacy_amount = Decimal(str(amount)) if amount not in (None, "") else Decimal(0)
+    operator_lines = _coerce_lines(
+        operators, fallback_id=operator_id, fallback_amount=legacy_amount, role="operators"
+    )
+    partner_lines = _coerce_lines(
+        partners, fallback_id=channel_id, fallback_amount=legacy_amount, role="partners"
+    )
+
+    total = sum(amt for _, amt in partner_lines)
+    if total <= 0:
+        raise ApplicationError("Сумма должна быть положительной", {"field": "amount"})
+
+    if not phone_model:
+        phone_model = sale.phone_model
+
+    primary_op = operator_lines[0][0]
+    primary_partner = partner_lines[0][0]
+
+    sale.imei = imei
+    sale.phone_model = (phone_model or "")[:128]
+    sale.operator = primary_op
+    sale.channel = primary_partner
+    sale.amount = total
+    sale.client_name = (client_name or "").strip()[:128]
+    sale.client_phone = (client_phone or "").strip()[:32]
+    sale.comment = comment
+    if sold_at:
+        sale.sold_at = sold_at
     sale.save()
+
+    sale.operator_lines.all().delete()
+    sale.partner_lines.all().delete()
+
+    SaleOperator.objects.bulk_create(
+        [SaleOperator(sale=sale, operator=o, amount=a) for o, a in operator_lines]
+    )
+    SalePartner.objects.bulk_create(
+        [SalePartner(sale=sale, partner=p, amount=a) for p, a in partner_lines]
+    )
 
     audit_log_create(
         user=user,
         action=AuditAction.UPDATE,
         entity="sales.Sale",
         entity_id=sale.id,
-        changes={k: {"old": str(old[k]), "new": str(getattr(sale, k))} for k in fields},
+        changes={
+            "imei": sale.imei,
+            "phone_model": sale.phone_model,
+            "operators": [
+                {"id": o.id, "name": o.full_name, "amount": str(a)} for o, a in operator_lines
+            ],
+            "partners": [
+                {"id": p.id, "name": p.name, "amount": str(a)} for p, a in partner_lines
+            ],
+            "total": str(total),
+        },
     )
     return sale
 

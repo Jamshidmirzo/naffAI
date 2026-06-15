@@ -1,24 +1,63 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useNavigate, useParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
-import { toDateInputValue } from "../lib/format";
 
 type OpLine = { operator_id?: number; operator_name?: string; amount: string };
 type PLine = { partner_id?: number; partner_name?: string; amount: string };
 
 export default function SaleCreate() {
+  const { id } = useParams<{ id: string }>();
+  const isEdit = !!id;
   const nav = useNavigate();
+  const qc = useQueryClient();
+
   const [imei, setImei] = useState("");
   const [model, setModel] = useState("");
   const [operators, setOperators] = useState<OpLine[]>([{ amount: "" }]);
   const [partners, setPartners] = useState<PLine[]>([{ amount: "" }]);
+  const [clientName, setClientName] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
   const [comment, setComment] = useState("");
-  const [soldAt, setSoldAt] = useState<string>(toDateInputValue(new Date()));
   const [error, setError] = useState("");
   const [allowDup, setAllowDup] = useState(false);
   const [dupComment, setDupComment] = useState("");
+  const [loaded, setLoaded] = useState(false);
+
+  const saleQ = useQuery({
+    queryKey: ["sale", id],
+    queryFn: () => api.get(`/sales/${id}/`).then((r) => r.data),
+    enabled: isEdit,
+  });
+
+  useEffect(() => {
+    if (isEdit && saleQ.data && !loaded) {
+      const s = saleQ.data;
+      setImei(s.imei || "");
+      setModel(s.phone_model || "");
+      setClientName(s.client_name || "");
+      setClientPhone(s.client_phone || "");
+      setComment(s.comment || "");
+      if (s.operator_lines?.length) {
+        setOperators(
+          s.operator_lines.map((l: any) => ({
+            operator_id: l.operator,
+            amount: String(Math.round(Number(l.amount))),
+          }))
+        );
+      }
+      if (s.partner_lines?.length) {
+        setPartners(
+          s.partner_lines.map((l: any) => ({
+            partner_id: l.partner,
+            amount: String(Math.round(Number(l.amount))),
+          }))
+        );
+      }
+      setLoaded(true);
+    }
+  }, [isEdit, saleQ.data, loaded]);
 
   const opsQ = useQuery({
     queryKey: ["operators-list"],
@@ -38,7 +77,7 @@ export default function SaleCreate() {
   });
 
   useEffect(() => {
-    if (imei.length >= 6 && /^\d+$/.test(imei) && imei.length === 15) {
+    if (!isEdit && imei.length >= 6 && /^\d+$/.test(imei) && imei.length === 15) {
       api
         .get(`/imei/${imei}/lookup/`)
         .then((r) => {
@@ -48,7 +87,7 @@ export default function SaleCreate() {
         })
         .catch(() => {});
     }
-  }, [imei]);
+  }, [imei, isEdit]);
 
   const opTotal = useMemo(
     () => operators.reduce((s, o) => s + (Number(o.amount) || 0), 0),
@@ -78,7 +117,6 @@ export default function SaleCreate() {
       setError("Добавьте минимум одного партнёра с суммой > 0");
       return;
     }
-    // Each line in BOTH lists must have a positive amount (no half-filled rows).
     if (operators.some((o) => (o.operator_id || o.operator_name?.trim()) && !(Number(o.amount) > 0))) {
       setError("У всех операторов должна быть положительная сумма");
       return;
@@ -87,7 +125,6 @@ export default function SaleCreate() {
       setError("У всех партнёров должна быть положительная сумма");
       return;
     }
-    // Min amount per line guard (matches backend min_value=1000).
     if ([...operators, ...partners].some((l) => Number(l.amount) > 0 && Number(l.amount) < 1000)) {
       setError("Минимальная сумма по строке — 1 000 сум");
       return;
@@ -99,26 +136,37 @@ export default function SaleCreate() {
       );
       return;
     }
+
+    const body = {
+      imei,
+      phone_model: model,
+      operators: okOps.map((o) => ({
+        operator_id: o.operator_id,
+        operator_name: o.operator_name?.trim(),
+        amount: Number(o.amount).toFixed(2),
+      })),
+      partners: okPartners.map((p) => ({
+        partner_id: p.partner_id,
+        partner_name: p.partner_name?.trim(),
+        amount: Number(p.amount).toFixed(2),
+      })),
+      client_name: clientName.trim(),
+      client_phone: clientPhone.trim(),
+      comment,
+      allow_duplicate_imei: allowDup,
+      duplicate_override_comment: dupComment,
+    };
+
     try {
-      await api.post("/sales/", {
-        imei,
-        phone_model: model,
-        operators: okOps.map((o) => ({
-          operator_id: o.operator_id,
-          operator_name: o.operator_name?.trim(),
-          amount: Number(o.amount).toFixed(2),
-        })),
-        partners: okPartners.map((p) => ({
-          partner_id: p.partner_id,
-          partner_name: p.partner_name?.trim(),
-          amount: Number(p.amount).toFixed(2),
-        })),
-        comment,
-        sold_at: soldAt ? `${soldAt}T12:00:00` : undefined,
-        allow_duplicate_imei: allowDup,
-        duplicate_override_comment: dupComment,
-      });
-      nav("/sales");
+      if (isEdit) {
+        await api.put(`/sales/${id}/`, body);
+        qc.invalidateQueries({ queryKey: ["sale", id] });
+        qc.invalidateQueries({ queryKey: ["sales"] });
+        nav(`/sales/${id}`);
+      } else {
+        await api.post("/sales/", body);
+        nav("/sales");
+      }
     } catch (err: any) {
       const d = err.response?.data || {};
       const msg = d.detail || d.imei?.[0] || d.amount?.[0] || "Ошибка сохранения";
@@ -130,9 +178,19 @@ export default function SaleCreate() {
   const opOptions: { id: number; full_name: string }[] = opsQ.data?.results || [];
   const partnerOptions: { id: number; name: string }[] = partnersQ.data?.results || [];
 
+  if (isEdit && saleQ.isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20 text-gray-500 dark:text-slate-400">
+        Загрузка…
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-3xl">
-      <h1 className="text-2xl font-semibold mb-6">Новая продажа</h1>
+      <h1 className="text-2xl font-semibold mb-6">
+        {isEdit ? "Редактировать продажу" : "Новая продажа"}
+      </h1>
       <form onSubmit={onSubmit} className="card p-6 space-y-5">
         <div>
           <label className="label">IMEI (6–15 цифр)</label>
@@ -171,11 +229,27 @@ export default function SaleCreate() {
               <option key={m} value={m} />
             ))}
           </datalist>
-          {model && !((modelsQ.data?.results as string[]) || []).includes(model) && (
-            <div className="text-xs text-gray-500 dark:text-slate-400 mt-1">
-              «{model}» — новая модель, сохранится как есть.
-            </div>
-          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="label">Имя клиента</label>
+            <input
+              className="input"
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
+              placeholder="Иванов Иван"
+            />
+          </div>
+          <div>
+            <label className="label">Телефон клиента</label>
+            <input
+              className="input"
+              value={clientPhone}
+              onChange={(e) => setClientPhone(e.target.value)}
+              placeholder="+998 90 123 45 67"
+            />
+          </div>
         </div>
 
         <LineEditor
@@ -231,29 +305,9 @@ export default function SaleCreate() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="label">Дата продажи</label>
-            <input
-              type="date"
-              className="input"
-              value={soldAt}
-              max={toDateInputValue(new Date())}
-              onChange={(e) => setSoldAt(e.target.value)}
-            />
-            <div className="text-xs text-gray-500 dark:text-slate-400 mt-1">
-              Можно поставить вчерашнее или старое число — продажа уйдёт задним числом.
-            </div>
-          </div>
-          <div>
-            <label className="label">Комментарий</label>
-            <textarea
-              className="input"
-              rows={2}
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-            />
-          </div>
+        <div>
+          <label className="label">Комментарий</label>
+          <textarea className="input" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
         </div>
 
         {allowDup && (
@@ -276,7 +330,7 @@ export default function SaleCreate() {
             Отмена
           </button>
           <button className="btn-primary" type="submit">
-            Сохранить
+            {isEdit ? "Сохранить изменения" : "Сохранить"}
           </button>
         </div>
       </form>
@@ -299,7 +353,6 @@ type LineEditorProps<L> = {
 
 function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
   const { title, lines, setLines, options, getId, getName, setLine, empty, idKey, nameKey } = props;
-  // HTML id must be ascii; derive a slug from the title.
   const datalistId = `${(idKey as string) || "x"}-options`;
   return (
     <div>
@@ -341,7 +394,6 @@ function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
                   setLines(next);
                 }}
               />
-              {/* datalist renders once below the lines, not per-row */}
               {(() => {
                 const hasName = !!(id || name.trim());
                 const amt = Number(line.amount);

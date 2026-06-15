@@ -28,6 +28,8 @@ class Sale(TimestampedModel):
         related_name="sales",
     )
     amount = models.DecimalField(max_digits=14, decimal_places=2)
+    client_name = models.CharField(max_length=128, blank=True, default="")
+    client_phone = models.CharField(max_length=32, blank=True, default="")
     comment = models.TextField(blank=True, default="")
     sold_at = models.DateTimeField(db_index=True)
     created_by = models.ForeignKey(

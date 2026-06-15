@@ -33,6 +33,7 @@ export default function App() {
         <Route path="/sales" element={<Sales />} />
         <Route path="/sales/new" element={<SaleCreate />} />
         <Route path="/sales/:id" element={<SaleDetail />} />
+        <Route path="/sales/:id/edit" element={<SaleCreate />} />
         <Route path="/operators" element={<Operators />} />
         <Route path="/partners" element={<Partners />} />
         <Route path="/analytics" element={<Analytics />} />

@@ -184,6 +184,23 @@ export default function SaleDetail() {
           </div>
         </div>
 
+        {(s.client_name || s.client_phone) && (
+          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-800 grid grid-cols-2 gap-4">
+            {s.client_name && (
+              <div>
+                <div className="label">Клиент</div>
+                <div className="text-sm font-medium">{s.client_name}</div>
+              </div>
+            )}
+            {s.client_phone && (
+              <div>
+                <div className="label">Телефон клиента</div>
+                <div className="text-sm font-medium">{s.client_phone}</div>
+              </div>
+            )}
+          </div>
+        )}
+
         {s.comment && (
           <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-800">
             <div className="label">Комментарий</div>
@@ -348,6 +365,12 @@ export default function SaleDetail() {
       {/* Actions */}
       {!isDeleted && (
         <div className="flex flex-wrap gap-2">
+          <button
+            className="btn-primary"
+            onClick={() => nav(`/sales/${id}/edit`)}
+          >
+            <Pencil className="w-4 h-4" /> Редактировать
+          </button>
           {isPending && (
             <button
               className="btn-primary"

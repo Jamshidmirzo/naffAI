@@ -14,7 +14,7 @@ from apps.users.permissions import IsTeamLead, IsTeamLeadOrManagerReadOnly
 from .imports.excel_importer import import_file
 from .models import GiftItem, Sale, SaleOperator, SalePartner
 from .selectors import sale_get, sale_list
-from .services import sale_confirm, sale_create, sale_mark_returned, sale_soft_delete, sale_update
+from .services import sale_confirm, sale_create, sale_full_update, sale_mark_returned, sale_soft_delete
 
 
 class GiftItemSerializer(serializers.ModelSerializer):
@@ -57,6 +57,8 @@ class SaleSerializer(serializers.ModelSerializer):
             "channel",
             "channel_name",
             "amount",
+            "client_name",
+            "client_phone",
             "operator_lines",
             "partner_lines",
             "comment",
@@ -102,6 +104,8 @@ class SaleCreateInputSerializer(serializers.Serializer):
         max_value=Decimal("999999999999.99"),
         required=False,
     )
+    client_name = serializers.CharField(max_length=128, required=False, allow_blank=True, default="")
+    client_phone = serializers.CharField(max_length=32, required=False, allow_blank=True, default="")
     comment = serializers.CharField(required=False, allow_blank=True, default="")
     sold_at = serializers.DateTimeField(required=False)
     gifts = serializers.ListField(child=serializers.DictField(), required=False, default=list)
@@ -161,13 +165,21 @@ class SaleDetailApi(RetrieveUpdateDestroyAPIView):
     serializer_class = SaleSerializer
 
     def get_queryset(self):
-        return Sale.objects.select_related("operator", "channel").prefetch_related("gifts")
-
-    def perform_update(self, serializer):
-        instance = sale_update(
-            sale=serializer.instance, user=self.request.user, **serializer.validated_data
+        return Sale.objects.select_related("operator", "channel").prefetch_related(
+            "gifts", "operator_lines__operator", "partner_lines__partner"
         )
-        serializer.instance = instance
+
+    def update(self, request, *args, **kwargs):
+        sale = self.get_object()
+        input_ser = SaleCreateInputSerializer(data=request.data)
+        input_ser.is_valid(raise_exception=True)
+        try:
+            updated = sale_full_update(sale=sale, user=request.user, **input_ser.validated_data)
+        except ApplicationError as exc:
+            return Response(
+                {"detail": exc.message, **exc.extra}, status=status.HTTP_400_BAD_REQUEST
+            )
+        return Response(SaleSerializer(updated).data)
 
     def perform_destroy(self, instance):
         sale_soft_delete(sale=instance, user=self.request.user)
