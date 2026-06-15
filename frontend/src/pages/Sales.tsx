@@ -1,17 +1,14 @@
-import { useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
-import { Download, Plus, Upload } from "lucide-react";
-import { api, API_BASE_URL } from "../lib/api";
+import { Download, Plus } from "lucide-react";
+import { api } from "../lib/api";
 import { formatDate, formatUZS } from "../lib/format";
 
 export default function Sales() {
   const nav = useNavigate();
   const [search, setSearch] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [importing, setImporting] = useState(false);
-  const [importMsg, setImportMsg] = useState<string>("");
-  const qc = useQueryClient();
+  const [downloading, setDownloading] = useState(false);
 
   const sales = useQuery({
     queryKey: ["sales", search],
@@ -19,32 +16,32 @@ export default function Sales() {
       api.get("/sales/", { params: { search: search || undefined } }).then((r) => r.data),
   });
 
-  const exportUrl = `${API_BASE_URL}/sales/export.xlsx${
-    search ? `?search=${encodeURIComponent(search)}` : ""
-  }`;
-
-  const onImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setImporting(true);
-    setImportMsg("");
-    const fd = new FormData();
-    fd.append("file", f);
+  const downloadExcel = async () => {
+    // Plain <a href> bypassed the axios Authorization header → backend
+    // answered 403 «Учетные данные не были предоставлены». Use a real
+    // XHR with the token so the response stream is authenticated, then
+    // trigger a blob download.
+    setDownloading(true);
     try {
-      const r = await api.post("/sales/import-excel/", fd, {
-        headers: { "Content-Type": "multipart/form-data" },
+      const r = await api.get("/sales/export.xlsx", {
+        params: search ? { search } : undefined,
+        responseType: "blob",
       });
-      const d = r.data;
-      setImportMsg(
-        `Импорт: создано ${d.sales_created}, пропущено ${d.sales_skipped}, ` +
-          `новых операторов ${d.operators_created}, партнёров ${d.channels_created}`,
-      );
-      qc.invalidateQueries({ queryKey: ["sales"] });
-    } catch (err: any) {
-      setImportMsg(err.response?.data?.detail || "Ошибка импорта");
+      const blob = new Blob([r.data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "naffcrm-savdo.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      alert("Не удалось скачать Excel — попробуй ещё раз");
     } finally {
-      setImporting(false);
-      if (fileRef.current) fileRef.current.value = "";
+      setDownloading(false);
     }
   };
 
@@ -53,35 +50,19 @@ export default function Sales() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Продажи</h1>
         <div className="flex gap-2">
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".xlsx,.csv"
-            className="hidden"
-            onChange={onImport}
-          />
           <button
             type="button"
             className="btn-ghost"
-            disabled={importing}
-            onClick={() => fileRef.current?.click()}
+            onClick={downloadExcel}
+            disabled={downloading}
           >
-            <Upload className="w-4 h-4" /> {importing ? "Импорт…" : "Импорт Excel"}
+            <Download className="w-4 h-4" /> {downloading ? "Скачивание…" : "Excel"}
           </button>
-          <a href={exportUrl} className="btn-ghost">
-            <Download className="w-4 h-4" /> Excel
-          </a>
           <Link to="/sales/new" className="btn-primary">
             <Plus className="w-4 h-4" /> Новая продажа
           </Link>
         </div>
       </div>
-
-      {importMsg && (
-        <div className="rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-700/40 px-4 py-2 text-sm text-blue-800 dark:text-blue-300">
-          {importMsg}
-        </div>
-      )}
 
       <div className="card p-4">
         <input
