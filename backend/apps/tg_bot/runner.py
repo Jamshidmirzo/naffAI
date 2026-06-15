@@ -36,7 +36,11 @@ django.setup()
 from django.conf import settings  # noqa: E402
 from django.utils import timezone  # noqa: E402
 
+from apps.tg_bot.reports import build_daily_report  # noqa: E402
+
 logger = logging.getLogger("tg_bot")
+
+DAILY_REPORT_HOUR = int(os.getenv("TELEGRAM_REPORT_HOUR", "21"))
 
 
 DATE_CALLBACK_PREFIX = "date:"
@@ -312,6 +316,47 @@ async def main() -> None:
             return
         await state.clear()
         await msg.answer("Отменено. /new — чтобы начать заново.")
+
+    # ----- Daily report commands -----
+
+    @dp.message(Command("subscribe"))
+    async def cmd_subscribe(msg: Message) -> None:
+        from apps.tg_bot.models import BotSubscription
+
+        def _sub():
+            sub, created = BotSubscription.objects.update_or_create(
+                chat_id=msg.chat.id,
+                defaults={
+                    "chat_title": (msg.chat.title or msg.chat.full_name or "")[:128],
+                    "is_active": True,
+                },
+            )
+            return created
+
+        created = await asyncio.to_thread(_sub)
+        if created:
+            await msg.answer(
+                f"✅ Подписался! Каждый день в *{DAILY_REPORT_HOUR:02d}:00* отправлю отчёт сюда.\n"
+                "/unsubscribe — отписаться.\n/report — отчёт сейчас.",
+                parse_mode="Markdown",
+            )
+        else:
+            await msg.answer("Уже подписан. /report — отчёт сейчас.")
+
+    @dp.message(Command("unsubscribe"))
+    async def cmd_unsubscribe(msg: Message) -> None:
+        from apps.tg_bot.models import BotSubscription
+
+        def _unsub():
+            return BotSubscription.objects.filter(chat_id=msg.chat.id).update(is_active=False)
+
+        n = await asyncio.to_thread(_unsub)
+        await msg.answer("👋 Отписался." if n else "Не нашёл активной подписки.")
+
+    @dp.message(Command("report"))
+    async def cmd_report(msg: Message) -> None:
+        text = await asyncio.to_thread(build_daily_report)
+        await msg.answer(text, parse_mode="Markdown")
 
     @dp.message(NewSale.model)
     async def step_model(msg: Message, state: FSMContext) -> None:
@@ -659,7 +704,49 @@ async def main() -> None:
         )
         await state.clear()
 
+    async def daily_report_scheduler() -> None:
+        """
+        Loop forever: sleep until the next DAILY_REPORT_HOUR (local TZ),
+        then broadcast `build_daily_report()` to every active subscription.
+        """
+        while True:
+            now = timezone.localtime()
+            target = now.replace(
+                hour=DAILY_REPORT_HOUR, minute=0, second=0, microsecond=0
+            )
+            if target <= now:
+                target = target + dt.timedelta(days=1)
+            delay = (target - now).total_seconds()
+            logger.info("Next daily report at %s (in %.0f s)", target, delay)
+            try:
+                await asyncio.sleep(delay)
+            except asyncio.CancelledError:
+                return
+
+            from apps.tg_bot.models import BotSubscription
+
+            def _subs():
+                return list(
+                    BotSubscription.objects.filter(is_active=True).values_list(
+                        "chat_id", flat=True
+                    )
+                )
+
+            try:
+                chat_ids = await asyncio.to_thread(_subs)
+                text = await asyncio.to_thread(build_daily_report)
+            except Exception:  # noqa: BLE001
+                logger.exception("daily report build failed")
+                continue
+
+            for chat_id in chat_ids:
+                try:
+                    await bot.send_message(chat_id, text, parse_mode="Markdown")
+                except Exception:  # noqa: BLE001
+                    logger.exception("send_message to %s failed", chat_id)
+
     logger.info("Bot started — polling…")
+    asyncio.create_task(daily_report_scheduler())
     await dp.start_polling(bot)
 
 
