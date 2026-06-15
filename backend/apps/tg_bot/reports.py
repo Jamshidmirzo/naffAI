@@ -16,13 +16,15 @@ from django.db.models import Count, Sum
 from django.utils import timezone
 
 from apps.sales.models import Sale, SaleOperator, SalePartner
+from apps.tg_bot.i18n import t
 
 
-def _fmt_money(value) -> str:
+def _fmt_money(value, lang: str) -> str:
+    cur = t("rep_currency", lang)
     try:
-        return f"{int(Decimal(str(value or 0))):,}".replace(",", " ") + " сум"
+        return f"{int(Decimal(str(value or 0))):,}".replace(",", " ") + f" {cur}"
     except Exception:  # noqa: BLE001
-        return f"{value} сум"
+        return f"{value} {cur}"
 
 
 def _aggregate_window(start: dt.datetime, end: dt.datetime) -> dict:
@@ -41,22 +43,18 @@ def _aggregate_window(start: dt.datetime, end: dt.datetime) -> dict:
     }
 
 
-def build_daily_report(for_date: dt.date | None = None) -> str:
-    """Return a Markdown-formatted summary for the given local date (default: today)."""
+def build_daily_report(for_date: dt.date | None = None, lang: str = "ru") -> str:
+    """Markdown-formatted summary for the given local date (default: today)."""
     tz = timezone.get_current_timezone()
     today = for_date or timezone.localdate()
-    yesterday = today - dt.timedelta(days=1)
 
     today_start = dt.datetime.combine(today, dt.time(0, 0), tzinfo=tz)
     today_end = today_start + dt.timedelta(days=1)
     y_start = today_start - dt.timedelta(days=1)
-    y_end = today_start
 
     today_a = _aggregate_window(today_start, today_end)
-    yest_a = _aggregate_window(y_start, y_end)
+    yest_a = _aggregate_window(y_start, today_start)
 
-    # Per-operator breakdown for today (via SaleOperator lines so multi-op
-    # sales count correctly).
     op_rows = (
         SaleOperator.objects.filter(sale_id__in=today_a["ids"])
         .values("operator__full_name")
@@ -72,33 +70,34 @@ def build_daily_report(for_date: dt.date | None = None) -> str:
 
     diff = today_a["total"] - yest_a["total"]
     diff_emoji = "📈" if diff > 0 else ("📉" if diff < 0 else "➖")
-    diff_label = f"{_fmt_money(abs(diff))} {diff_emoji} к вчера"
+    diff_label = t("rep_diff_label", lang, amount=_fmt_money(abs(diff), lang), emoji=diff_emoji)
 
-    lines: list[str] = []
-    lines.append(f"📊 *Отчёт за {today.strftime('%d.%m.%Y')}*")
-    lines.append("")
-    lines.append(f"💰 Оборот: *{_fmt_money(today_a['total'])}*  ·  {today_a['count']} продаж")
-    lines.append(f"📅 Вчера:  {_fmt_money(yest_a['total'])} · {yest_a['count']} продаж")
-    lines.append(f"        {diff_label}")
-    lines.append("")
+    lines: list[str] = [
+        t("rep_header", lang, date=today.strftime("%d.%m.%Y")),
+        "",
+        t("rep_today", lang, total=_fmt_money(today_a["total"], lang), count=today_a["count"]),
+        t("rep_yest", lang, total=_fmt_money(yest_a["total"], lang), count=yest_a["count"]),
+        t("rep_diff", lang, diff=diff_label),
+        "",
+    ]
 
     if op_rows:
-        lines.append("👤 *Операторы:*")
+        lines.append(t("rep_operators", lang))
         for r in op_rows:
             lines.append(
-                f"  • {r['operator__full_name']}: {_fmt_money(r['total'])} ({r['count']})"
+                f"  • {r['operator__full_name']}: {_fmt_money(r['total'], lang)} ({r['count']})"
             )
     else:
-        lines.append("👤 *Операторы:* — нет продаж")
+        lines.append(t("rep_no_ops", lang))
     lines.append("")
 
     if partner_rows:
-        lines.append("🤝 *Партнёры:*")
+        lines.append(t("rep_partners", lang))
         for r in partner_rows:
             lines.append(
-                f"  • {r['partner__name']}: {_fmt_money(r['total'])} ({r['count']})"
+                f"  • {r['partner__name']}: {_fmt_money(r['total'], lang)} ({r['count']})"
             )
     else:
-        lines.append("🤝 *Партнёры:* —")
+        lines.append(t("rep_no_partners", lang))
 
     return "\n".join(lines)
