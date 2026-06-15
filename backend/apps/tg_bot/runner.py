@@ -56,6 +56,7 @@ async def main() -> None:
         from aiogram.fsm.state import State, StatesGroup
         from aiogram.fsm.storage.memory import MemoryStorage
         from aiogram.types import (
+            BotCommand,
             CallbackQuery,
             InlineKeyboardButton,
             InlineKeyboardMarkup,
@@ -744,6 +745,18 @@ async def main() -> None:
                     await bot.send_message(chat_id, text, parse_mode="Markdown")
                 except Exception:  # noqa: BLE001
                     logger.exception("send_message to %s failed", chat_id)
+
+    # Register the slash-menu Telegram shows when the user types `/`.
+    await bot.set_my_commands(
+        [
+            BotCommand(command="new", description="🛒 Новая продажа"),
+            BotCommand(command="report", description="📊 Отчёт за сегодня"),
+            BotCommand(command="subscribe", description="🔔 Получать отчёт каждый день"),
+            BotCommand(command="unsubscribe", description="🔕 Отписаться от отчётов"),
+            BotCommand(command="cancel", description="❌ Отменить текущий ввод"),
+            BotCommand(command="start", description="ℹ️ Запустить бота"),
+        ]
+    )
 
     logger.info("Bot started — polling…")
     asyncio.create_task(daily_report_scheduler())
