@@ -56,7 +56,7 @@ export default function Sales() {
           <input
             ref={fileRef}
             type="file"
-            accept=".xlsx"
+            accept=".xlsx,.csv"
             className="hidden"
             onChange={onImport}
           />

@@ -1,8 +1,8 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, AlertTriangle, CheckCircle, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowLeft, AlertTriangle, CheckCircle, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
-import { formatDate, formatUZS } from "../lib/format";
+import { formatDate, formatUZS, toDateInputValue } from "../lib/format";
 import { useState } from "react";
 
 export default function SaleDetail() {
@@ -12,6 +12,8 @@ export default function SaleDetail() {
   const [returnReason, setReturnReason] = useState("");
   const [showReturn, setShowReturn] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [editingDate, setEditingDate] = useState(false);
+  const [newDate, setNewDate] = useState("");
 
   const q = useQuery({
     queryKey: ["sale", id],
@@ -40,6 +42,16 @@ export default function SaleDetail() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sales"] });
       nav("/sales");
+    },
+  });
+
+  const saveDateMut = useMutation({
+    mutationFn: (dateStr: string) =>
+      api.patch(`/sales/${id}/`, { sold_at: `${dateStr}T12:00:00` }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sale", id] });
+      qc.invalidateQueries({ queryKey: ["sales"] });
+      setEditingDate(false);
     },
   });
 
@@ -121,7 +133,50 @@ export default function SaleDetail() {
           </div>
           <div>
             <div className="label">Дата продажи</div>
-            <div className="text-sm">{formatDate(s.sold_at)}</div>
+            {editingDate ? (
+              <div className="flex items-center gap-1">
+                <input
+                  type="date"
+                  className="input"
+                  value={newDate || toDateInputValue(s.sold_at)}
+                  max={toDateInputValue(new Date())}
+                  onChange={(e) => setNewDate(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="btn-ghost px-2"
+                  onClick={() =>
+                    saveDateMut.mutate(newDate || toDateInputValue(s.sold_at))
+                  }
+                  disabled={saveDateMut.isPending}
+                >
+                  <CheckCircle className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost px-2"
+                  onClick={() => {
+                    setEditingDate(false);
+                    setNewDate("");
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setNewDate(toDateInputValue(s.sold_at));
+                  setEditingDate(true);
+                }}
+                className="text-sm hover:text-accent inline-flex items-center gap-1 group"
+                title="Изменить дату"
+              >
+                {formatDate(s.sold_at)}
+                <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+              </button>
+            )}
           </div>
           <div>
             <div className="label">Итого</div>

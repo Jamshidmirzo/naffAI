@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
+import { toDateInputValue } from "../lib/format";
 
 type OpLine = { operator_id?: number; operator_name?: string; amount: string };
 type PLine = { partner_id?: number; partner_name?: string; amount: string };
@@ -14,6 +15,7 @@ export default function SaleCreate() {
   const [operators, setOperators] = useState<OpLine[]>([{ amount: "" }]);
   const [partners, setPartners] = useState<PLine[]>([{ amount: "" }]);
   const [comment, setComment] = useState("");
+  const [soldAt, setSoldAt] = useState<string>(toDateInputValue(new Date()));
   const [error, setError] = useState("");
   const [allowDup, setAllowDup] = useState(false);
   const [dupComment, setDupComment] = useState("");
@@ -112,6 +114,7 @@ export default function SaleCreate() {
           amount: Number(p.amount).toFixed(2),
         })),
         comment,
+        sold_at: soldAt ? `${soldAt}T12:00:00` : undefined,
         allow_duplicate_imei: allowDup,
         duplicate_override_comment: dupComment,
       });
@@ -228,9 +231,29 @@ export default function SaleCreate() {
           </div>
         </div>
 
-        <div>
-          <label className="label">Комментарий</label>
-          <textarea className="input" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="label">Дата продажи</label>
+            <input
+              type="date"
+              className="input"
+              value={soldAt}
+              max={toDateInputValue(new Date())}
+              onChange={(e) => setSoldAt(e.target.value)}
+            />
+            <div className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+              Можно поставить вчерашнее или старое число — продажа уйдёт задним числом.
+            </div>
+          </div>
+          <div>
+            <label className="label">Комментарий</label>
+            <textarea
+              className="input"
+              rows={2}
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+            />
+          </div>
         </div>
 
         {allowDup && (

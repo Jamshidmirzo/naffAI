@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 from apps.common.exceptions import ApplicationError
 from apps.users.permissions import IsTeamLead, IsTeamLeadOrManagerReadOnly
 
-from .imports.excel_importer import import_xlsx
+from .imports.excel_importer import import_file
 from .models import GiftItem, Sale, SaleOperator, SalePartner
 from .selectors import sale_get, sale_list
 from .services import sale_confirm, sale_create, sale_mark_returned, sale_soft_delete, sale_update
@@ -206,7 +206,9 @@ class SaleImportExcelApi(APIView):
             return Response({"detail": "Прикрепите файл в поле 'file'"}, status=400)
         wipe = str(request.data.get("wipe", "0")).lower() in ("1", "true", "yes")
         try:
-            result = import_xlsx(upload, wipe_existing=wipe)
+            result = import_file(
+                upload, filename=getattr(upload, "name", ""), wipe_existing=wipe
+            )
         except Exception as exc:  # noqa: BLE001 — surface parser errors to the UI
             return Response({"detail": f"Не удалось разобрать файл: {exc}"}, status=400)
         return Response(result.as_dict(), status=status.HTTP_200_OK)

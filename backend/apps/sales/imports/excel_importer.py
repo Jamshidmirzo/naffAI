@@ -213,8 +213,11 @@ def _detect_dates_in_sheet(rows: list, tz) -> dict[int, dt.datetime]:
     """
     parsed: list[tuple[int, dt.datetime]] = []
     strings: list[tuple[int, dt.datetime]] = []
+    # Row 0 is included — in the shop's workbook col A of the header row
+    # itself holds the first day's date marker, otherwise the first ~4
+    # sales would fall back to 1970-01-01 and confuse the dashboard.
     for i, row in enumerate(rows):
-        if i == 0 or not row:
+        if not row:
             continue
         a = row[0]
         if isinstance(a, dt.datetime):
@@ -271,18 +274,21 @@ def _import_operators_sheet(ws, result: ImportResult) -> None:
         _get_or_create_operator(name, phone, result=result)
 
 
-def _import_sales_sheet(ws, result: ImportResult) -> None:
+def _import_sales_sheet(rows: list, result: ImportResult) -> None:
     tz = timezone.get_current_timezone()
-    rows = list(ws.iter_rows(values_only=True))
     date_by_row = _detect_dates_in_sheet(rows, tz)
 
     current_date: dt.datetime | None = None
     for i, row in enumerate(rows):
-        if i == 0 or not row:
+        if not row:
             continue
 
         if i in date_by_row:
             current_date = date_by_row[i]
+            # Row 0 typically has the header words in cols B-G but a date
+            # in col A — record the date and skip the row's "sale" path.
+            if i == 0:
+                continue
             continue
 
         a = row[0]
@@ -379,29 +385,105 @@ def _import_sales_sheet(ws, result: ImportResult) -> None:
         result.sales_created += 1
 
 
-@transaction.atomic
-def import_xlsx(source: str | BinaryIO, *, wipe_existing: bool = False) -> ImportResult:
-    """Parse the `savdo`/`nomerla` workbook and load it into the DB."""
-    import openpyxl
+def _xlsx_rows(ws) -> list[tuple]:
+    return list(ws.iter_rows(values_only=True))
 
-    wb = openpyxl.load_workbook(source, data_only=True, read_only=False)
+
+def _csv_rows(source) -> list[tuple]:
+    """Read a CSV file (any width) into a list of row tuples mirroring
+    openpyxl's iter_rows(values_only=True): empty cells become None."""
+    import csv
+    import io
+
+    if hasattr(source, "read"):
+        raw = source.read()
+        if isinstance(raw, bytes):
+            text = raw.decode("utf-8-sig", errors="replace")
+        else:
+            text = raw
+    else:
+        with open(source, encoding="utf-8-sig", newline="") as f:
+            text = f.read()
+
+    reader = csv.reader(io.StringIO(text))
+    rows: list[tuple] = []
+    for row in reader:
+        rows.append(tuple(c if c != "" else None for c in row))
+    return rows
+
+
+def _looks_like_savdo_header(rows: list[tuple]) -> bool:
+    """Heuristic: the first row's cells include 'mijoz'/'Hamkorlar'/'ishchila'."""
+    if not rows:
+        return False
+    head = " ".join(str(c).lower() for c in rows[0] if c)
+    return any(tok in head for tok in ("mijoz", "hamkorlar", "ishchila", "ime "))
+
+
+def _looks_like_nomerla_header(rows: list[tuple]) -> bool:
+    if not rows:
+        return False
+    head = " ".join(str(c).lower() for c in rows[0] if c)
+    return "isim" in head or "shaxsiy" in head or "kampaniya" in head
+
+
+@transaction.atomic
+def import_file(
+    source: str | BinaryIO,
+    *,
+    filename: str | None = None,
+    wipe_existing: bool = False,
+) -> ImportResult:
+    """
+    Parse a `savdo`/`nomerla` workbook OR a `savdo`-style CSV and load it.
+
+    CSV detection: filename ends in `.csv`, or the source has no
+    `sheetnames` attribute. CSVs only carry one sheet's worth of data, so
+    we route them through the savdo or nomerla path based on the header.
+    """
     result = ImportResult()
 
     if wipe_existing:
         deleted = Sale.objects.all().delete()[0]
         result.errors.append(f"wiped {deleted} pre-existing sale(s)")
 
-    # Sheet names sometimes carry trailing spaces — match case-insensitively.
+    is_csv = (filename or "").lower().endswith(".csv")
+    if is_csv:
+        rows = _csv_rows(source)
+        if _looks_like_nomerla_header(rows):
+            class _FakeWS:
+                def iter_rows(self, values_only=True):
+                    yield from rows
+
+            _import_operators_sheet(_FakeWS(), result)
+        else:
+            # Default: treat CSV as the savdo sheet.
+            _import_sales_sheet(rows, result)
+        return result
+
+    # XLSX path.
+    import openpyxl
+
+    wb = openpyxl.load_workbook(source, data_only=True, read_only=False)
+
     by_norm = {name.strip().lower(): name for name in wb.sheetnames}
 
     if "nomerla" in by_norm:
         _import_operators_sheet(wb[by_norm["nomerla"]], result)
 
     if "savdo" in by_norm:
-        _import_sales_sheet(wb[by_norm["savdo"]], result)
+        _import_sales_sheet(_xlsx_rows(wb[by_norm["savdo"]]), result)
     else:
         result.errors.append(
             f"worksheet 'savdo' not found (have: {list(wb.sheetnames)})"
         )
 
     return result
+
+
+# Backwards-compat alias used by tests and the management command.
+def import_xlsx(
+    source: str | BinaryIO, *, wipe_existing: bool = False
+) -> ImportResult:
+    name = source if isinstance(source, str) else getattr(source, "name", "")
+    return import_file(source, filename=name, wipe_existing=wipe_existing)
