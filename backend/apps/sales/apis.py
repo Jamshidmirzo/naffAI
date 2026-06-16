@@ -14,7 +14,14 @@ from apps.users.permissions import IsTeamLead, IsTeamLeadOrManagerReadOnly
 from .imports.excel_importer import import_file
 from .models import GiftItem, Sale, SaleOperator, SalePartner
 from .selectors import sale_get, sale_list
-from .services import sale_confirm, sale_create, sale_full_update, sale_mark_returned, sale_soft_delete
+from .services import (
+    sale_confirm,
+    sale_create,
+    sale_full_update,
+    sale_mark_returned,
+    sale_partial_update,
+    sale_soft_delete,
+)
 
 
 class GiftItemSerializer(serializers.ModelSerializer):
@@ -122,6 +129,20 @@ class SaleCreateInputSerializer(serializers.Serializer):
         return super().to_internal_value(data)
 
 
+class SalePartialUpdateInputSerializer(serializers.Serializer):
+    """
+    Loose partial-update payload — used by `PATCH /sales/{id}/` for inline UI
+    tweaks (date pencil, future client-info edits). Only whitelisted scalar
+    fields are accepted; anything else is dropped by the service layer.
+    """
+
+    sold_at = serializers.DateTimeField(required=False)
+    client_name = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    client_phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
+    comment = serializers.CharField(required=False, allow_blank=True)
+    phone_model = serializers.CharField(max_length=128, required=False, allow_blank=True)
+
+
 def _parse_dt(value: str | None) -> dt.datetime | None:
     if not value:
         return None
@@ -170,7 +191,29 @@ class SaleDetailApi(RetrieveUpdateDestroyAPIView):
         )
 
     def update(self, request, *args, **kwargs):
+        """
+        PUT  → full replace via `sale_full_update` (requires complete payload).
+        PATCH → surgical update via `sale_partial_update` (only whitelisted
+                scalar fields; preserves operator/partner lines, imei, amount).
+        Both are exposed on the same URL so existing inline-edit callers
+        (`PATCH /sales/{id}/` with just `sold_at`) keep working.
+        """
         sale = self.get_object()
+        partial = bool(kwargs.get("partial", False))
+
+        if partial:
+            input_ser = SalePartialUpdateInputSerializer(data=request.data)
+            input_ser.is_valid(raise_exception=True)
+            try:
+                updated = sale_partial_update(
+                    sale=sale, user=request.user, fields=input_ser.validated_data
+                )
+            except ApplicationError as exc:
+                return Response(
+                    {"detail": exc.message, **exc.extra}, status=status.HTTP_400_BAD_REQUEST
+                )
+            return Response(SaleSerializer(updated).data)
+
         input_ser = SaleCreateInputSerializer(data=request.data)
         input_ser.is_valid(raise_exception=True)
         try:

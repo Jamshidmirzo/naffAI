@@ -299,6 +299,70 @@ def sale_full_update(
     return sale
 
 
+# --- partial update -----------------------------------------------------
+#
+# A small, surgical update path used for inline UI edits (e.g. fixing the
+# sold_at date on a row) and for any legacy PATCH consumer. Only touches
+# the fields explicitly passed in `fields`; anything not in that dict is
+# preserved verbatim. Does NOT rebuild SaleOperator / SalePartner lines —
+# for that, use `sale_full_update`.
+_PARTIAL_UPDATE_ALLOWED = frozenset(
+    {"sold_at", "client_name", "client_phone", "comment", "phone_model"}
+)
+
+
+@transaction.atomic
+def sale_partial_update(*, sale: Sale, user=None, fields: dict) -> Sale:
+    """
+    Apply a partial update to safe scalar fields on a Sale.
+
+    Only fields in `_PARTIAL_UPDATE_ALLOWED` are accepted; unknown / unsafe
+    fields (imei, amount, operator, channel, status, returned, deleted) are
+    silently ignored — those need to go through their dedicated services
+    (`sale_full_update`, `sale_mark_returned`, `sale_soft_delete`, ...).
+
+    Used by the legacy `PATCH /sales/{id}/` endpoint so inline date edits and
+    similar one-field tweaks don't blow up after `sale_update` was replaced
+    by full-replace semantics.
+    """
+    diff: dict = {}
+    update_fields: list[str] = []
+
+    for key, value in (fields or {}).items():
+        if key not in _PARTIAL_UPDATE_ALLOWED:
+            continue
+        if key == "sold_at" and not value:
+            continue
+        if key in ("client_name", "client_phone", "comment", "phone_model"):
+            value = (str(value) if value is not None else "").strip()
+            if key == "client_name":
+                value = value[:128]
+            elif key == "client_phone":
+                value = value[:32]
+            elif key == "phone_model":
+                value = value[:128] or sale.phone_model
+        old = getattr(sale, key)
+        if old != value:
+            diff[key] = {"old": str(old) if old is not None else None, "new": str(value)}
+            setattr(sale, key, value)
+            update_fields.append(key)
+
+    if not update_fields:
+        return sale
+
+    update_fields.append("updated_at")
+    sale.save(update_fields=update_fields)
+
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="sales.Sale",
+        entity_id=sale.id,
+        changes=diff,
+    )
+    return sale
+
+
 @transaction.atomic
 def sale_mark_returned(*, sale: Sale, reason: str, user=None) -> Sale:
     if sale.is_returned:
