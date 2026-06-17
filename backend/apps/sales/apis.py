@@ -146,7 +146,65 @@ class SalePartialUpdateInputSerializer(serializers.Serializer):
 def _parse_dt(value: str | None) -> dt.datetime | None:
     if not value:
         return None
-    return parse_datetime(value)
+    # Accept either an ISO datetime (existing callers) or a plain date
+    # like "2026-06-01" coming from the <input type="date"> on the
+    # filters panel. parse_datetime returns None for bare dates, in
+    # which case fall back to parse_date and synthesize a datetime at
+    # 00:00 in the active timezone.
+    parsed = parse_datetime(value)
+    if parsed:
+        return parsed
+    from django.utils import timezone
+    from django.utils.dateparse import parse_date
+
+    d = parse_date(value)
+    if not d:
+        return None
+    return timezone.make_aware(dt.datetime.combine(d, dt.time.min))
+
+
+def _parse_dt_inclusive_end(value: str | None) -> dt.datetime | None:
+    """Like `_parse_dt` but if the input is a bare date, snap to end-of-day
+    so `date_to=2026-06-01` includes every sale that happened on that day."""
+    if not value:
+        return None
+    parsed = parse_datetime(value)
+    if parsed:
+        return parsed
+    from django.utils import timezone
+    from django.utils.dateparse import parse_date
+
+    d = parse_date(value)
+    if not d:
+        return None
+    return timezone.make_aware(dt.datetime.combine(d, dt.time.max))
+
+
+class SaleListFilterSerializer(serializers.Serializer):
+    """
+    Whitelist + type-cast of the Sales list query params. Used only to
+    validate the inbound `request.query_params` — the view still hands
+    the parsed values straight to the `sale_list` selector.
+    """
+
+    search = serializers.CharField(required=False, allow_blank=True)
+    # Legacy single-FK params (kept for back-compat with the Excel export
+    # and any saved URLs that pre-date the multi-select UI).
+    operator = serializers.IntegerField(required=False)
+    channel = serializers.IntegerField(required=False)
+    # New multi-select params used by the filters panel.
+    operator_ids = serializers.ListField(
+        child=serializers.IntegerField(), required=False
+    )
+    partner_ids = serializers.ListField(
+        child=serializers.IntegerField(), required=False
+    )
+    date_from = serializers.CharField(required=False, allow_blank=True)
+    date_to = serializers.CharField(required=False, allow_blank=True)
+    status = serializers.ChoiceField(
+        choices=["pending", "confirmed"], required=False
+    )
+    is_returned = serializers.BooleanField(required=False)
 
 
 class SaleListCreateApi(ListCreateAPIView):
@@ -154,19 +212,40 @@ class SaleListCreateApi(ListCreateAPIView):
     serializer_class = SaleSerializer
 
     def get_queryset(self):
-        params = self.request.query_params
+        # DRF's `request.query_params` is a QueryDict — `getlist` is the
+        # right call for repeating keys like `?partner_ids=1&partner_ids=2`.
+        qp = self.request.query_params
+        filter_data = {
+            "search": qp.get("search") or "",
+            "date_from": qp.get("date_from") or "",
+            "date_to": qp.get("date_to") or "",
+        }
+        if qp.get("operator"):
+            filter_data["operator"] = qp.get("operator")
+        if qp.get("channel"):
+            filter_data["channel"] = qp.get("channel")
+        if qp.getlist("operator_ids"):
+            filter_data["operator_ids"] = qp.getlist("operator_ids")
+        if qp.getlist("partner_ids"):
+            filter_data["partner_ids"] = qp.getlist("partner_ids")
+        if qp.get("status"):
+            filter_data["status"] = qp.get("status")
+        if qp.get("is_returned") is not None and qp.get("is_returned") != "":
+            filter_data["is_returned"] = qp.get("is_returned")
+
+        ser = SaleListFilterSerializer(data=filter_data)
+        ser.is_valid(raise_exception=True)
+        v = ser.validated_data
         return sale_list(
-            search=params.get("search"),
-            operator_id=params.get("operator") or None,
-            channel_id=params.get("channel") or None,
-            date_from=_parse_dt(params.get("date_from")),
-            date_to=_parse_dt(params.get("date_to")),
-            status=params.get("status"),
-            is_returned=(
-                None
-                if params.get("is_returned") is None
-                else params.get("is_returned") in ("1", "true", "True")
-            ),
+            search=v.get("search") or None,
+            operator_id=v.get("operator"),
+            channel_id=v.get("channel"),
+            operator_ids=v.get("operator_ids") or None,
+            partner_ids=v.get("partner_ids") or None,
+            date_from=_parse_dt(v.get("date_from") or None),
+            date_to=_parse_dt_inclusive_end(v.get("date_to") or None),
+            status=v.get("status"),
+            is_returned=v.get("is_returned"),
         )
 
     def create(self, request, *args, **kwargs):

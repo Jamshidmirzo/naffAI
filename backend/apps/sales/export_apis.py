@@ -255,17 +255,53 @@ class SaleExportApi(APIView):
 
     def get(self, request):
         params = request.query_params
+        # Mirror the Sales list endpoint so the workbook contains exactly
+        # the rows the manager currently sees — including the multi-select
+        # operator/partner filters added with the URL-state Sales page.
+        date_from_raw = params.get("date_from")
+        date_to_raw = params.get("date_to")
+
+        def _parse(value):
+            if not value:
+                return None
+            parsed = parse_datetime(value)
+            if parsed:
+                return parsed
+            from django.utils import timezone
+            from django.utils.dateparse import parse_date
+
+            d = parse_date(value)
+            if not d:
+                return None
+            import datetime as _dt
+            return timezone.make_aware(_dt.datetime.combine(d, _dt.time.min))
+
+        def _parse_end(value):
+            if not value:
+                return None
+            parsed = parse_datetime(value)
+            if parsed:
+                return parsed
+            from django.utils import timezone
+            from django.utils.dateparse import parse_date
+
+            d = parse_date(value)
+            if not d:
+                return None
+            import datetime as _dt
+            return timezone.make_aware(_dt.datetime.combine(d, _dt.time.max))
+
         qs = (
             sale_list(
                 search=params.get("search"),
                 operator_id=params.get("operator") or None,
                 channel_id=params.get("channel") or None,
-                date_from=parse_datetime(params.get("date_from"))
-                if params.get("date_from")
-                else None,
-                date_to=parse_datetime(params.get("date_to"))
-                if params.get("date_to")
-                else None,
+                operator_ids=[int(v) for v in params.getlist("operator_ids") if v]
+                or None,
+                partner_ids=[int(v) for v in params.getlist("partner_ids") if v] or None,
+                date_from=_parse(date_from_raw),
+                date_to=_parse_end(date_to_raw),
+                status=params.get("status") or None,
             )
             .prefetch_related("operator_lines__operator", "partner_lines__partner")
             .order_by("sold_at", "id")

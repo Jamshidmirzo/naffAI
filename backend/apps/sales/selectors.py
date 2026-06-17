@@ -20,6 +20,8 @@ def sale_list(
     search: str | None = None,
     operator_id: int | None = None,
     channel_id: int | None = None,
+    operator_ids: list[int] | None = None,
+    partner_ids: list[int] | None = None,
     date_from: dt.datetime | None = None,
     date_to: dt.datetime | None = None,
     status: str | None = None,
@@ -38,9 +40,19 @@ def sale_list(
         qs = qs.filter(
             Q(operator_id=operator_id) | Q(operator_lines__operator_id=operator_id)
         ).distinct()
+    if operator_ids:
+        # Multi-select: match if any of the listed operators credit the sale
+        # — either as the legacy primary FK or via a SaleOperator allocation.
+        qs = qs.filter(
+            Q(operator_id__in=operator_ids) | Q(operator_lines__operator_id__in=operator_ids)
+        ).distinct()
     if channel_id:
         qs = qs.filter(
             Q(channel_id=channel_id) | Q(partner_lines__partner_id=channel_id)
+        ).distinct()
+    if partner_ids:
+        qs = qs.filter(
+            Q(channel_id__in=partner_ids) | Q(partner_lines__partner_id__in=partner_ids)
         ).distinct()
     if date_from:
         qs = qs.filter(sold_at__gte=date_from)
@@ -50,7 +62,7 @@ def sale_list(
         qs = qs.filter(status=status)
     if is_returned is not None:
         qs = qs.filter(is_returned=is_returned)
-    return qs
+    return qs.order_by("-sold_at", "-id")
 
 
 def sale_get(pk: int) -> Sale | None:
