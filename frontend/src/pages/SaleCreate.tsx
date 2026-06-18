@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
+import { SingleSelectCombobox } from "../components/SingleSelectCombobox";
 
 type OpLine = { operator_id?: number; operator_name?: string; amount: string };
 type PLine = { partner_id?: number; partner_name?: string; amount: string };
@@ -60,12 +61,12 @@ export default function SaleCreate() {
   }, [isEdit, saleQ.data, loaded]);
 
   const opsQ = useQuery({
-    queryKey: ["operators-list"],
-    queryFn: () => api.get("/operators/?status=active").then((r) => r.data),
+    queryKey: ["operators-list-all"],
+    queryFn: () => api.get("/operators/?limit=200").then((r) => r.data),
   });
   const partnersQ = useQuery({
-    queryKey: ["partners-list"],
-    queryFn: () => api.get("/channels/?active_only=1").then((r) => r.data),
+    queryKey: ["partners-list-all"],
+    queryFn: () => api.get("/channels/?limit=200").then((r) => r.data),
   });
   const modelsQ = useQuery({
     queryKey: ["models-suggest", model],
@@ -175,8 +176,8 @@ export default function SaleCreate() {
     }
   };
 
-  const opOptions: { id: number; full_name: string }[] = opsQ.data?.results || [];
-  const partnerOptions: { id: number; name: string }[] = partnersQ.data?.results || [];
+  const opOptions: { id: number; full_name: string; status?: string }[] = opsQ.data?.results || [];
+  const partnerOptions: { id: number; name: string; is_active?: boolean }[] = partnersQ.data?.results || [];
 
   if (isEdit && saleQ.isLoading) {
     return (
@@ -256,7 +257,11 @@ export default function SaleCreate() {
           title="Операторы"
           lines={operators}
           setLines={setOperators}
-          options={opOptions.map((o) => ({ id: o.id, label: o.full_name }))}
+          options={opOptions.map((o) => ({
+            id: o.id,
+            label: o.full_name,
+            isActive: o.status !== "inactive",
+          }))}
           getId={(l) => l.operator_id}
           getName={(l) => l.operator_name || ""}
           setLine={(l, patch) => ({ ...l, ...patch })}
@@ -269,7 +274,11 @@ export default function SaleCreate() {
           title="Партнёры"
           lines={partners}
           setLines={setPartners}
-          options={partnerOptions.map((p) => ({ id: p.id, label: p.name }))}
+          options={partnerOptions.map((p) => ({
+            id: p.id,
+            label: p.name,
+            isActive: p.is_active !== false,
+          }))}
           getId={(l) => l.partner_id}
           getName={(l) => l.partner_name || ""}
           setLine={(l, patch) => ({ ...l, ...patch })}
@@ -342,7 +351,7 @@ type LineEditorProps<L> = {
   title: string;
   lines: L[];
   setLines: (v: L[]) => void;
-  options: { id: number; label: string }[];
+  options: { id: number; label: string; isActive?: boolean }[];
   getId: (l: L) => number | undefined;
   getName: (l: L) => string;
   setLine: (l: L, patch: Partial<L>) => L;
@@ -353,7 +362,6 @@ type LineEditorProps<L> = {
 
 function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
   const { title, lines, setLines, options, getId, getName, setLine, empty, idKey, nameKey } = props;
-  const datalistId = `${(idKey as string) || "x"}-options`;
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
@@ -370,36 +378,36 @@ function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
         {lines.map((line, i) => {
           const id = getId(line);
           const name = getName(line);
-          const matchedById = id ? options.find((o) => o.id === id) : null;
+          const value: number | string | null = id ?? (name.trim() ? name : null);
           return (
-            <div key={i} className="flex gap-2">
-              <input
-                className="input flex-1"
-                list={datalistId}
-                placeholder="Имя (выбери или впиши)"
-                value={matchedById ? matchedById.label : name}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  const exact = options.find((o) => o.label.toLowerCase() === v.toLowerCase());
-                  const patch: any = {};
-                  if (exact) {
-                    patch[idKey] = exact.id;
-                    patch[nameKey] = undefined;
-                  } else {
-                    patch[idKey] = undefined;
-                    patch[nameKey] = v;
-                  }
-                  const next = [...lines];
-                  next[i] = setLine(line, patch);
-                  setLines(next);
-                }}
-              />
+            <div key={i} className="flex gap-2 items-start">
+              <div className="flex-1 min-w-0">
+                <SingleSelectCombobox
+                  options={options}
+                  value={value}
+                  allowFreeText
+                  placeholder="Выбрать или ввести имя…"
+                  onChange={(next) => {
+                    const patch: any = {};
+                    if (typeof next === "number") {
+                      patch[idKey] = next;
+                      patch[nameKey] = undefined;
+                    } else {
+                      patch[idKey] = undefined;
+                      patch[nameKey] = next;
+                    }
+                    const arr = [...lines];
+                    arr[i] = setLine(line, patch);
+                    setLines(arr);
+                  }}
+                />
+              </div>
               {(() => {
                 const hasName = !!(id || name.trim());
                 const amt = Number(line.amount);
                 const invalid = hasName && (line.amount === "" || amt < 1000);
                 return (
-                  <div className="w-48">
+                  <div className="w-48 flex-shrink-0">
                     <input
                       className={`input ${invalid ? "is-invalid" : ""}`}
                       inputMode="numeric"
@@ -427,7 +435,7 @@ function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
               {lines.length > 1 && (
                 <button
                   type="button"
-                  className="btn-ghost"
+                  className="btn-ghost flex-shrink-0"
                   onClick={() => setLines(lines.filter((_, j) => j !== i))}
                 >
                   <Trash2 className="w-4 h-4" />
@@ -437,11 +445,6 @@ function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
           );
         })}
       </div>
-      <datalist id={datalistId}>
-        {options.map((o) => (
-          <option key={o.id} value={o.label} />
-        ))}
-      </datalist>
       <div className="text-xs text-gray-500 dark:text-slate-400 mt-2">
         {lines.filter((l) => !getId(l) && getName(l).trim()).length > 0 &&
           "Новые имена добавятся автоматически при сохранении."}

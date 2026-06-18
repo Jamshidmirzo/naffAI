@@ -2,11 +2,16 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { api } from "../lib/api";
+import { useAuth } from "../store/auth";
 
 export default function Operators() {
   const qc = useQueryClient();
+  const role = useAuth((s) => s.role);
+  const isTeamLead = role === "team_lead";
   const [show, setShow] = useState(false);
   const [form, setForm] = useState({ full_name: "", phone: "", status: "active", note: "" });
+  const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
+  const [deleteError, setDeleteError] = useState<string>("");
 
   const ops = useQuery({
     queryKey: ["operators"],
@@ -26,6 +31,20 @@ export default function Operators() {
     mutationFn: ({ id, active }: { id: number; active: boolean }) =>
       api.post(`/operators/${id}/${active ? "reactivate" : "deactivate"}/`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["operators"] }),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: number) => api.delete(`/operators/${id}/delete/`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["operators"] });
+      qc.invalidateQueries({ queryKey: ["operators-list-all"] });
+      setConfirmDelete(null);
+      setDeleteError("");
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail || "Не удалось удалить оператора";
+      setDeleteError(typeof msg === "string" ? msg : "Не удалось удалить оператора");
+    },
   });
 
   return (
@@ -66,20 +85,71 @@ export default function Operators() {
                   </span>
                 </td>
                 <td className="px-4 py-2 text-right">
-                  <button
-                    className="btn-ghost text-xs"
-                    onClick={() =>
-                      toggle.mutate({ id: o.id, active: o.status === "inactive" })
-                    }
-                  >
-                    {o.status === "inactive" ? "Активировать" : "Деактивировать"}
-                  </button>
+                  <div className="inline-flex items-center gap-1">
+                    <button
+                      className="btn-ghost text-xs"
+                      onClick={() =>
+                        toggle.mutate({ id: o.id, active: o.status === "inactive" })
+                      }
+                    >
+                      {o.status === "inactive" ? "Активировать" : "Деактивировать"}
+                    </button>
+                    {isTeamLead && (
+                      <button
+                        className="btn-ghost text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10"
+                        onClick={() => {
+                          setDeleteError("");
+                          setConfirmDelete({ id: o.id, name: o.full_name });
+                        }}
+                      >
+                        Удалить
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
+          <div className="card p-6 w-full max-w-md space-y-4">
+            <h2 className="text-lg font-semibold">Удалить оператора</h2>
+            <p className="text-sm text-gray-600 dark:text-slate-400">
+              Удалить оператора <span className="font-medium text-gray-900 dark:text-slate-100">{confirmDelete.name}</span>?
+              Действие необратимо. Удаление возможно только для операторов без продаж — иначе используйте деактивацию.
+            </p>
+            {deleteError && (
+              <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 rounded-lg px-3 py-2">
+                {deleteError}
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => {
+                  setConfirmDelete(null);
+                  setDeleteError("");
+                }}
+                disabled={remove.isPending}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="btn-primary bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700"
+                onClick={() => remove.mutate(confirmDelete.id)}
+                disabled={remove.isPending}
+              >
+                {remove.isPending ? "Удаление…" : "Удалить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {show && (
         <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">

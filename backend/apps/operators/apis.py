@@ -7,7 +7,13 @@ from apps.users.permissions import IsTeamLead, IsTeamLeadOrManagerReadOnly
 
 from .models import Operator
 from .selectors import operator_get, operator_list
-from .services import operator_create, operator_deactivate, operator_reactivate, operator_update
+from .services import (
+    operator_create,
+    operator_deactivate,
+    operator_delete,
+    operator_reactivate,
+    operator_update,
+)
 
 
 class OperatorSerializer(serializers.ModelSerializer):
@@ -74,3 +80,14 @@ class OperatorReactivateApi(APIView):
             return Response({"detail": "Not found"}, status=404)
         operator_reactivate(operator=op, user=request.user)
         return Response(OperatorSerializer(op).data)
+
+
+class OperatorDeleteApi(APIView):
+    permission_classes = [IsTeamLead]
+
+    def delete(self, request, operator_id: int):
+        op = operator_get(operator_id)
+        if not op:
+            return Response({"detail": "Not found"}, status=404)
+        operator_delete(operator=op, user=request.user)
+        return Response(status=204)
