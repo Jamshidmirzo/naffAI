@@ -297,6 +297,8 @@ export default function Sales() {
               <th className="px-4 py-2 text-left">Оператор</th>
               <th className="px-4 py-2 text-left">Партнёр</th>
               <th className="px-4 py-2 text-right">Сумма</th>
+              <th className="px-4 py-2 text-right">Скидка</th>
+              <th className="px-4 py-2 text-right">Итог</th>
               <th className="px-4 py-2 text-center">Статус</th>
             </tr>
           </thead>
@@ -339,6 +341,12 @@ export default function Sales() {
                   )}
                 </td>
                 <td className="px-4 py-2 text-right">{formatUZS(s.amount)}</td>
+                <td className="px-4 py-2 text-right text-red-600 dark:text-red-400">
+                  {Number(s.discount) > 0 ? `− ${formatUZS(s.discount)}` : "—"}
+                </td>
+                <td className="px-4 py-2 text-right font-medium">
+                  {formatUZS(s.total_price ?? s.amount)}
+                </td>
                 <td className="px-4 py-2 text-center">
                   {s.is_returned ? (
                     <span className="badge bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300">

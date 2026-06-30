@@ -21,6 +21,7 @@ export default function SaleCreate() {
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [comment, setComment] = useState("");
+  const [discount, setDiscount] = useState("");
   const [error, setError] = useState("");
   const [allowDup, setAllowDup] = useState(false);
   const [dupComment, setDupComment] = useState("");
@@ -40,11 +41,22 @@ export default function SaleCreate() {
       setClientName(s.client_name || "");
       setClientPhone(s.client_phone || "");
       setComment(s.comment || "");
+      setDiscount(
+        Number(s.discount) > 0 ? String(Math.round(Number(s.discount))) : "",
+      );
       if (s.operator_lines?.length) {
+        // Stored amounts are NET (post-discount). The form's operator
+        // input shows the GROSS share that matches the partner total —
+        // backend re-applies the discount on save. Reverse:
+        //   gross_i = net_i × amount / (amount − discount)
+        const gross = Number(s.amount) || 0;
+        const disc = Number(s.discount) || 0;
+        const net = gross - disc;
+        const ratio = net > 0 ? gross / net : 1;
         setOperators(
           s.operator_lines.map((l: any) => ({
             operator_id: l.operator,
-            amount: String(Math.round(Number(l.amount))),
+            amount: String(Math.round(Number(l.amount) * ratio)),
           }))
         );
       }
@@ -100,6 +112,9 @@ export default function SaleCreate() {
   );
   const mismatch = opTotal > 0 && partnerTotal > 0 && opTotal !== partnerTotal;
   const total = partnerTotal;
+  const discountNum = Number(discount) || 0;
+  const netTotal = Math.max(0, total - discountNum);
+  const discountTooBig = discountNum > 0 && total > 0 && discountNum >= total;
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,6 +152,14 @@ export default function SaleCreate() {
       );
       return;
     }
+    if (discountNum < 0) {
+      setError("Скидка не может быть отрицательной");
+      return;
+    }
+    if (discountTooBig) {
+      setError("Скидка не может быть равна или превышать сумму продажи");
+      return;
+    }
 
     const body = {
       imei,
@@ -151,6 +174,7 @@ export default function SaleCreate() {
         partner_name: p.partner_name?.trim(),
         amount: Number(p.amount).toFixed(2),
       })),
+      discount: discountNum.toFixed(2),
       client_name: clientName.trim(),
       client_phone: clientPhone.trim(),
       comment,
@@ -289,7 +313,7 @@ export default function SaleCreate() {
 
         <div
           className={`rounded-lg border p-3 text-sm ${
-            mismatch
+            mismatch || discountTooBig
               ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700/40"
               : "bg-gray-50 dark:bg-slate-800/40 border-gray-200 dark:border-slate-700"
           }`}
@@ -311,6 +335,40 @@ export default function SaleCreate() {
           <div className="border-t border-gray-200 dark:border-slate-700 mt-2 pt-2 flex justify-between">
             <span className="text-gray-700 dark:text-slate-300 font-medium">Итого продажи:</span>
             <span className="text-lg font-semibold">{total.toLocaleString("ru-RU")} сум</span>
+          </div>
+          {discountNum > 0 && (
+            <>
+              <div className="flex justify-between mt-1 text-red-600 dark:text-red-400">
+                <span>Скидка:</span>
+                <span>− {discountNum.toLocaleString("ru-RU")} сум</span>
+              </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-gray-700 dark:text-slate-300 font-medium">
+                  Итог (с учётом скидки):
+                </span>
+                <span className="text-lg font-semibold text-emerald-700 dark:text-emerald-400">
+                  {netTotal.toLocaleString("ru-RU")} сум
+                </span>
+              </div>
+              <div className="text-[11px] text-gray-500 dark:text-slate-500 mt-1">
+                Кредит операторов будет уменьшен пропорционально на сумму скидки.
+              </div>
+            </>
+          )}
+        </div>
+
+        <div>
+          <label className="label">Скидка (необязательно)</label>
+          <input
+            className={`input ${discountTooBig ? "is-invalid" : ""}`}
+            inputMode="numeric"
+            placeholder="0"
+            value={discount}
+            onChange={(e) => setDiscount(e.target.value.replace(/\D/g, ""))}
+          />
+          <div className="text-[11px] text-gray-500 dark:text-slate-500 mt-1">
+            Скидка пропорционально уменьшает кредит каждого оператора.
+            Партнёры (способы оплаты) сохраняют свои суммы.
           </div>
         </div>
 

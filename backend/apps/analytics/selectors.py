@@ -3,12 +3,18 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
-from django.db.models import Avg, Count, Sum
+from django.db.models import Avg, Count, F, Sum
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 
 from apps.operators.models import Operator, OperatorStatus
 from apps.sales.models import Sale, SaleOperator, SalePartner
+
+# All analytics on the Sale side report NET revenue: gross amount minus
+# the per-sale discount. Operator-line aggregations (SaleOperator) are
+# already net by construction — see `_apply_discount_to_operator_lines`
+# in apps.sales.services — so they keep using Sum("amount").
+NET_AMOUNT = F("amount") - F("discount")
 
 
 def _base_qs(date_from: dt.datetime | None = None, date_to: dt.datetime | None = None):
@@ -44,7 +50,7 @@ def kpi_snapshot() -> dict:
     start_of_month = start_of_day.replace(day=1)
 
     def agg(date_from):
-        a = _base_qs(date_from=date_from).aggregate(total=Sum("amount"), count=Count("id"))
+        a = _base_qs(date_from=date_from).aggregate(total=Sum(NET_AMOUNT), count=Count("id"))
         return {"total": str(a["total"] or Decimal("0")), "count": a["count"] or 0}
 
     operators_active = Operator.objects.filter(status=OperatorStatus.ACTIVE).count()
@@ -123,7 +129,7 @@ def by_model(*, date_from=None, date_to=None, limit: int = 20) -> list[dict]:
     qs = _base_qs(date_from=date_from, date_to=date_to)
     rows = (
         qs.values("phone_model")
-        .annotate(total=Sum("amount"), count=Count("id"))
+        .annotate(total=Sum(NET_AMOUNT), count=Count("id"))
         .order_by("-count")[:limit]
     )
     return [
@@ -137,7 +143,7 @@ def timeseries_daily(*, date_from, date_to) -> list[dict]:
     rows = (
         qs.annotate(day=TruncDate("sold_at"))
         .values("day")
-        .annotate(total=Sum("amount"), count=Count("id"))
+        .annotate(total=Sum(NET_AMOUNT), count=Count("id"))
         .order_by("day")
     )
     return [

@@ -1,6 +1,7 @@
 import datetime as dt
 from decimal import Decimal
 
+from django.db.models import F
 from django.utils.dateparse import parse_datetime
 from rest_framework import serializers, status
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
@@ -52,6 +53,11 @@ class SaleSerializer(serializers.ModelSerializer):
     gifts = GiftItemSerializer(many=True, read_only=True)
     operator_lines = SaleOperatorLineSerializer(many=True, read_only=True)
     partner_lines = SalePartnerLineSerializer(many=True, read_only=True)
+    # NET amount (`amount − discount`) — derived on read so clients don't
+    # have to recompute it. Both the SaleListCreateApi queryset and the
+    # detail queryset annotate `total_price`, but we fall back to a
+    # Python compute for safety (e.g. after a fresh `sale_create`).
+    total_price = serializers.SerializerMethodField()
 
     class Meta:
         model = Sale
@@ -64,6 +70,8 @@ class SaleSerializer(serializers.ModelSerializer):
             "channel",
             "channel_name",
             "amount",
+            "discount",
+            "total_price",
             "client_name",
             "client_phone",
             "operator_lines",
@@ -86,6 +94,7 @@ class SaleSerializer(serializers.ModelSerializer):
             "gifts",
             "operator_lines",
             "partner_lines",
+            "total_price",
             "is_deleted",
             "is_returned",
             "returned_at",
@@ -93,6 +102,12 @@ class SaleSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def get_total_price(self, obj) -> str:
+        annotated = getattr(obj, "total_price", None)
+        if annotated is not None:
+            return str(annotated)
+        return str((obj.amount or Decimal("0")) - (obj.discount or Decimal("0")))
 
 
 class SaleCreateInputSerializer(serializers.Serializer):
@@ -110,6 +125,14 @@ class SaleCreateInputSerializer(serializers.Serializer):
         min_value=Decimal("1000"),
         max_value=Decimal("999999999999.99"),
         required=False,
+    )
+    discount = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        min_value=Decimal("0"),
+        max_value=Decimal("999999999999.99"),
+        required=False,
+        default=Decimal("0"),
     )
     client_name = serializers.CharField(max_length=128, required=False, allow_blank=True, default="")
     client_phone = serializers.CharField(max_length=32, required=False, allow_blank=True, default="")
@@ -141,6 +164,15 @@ class SalePartialUpdateInputSerializer(serializers.Serializer):
     client_phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
     comment = serializers.CharField(required=False, allow_blank=True)
     phone_model = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    # Inline discount edit — proportionally reduces operator credit on save.
+    # See `apps.sales.services.sale_partial_update` for the audit/realloc flow.
+    discount = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        min_value=Decimal("0"),
+        max_value=Decimal("999999999999.99"),
+        required=False,
+    )
 
 
 def _parse_dt(value: str | None) -> dt.datetime | None:
@@ -246,7 +278,7 @@ class SaleListCreateApi(ListCreateAPIView):
             date_to=_parse_dt_inclusive_end(v.get("date_to") or None),
             status=v.get("status"),
             is_returned=v.get("is_returned"),
-        )
+        ).annotate(total_price=F("amount") - F("discount"))
 
     def create(self, request, *args, **kwargs):
         input_ser = SaleCreateInputSerializer(data=request.data)
@@ -265,8 +297,10 @@ class SaleDetailApi(RetrieveUpdateDestroyAPIView):
     serializer_class = SaleSerializer
 
     def get_queryset(self):
-        return Sale.objects.select_related("operator", "channel").prefetch_related(
-            "gifts", "operator_lines__operator", "partner_lines__partner"
+        return (
+            Sale.objects.select_related("operator", "channel")
+            .prefetch_related("gifts", "operator_lines__operator", "partner_lines__partner")
+            .annotate(total_price=F("amount") - F("discount"))
         )
 
     def update(self, request, *args, **kwargs):
@@ -343,6 +377,6 @@ class SaleImportExcelApi(APIView):
             result = import_file(
                 upload, filename=getattr(upload, "name", ""), wipe_existing=wipe
             )
-        except Exception as exc:  # noqa: BLE001 — surface parser errors to the UI
+        except Exception as exc:
             return Response({"detail": f"Не удалось разобрать файл: {exc}"}, status=400)
         return Response(result.as_dict(), status=status.HTTP_200_OK)

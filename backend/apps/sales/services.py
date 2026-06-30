@@ -2,21 +2,76 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Iterable
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from django.db import transaction
 from django.utils import timezone
 
 from apps.audit.services import AuditAction, audit_log_create
 from apps.catalog.imei_service import imei_lookup
+from apps.catalog.models import Channel
 from apps.common.exceptions import ApplicationError, DuplicateError
 from apps.common.validators import is_valid_imei
-
-from apps.catalog.models import Channel
 from apps.operators.models import Operator, OperatorStatus
 
 from .models import GiftItem, Sale, SaleOperator, SalePartner, SaleStatus
 from .selectors import sale_imei_duplicate_count
+
+# Money is stored as Decimal(14, 2). All proportional splits round
+# half-up to two decimal places and dump any rounding remainder onto
+# the last allocation line so the line-amount sum is exactly equal to
+# `amount − discount`.
+_MONEY_Q = Decimal("0.01")
+
+
+def _coerce_decimal(value, *, field: str, default: Decimal = Decimal("0")) -> Decimal:
+    if value in (None, ""):
+        return default
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ApplicationError(f"Некорректное число в поле {field}", {"field": field}) from exc
+
+
+def _apply_discount_to_operator_lines(
+    operator_lines: list[tuple], *, gross: Decimal, discount: Decimal
+) -> list[tuple]:
+    """
+    Reduce each operator line's amount proportionally to the discount.
+
+    The discount lives on the Sale (single source of truth), but operator
+    payroll credit is `(amount − discount)`. We push the reduction down
+    onto the SaleOperator rows so existing selectors / payroll queries
+    (which sum SaleOperator.amount) keep working without changes.
+
+      net_op_i = op_i × (gross − discount) / gross
+
+    Rounding to 2dp is half-up; any sub-cent rounding remainder is added
+    to the last line so the sum stays exact:
+
+      Σ net_op_i == gross − discount
+    """
+    if discount <= 0 or not operator_lines:
+        return operator_lines
+
+    net = gross - discount
+    if net <= 0:
+        raise ApplicationError(
+            "Скидка не может быть равна или превышать сумму продажи",
+            {"field": "discount"},
+        )
+
+    scaled: list[tuple] = []
+    running = Decimal("0")
+    for i, (obj, amt) in enumerate(operator_lines):
+        if i == len(operator_lines) - 1:
+            # Last line absorbs the rounding remainder so the sum is exact.
+            new_amt = (net - running).quantize(_MONEY_Q, rounding=ROUND_HALF_UP)
+        else:
+            new_amt = (amt * net / gross).quantize(_MONEY_Q, rounding=ROUND_HALF_UP)
+            running += new_amt
+        scaled.append((obj, new_amt))
+    return scaled
 
 
 def _resolve_operator(line: dict) -> Operator:
@@ -95,6 +150,7 @@ def sale_create(
     operator_id: int | None = None,
     channel_id: int | None = None,
     amount: Decimal | None = None,
+    discount: Decimal | None = None,
     operators: list[dict] | None = None,
     partners: list[dict] | None = None,
     sold_at: dt.datetime | None = None,
@@ -145,6 +201,22 @@ def sale_create(
     if total <= 0:
         raise ApplicationError("Сумма должна быть положительной", {"field": "amount"})
 
+    discount_dec = _coerce_decimal(discount, field="discount")
+    if discount_dec < 0:
+        raise ApplicationError("Скидка не может быть отрицательной", {"field": "discount"})
+    if discount_dec >= total:
+        raise ApplicationError(
+            "Скидка не может быть равна или превышать сумму продажи",
+            {"field": "discount"},
+        )
+
+    # Reduce operator credit proportionally to absorb the discount.
+    # Partner lines stay untouched: the customer still pays the gross
+    # `total`; the shop just keeps less commission for the operators.
+    credited_operator_lines = _apply_discount_to_operator_lines(
+        operator_lines, gross=total, discount=discount_dec
+    )
+
     if not phone_model:
         lookup = imei_lookup(imei)
         if lookup.valid and (lookup.brand or lookup.model):
@@ -152,7 +224,7 @@ def sale_create(
     if not phone_model:
         phone_model = "Не определена"
 
-    primary_op = operator_lines[0][0]
+    primary_op = credited_operator_lines[0][0]
     primary_partner = partner_lines[0][0]
 
     sale = Sale.objects.create(
@@ -161,6 +233,7 @@ def sale_create(
         operator=primary_op,
         channel=primary_partner,
         amount=total,
+        discount=discount_dec,
         client_name=(client_name or "").strip()[:128],
         client_phone=(client_phone or "").strip()[:32],
         comment=comment,
@@ -170,7 +243,7 @@ def sale_create(
     )
 
     SaleOperator.objects.bulk_create(
-        [SaleOperator(sale=sale, operator=o, amount=a) for o, a in operator_lines]
+        [SaleOperator(sale=sale, operator=o, amount=a) for o, a in credited_operator_lines]
     )
     SalePartner.objects.bulk_create(
         [SalePartner(sale=sale, partner=p, amount=a) for p, a in partner_lines]
@@ -194,12 +267,15 @@ def sale_create(
             "imei": sale.imei,
             "phone_model": sale.phone_model,
             "operators": [
-                {"id": o.id, "name": o.full_name, "amount": str(a)} for o, a in operator_lines
+                {"id": o.id, "name": o.full_name, "amount": str(a)}
+                for o, a in credited_operator_lines
             ],
             "partners": [
                 {"id": p.id, "name": p.name, "amount": str(a)} for p, a in partner_lines
             ],
             "total": str(total),
+            "discount": str(discount_dec),
+            "net": str(total - discount_dec),
         },
         comment=duplicate_override_comment if duplicates else "",
     )
@@ -216,6 +292,7 @@ def sale_full_update(
     operator_id: int | None = None,
     channel_id: int | None = None,
     amount: Decimal | None = None,
+    discount: Decimal | None = None,
     operators: list[dict] | None = None,
     partners: list[dict] | None = None,
     sold_at: dt.datetime | None = None,
@@ -251,10 +328,29 @@ def sale_full_update(
     if total <= 0:
         raise ApplicationError("Сумма должна быть положительной", {"field": "amount"})
 
+    # If the caller omits `discount` from the payload (legacy clients),
+    # preserve the current value rather than silently zeroing it out.
+    discount_dec = (
+        _coerce_decimal(discount, field="discount")
+        if discount is not None
+        else sale.discount
+    )
+    if discount_dec < 0:
+        raise ApplicationError("Скидка не может быть отрицательной", {"field": "discount"})
+    if discount_dec >= total:
+        raise ApplicationError(
+            "Скидка не может быть равна или превышать сумму продажи",
+            {"field": "discount"},
+        )
+
+    credited_operator_lines = _apply_discount_to_operator_lines(
+        operator_lines, gross=total, discount=discount_dec
+    )
+
     if not phone_model:
         phone_model = sale.phone_model
 
-    primary_op = operator_lines[0][0]
+    primary_op = credited_operator_lines[0][0]
     primary_partner = partner_lines[0][0]
 
     sale.imei = imei
@@ -262,6 +358,7 @@ def sale_full_update(
     sale.operator = primary_op
     sale.channel = primary_partner
     sale.amount = total
+    sale.discount = discount_dec
     sale.client_name = (client_name or "").strip()[:128]
     sale.client_phone = (client_phone or "").strip()[:32]
     sale.comment = comment
@@ -273,7 +370,7 @@ def sale_full_update(
     sale.partner_lines.all().delete()
 
     SaleOperator.objects.bulk_create(
-        [SaleOperator(sale=sale, operator=o, amount=a) for o, a in operator_lines]
+        [SaleOperator(sale=sale, operator=o, amount=a) for o, a in credited_operator_lines]
     )
     SalePartner.objects.bulk_create(
         [SalePartner(sale=sale, partner=p, amount=a) for p, a in partner_lines]
@@ -288,12 +385,15 @@ def sale_full_update(
             "imei": sale.imei,
             "phone_model": sale.phone_model,
             "operators": [
-                {"id": o.id, "name": o.full_name, "amount": str(a)} for o, a in operator_lines
+                {"id": o.id, "name": o.full_name, "amount": str(a)}
+                for o, a in credited_operator_lines
             ],
             "partners": [
                 {"id": p.id, "name": p.name, "amount": str(a)} for p, a in partner_lines
             ],
             "total": str(total),
+            "discount": str(discount_dec),
+            "net": str(total - discount_dec),
         },
     )
     return sale
@@ -307,8 +407,46 @@ def sale_full_update(
 # preserved verbatim. Does NOT rebuild SaleOperator / SalePartner lines —
 # for that, use `sale_full_update`.
 _PARTIAL_UPDATE_ALLOWED = frozenset(
-    {"sold_at", "client_name", "client_phone", "comment", "phone_model"}
+    {"sold_at", "client_name", "client_phone", "comment", "phone_model", "discount"}
 )
+
+
+def _reallocate_operator_lines_for_discount(sale: Sale, new_discount: Decimal) -> None:
+    """
+    Recompute SaleOperator.amount for the existing lines using the new
+    discount. Preserves each operator's relative share of the GROSS sale.
+
+    Original gross share is reconstructed from the current line amount
+    plus the current discount, so this stays correct across repeated
+    edits (e.g. discount 0 → 500k → 200k).
+    """
+    lines = list(sale.operator_lines.all().order_by("id"))
+    if not lines:
+        return
+
+    current_credited_sum = sum(ln.amount for ln in lines)
+    gross_share_sum = current_credited_sum + sale.discount
+    if gross_share_sum <= 0:
+        return
+    net = sale.amount - new_discount
+
+    running = Decimal("0")
+    for i, line in enumerate(lines):
+        original_share = line.amount + (
+            # proportional reverse of the previously-applied discount
+            sale.discount * (line.amount / current_credited_sum)
+            if current_credited_sum > 0
+            else Decimal("0")
+        )
+        if i == len(lines) - 1:
+            new_amt = (net - running).quantize(_MONEY_Q, rounding=ROUND_HALF_UP)
+        else:
+            new_amt = (original_share * net / gross_share_sum).quantize(
+                _MONEY_Q, rounding=ROUND_HALF_UP
+            )
+            running += new_amt
+        line.amount = new_amt
+        line.save(update_fields=["amount"])
 
 
 @transaction.atomic
@@ -321,17 +459,34 @@ def sale_partial_update(*, sale: Sale, user=None, fields: dict) -> Sale:
     silently ignored — those need to go through their dedicated services
     (`sale_full_update`, `sale_mark_returned`, `sale_soft_delete`, ...).
 
-    Used by the legacy `PATCH /sales/{id}/` endpoint so inline date edits and
-    similar one-field tweaks don't blow up after `sale_update` was replaced
-    by full-replace semantics.
+    Two audit entries can be written from a single call:
+      1. A general UPDATE entry for non-discount scalar diffs (date,
+         client info, comment, phone_model).
+      2. A dedicated UPDATE entry tagged with the «Скидка» comment
+         when the discount changes, alongside the resulting operator-
+         line reallocation snapshot — so payroll-affecting edits are
+         easy to find in the audit log.
     """
-    diff: dict = {}
+    scalar_diff: dict = {}
     update_fields: list[str] = []
+    new_discount: Decimal | None = None
 
     for key, value in (fields or {}).items():
         if key not in _PARTIAL_UPDATE_ALLOWED:
             continue
         if key == "sold_at" and not value:
+            continue
+        if key == "discount":
+            new_discount = _coerce_decimal(value, field="discount")
+            if new_discount < 0:
+                raise ApplicationError(
+                    "Скидка не может быть отрицательной", {"field": "discount"}
+                )
+            if new_discount >= sale.amount:
+                raise ApplicationError(
+                    "Скидка не может быть равна или превышать сумму продажи",
+                    {"field": "discount"},
+                )
             continue
         if key in ("client_name", "client_phone", "comment", "phone_model"):
             value = (str(value) if value is not None else "").strip()
@@ -343,23 +498,59 @@ def sale_partial_update(*, sale: Sale, user=None, fields: dict) -> Sale:
                 value = value[:128] or sale.phone_model
         old = getattr(sale, key)
         if old != value:
-            diff[key] = {"old": str(old) if old is not None else None, "new": str(value)}
+            scalar_diff[key] = {
+                "old": str(old) if old is not None else None,
+                "new": str(value),
+            }
             setattr(sale, key, value)
             update_fields.append(key)
 
-    if not update_fields:
+    discount_changed = new_discount is not None and new_discount != sale.discount
+
+    if not update_fields and not discount_changed:
         return sale
 
-    update_fields.append("updated_at")
-    sale.save(update_fields=update_fields)
+    if scalar_diff:
+        update_fields.append("updated_at")
+        sale.save(update_fields=update_fields)
+        audit_log_create(
+            user=user,
+            action=AuditAction.UPDATE,
+            entity="sales.Sale",
+            entity_id=sale.id,
+            changes=scalar_diff,
+        )
 
-    audit_log_create(
-        user=user,
-        action=AuditAction.UPDATE,
-        entity="sales.Sale",
-        entity_id=sale.id,
-        changes=diff,
-    )
+    if discount_changed:
+        old_discount = sale.discount
+        _reallocate_operator_lines_for_discount(sale, new_discount)
+        sale.discount = new_discount
+        sale.save(update_fields=["discount", "updated_at"])
+
+        # Snapshot the post-change operator lines so payroll diffs are
+        # reconstructable from the audit trail alone.
+        operator_snapshot = [
+            {
+                "operator_id": ln.operator_id,
+                "operator_name": ln.operator.full_name,
+                "amount": str(ln.amount),
+            }
+            for ln in sale.operator_lines.select_related("operator").all()
+        ]
+        audit_log_create(
+            user=user,
+            action=AuditAction.UPDATE,
+            entity="sales.Sale",
+            entity_id=sale.id,
+            changes={
+                "discount": {"old": str(old_discount), "new": str(new_discount)},
+                "amount": str(sale.amount),
+                "net": str(sale.amount - new_discount),
+                "operator_lines": operator_snapshot,
+            },
+            comment="Скидка",
+        )
+
     return sale
 
 

@@ -28,6 +28,15 @@ class Sale(TimestampedModel):
         related_name="sales",
     )
     amount = models.DecimalField(max_digits=14, decimal_places=2)
+    discount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=0,
+        help_text=(
+            "Скидка на эту продажу в UZS. Уменьшает кредит операторов "
+            "пропорционально их долям (Σ SaleOperator.amount = amount − discount)."
+        ),
+    )
     client_name = models.CharField(max_length=128, blank=True, default="")
     client_phone = models.CharField(max_length=32, blank=True, default="")
     comment = models.TextField(blank=True, default="")

@@ -14,6 +14,9 @@ export default function SaleDetail() {
   const [showDelete, setShowDelete] = useState(false);
   const [editingDate, setEditingDate] = useState(false);
   const [newDate, setNewDate] = useState("");
+  const [editingDiscount, setEditingDiscount] = useState(false);
+  const [newDiscount, setNewDiscount] = useState("");
+  const [discountError, setDiscountError] = useState("");
 
   const q = useQuery({
     queryKey: ["sale", id],
@@ -52,6 +55,22 @@ export default function SaleDetail() {
       qc.invalidateQueries({ queryKey: ["sale", id] });
       qc.invalidateQueries({ queryKey: ["sales"] });
       setEditingDate(false);
+    },
+  });
+
+  const saveDiscountMut = useMutation({
+    mutationFn: (value: string) =>
+      api.patch(`/sales/${id}/`, { discount: Number(value || 0).toFixed(2) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sale", id] });
+      qc.invalidateQueries({ queryKey: ["sales"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      setEditingDiscount(false);
+      setDiscountError("");
+    },
+    onError: (err: any) => {
+      const d = err?.response?.data || {};
+      setDiscountError(d.detail || "Не удалось сохранить скидку");
     },
   });
 
@@ -179,9 +198,90 @@ export default function SaleDetail() {
             )}
           </div>
           <div>
-            <div className="label">Итого</div>
+            <div className="label">Сумма</div>
             <div className="text-lg font-semibold">{formatUZS(s.amount)}</div>
           </div>
+        </div>
+
+        {/* Discount + net row: inline-editable; on save the backend
+            proportionally reduces every operator-line credit and writes
+            a dedicated audit entry tagged «Скидка». */}
+        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-800 grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div>
+            <div className="label">Скидка</div>
+            {editingDiscount ? (
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="input w-32"
+                  value={newDiscount}
+                  placeholder="0"
+                  onChange={(e) =>
+                    setNewDiscount(e.target.value.replace(/\D/g, ""))
+                  }
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="btn-ghost px-2"
+                  onClick={() => saveDiscountMut.mutate(newDiscount || "0")}
+                  disabled={saveDiscountMut.isPending}
+                >
+                  <CheckCircle className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost px-2"
+                  onClick={() => {
+                    setEditingDiscount(false);
+                    setDiscountError("");
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setNewDiscount(
+                    Number(s.discount) > 0
+                      ? String(Math.round(Number(s.discount)))
+                      : "",
+                  );
+                  setEditingDiscount(true);
+                }}
+                className="text-sm hover:text-accent inline-flex items-center gap-1 group"
+                title="Изменить скидку"
+              >
+                {Number(s.discount) > 0 ? (
+                  <span className="text-red-600 dark:text-red-400 font-medium">
+                    − {formatUZS(s.discount)}
+                  </span>
+                ) : (
+                  <span className="text-gray-400 dark:text-slate-500">—</span>
+                )}
+                <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+              </button>
+            )}
+            {discountError && (
+              <div className="text-xs text-red-600 dark:text-red-400 mt-1">
+                {discountError}
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="label">Итог (с учётом скидки)</div>
+            <div className="text-lg font-semibold text-emerald-700 dark:text-emerald-400">
+              {formatUZS(s.total_price ?? s.amount)}
+            </div>
+          </div>
+          {Number(s.discount) > 0 && (
+            <div className="md:col-span-1 col-span-2 text-xs text-gray-500 dark:text-slate-400 self-end">
+              Кредит операторов уменьшен пропорционально на сумму скидки.
+            </div>
+          )}
         </div>
 
         {(s.client_name || s.client_phone) && (
@@ -209,28 +309,47 @@ export default function SaleDetail() {
         )}
       </div>
 
-      {/* Operator allocation */}
+      {/* Operator allocation — stored amounts are NET (post-discount).
+          Gross share is reverse-computed and shown next to the credited
+          figure when a discount is applied. */}
       <div className="card overflow-hidden mb-4">
         <div className="px-5 py-4 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between">
           <div className="text-sm font-medium">Операторы</div>
           <div className="text-xs text-gray-500 dark:text-slate-400">
             {operatorLines.length} {operatorLines.length === 1 ? "оператор" : "операторов"}
+            {Number(s.discount) > 0 && (
+              <span className="ml-2 text-red-600 dark:text-red-400">
+                после скидки
+              </span>
+            )}
           </div>
         </div>
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-slate-900 text-xs uppercase text-gray-600 dark:text-slate-400">
             <tr>
               <th className="px-5 py-2 text-left">Оператор</th>
-              <th className="px-5 py-2 text-right">Сумма</th>
+              {Number(s.discount) > 0 && (
+                <th className="px-5 py-2 text-right">До скидки</th>
+              )}
+              <th className="px-5 py-2 text-right">Кредит (нетто)</th>
               <th className="px-5 py-2 text-right">Доля</th>
             </tr>
           </thead>
           <tbody>
             {operatorLines.map((line, i) => {
               const pct = opTotal > 0 ? (Number(line.amount) / opTotal) * 100 : 0;
+              const grossShare =
+                opTotal > 0
+                  ? (Number(line.amount) / opTotal) * Number(s.amount)
+                  : Number(line.amount);
               return (
                 <tr key={i} className="border-t border-gray-100 dark:border-slate-800">
                   <td className="px-5 py-3 font-medium">{line.operator_name}</td>
+                  {Number(s.discount) > 0 && (
+                    <td className="px-5 py-3 text-right text-gray-400 dark:text-slate-500 line-through">
+                      {formatUZS(grossShare)}
+                    </td>
+                  )}
                   <td className="px-5 py-3 text-right">{formatUZS(line.amount)}</td>
                   <td className="px-5 py-3 text-right text-gray-500 dark:text-slate-400">
                     {pct.toFixed(1)}%
@@ -243,6 +362,11 @@ export default function SaleDetail() {
             <tfoot className="bg-gray-50 dark:bg-slate-900 font-medium">
               <tr>
                 <td className="px-5 py-2">Итого</td>
+                {Number(s.discount) > 0 && (
+                  <td className="px-5 py-2 text-right text-gray-400 dark:text-slate-500 line-through">
+                    {formatUZS(s.amount)}
+                  </td>
+                )}
                 <td className="px-5 py-2 text-right">{formatUZS(opTotal)}</td>
                 <td className="px-5 py-2 text-right text-gray-500 dark:text-slate-400">100%</td>
               </tr>

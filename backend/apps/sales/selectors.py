@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
-from django.db.models import Count, Q, QuerySet, Sum
+from django.db.models import Count, F, Q, QuerySet, Sum
 
 from .models import Sale, SaleOperator
 
@@ -13,6 +13,19 @@ def sale_queryset(*, include_deleted: bool = False) -> QuerySet[Sale]:
     if not include_deleted:
         qs = qs.filter(is_deleted=False)
     return qs
+
+
+def sale_queryset_with_totals(*, include_deleted: bool = False) -> QuerySet[Sale]:
+    """
+    Like `sale_queryset` but annotates `total_price = amount − discount`.
+
+    Use this anywhere a NET revenue figure is needed (dashboards, analytics,
+    exports). Operator-payroll figures already aggregate the net from
+    SaleOperator.amount, so this annotation is for Sale-level reports.
+    """
+    return sale_queryset(include_deleted=include_deleted).annotate(
+        total_price=F("amount") - F("discount"),
+    )
 
 
 def sale_list(

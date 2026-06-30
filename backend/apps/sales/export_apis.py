@@ -64,9 +64,13 @@ SAVDO_HEADER_BY_COL: dict[int, str | None] = {
     8: "Daplata ",
     15: "Rasxodlar ",
     16: "izoh",
+    # New trailing columns appended after the source layout so the
+    # manager's existing «savdo » template still imports cleanly.
+    17: "Скидка",       # R — per-sale discount (UZS)
+    18: "Итог",         # S — net amount the shop kept = amount − discount
 }
 
-SAVDO_COL_COUNT = 17  # A..Q
+SAVDO_COL_COUNT = 19  # A..S
 SAVDO_DATE_FMT = "MM.DD.YY"
 DATE_MARKER_FILL = PatternFill("solid", fgColor="FEF3C7")
 DATE_MARKER_FONT = Font(bold=True)
@@ -159,6 +163,10 @@ def _sale_to_savdo_row(sale: Sale) -> list:
     row[7] = _maybe_number(parsed["downpayment"])
     row[15] = _maybe_number(parsed["expense"])
     row[16] = parsed["rest"] or None
+    # Trailing columns: discount + net.
+    discount = float(sale.discount or 0)
+    row[17] = discount if discount > 0 else None
+    row[18] = float(sale.amount) - discount
     return row
 
 
@@ -221,11 +229,13 @@ def _write_savdo_sheet(wb, sales: Iterable[Sale]) -> None:
                 max_len = len(v)
         ws.column_dimensions[letter].width = min(max(max_len + 2, 8), 50)
 
-    # Money format on the amount column (only on numeric cells — strings stay).
-    for col in ws.iter_cols(min_col=6, max_col=6, min_row=2):
-        for cell in col:
-            if isinstance(cell.value, int | float):
-                cell.number_format = MONEY_FMT
+    # Money format on every numeric money column (F = partner amounts,
+    # R = discount, S = net итог). Strings stay strings.
+    for money_col in (6, 18, 19):
+        for col in ws.iter_cols(min_col=money_col, max_col=money_col, min_row=2):
+            for cell in col:
+                if isinstance(cell.value, int | float):
+                    cell.number_format = MONEY_FMT
 
     ws.freeze_panes = "A2"
 
