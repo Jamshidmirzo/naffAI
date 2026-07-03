@@ -75,6 +75,10 @@ def operator_delete(*, operator: Operator, user=None) -> None:
             }
         )
 
+    # Clear FK refs from soft-deleted rows so PROTECT doesn't block the hard-delete.
+    SaleOperator.objects.filter(operator=operator, sale__is_deleted=True).delete()
+    Sale.objects.filter(operator=operator, is_deleted=True).update(operator=None)
+
     snapshot = {
         "id": operator.id,
         "full_name": operator.full_name,

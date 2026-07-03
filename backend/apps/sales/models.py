@@ -19,6 +19,8 @@ class Sale(TimestampedModel):
     phone_model = models.CharField(max_length=128)
     operator = models.ForeignKey(
         "operators.Operator",
+        null=True,
+        blank=True,
         on_delete=models.PROTECT,
         related_name="sales",
     )
@@ -100,6 +102,8 @@ class SaleOperator(models.Model):
     sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name="operator_lines")
     operator = models.ForeignKey(
         "operators.Operator",
+        null=True,
+        blank=True,
         on_delete=models.PROTECT,
         related_name="sale_lines",
     )
