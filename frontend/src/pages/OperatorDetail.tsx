@@ -13,6 +13,7 @@ import {
 } from "../lib/period";
 import KpiCard from "../components/KpiCard";
 import MonthPicker from "../components/MonthPicker";
+import NumericInput from "../components/NumericInput";
 import ProgressBar from "../components/ProgressBar";
 import {
   Bar,
@@ -241,12 +242,10 @@ export default function OperatorDetail() {
 
             {editPlan ? (
               <div className="flex items-center gap-2">
-                <input
+                <NumericInput
                   className="input flex-1 text-sm py-1"
-                  type="number"
-                  min="0"
                   value={planInput}
-                  onChange={(e) => setPlanInput(e.target.value)}
+                  onChange={setPlanInput}
                   placeholder="Цель в сумах"
                   autoFocus
                 />

@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
 import { SingleSelectCombobox } from "../components/SingleSelectCombobox";
+import NumericInput from "../components/NumericInput";
 
 type OpLine = { operator_id?: number; operator_name?: string; amount: string };
 type PLine = { partner_id?: number; partner_name?: string; amount: string };
@@ -385,12 +386,11 @@ export default function SaleCreate() {
 
         <div>
           <label className="label">Скидка (необязательно)</label>
-          <input
+          <NumericInput
             className={`input ${discountTooBig ? "is-invalid" : ""}`}
-            inputMode="numeric"
             placeholder="0"
             value={discount}
-            onChange={(e) => setDiscount(e.target.value.replace(/\D/g, ""))}
+            onChange={setDiscount}
           />
           <div className="text-[11px] text-gray-500 dark:text-slate-500 mt-1">
             Скидка пропорционально уменьшает кредит каждого оператора.
@@ -492,22 +492,16 @@ function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
                 const invalid = hasName && (line.amount === "" || amt < 1000);
                 return (
                   <div className="w-48 flex-shrink-0">
-                    <input
+                    <NumericInput
                       className={`input ${invalid ? "is-invalid" : ""}`}
-                      inputMode="numeric"
                       placeholder="Сумма"
                       value={line.amount}
-                      onChange={(e) => {
+                      onChange={(raw) => {
                         const next = [...lines];
-                        next[i] = setLine(line, { amount: e.target.value.replace(/\D/g, "") } as any);
+                        next[i] = setLine(line, { amount: raw } as any);
                         setLines(next);
                       }}
                     />
-                    {line.amount && amt > 0 && (
-                      <div className="text-[10px] text-gray-500 dark:text-slate-500 mt-0.5 text-right">
-                        ≈ {amt.toLocaleString("ru-RU")}
-                      </div>
-                    )}
                     {invalid && line.amount !== "" && (
                       <div className="text-[10px] text-red-600 dark:text-red-400 mt-0.5 text-right">
                         мин 1 000

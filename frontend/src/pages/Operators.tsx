@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../store/auth";
 import { formatUZS } from "../lib/format";
+import NumericInput from "../components/NumericInput";
 
 function PlanBar({ target, actual }: { target: string | null; actual: string | null }) {
   if (!target) return <span className="text-gray-400 dark:text-slate-600">—</span>;
@@ -205,13 +206,11 @@ export default function Operators() {
             <p className="text-sm text-gray-600 dark:text-slate-400">{planModal.name}</p>
             <div>
               <label className="label">Цель (сум)</label>
-              <input
+              <NumericInput
                 className="input"
-                type="number"
-                min="0"
                 value={planInput}
-                onChange={(e) => setPlanInput(e.target.value)}
-                placeholder="например 100000000"
+                onChange={setPlanInput}
+                placeholder="например 100 000 000"
                 autoFocus
               />
             </div>
