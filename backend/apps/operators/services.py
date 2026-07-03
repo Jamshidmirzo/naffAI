@@ -62,8 +62,8 @@ def operator_delete(*, operator: Operator, user=None) -> None:
     from apps.sales.models import Sale, SaleOperator
     from apps.users.models import Profile
 
-    sale_count = Sale.objects.filter(operator=operator).count()
-    line_count = SaleOperator.objects.filter(operator=operator).count()
+    sale_count = Sale.objects.filter(operator=operator, is_deleted=False).count()
+    line_count = SaleOperator.objects.filter(operator=operator, sale__is_deleted=False).count()
     total = sale_count + line_count
     if total > 0:
         raise ValidationError(
