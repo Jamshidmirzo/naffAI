@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../store/auth";
 
 export default function Operators() {
   const qc = useQueryClient();
+  const nav = useNavigate();
   const role = useAuth((s) => s.role);
   const isTeamLead = role === "team_lead";
   const [show, setShow] = useState(false);
@@ -69,7 +71,12 @@ export default function Operators() {
           <tbody>
             {(ops.data?.results || []).map((o: any) => (
               <tr key={o.id} className="border-t border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/40">
-                <td className="px-4 py-2">{o.full_name}</td>
+                <td
+                  className="px-4 py-2 cursor-pointer text-blue-700 dark:text-blue-400 hover:underline"
+                  onClick={() => nav(`/operators/${o.id}`)}
+                >
+                  {o.full_name}
+                </td>
                 <td className="px-4 py-2 text-gray-600 dark:text-slate-400">{o.phone || "—"}</td>
                 <td className="px-4 py-2">
                   <span

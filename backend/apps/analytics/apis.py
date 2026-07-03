@@ -12,6 +12,7 @@ from .selectors import (
     by_model,
     kpi_snapshot,
     leaderboard,
+    resolve_period,
     timeseries_daily,
 )
 
@@ -20,21 +21,38 @@ def _parse(value):
     return parse_datetime(value) if value else None
 
 
+def _window(request) -> tuple[dt.datetime | None, dt.datetime | None]:
+    """
+    Resolve `?period=day|week|month` first (auto-derived window),
+    otherwise fall back to explicit `?date_from` / `?date_to`.
+    """
+    period = request.query_params.get("period")
+    if period:
+        p_from, p_to = resolve_period(period)
+        if p_from is not None:
+            return p_from, p_to
+    return (
+        _parse(request.query_params.get("date_from")),
+        _parse(request.query_params.get("date_to")),
+    )
+
+
 class KpiApi(APIView):
     permission_classes = [IsTeamLeadOrManagerReadOnly]
 
     def get(self, request):
-        return Response(kpi_snapshot())
+        return Response(kpi_snapshot(period=request.query_params.get("period")))
 
 
 class LeaderboardApi(APIView):
     permission_classes = [IsTeamLeadOrManagerReadOnly]
 
     def get(self, request):
+        date_from, date_to = _window(request)
         return Response(
             leaderboard(
-                date_from=_parse(request.query_params.get("date_from")),
-                date_to=_parse(request.query_params.get("date_to")),
+                date_from=date_from,
+                date_to=date_to,
                 limit=int(request.query_params.get("limit", 20)),
             )
         )
@@ -44,22 +62,19 @@ class ByChannelApi(APIView):
     permission_classes = [IsTeamLeadOrManagerReadOnly]
 
     def get(self, request):
-        return Response(
-            by_channel(
-                date_from=_parse(request.query_params.get("date_from")),
-                date_to=_parse(request.query_params.get("date_to")),
-            )
-        )
+        date_from, date_to = _window(request)
+        return Response(by_channel(date_from=date_from, date_to=date_to))
 
 
 class ByModelApi(APIView):
     permission_classes = [IsTeamLeadOrManagerReadOnly]
 
     def get(self, request):
+        date_from, date_to = _window(request)
         return Response(
             by_model(
-                date_from=_parse(request.query_params.get("date_from")),
-                date_to=_parse(request.query_params.get("date_to")),
+                date_from=date_from,
+                date_to=date_to,
                 limit=int(request.query_params.get("limit", 20)),
             )
         )
@@ -69,10 +84,11 @@ class TimeseriesApi(APIView):
     permission_classes = [IsTeamLeadOrManagerReadOnly]
 
     def get(self, request):
-        date_from = _parse(request.query_params.get("date_from")) or (
-            dt.datetime.now() - dt.timedelta(days=30)
-        )
-        date_to = _parse(request.query_params.get("date_to")) or dt.datetime.now()
+        date_from, date_to = _window(request)
+        if date_from is None:
+            date_from = dt.datetime.now() - dt.timedelta(days=30)
+        if date_to is None:
+            date_to = dt.datetime.now()
         return Response(timeseries_daily(date_from=date_from, date_to=date_to))
 
 
@@ -80,8 +96,7 @@ class AnalyticsExportApi(APIView):
     permission_classes = [IsTeamLeadOrManagerReadOnly]
 
     def get(self, request):
-        date_from = _parse(request.query_params.get("date_from"))
-        date_to = _parse(request.query_params.get("date_to"))
+        date_from, date_to = _window(request)
 
         wb = new_workbook()
 

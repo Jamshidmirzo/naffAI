@@ -5,6 +5,7 @@ import Sales from "./pages/Sales";
 import SaleCreate from "./pages/SaleCreate";
 import SaleDetail from "./pages/SaleDetail";
 import Operators from "./pages/Operators";
+import OperatorDetail from "./pages/OperatorDetail";
 import Partners from "./pages/Partners";
 import Analytics from "./pages/Analytics";
 import Payroll from "./pages/Payroll";
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="/sales/:id" element={<SaleDetail />} />
         <Route path="/sales/:id/edit" element={<SaleCreate />} />
         <Route path="/operators" element={<Operators />} />
+        <Route path="/operators/:id" element={<OperatorDetail />} />
         <Route path="/partners" element={<Partners />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/payroll" element={<Payroll />} />

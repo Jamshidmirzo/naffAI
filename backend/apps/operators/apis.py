@@ -1,12 +1,16 @@
+import datetime as dt
+
+from django.utils.dateparse import parse_datetime
 from rest_framework import serializers
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.analytics.selectors import resolve_period
 from apps.users.permissions import IsTeamLead, IsTeamLeadOrManagerReadOnly
 
 from .models import Operator
-from .selectors import operator_get, operator_list
+from .selectors import operator_get, operator_list, operator_stats
 from .services import (
     operator_create,
     operator_deactivate,
@@ -91,3 +95,51 @@ class OperatorDeleteApi(APIView):
             return Response({"detail": "Not found"}, status=404)
         operator_delete(operator=op, user=request.user)
         return Response(status=204)
+
+
+def _parse(value):
+    return parse_datetime(value) if value else None
+
+
+class OperatorStatsApi(APIView):
+    """
+    Full statistics for one operator inside a period window.
+
+    Query params (all optional):
+      - `period=day|week|month` — auto-derived window (defaults to `month`)
+      - `date_from` / `date_to` — explicit ISO datetimes (override `period`)
+      - `include_payroll=0` — skip the monthly payroll block
+
+    Returns a compound payload built by `operator_stats(...)`, plus an
+    optional `payroll` block for the current calendar month.
+    """
+
+    permission_classes = [IsTeamLeadOrManagerReadOnly]
+
+    def get(self, request, pk: int):
+        op = operator_get(pk)
+        if not op:
+            return Response({"detail": "Not found"}, status=404)
+
+        period = request.query_params.get("period")
+        date_from, date_to = _parse(request.query_params.get("date_from")), _parse(
+            request.query_params.get("date_to")
+        )
+        if not (date_from or date_to):
+            p_from, p_to = resolve_period(period or "month")
+            date_from, date_to = p_from, p_to
+
+        payload = operator_stats(operator=op, date_from=date_from, date_to=date_to)
+        payload["period"] = period or "month"
+
+        include_payroll = request.query_params.get("include_payroll", "1") != "0"
+        if include_payroll:
+            # Local import to avoid app-loading cycles.
+            from apps.payroll.services import compute_monthly_payroll
+
+            today = dt.date.today()
+            lines = compute_monthly_payroll(
+                year=today.year, month=today.month, operators=[op]
+            )
+            payload["payroll"] = lines[0].as_dict() if lines else None
+        return Response(payload)

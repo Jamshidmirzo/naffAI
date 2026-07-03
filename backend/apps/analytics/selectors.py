@@ -17,6 +17,35 @@ from apps.sales.models import Sale, SaleOperator, SalePartner
 NET_AMOUNT = F("amount") - F("discount")
 
 
+# ---- period helpers ---------------------------------------------------
+
+VALID_PERIODS = ("day", "week", "month")
+
+
+def resolve_period(period: str | None) -> tuple[dt.datetime, dt.datetime] | tuple[None, None]:
+    """
+    Convert `day|week|month` label into a `[start, end]` datetime window
+    anchored on now() in the current timezone. Returns (None, None) if
+    `period` is missing or unknown — caller must supply explicit dates.
+
+    - day   → current day 00:00 … now
+    - week  → current ISO week (Monday 00:00 … now)
+    - month → 1st of current month 00:00 … now
+    """
+    if period not in VALID_PERIODS:
+        return None, None
+    now = timezone.now()
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if period == "day":
+        return start_of_day, now
+    if period == "week":
+        start_of_week = start_of_day - dt.timedelta(days=now.weekday())
+        return start_of_week, now
+    # month
+    start_of_month = start_of_day.replace(day=1)
+    return start_of_month, now
+
+
 def _base_qs(date_from: dt.datetime | None = None, date_to: dt.datetime | None = None):
     qs = Sale.objects.filter(is_deleted=False, is_returned=False, status="confirmed")
     if date_from:
@@ -43,7 +72,16 @@ def _line_qs(
     return qs
 
 
-def kpi_snapshot() -> dict:
+def kpi_snapshot(period: str | None = None) -> dict:
+    """
+    Returns:
+      - today / week / month blocks (always, for the header KPI cards)
+      - operators_active / operators_trainee counts
+      - top_of_period — top-1 operator for the `period` window
+        (defaults to month; label mirrors the effective period so the
+        UI can title the card appropriately). Legacy alias `top_of_month`
+        is kept in the response for backward compatibility.
+    """
     now = timezone.now()
     start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
     start_of_week = start_of_day - dt.timedelta(days=now.weekday())
@@ -56,12 +94,25 @@ def kpi_snapshot() -> dict:
     operators_active = Operator.objects.filter(status=OperatorStatus.ACTIVE).count()
     operators_trainee = Operator.objects.filter(status=OperatorStatus.TRAINEE).count()
 
+    effective_period = period if period in VALID_PERIODS else "month"
+    period_from, _ = resolve_period(effective_period)
+
     top = (
-        _line_qs(SaleOperator, date_from=start_of_month)
+        _line_qs(SaleOperator, date_from=period_from)
         .values("operator_id", "operator__full_name")
         .annotate(total=Sum("amount"), count=Count("sale", distinct=True))
         .order_by("-total")
         .first()
+    )
+    top_payload = (
+        {
+            "operator_id": top["operator_id"],
+            "operator_name": top["operator__full_name"],
+            "total": str(top["total"]),
+            "count": top["count"],
+        }
+        if top
+        else None
     )
 
     return {
@@ -70,16 +121,10 @@ def kpi_snapshot() -> dict:
         "month": agg(start_of_month),
         "operators_active": operators_active,
         "operators_trainee": operators_trainee,
-        "top_of_month": (
-            {
-                "operator_id": top["operator_id"],
-                "operator_name": top["operator__full_name"],
-                "total": str(top["total"]),
-                "count": top["count"],
-            }
-            if top
-            else None
-        ),
+        "period": effective_period,
+        "top_of_period": top_payload,
+        # legacy alias so any existing consumer keeps working
+        "top_of_month": top_payload if effective_period == "month" else None,
     }
 
 
