@@ -62,6 +62,11 @@ export default function OperatorDetail() {
   const title = periodTitle(period, choice);
   const titleLower = title.toLowerCase();
 
+  // Derive which year/month the plan should reflect based on the selected period
+  const today = new Date();
+  const planYear = choice.kind === "specific" ? choice.year : today.getFullYear();
+  const planMonth = choice.kind === "specific" ? choice.month : today.getMonth() + 1;
+
   const stats = useQuery({
     queryKey: ["operator-stats", id, paramKey],
     queryFn: () =>
@@ -72,16 +77,17 @@ export default function OperatorDetail() {
   });
 
   const planQuery = useQuery({
-    queryKey: ["operator-plan", id],
-    queryFn: () => api.get(`/operators/${id}/plan/`).then((r) => r.data),
+    queryKey: ["operator-plan", id, planYear, planMonth],
+    queryFn: () =>
+      api.get(`/operators/${id}/plan/`, { params: { year: planYear, month: planMonth } }).then((r) => r.data),
     enabled: !!id,
   });
 
   const setPlanMut = useMutation({
     mutationFn: (target_amount: string) =>
-      api.put(`/operators/${id}/plan/`, { target_amount }),
+      api.put(`/operators/${id}/plan/`, { target_amount, year: planYear, month: planMonth }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["operator-plan", id] });
+      qc.invalidateQueries({ queryKey: ["operator-plan", id, planYear, planMonth] });
       setEditPlan(false);
     },
   });
@@ -214,7 +220,7 @@ export default function OperatorDetail() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">
-                План · этот месяц
+                План · {new Date(planYear, planMonth - 1).toLocaleString("ru-RU", { month: "long", year: "numeric" })}
               </div>
               {isTeamLead && !editPlan && (
                 <button
