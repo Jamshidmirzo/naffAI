@@ -126,13 +126,16 @@ class OperatorStatsApi(APIView):
             request.query_params.get("date_to")
         )
         if date_from is not None or date_to is not None:
-            # Explicit range wins over the label — used by the FE
-            # month-picker on `/operators/:id` and `/dashboard`.
             effective_period = "custom"
+        elif period == "all":
+            # No date filter — return all-time data.
+            effective_period = "all"
+            date_from, date_to = None, None
         else:
-            effective_period = period or "month"
-            p_from, p_to = resolve_period(effective_period)
-            date_from, date_to = p_from, p_to
+            effective_period = period or "all"
+            if effective_period != "all":
+                p_from, p_to = resolve_period(effective_period)
+                date_from, date_to = p_from, p_to
 
         payload = operator_stats(operator=op, date_from=date_from, date_to=date_to)
         payload["period"] = effective_period

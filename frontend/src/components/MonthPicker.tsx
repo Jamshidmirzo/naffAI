@@ -22,7 +22,9 @@ export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) 
   const months = recentMonths(monthsBack + 1); // includes current month
 
   const label =
-    value.kind === "current"
+    value.kind === "all"
+      ? "За весь период"
+      : value.kind === "current"
       ? "Текущий период"
       : monthLabel(value.year, value.month);
 
@@ -36,6 +38,7 @@ export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) 
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
+  const isAll = value.kind === "all";
   const isCurrent = value.kind === "current";
 
   return (
@@ -56,6 +59,22 @@ export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) 
           role="listbox"
           className="absolute right-0 z-20 mt-1 w-56 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg py-1 max-h-80 overflow-auto"
         >
+          <button
+            role="option"
+            aria-selected={isAll}
+            onClick={() => {
+              onChange({ kind: "all" });
+              setOpen(false);
+            }}
+            className={
+              "w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-slate-800 " +
+              (isAll
+                ? "text-blue-600 dark:text-blue-400 font-medium"
+                : "text-gray-700 dark:text-slate-200")
+            }
+          >
+            За весь период
+          </button>
           <button
             role="option"
             aria-selected={isCurrent}

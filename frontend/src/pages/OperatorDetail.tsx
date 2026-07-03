@@ -45,14 +45,9 @@ const STATUS_BADGE: Record<string, string> = {
 export default function OperatorDetail() {
   const { id } = useParams<{ id: string }>();
   const [period, setPeriod] = useState<Period>("month");
-  const [choice, setChoice] = useState<MonthChoice>(() => {
-    const prev = new Date();
-    prev.setDate(1);
-    prev.setMonth(prev.getMonth() - 1);
-    return { kind: "specific", year: prev.getFullYear(), month: prev.getMonth() + 1 };
-  });
+  const [choice, setChoice] = useState<MonthChoice>({ kind: "all" });
 
-  const isSpecific = choice.kind === "specific";
+  const isSpecific = choice.kind === "specific" || choice.kind === "all";
   const params = buildPeriodParams(period, choice);
   const paramKey = JSON.stringify(params);
   const title = periodTitle(period, choice);

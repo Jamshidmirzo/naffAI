@@ -13,6 +13,8 @@
 export type Period = "day" | "week" | "month";
 
 export type MonthChoice =
+  // "all" means: no date filter — return everything from the beginning.
+  | { kind: "all" }
   // "current" means: use the ?period=... label; no date_from/date_to.
   | { kind: "current" }
   // "specific" means: pin a concrete calendar month. Ignores period tabs.
@@ -75,9 +77,8 @@ export const buildPeriodParams = (
   period: Period,
   choice: MonthChoice,
 ): Record<string, string> => {
-  if (choice.kind === "specific") {
-    return monthRange(choice.year, choice.month);
-  }
+  if (choice.kind === "all") return { period: "all" };
+  if (choice.kind === "specific") return monthRange(choice.year, choice.month);
   return { period };
 };
 
@@ -89,6 +90,7 @@ export const currentPeriodTitle: Record<Period, string> = {
 };
 
 export const periodTitle = (period: Period, choice: MonthChoice): string => {
+  if (choice.kind === "all") return "За весь период";
   if (choice.kind === "specific") return monthLabel(choice.year, choice.month);
   return currentPeriodTitle[period];
 };
