@@ -4,7 +4,14 @@ import { Link, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { api } from "../lib/api";
 import { formatNumber, formatUZS } from "../lib/format";
+import {
+  buildPeriodParams,
+  periodTitle,
+  type MonthChoice,
+  type Period,
+} from "../lib/period";
 import KpiCard from "../components/KpiCard";
+import MonthPicker from "../components/MonthPicker";
 import ProgressBar from "../components/ProgressBar";
 import {
   Bar,
@@ -16,19 +23,11 @@ import {
   YAxis,
 } from "recharts";
 
-type Period = "day" | "week" | "month";
-
 const PERIOD_OPTIONS: { value: Period; label: string }[] = [
   { value: "day", label: "День" },
   { value: "week", label: "Неделя" },
   { value: "month", label: "Месяц" },
 ];
-
-const PERIOD_TITLE: Record<Period, string> = {
-  day: "Сегодня",
-  week: "Эта неделя",
-  month: "Этот месяц",
-};
 
 const STATUS_LABEL: Record<string, string> = {
   active: "Активен",
@@ -46,12 +45,19 @@ const STATUS_BADGE: Record<string, string> = {
 export default function OperatorDetail() {
   const { id } = useParams<{ id: string }>();
   const [period, setPeriod] = useState<Period>("month");
+  const [choice, setChoice] = useState<MonthChoice>({ kind: "current" });
+
+  const isSpecific = choice.kind === "specific";
+  const params = buildPeriodParams(period, choice);
+  const paramKey = JSON.stringify(params);
+  const title = periodTitle(period, choice);
+  const titleLower = title.toLowerCase();
 
   const stats = useQuery({
-    queryKey: ["operator-stats", id, period],
+    queryKey: ["operator-stats", id, paramKey],
     queryFn: () =>
       api
-        .get(`/operators/${id}/stats/`, { params: { period } })
+        .get(`/operators/${id}/stats/`, { params })
         .then((r) => r.data),
     enabled: !!id,
   });
@@ -97,36 +103,41 @@ export default function OperatorDetail() {
           </div>
         </div>
 
-        <div
-          role="tablist"
-          aria-label="Период"
-          className="inline-flex rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1"
-        >
-          {PERIOD_OPTIONS.map((opt) => {
-            const active = period === opt.value;
-            return (
-              <button
-                key={opt.value}
-                role="tab"
-                aria-selected={active}
-                onClick={() => setPeriod(opt.value)}
-                className={
-                  "px-3 py-1.5 text-sm rounded-md transition-colors " +
-                  (active
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800")
-                }
-              >
-                {opt.label}
-              </button>
-            );
-          })}
+        <div className="flex flex-wrap items-center gap-3">
+          {!isSpecific && (
+            <div
+              role="tablist"
+              aria-label="Период"
+              className="inline-flex rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1"
+            >
+              {PERIOD_OPTIONS.map((opt) => {
+                const active = period === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setPeriod(opt.value)}
+                    className={
+                      "px-3 py-1.5 text-sm rounded-md transition-colors " +
+                      (active
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800")
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <MonthPicker value={choice} onChange={setChoice} />
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <KpiCard
-          label={`Сумма · ${PERIOD_TITLE[period].toLowerCase()}`}
+          label={`Сумма · ${titleLower}`}
           value={formatUZS(s?.totals?.total || 0)}
           sub={`${formatNumber(s?.totals?.count || 0)} продаж`}
         />
@@ -171,7 +182,7 @@ export default function OperatorDetail() {
 
       <div className="card p-5">
         <div className="text-sm font-medium mb-4">
-          Продажи по дням · {PERIOD_TITLE[period].toLowerCase()}
+          Продажи по дням · {titleLower}
         </div>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart

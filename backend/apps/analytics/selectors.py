@@ -72,34 +72,55 @@ def _line_qs(
     return qs
 
 
-def kpi_snapshot(period: str | None = None) -> dict:
+def kpi_snapshot(
+    period: str | None = None,
+    *,
+    date_from: dt.datetime | None = None,
+    date_to: dt.datetime | None = None,
+) -> dict:
     """
     Returns:
       - today / week / month blocks (always, for the header KPI cards)
       - operators_active / operators_trainee counts
-      - top_of_period — top-1 operator for the `period` window
-        (defaults to month; label mirrors the effective period so the
-        UI can title the card appropriately). Legacy alias `top_of_month`
-        is kept in the response for backward compatibility.
+      - selected — aggregate for the caller-selected window (either the
+        `period` label above, or the explicit `[date_from, date_to]` range
+        when both are supplied). The dashboard's «Выбранный период» card
+        reads from here so the UI can title arbitrary month picks like
+        «Июнь 2026» without inventing period labels.
+      - top_of_period — top-1 operator for the selected window (mirrors
+        `selected`). Legacy alias `top_of_month` kept for back-compat.
+
+    When both `date_from` and `date_to` are supplied, they override
+    `period` for the "selected"/"top" slice. The today/week/month header
+    aggregates are always anchored on now() — they are the fixed KPI row.
     """
     now = timezone.now()
     start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
     start_of_week = start_of_day - dt.timedelta(days=now.weekday())
     start_of_month = start_of_day.replace(day=1)
 
-    def agg(date_from):
-        a = _base_qs(date_from=date_from).aggregate(total=Sum(NET_AMOUNT), count=Count("id"))
+    def agg(*, d_from=None, d_to=None):
+        a = _base_qs(date_from=d_from, date_to=d_to).aggregate(
+            total=Sum(NET_AMOUNT), count=Count("id")
+        )
         return {"total": str(a["total"] or Decimal("0")), "count": a["count"] or 0}
 
     operators_active = Operator.objects.filter(status=OperatorStatus.ACTIVE).count()
     operators_trainee = Operator.objects.filter(status=OperatorStatus.TRAINEE).count()
 
-    effective_period = period if period in VALID_PERIODS else "month"
-    period_from, _ = resolve_period(effective_period)
+    # Selected window: explicit range wins over period label.
+    if date_from is not None or date_to is not None:
+        sel_from, sel_to = date_from, date_to
+        effective_period = "custom"
+    else:
+        effective_period = period if period in VALID_PERIODS else "month"
+        sel_from, sel_to = resolve_period(effective_period)
 
+    selected = agg(d_from=sel_from, d_to=sel_to)
+
+    top_qs = _line_qs(SaleOperator, date_from=sel_from, date_to=sel_to)
     top = (
-        _line_qs(SaleOperator, date_from=period_from)
-        .values("operator_id", "operator__full_name")
+        top_qs.values("operator_id", "operator__full_name")
         .annotate(total=Sum("amount"), count=Count("sale", distinct=True))
         .order_by("-total")
         .first()
@@ -116,12 +137,13 @@ def kpi_snapshot(period: str | None = None) -> dict:
     )
 
     return {
-        "today": agg(start_of_day),
-        "week": agg(start_of_week),
-        "month": agg(start_of_month),
+        "today": agg(d_from=start_of_day),
+        "week": agg(d_from=start_of_week),
+        "month": agg(d_from=start_of_month),
         "operators_active": operators_active,
         "operators_trainee": operators_trainee,
         "period": effective_period,
+        "selected": selected,
         "top_of_period": top_payload,
         # legacy alias so any existing consumer keeps working
         "top_of_month": top_payload if effective_period == "month" else None,

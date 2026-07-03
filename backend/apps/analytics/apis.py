@@ -41,7 +41,17 @@ class KpiApi(APIView):
     permission_classes = [IsTeamLeadOrManagerReadOnly]
 
     def get(self, request):
-        return Response(kpi_snapshot(period=request.query_params.get("period")))
+        # Explicit date_from/date_to override the period label; used by the
+        # dashboard's month-picker (see FE `Dashboard.tsx`).
+        date_from = _parse(request.query_params.get("date_from"))
+        date_to = _parse(request.query_params.get("date_to"))
+        return Response(
+            kpi_snapshot(
+                period=request.query_params.get("period"),
+                date_from=date_from,
+                date_to=date_to,
+            )
+        )
 
 
 class LeaderboardApi(APIView):
