@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { api, API_BASE_URL } from "../lib/api";
 import { formatUZS } from "../lib/format";
 import ProgressBar from "../components/ProgressBar";
@@ -8,6 +9,7 @@ import ProgressBar from "../components/ProgressBar";
 const now = new Date();
 
 export default function Payroll() {
+  const nav = useNavigate();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
 
@@ -54,7 +56,12 @@ export default function Payroll() {
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div>
                 <div className="text-sm font-medium flex items-center gap-2">
-                  {l.operator_name}
+                  <span
+                    className="cursor-pointer text-blue-700 dark:text-blue-400 hover:underline"
+                    onClick={() => nav(`/operators/${l.operator_id}`)}
+                  >
+                    {l.operator_name}
+                  </span>
                   {l.is_trainee && (
                     <span className="badge bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300">стажёр</span>
                   )}
