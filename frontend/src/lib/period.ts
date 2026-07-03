@@ -18,7 +18,10 @@ export type MonthChoice =
   // "current" means: use the ?period=... label; no date_from/date_to.
   | { kind: "current" }
   // "specific" means: pin a concrete calendar month. Ignores period tabs.
-  | { kind: "specific"; year: number; month: number }; // month is 1..12
+  | { kind: "specific"; year: number; month: number } // month is 1..12
+  // "range" means: an arbitrary inclusive date-range chosen via calendar.
+  // `from` / `to` are ISO date strings (YYYY-MM-DD). Ignores period tabs.
+  | { kind: "range"; from: string; to: string };
 
 const RU_MONTH_NAMES = [
   "Январь",
@@ -71,7 +74,8 @@ export const monthRange = (
 
 // Build the query params to pass to axios .get(..., { params }).
 // - "current" → { period } (existing behaviour, unchanged)
-// - "specific" → { date_from, date_to } (new)
+// - "specific" → { date_from, date_to } (calendar month)
+// - "range" → { date_from, date_to } (arbitrary calendar range)
 // Extra params (e.g. `limit`) can be spread in on top by the caller.
 export const buildPeriodParams = (
   period: Period,
@@ -79,6 +83,12 @@ export const buildPeriodParams = (
 ): Record<string, string> => {
   if (choice.kind === "all") return { period: "all" };
   if (choice.kind === "specific") return monthRange(choice.year, choice.month);
+  if (choice.kind === "range") {
+    // Backend accepts bare YYYY-MM-DD and snaps the "to" side to end-of-day
+    // (see apis.py::_parse_dt_inclusive_end). Send exactly what the calendar
+    // pickers hold to keep URLs shareable.
+    return { date_from: choice.from, date_to: choice.to };
+  }
   return { period };
 };
 
@@ -89,8 +99,20 @@ export const currentPeriodTitle: Record<Period, string> = {
   month: "Этот месяц",
 };
 
+// Format ISO date "YYYY-MM-DD" as "DD.MM.YYYY" for display; safe on empty.
+export const formatDateRu = (iso: string): string => {
+  if (!iso) return "";
+  const parts = iso.split("-");
+  if (parts.length !== 3) return iso;
+  const [y, m, d] = parts;
+  return `${d}.${m}.${y}`;
+};
+
 export const periodTitle = (period: Period, choice: MonthChoice): string => {
   if (choice.kind === "all") return "За весь период";
   if (choice.kind === "specific") return monthLabel(choice.year, choice.month);
+  if (choice.kind === "range") {
+    return `${formatDateRu(choice.from)} — ${formatDateRu(choice.to)}`;
+  }
   return currentPeriodTitle[period];
 };

@@ -148,7 +148,14 @@ export default function SaleDetail() {
           </div>
           <div>
             <div className="label">Модель</div>
-            <div className="text-sm font-medium">{s.phone_model}</div>
+            <div className="text-sm font-medium">
+              {s.phone_model}
+              {(s.quantity ?? 1) > 1 && (
+                <span className="ml-1 text-gray-500 dark:text-slate-400 font-normal">
+                  × {s.quantity} шт
+                </span>
+              )}
+            </div>
           </div>
           <div>
             <div className="label">Дата продажи</div>

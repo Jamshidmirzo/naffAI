@@ -147,6 +147,7 @@ def sale_create(
     user=None,
     imei: str,
     phone_model: str | None = None,
+    quantity: int = 1,
     operator_id: int | None = None,
     channel_id: int | None = None,
     amount: Decimal | None = None,
@@ -227,9 +228,11 @@ def sale_create(
     primary_op = credited_operator_lines[0][0]
     primary_partner = partner_lines[0][0]
 
+    qty = max(1, int(quantity or 1))
     sale = Sale.objects.create(
         imei=imei,
         phone_model=phone_model[:128],
+        quantity=qty,
         operator=primary_op,
         channel=primary_partner,
         amount=total,
@@ -266,6 +269,7 @@ def sale_create(
         changes={
             "imei": sale.imei,
             "phone_model": sale.phone_model,
+            "quantity": sale.quantity,
             "operators": [
                 {"id": o.id, "name": o.full_name, "amount": str(a)}
                 for o, a in credited_operator_lines
@@ -289,6 +293,7 @@ def sale_full_update(
     user=None,
     imei: str,
     phone_model: str | None = None,
+    quantity: int | None = None,
     operator_id: int | None = None,
     channel_id: int | None = None,
     amount: Decimal | None = None,
@@ -355,6 +360,8 @@ def sale_full_update(
 
     sale.imei = imei
     sale.phone_model = (phone_model or "")[:128]
+    if quantity is not None:
+        sale.quantity = max(1, int(quantity))
     sale.operator = primary_op
     sale.channel = primary_partner
     sale.amount = total
@@ -384,6 +391,7 @@ def sale_full_update(
         changes={
             "imei": sale.imei,
             "phone_model": sale.phone_model,
+            "quantity": sale.quantity,
             "operators": [
                 {"id": o.id, "name": o.full_name, "amount": str(a)}
                 for o, a in credited_operator_lines
@@ -407,7 +415,7 @@ def sale_full_update(
 # preserved verbatim. Does NOT rebuild SaleOperator / SalePartner lines —
 # for that, use `sale_full_update`.
 _PARTIAL_UPDATE_ALLOWED = frozenset(
-    {"sold_at", "client_name", "client_phone", "comment", "phone_model", "discount"}
+    {"sold_at", "client_name", "client_phone", "comment", "phone_model", "discount", "quantity"}
 )
 
 
@@ -488,6 +496,17 @@ def sale_partial_update(*, sale: Sale, user=None, fields: dict) -> Sale:
                     {"field": "discount"},
                 )
             continue
+        if key == "quantity":
+            try:
+                value = int(value)
+            except (TypeError, ValueError) as exc:
+                raise ApplicationError(
+                    "Количество должно быть целым числом", {"field": "quantity"}
+                ) from exc
+            if value < 1:
+                raise ApplicationError(
+                    "Количество должно быть не меньше 1", {"field": "quantity"}
+                )
         if key in ("client_name", "client_phone", "comment", "phone_model"):
             value = (str(value) if value is not None else "").strip()
             if key == "client_name":

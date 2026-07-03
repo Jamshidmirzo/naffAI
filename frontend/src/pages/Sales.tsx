@@ -294,6 +294,7 @@ export default function Sales() {
               <th className="px-4 py-2 text-left">Дата</th>
               <th className="px-4 py-2 text-left">IMEI</th>
               <th className="px-4 py-2 text-left">Модель</th>
+              <th className="px-4 py-2 text-center">Кол-во</th>
               <th className="px-4 py-2 text-left">Оператор</th>
               <th className="px-4 py-2 text-left">Партнёр</th>
               <th className="px-4 py-2 text-right">Сумма</th>
@@ -314,6 +315,9 @@ export default function Sales() {
                 </td>
                 <td className="px-4 py-2 font-mono text-xs">{s.imei}</td>
                 <td className="px-4 py-2">{s.phone_model}</td>
+                <td className="px-4 py-2 text-center tabular-nums">
+                  {s.quantity ?? 1}
+                </td>
                 <td className="px-4 py-2">
                   {s.operator_name}
                   {s.operator_lines?.length > 1 && (

@@ -16,6 +16,10 @@ export default function SaleCreate() {
 
   const [imei, setImei] = useState("");
   const [model, setModel] = useState("");
+  // Quantity of devices in this sale. Default 1; the amount is entered as
+  // the TOTAL for the whole sale, not per-unit — quantity is informational
+  // for reporting only (see Sale.quantity model help_text).
+  const [quantity, setQuantity] = useState("1");
   const [operators, setOperators] = useState<OpLine[]>([{ amount: "" }]);
   const [partners, setPartners] = useState<PLine[]>([{ amount: "" }]);
   const [clientName, setClientName] = useState("");
@@ -38,6 +42,7 @@ export default function SaleCreate() {
       const s = saleQ.data;
       setImei(s.imei || "");
       setModel(s.phone_model || "");
+      setQuantity(String(s.quantity ?? 1));
       setClientName(s.client_name || "");
       setClientPhone(s.client_phone || "");
       setComment(s.comment || "");
@@ -161,9 +166,11 @@ export default function SaleCreate() {
       return;
     }
 
+    const qtyNum = Math.max(1, Number(quantity) || 1);
     const body = {
       imei,
       phone_model: model,
+      quantity: qtyNum,
       operators: okOps.map((o) => ({
         operator_id: o.operator_id,
         operator_name: o.operator_name?.trim(),
@@ -239,21 +246,40 @@ export default function SaleCreate() {
           )}
         </div>
 
-        <div>
-          <label className="label">Модель</label>
-          <input
-            className="input"
-            list="phone-models-list"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            placeholder="Начни вводить — выпадет список. Нет в списке? Впиши свой"
-            autoComplete="off"
-          />
-          <datalist id="phone-models-list">
-            {((modelsQ.data?.results as string[]) || []).map((m) => (
-              <option key={m} value={m} />
-            ))}
-          </datalist>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_8rem] gap-4">
+          <div>
+            <label className="label">Модель</label>
+            <input
+              className="input"
+              list="phone-models-list"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="Начни вводить — выпадет список. Нет в списке? Впиши свой"
+              autoComplete="off"
+            />
+            <datalist id="phone-models-list">
+              {((modelsQ.data?.results as string[]) || []).map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+          </div>
+          <div>
+            <label className="label">Кол-во, шт</label>
+            <input
+              className="input"
+              inputMode="numeric"
+              value={quantity}
+              onChange={(e) => {
+                // Only digits; empty string collapses to "1" on submit.
+                const next = e.target.value.replace(/\D/g, "");
+                setQuantity(next);
+              }}
+              placeholder="1"
+            />
+            <div className="text-[11px] text-gray-500 dark:text-slate-500 mt-1">
+              Сумма ниже — за всю продажу, не за штуку.
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

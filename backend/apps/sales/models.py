@@ -27,6 +27,14 @@ class Sale(TimestampedModel):
         on_delete=models.PROTECT,
         related_name="sales",
     )
+    quantity = models.PositiveSmallIntegerField(
+        default=1,
+        help_text=(
+            "Количество единиц товара в этой продаже. По умолчанию 1 — "
+            "поле не участвует в расчётах суммы (сумма считается уже с "
+            "учётом штук), а служит для отчётности «сколько штук продано»."
+        ),
+    )
     amount = models.DecimalField(max_digits=14, decimal_places=2)
     discount = models.DecimalField(
         max_digits=14,

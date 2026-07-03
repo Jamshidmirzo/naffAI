@@ -47,7 +47,10 @@ export default function OperatorDetail() {
   const [period, setPeriod] = useState<Period>("month");
   const [choice, setChoice] = useState<MonthChoice>({ kind: "all" });
 
-  const isSpecific = choice.kind === "specific" || choice.kind === "all";
+  // Hide the day/week/month tabs whenever the choice is not "current" — the
+  // tabs only steer the ?period= param, and any of the other three variants
+  // (all / specific month / arbitrary range) already sends a full window.
+  const isSpecific = choice.kind !== "current";
   const params = buildPeriodParams(period, choice);
   const paramKey = JSON.stringify(params);
   const title = periodTitle(period, choice);

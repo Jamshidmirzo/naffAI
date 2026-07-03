@@ -65,6 +65,7 @@ class SaleSerializer(serializers.ModelSerializer):
             "id",
             "imei",
             "phone_model",
+            "quantity",
             "operator",
             "operator_name",
             "channel",
@@ -113,6 +114,9 @@ class SaleSerializer(serializers.ModelSerializer):
 class SaleCreateInputSerializer(serializers.Serializer):
     imei = serializers.CharField(min_length=6, max_length=15)
     phone_model = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    quantity = serializers.IntegerField(
+        min_value=1, max_value=32767, required=False, default=1
+    )
     # Multi-allocation (preferred): each line has {operator_id|operator_name, amount}
     operators = serializers.ListField(child=serializers.DictField(), required=False, default=list)
     partners = serializers.ListField(child=serializers.DictField(), required=False, default=list)
@@ -164,6 +168,7 @@ class SalePartialUpdateInputSerializer(serializers.Serializer):
     client_phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
     comment = serializers.CharField(required=False, allow_blank=True)
     phone_model = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    quantity = serializers.IntegerField(min_value=1, max_value=32767, required=False)
     # Inline discount edit — proportionally reduces operator credit on save.
     # See `apps.sales.services.sale_partial_update` for the audit/realloc flow.
     discount = serializers.DecimalField(

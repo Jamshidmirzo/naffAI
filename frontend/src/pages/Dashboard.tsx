@@ -36,7 +36,11 @@ export default function Dashboard() {
   const [period, setPeriod] = useState<Period>("month");
   const [choice, setChoice] = useState<MonthChoice>({ kind: "current" });
 
-  const isSpecific = choice.kind === "specific";
+  // Both "specific" (single calendar month) and "range" (arbitrary calendar
+  // window) send date_from/date_to and hide the day/week/month tabs — the
+  // KPI backend routes both into its "selected" block, so they share the
+  // same read-path here.
+  const isSpecific = choice.kind === "specific" || choice.kind === "range";
   const params = buildPeriodParams(period, choice);
   // A stable string used as query-key seed; encodes the effective window.
   const paramKey = JSON.stringify(params);
