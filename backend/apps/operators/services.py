@@ -53,31 +53,17 @@ def operator_reactivate(*, operator: Operator, user=None) -> Operator:
 @transaction.atomic
 def operator_delete(*, operator: Operator, user=None) -> None:
     """
-    Hard-delete an operator. Allowed ONLY when there are no Sale and no
-    SaleOperator rows pointing at this operator. We refuse otherwise — soft
-    delete (deactivate) is the right tool for operators with history.
+    Hard-delete an operator. All sale references are nullified first so the
+    sale history is preserved but no longer linked to this operator.
     """
     # Local imports to avoid app-loading cycles.
     from apps.payroll.models import PayrollRule
     from apps.sales.models import Sale, SaleOperator
     from apps.users.models import Profile
 
-    sale_count = Sale.objects.filter(operator=operator, is_deleted=False).count()
-    line_count = SaleOperator.objects.filter(operator=operator, sale__is_deleted=False).count()
-    total = sale_count + line_count
-    if total > 0:
-        raise ValidationError(
-            {
-                "detail": (
-                    f"У оператора {total} продаж. Удаление невозможно. "
-                    f"Используйте деактивацию."
-                )
-            }
-        )
-
-    # Clear FK refs from soft-deleted rows so PROTECT doesn't block the hard-delete.
-    SaleOperator.objects.filter(operator=operator, sale__is_deleted=True).delete()
-    Sale.objects.filter(operator=operator, is_deleted=True).update(operator=None)
+    # Detach all sale references before deleting (PROTECT FK would otherwise block).
+    SaleOperator.objects.filter(operator=operator).delete()
+    Sale.objects.filter(operator=operator).update(operator=None)
 
     snapshot = {
         "id": operator.id,
