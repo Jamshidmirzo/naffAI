@@ -159,80 +159,6 @@ export default function OperatorDetail() {
         </div>
       </div>
 
-      {planQuery.data && (
-        <div className="card p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-sm font-medium">
-              План ·{" "}
-              {new Date(planQuery.data.year, planQuery.data.month - 1).toLocaleString("ru-RU", {
-                month: "long",
-                year: "numeric",
-              })}
-            </div>
-            {isTeamLead && !editPlan && (
-              <button
-                className="btn-ghost text-xs"
-                onClick={() => {
-                  setEditPlan(true);
-                  setPlanInput(
-                    planQuery.data.target
-                      ? String(Math.round(Number(planQuery.data.target)))
-                      : ""
-                  );
-                }}
-              >
-                {planQuery.data.target ? "Изменить" : "Установить план"}
-              </button>
-            )}
-          </div>
-          {editPlan ? (
-            <div className="flex items-center gap-2">
-              <input
-                className="input flex-1"
-                type="number"
-                min="0"
-                value={planInput}
-                onChange={(e) => setPlanInput(e.target.value)}
-                placeholder="Цель в сумах"
-                autoFocus
-              />
-              <button
-                className="btn-primary text-sm"
-                disabled={!planInput || setPlanMut.isPending}
-                onClick={() => setPlanMut.mutate(planInput)}
-              >
-                {setPlanMut.isPending ? "…" : "Сохранить"}
-              </button>
-              <button className="btn-ghost text-sm" onClick={() => setEditPlan(false)}>
-                Отмена
-              </button>
-            </div>
-          ) : planQuery.data.target ? (
-            <div>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-gray-600 dark:text-slate-400">
-                  Выполнено:{" "}
-                  <span className="font-semibold text-gray-900 dark:text-slate-100">
-                    {formatUZS(Number(planQuery.data.actual))}
-                  </span>
-                </span>
-                <span className="font-semibold text-gray-900 dark:text-slate-100">
-                  {planQuery.data.percent}%
-                </span>
-              </div>
-              <ProgressBar value={planQuery.data.percent} />
-              <div className="text-xs text-gray-500 dark:text-slate-400 mt-1">
-                Цель: {formatUZS(Number(planQuery.data.target))}
-              </div>
-            </div>
-          ) : (
-            <div className="text-sm text-gray-500 dark:text-slate-400">
-              План на этот месяц не установлен
-            </div>
-          )}
-        </div>
-      )}
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <KpiCard
           label={`Сумма · ${titleLower}`}
@@ -248,34 +174,111 @@ export default function OperatorDetail() {
           }
           sub="Кредитованная сумма ÷ кол-во"
         />
-        {s?.payroll ? (
-          <div className="card p-5">
-            <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">
-              Зарплата · этот месяц
-            </div>
-            <div className="mt-2 text-2xl font-semibold text-gray-900 dark:text-slate-100">
-              {formatUZS(s.payroll.payout)}
-            </div>
-            <div className="mt-3">
-              <div className="flex justify-between text-xs text-gray-600 dark:text-slate-400 mb-1">
-                <span>
-                  {formatUZS(s.payroll.total_sales)} /{" "}
-                  {formatUZS(s.payroll.threshold)}
-                </span>
-                <span>{s.payroll.progress_percent}%</span>
+        <div className="card p-5 flex flex-col gap-4">
+          {/* Зарплата */}
+          {s?.payroll ? (
+            <div>
+              <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                Зарплата · этот месяц
               </div>
-              <ProgressBar value={s.payroll.progress_percent} />
+              <div className="mt-2 text-2xl font-semibold text-gray-900 dark:text-slate-100">
+                {formatUZS(s.payroll.payout)}
+              </div>
+              <div className="mt-3">
+                <div className="flex justify-between text-xs text-gray-600 dark:text-slate-400 mb-1">
+                  <span>
+                    {formatUZS(s.payroll.total_sales)} / {formatUZS(s.payroll.threshold)}
+                  </span>
+                  <span>{s.payroll.progress_percent}%</span>
+                </div>
+                <ProgressBar value={s.payroll.progress_percent} />
+              </div>
+              {s.payroll.threshold_reached && (
+                <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+                  Порог достигнут — формула: {s.payroll.payout_type} · {s.payroll.payout_value}
+                </div>
+              )}
             </div>
-            {s.payroll.threshold_reached && (
-              <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
-                Порог достигнут — формула: {s.payroll.payout_type} ·{" "}
-                {s.payroll.payout_value}
+          ) : (
+            <div>
+              <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Зарплата · этот месяц</div>
+              <div className="mt-2 text-2xl font-semibold text-gray-400 dark:text-slate-500">—</div>
+              <div className="text-xs text-gray-400 dark:text-slate-500 mt-1">Правило не настроено</div>
+            </div>
+          )}
+
+          {/* Разделитель */}
+          <div className="border-t border-gray-100 dark:border-slate-800" />
+
+          {/* План на месяц */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                План · этот месяц
+              </div>
+              {isTeamLead && !editPlan && (
+                <button
+                  className="btn-ghost text-xs py-0.5 px-2"
+                  onClick={() => {
+                    setEditPlan(true);
+                    setPlanInput(
+                      planQuery.data?.target
+                        ? String(Math.round(Number(planQuery.data.target)))
+                        : ""
+                    );
+                  }}
+                >
+                  {planQuery.data?.target ? "Изменить" : "Установить"}
+                </button>
+              )}
+            </div>
+
+            {editPlan ? (
+              <div className="flex items-center gap-2">
+                <input
+                  className="input flex-1 text-sm py-1"
+                  type="number"
+                  min="0"
+                  value={planInput}
+                  onChange={(e) => setPlanInput(e.target.value)}
+                  placeholder="Цель в сумах"
+                  autoFocus
+                />
+                <button
+                  className="btn-primary text-xs py-1 px-3"
+                  disabled={!planInput || setPlanMut.isPending}
+                  onClick={() => setPlanMut.mutate(planInput)}
+                >
+                  {setPlanMut.isPending ? "…" : "OK"}
+                </button>
+                <button className="btn-ghost text-xs py-1" onClick={() => setEditPlan(false)}>
+                  ✕
+                </button>
+              </div>
+            ) : planQuery.data?.target ? (
+              <div>
+                <div className="flex justify-between text-xs text-gray-600 dark:text-slate-400 mb-1">
+                  <span>{formatUZS(Number(planQuery.data.actual))}</span>
+                  <span className="font-semibold">{planQuery.data.percent}%</span>
+                </div>
+                <ProgressBar value={planQuery.data.percent} />
+                <div className="text-xs text-gray-400 dark:text-slate-500 mt-1">
+                  из {formatUZS(Number(planQuery.data.target))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-gray-400 dark:text-slate-500">
+                {planQuery.isLoading ? "Загрузка…" : "Не установлен"}
+                {isTeamLead && !planQuery.isLoading && (
+                  <span className="ml-1 text-blue-500 cursor-pointer hover:underline"
+                    onClick={() => { setEditPlan(true); setPlanInput(""); }}>
+                    — задать
+                  </span>
+                )}
               </div>
             )}
           </div>
-        ) : (
-          <KpiCard label="Зарплата" value="—" sub="Правило не настроено" />
-        )}
+        </div>
       </div>
 
       <div className="card p-5">
