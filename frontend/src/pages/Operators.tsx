@@ -1,23 +1,53 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Eye, EyeOff, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../store/auth";
+import { formatUZS } from "../lib/format";
+
+function PlanBar({ target, actual }: { target: string | null; actual: string | null }) {
+  if (!target) return <span className="text-gray-400 dark:text-slate-600">—</span>;
+  const pct = Math.min(100, Math.round((Number(actual || 0) / Number(target)) * 100));
+  return (
+    <div className="w-36">
+      <div className="flex justify-between text-xs text-gray-500 dark:text-slate-400 mb-0.5">
+        <span>{pct}%</span>
+        <span>{formatUZS(Number(actual || 0))}</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-gray-200 dark:bg-slate-700 overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${
+            pct >= 100 ? "bg-emerald-500" : pct >= 70 ? "bg-blue-500" : "bg-amber-400"
+          }`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">
+        из {formatUZS(Number(target))}
+      </div>
+    </div>
+  );
+}
 
 export default function Operators() {
   const qc = useQueryClient();
   const nav = useNavigate();
   const role = useAuth((s) => s.role);
   const isTeamLead = role === "team_lead";
+
+  const [showInactive, setShowInactive] = useState(true);
   const [show, setShow] = useState(false);
   const [form, setForm] = useState({ full_name: "", phone: "", status: "active", note: "" });
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
-  const [deleteError, setDeleteError] = useState<string>("");
+  const [deleteError, setDeleteError] = useState("");
+  const [planModal, setPlanModal] = useState<{ id: number; name: string; current: string | null } | null>(null);
+  const [planInput, setPlanInput] = useState("");
 
   const ops = useQuery({
-    queryKey: ["operators"],
-    queryFn: () => api.get("/operators/").then((r) => r.data),
+    queryKey: ["operators", showInactive],
+    queryFn: () =>
+      api.get("/operators/", { params: { include_inactive: showInactive ? 1 : 0 } }).then((r) => r.data),
   });
 
   const create = useMutation({
@@ -49,13 +79,34 @@ export default function Operators() {
     },
   });
 
+  const setPlan = useMutation({
+    mutationFn: ({ id, target_amount }: { id: number; target_amount: string }) =>
+      api.put(`/operators/${id}/plan/`, { target_amount }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["operators"] });
+      setPlanModal(null);
+      setPlanInput("");
+    },
+  });
+
+  const rows = ops.data?.results || [];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Операторы</h1>
-        <button className="btn-primary" onClick={() => setShow(true)}>
-          <Plus className="w-4 h-4" /> Добавить
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            className="btn-ghost text-sm flex items-center gap-1"
+            onClick={() => setShowInactive((v) => !v)}
+          >
+            {showInactive ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {showInactive ? "Скрыть неактивных" : "Показать неактивных"}
+          </button>
+          <button className="btn-primary" onClick={() => setShow(true)}>
+            <Plus className="w-4 h-4" /> Добавить
+          </button>
+        </div>
       </div>
 
       <div className="card overflow-hidden">
@@ -65,12 +116,18 @@ export default function Operators() {
               <th className="px-4 py-2 text-left">Имя</th>
               <th className="px-4 py-2 text-left">Телефон</th>
               <th className="px-4 py-2 text-left">Статус</th>
+              <th className="px-4 py-2 text-left">План (месяц)</th>
               <th className="px-4 py-2 text-right">Действие</th>
             </tr>
           </thead>
           <tbody>
-            {(ops.data?.results || []).map((o: any) => (
-              <tr key={o.id} className="border-t border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/40">
+            {rows.map((o: any) => (
+              <tr
+                key={o.id}
+                className={`border-t border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/40 ${
+                  o.status === "inactive" ? "opacity-50" : ""
+                }`}
+              >
                 <td
                   className="px-4 py-2 cursor-pointer text-blue-700 dark:text-blue-400 hover:underline"
                   onClick={() => nav(`/operators/${o.id}`)}
@@ -91,13 +148,33 @@ export default function Operators() {
                     {o.status === "active" ? "активен" : o.status === "trainee" ? "стажёр" : "неактивен"}
                   </span>
                 </td>
+                <td className="px-4 py-3">
+                  <div
+                    className={isTeamLead ? "cursor-pointer group inline-block" : "inline-block"}
+                    onClick={
+                      isTeamLead
+                        ? () => {
+                            setPlanModal({ id: o.id, name: o.full_name, current: o.plan_target });
+                            setPlanInput(
+                              o.plan_target ? String(Math.round(Number(o.plan_target))) : ""
+                            );
+                          }
+                        : undefined
+                    }
+                  >
+                    <PlanBar target={o.plan_target} actual={o.plan_actual} />
+                    {isTeamLead && (
+                      <span className="text-xs text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity block mt-0.5">
+                        изменить
+                      </span>
+                    )}
+                  </div>
+                </td>
                 <td className="px-4 py-2 text-right">
                   <div className="inline-flex items-center gap-1">
                     <button
                       className="btn-ghost text-xs"
-                      onClick={() =>
-                        toggle.mutate({ id: o.id, active: o.status === "inactive" })
-                      }
+                      onClick={() => toggle.mutate({ id: o.id, active: o.status === "inactive" })}
                     >
                       {o.status === "inactive" ? "Активировать" : "Деактивировать"}
                     </button>
@@ -120,13 +197,50 @@ export default function Operators() {
         </table>
       </div>
 
+      {/* Plan edit modal */}
+      {planModal && (
+        <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
+          <div className="card p-6 w-full max-w-sm space-y-4">
+            <h2 className="text-lg font-semibold">План на месяц</h2>
+            <p className="text-sm text-gray-600 dark:text-slate-400">{planModal.name}</p>
+            <div>
+              <label className="label">Цель (сум)</label>
+              <input
+                className="input"
+                type="number"
+                min="0"
+                value={planInput}
+                onChange={(e) => setPlanInput(e.target.value)}
+                placeholder="например 100000000"
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button className="btn-ghost" onClick={() => setPlanModal(null)}>
+                Отмена
+              </button>
+              <button
+                className="btn-primary"
+                disabled={!planInput || setPlan.isPending}
+                onClick={() => setPlan.mutate({ id: planModal.id, target_amount: planInput })}
+              >
+                {setPlan.isPending ? "Сохранение…" : "Сохранить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirm modal */}
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
           <div className="card p-6 w-full max-w-md space-y-4">
             <h2 className="text-lg font-semibold">Удалить оператора</h2>
             <p className="text-sm text-gray-600 dark:text-slate-400">
-              Удалить оператора <span className="font-medium text-gray-900 dark:text-slate-100">{confirmDelete.name}</span>?
-              Действие необратимо. Удаление возможно только для операторов без продаж — иначе используйте деактивацию.
+              Удалить оператора{" "}
+              <span className="font-medium text-gray-900 dark:text-slate-100">{confirmDelete.name}</span>?
+              Действие необратимо. Удаление возможно только для операторов без продаж — иначе используйте
+              деактивацию.
             </p>
             {deleteError && (
               <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 rounded-lg px-3 py-2">
@@ -158,6 +272,7 @@ export default function Operators() {
         </div>
       )}
 
+      {/* Create modal */}
       {show && (
         <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
           <form

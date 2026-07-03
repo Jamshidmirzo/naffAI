@@ -5,7 +5,7 @@ from rest_framework.exceptions import ValidationError
 
 from apps.audit.services import AuditAction, audit_diff, audit_log_create
 
-from .models import Operator, OperatorStatus
+from .models import Operator, OperatorMonthlyPlan, OperatorStatus
 
 
 @transaction.atomic
@@ -92,3 +92,19 @@ def operator_delete(*, operator: Operator, user=None) -> None:
         entity_id=operator_id,
         changes={"snapshot": snapshot},
     )
+
+
+@transaction.atomic
+def operator_plan_upsert(*, operator: Operator, year: int, month: int, target_amount, user=None) -> OperatorMonthlyPlan:
+    plan, created = OperatorMonthlyPlan.objects.update_or_create(
+        operator=operator, year=year, month=month,
+        defaults={"target_amount": target_amount},
+    )
+    audit_log_create(
+        user=user,
+        action=AuditAction.CREATE if created else AuditAction.UPDATE,
+        entity="operators.OperatorMonthlyPlan",
+        entity_id=plan.id,
+        changes={"year": str(year), "month": str(month), "target_amount": str(target_amount)},
+    )
+    return plan

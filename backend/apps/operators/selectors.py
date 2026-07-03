@@ -3,12 +3,12 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
-from django.db.models import Count, F, Q, QuerySet, Sum
-from django.db.models.functions import TruncDate
+from django.db.models import Count, DecimalField, F, OuterRef, Q, QuerySet, Subquery, Sum, Value
+from django.db.models.functions import Coalesce, TruncDate
 
 from apps.sales.models import Sale, SaleOperator, SalePartner
 
-from .models import Operator, OperatorStatus
+from .models import Operator, OperatorMonthlyPlan, OperatorStatus
 
 
 def operator_list(
@@ -16,6 +16,7 @@ def operator_list(
     search: str | None = None,
     status: str | None = None,
     include_inactive: bool = True,
+    with_plan: bool = False,
 ) -> QuerySet[Operator]:
     qs = Operator.objects.all()
     if not include_inactive:
@@ -24,7 +25,56 @@ def operator_list(
         qs = qs.filter(status=status)
     if search:
         qs = qs.filter(Q(full_name__icontains=search) | Q(phone__icontains=search))
+    if with_plan:
+        today = dt.date.today()
+        plan_subq = OperatorMonthlyPlan.objects.filter(
+            operator_id=OuterRef("pk"), year=today.year, month=today.month
+        ).values("target_amount")[:1]
+        actual_subq = (
+            SaleOperator.objects.filter(
+                operator_id=OuterRef("pk"),
+                sale__is_deleted=False,
+                sale__is_returned=False,
+                sale__status="confirmed",
+                sale__sold_at__year=today.year,
+                sale__sold_at__month=today.month,
+            )
+            .values("operator_id")
+            .annotate(s=Sum("amount"))
+            .values("s")[:1]
+        )
+        qs = qs.annotate(
+            plan_target=Subquery(plan_subq, output_field=DecimalField()),
+            plan_actual=Coalesce(
+                Subquery(actual_subq, output_field=DecimalField()),
+                Value(Decimal("0")),
+            ),
+        )
     return qs
+
+
+def operator_plan_progress(*, operator: Operator, year: int, month: int) -> dict:
+    plan = OperatorMonthlyPlan.objects.filter(operator=operator, year=year, month=month).first()
+    target = plan.target_amount if plan else None
+    actual = (
+        SaleOperator.objects.filter(
+            operator=operator,
+            sale__is_deleted=False,
+            sale__is_returned=False,
+            sale__status="confirmed",
+            sale__sold_at__year=year,
+            sale__sold_at__month=month,
+        ).aggregate(total=Sum("amount"))["total"]
+        or Decimal("0")
+    )
+    percent = int(actual / target * 100) if target and target > 0 else 0
+    return {
+        "year": year,
+        "month": month,
+        "target": str(target) if target is not None else None,
+        "actual": str(actual),
+        "percent": min(percent, 100),
+    }
 
 
 def operator_get(pk: int) -> Operator | None:

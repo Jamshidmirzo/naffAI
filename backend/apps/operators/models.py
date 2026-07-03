@@ -24,3 +24,13 @@ class Operator(TimestampedModel):
 
     def __str__(self) -> str:
         return self.full_name
+
+
+class OperatorMonthlyPlan(TimestampedModel):
+    operator = models.ForeignKey(Operator, on_delete=models.CASCADE, related_name="monthly_plans")
+    year = models.PositiveSmallIntegerField()
+    month = models.PositiveSmallIntegerField()
+    target_amount = models.DecimalField(max_digits=16, decimal_places=2)
+
+    class Meta:
+        unique_together = ("operator", "year", "month")

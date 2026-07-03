@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { api } from "../lib/api";
+import { useAuth } from "../store/auth";
 import { formatNumber, formatUZS } from "../lib/format";
 import {
   buildPeriodParams,
@@ -44,8 +45,13 @@ const STATUS_BADGE: Record<string, string> = {
 
 export default function OperatorDetail() {
   const { id } = useParams<{ id: string }>();
+  const qc = useQueryClient();
+  const role = useAuth((s) => s.role);
+  const isTeamLead = role === "team_lead";
   const [period, setPeriod] = useState<Period>("month");
   const [choice, setChoice] = useState<MonthChoice>({ kind: "all" });
+  const [editPlan, setEditPlan] = useState(false);
+  const [planInput, setPlanInput] = useState("");
 
   // Hide the day/week/month tabs whenever the choice is not "current" — the
   // tabs only steer the ?period= param, and any of the other three variants
@@ -63,6 +69,21 @@ export default function OperatorDetail() {
         .get(`/operators/${id}/stats/`, { params })
         .then((r) => r.data),
     enabled: !!id,
+  });
+
+  const planQuery = useQuery({
+    queryKey: ["operator-plan", id],
+    queryFn: () => api.get(`/operators/${id}/plan/`).then((r) => r.data),
+    enabled: !!id,
+  });
+
+  const setPlanMut = useMutation({
+    mutationFn: (target_amount: string) =>
+      api.put(`/operators/${id}/plan/`, { target_amount }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["operator-plan", id] });
+      setEditPlan(false);
+    },
   });
 
   if (!id) return null;
@@ -137,6 +158,80 @@ export default function OperatorDetail() {
           <MonthPicker value={choice} onChange={setChoice} />
         </div>
       </div>
+
+      {planQuery.data && (
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm font-medium">
+              План ·{" "}
+              {new Date(planQuery.data.year, planQuery.data.month - 1).toLocaleString("ru-RU", {
+                month: "long",
+                year: "numeric",
+              })}
+            </div>
+            {isTeamLead && !editPlan && (
+              <button
+                className="btn-ghost text-xs"
+                onClick={() => {
+                  setEditPlan(true);
+                  setPlanInput(
+                    planQuery.data.target
+                      ? String(Math.round(Number(planQuery.data.target)))
+                      : ""
+                  );
+                }}
+              >
+                {planQuery.data.target ? "Изменить" : "Установить план"}
+              </button>
+            )}
+          </div>
+          {editPlan ? (
+            <div className="flex items-center gap-2">
+              <input
+                className="input flex-1"
+                type="number"
+                min="0"
+                value={planInput}
+                onChange={(e) => setPlanInput(e.target.value)}
+                placeholder="Цель в сумах"
+                autoFocus
+              />
+              <button
+                className="btn-primary text-sm"
+                disabled={!planInput || setPlanMut.isPending}
+                onClick={() => setPlanMut.mutate(planInput)}
+              >
+                {setPlanMut.isPending ? "…" : "Сохранить"}
+              </button>
+              <button className="btn-ghost text-sm" onClick={() => setEditPlan(false)}>
+                Отмена
+              </button>
+            </div>
+          ) : planQuery.data.target ? (
+            <div>
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-gray-600 dark:text-slate-400">
+                  Выполнено:{" "}
+                  <span className="font-semibold text-gray-900 dark:text-slate-100">
+                    {formatUZS(Number(planQuery.data.actual))}
+                  </span>
+                </span>
+                <span className="font-semibold text-gray-900 dark:text-slate-100">
+                  {planQuery.data.percent}%
+                </span>
+              </div>
+              <ProgressBar value={planQuery.data.percent} />
+              <div className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+                Цель: {formatUZS(Number(planQuery.data.target))}
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500 dark:text-slate-400">
+              План на этот месяц не установлен
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <KpiCard
