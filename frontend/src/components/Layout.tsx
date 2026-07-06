@@ -25,6 +25,8 @@ const items = [
   { to: "/audit", label: "Журнал", icon: History },
 ];
 
+const SCREEN_ITEM = { href: "/screen", label: "Экран монитора", icon: Monitor };
+
 export default function Layout() {
   const auth = useAuth();
   const theme = useTheme();
@@ -58,18 +60,18 @@ export default function Layout() {
               {it.label}
             </NavLink>
           ))}
+          <div className="pt-2 border-t border-gray-100 dark:border-slate-800 mt-2">
+            <a
+              href={SCREEN_ITEM.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition font-medium"
+            >
+              <SCREEN_ITEM.icon className="w-4 h-4" />
+              {SCREEN_ITEM.label}
+            </a>
+          </div>
         </nav>
-        <div className="px-3 pb-2">
-          <a
-            href="/screen"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition font-medium"
-          >
-            <Monitor className="w-4 h-4" />
-            Экран монитора
-          </a>
-        </div>
         <div className="px-3 py-4 border-t border-gray-200 dark:border-slate-800 space-y-2">
           <div className="px-3 text-xs text-gray-500 dark:text-slate-400">
             {auth.username} · {auth.role}
