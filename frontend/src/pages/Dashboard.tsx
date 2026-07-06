@@ -27,7 +27,6 @@ import {
 
 const PERIOD_OPTIONS: { value: Period; label: string }[] = [
   { value: "day", label: "День" },
-  { value: "week", label: "Неделя" },
   { value: "month", label: "Месяц" },
 ];
 
@@ -83,15 +82,11 @@ export default function Dashboard() {
     ? kpi.data?.selected?.total
     : period === "day"
     ? kpi.data?.today.total
-    : period === "week"
-    ? kpi.data?.week.total
     : kpi.data?.month.total;
   const selectedCount = isSpecific
     ? kpi.data?.selected?.count
     : period === "day"
     ? kpi.data?.today.count
-    : period === "week"
-    ? kpi.data?.week.count
     : kpi.data?.month.count;
 
   return (
@@ -134,7 +129,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <KpiCard
           label={title}
           value={formatUZS(selectedTotal || 0)}
@@ -144,11 +139,6 @@ export default function Dashboard() {
           label={currentPeriodTitle.day}
           value={formatUZS(kpi.data?.today.total || 0)}
           sub={`${kpi.data?.today.count || 0} продаж`}
-        />
-        <KpiCard
-          label={currentPeriodTitle.week}
-          value={formatUZS(kpi.data?.week.total || 0)}
-          sub={`${kpi.data?.week.count || 0} продаж`}
         />
         <KpiCard
           label="Операторы"
