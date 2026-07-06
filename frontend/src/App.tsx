@@ -10,6 +10,7 @@ import Partners from "./pages/Partners";
 import Analytics from "./pages/Analytics";
 import Payroll from "./pages/Payroll";
 import Audit from "./pages/Audit";
+import Screen from "./pages/Screen";
 import Login from "./pages/Login";
 import { useAuth } from "./store/auth";
 
@@ -23,6 +24,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/screen" element={<Protected><Screen /></Protected>} />
       <Route
         element={
           <Protected>
