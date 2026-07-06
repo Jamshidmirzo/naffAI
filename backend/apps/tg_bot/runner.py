@@ -714,6 +714,8 @@ async def main() -> None:
             from apps.tg_bot.models import BotSubscription
 
             def _subs():
+                from django.db import close_old_connections
+                close_old_connections()
                 return list(
                     BotSubscription.objects.filter(is_active=True).values_list("chat_id", "language")
                 )
@@ -724,12 +726,17 @@ async def main() -> None:
                 logger.exception("loading subscriptions failed")
                 continue
 
+            def _build_report(lang: str) -> str:
+                from django.db import close_old_connections
+                close_old_connections()
+                return build_daily_report(None, lang)
+
             # Build report once per language so we don't aggregate N times for N subscribers.
             cache: dict[str, str] = {}
             for chat_id, lang in rows:
                 if lang not in cache:
                     try:
-                        cache[lang] = await asyncio.to_thread(build_daily_report, None, lang)
+                        cache[lang] = await asyncio.to_thread(_build_report, lang)
                     except Exception:  # noqa: BLE001
                         logger.exception("daily report build failed for lang=%s", lang)
                         cache[lang] = "report-build-failed"

@@ -131,6 +131,18 @@ export default function OperatorDetail() {
                 </span>
               )}
             </div>
+            {(planQuery.data?.achievements?.length ?? 0) > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {planQuery.data.achievements.map((b: any) => (
+                  <span
+                    key={b.slug}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30"
+                  >
+                    {b.emoji} {b.label}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

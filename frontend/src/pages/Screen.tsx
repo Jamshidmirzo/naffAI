@@ -173,6 +173,18 @@ export default function Screen() {
                   <div className={`text-2xl font-black truncate ${NAME_COLOR[i]}`}>
                     {op.operator_name}
                   </div>
+                  {(plan?.achievements?.length ?? 0) > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-1 mb-0.5">
+                      {plan.achievements.map((b: any) => (
+                        <span
+                          key={b.slug}
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-white/10 text-white/90"
+                        >
+                          {b.emoji} {b.label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {hasPlan ? (
                     <div className="mt-1.5">
                       <div className="flex justify-between text-xs text-slate-400 mb-1">

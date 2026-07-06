@@ -11,7 +11,7 @@ from apps.analytics.selectors import resolve_period
 from apps.users.permissions import IsTeamLead, IsTeamLeadOrManagerReadOnly
 
 from .models import Operator
-from .selectors import operator_get, operator_list, operator_plan_progress, operator_stats
+from .selectors import operator_achievements, operator_get, operator_list, operator_plan_progress, operator_stats
 from .services import (
     operator_create,
     operator_deactivate,
@@ -119,7 +119,9 @@ class OperatorPlanApi(APIView):
         today = dt.date.today()
         year = int(request.query_params.get("year", today.year))
         month = int(request.query_params.get("month", today.month))
-        return Response(operator_plan_progress(operator=op, year=year, month=month))
+        data = operator_plan_progress(operator=op, year=year, month=month)
+        data["achievements"] = operator_achievements(operator=op, year=year, month=month)
+        return Response(data)
 
     def put(self, request, pk: int):
         if not IsTeamLead().has_permission(request, self):
@@ -181,6 +183,7 @@ class OperatorStatsApi(APIView):
 
         today = dt.date.today()
         payload["plan"] = operator_plan_progress(operator=op, year=today.year, month=today.month)
+        payload["achievements"] = operator_achievements(operator=op, year=today.year, month=today.month)
 
         include_payroll = request.query_params.get("include_payroll", "1") != "0"
         if include_payroll:

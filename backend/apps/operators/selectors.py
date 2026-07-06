@@ -4,7 +4,8 @@ import datetime as dt
 from decimal import Decimal
 
 from django.db.models import Count, DecimalField, F, OuterRef, Q, QuerySet, Subquery, Sum, Value
-from django.db.models.functions import Coalesce, TruncDate
+from django.db.models.functions import Coalesce, TruncDate, TruncMonth
+from django.utils import timezone
 
 from apps.sales.models import Sale, SaleOperator, SalePartner
 
@@ -79,6 +80,115 @@ def operator_plan_progress(*, operator: Operator, year: int, month: int) -> dict
 
 def operator_get(pk: int) -> Operator | None:
     return Operator.objects.filter(pk=pk).first()
+
+
+def _sales_streak(*, operator: Operator) -> int:
+    """Count consecutive calendar days with ≥1 sale, ending at today (or yesterday)."""
+    tz = timezone.get_current_timezone()
+    today = timezone.localdate()
+    window_start = dt.datetime.combine(today - dt.timedelta(days=90), dt.time.min, tzinfo=tz)
+
+    raw = (
+        SaleOperator.objects.filter(
+            operator=operator,
+            sale__is_deleted=False,
+            sale__is_returned=False,
+            sale__status="confirmed",
+            sale__sold_at__gte=window_start,
+        )
+        .annotate(day=TruncDate("sale__sold_at"))
+        .values_list("day", flat=True)
+        .distinct()
+    )
+    dates = {d if isinstance(d, dt.date) else d.date() for d in raw}
+
+    streak = 0
+    check = today
+    while check in dates:
+        streak += 1
+        check -= dt.timedelta(days=1)
+    if streak == 0:
+        check = today - dt.timedelta(days=1)
+        while check in dates:
+            streak += 1
+            check -= dt.timedelta(days=1)
+    return streak
+
+
+def operator_achievements(*, operator: Operator, year: int, month: int) -> list[dict]:
+    """
+    Returns earned badges for the operator in the given year/month.
+    Each entry: {"slug": str, "emoji": str, "label": str}
+    """
+    tz = timezone.get_current_timezone()
+    today = timezone.localdate()
+    badges: list[dict] = []
+
+    # 🔥 Best today — highest sales amount today (always relative to now)
+    today_start = dt.datetime.combine(today, dt.time.min, tzinfo=tz)
+    today_end = today_start + dt.timedelta(days=1)
+    top_today = (
+        SaleOperator.objects.filter(
+            sale__sold_at__gte=today_start,
+            sale__sold_at__lt=today_end,
+            sale__is_deleted=False,
+            sale__is_returned=False,
+            sale__status="confirmed",
+        )
+        .values("operator_id")
+        .annotate(total=Sum("amount"))
+        .order_by("-total")
+        .first()
+    )
+    if top_today and top_today["operator_id"] == operator.id and top_today["total"]:
+        badges.append({"slug": "best_today", "emoji": "🔥", "label": "Лучший сегодня"})
+
+    # ⚡ Personal record month — this month's total ≥ any previous month
+    month_start = dt.datetime(year, month, 1, tzinfo=tz)
+    next_month = (month % 12) + 1
+    next_year = year + (1 if month == 12 else 0)
+    month_end = dt.datetime(next_year, next_month, 1, tzinfo=tz)
+
+    this_total = (
+        SaleOperator.objects.filter(
+            operator=operator,
+            sale__sold_at__gte=month_start,
+            sale__sold_at__lt=month_end,
+            sale__is_deleted=False,
+            sale__is_returned=False,
+            sale__status="confirmed",
+        ).aggregate(total=Sum("amount"))["total"]
+        or Decimal("0")
+    )
+    prev_best = (
+        SaleOperator.objects.filter(
+            operator=operator,
+            sale__sold_at__lt=month_start,
+            sale__is_deleted=False,
+            sale__is_returned=False,
+            sale__status="confirmed",
+        )
+        .annotate(mo=TruncMonth("sale__sold_at"))
+        .values("mo")
+        .annotate(s=Sum("amount"))
+        .order_by("-s")
+        .values_list("s", flat=True)
+        .first()
+    )
+    if this_total > 0 and (prev_best is None or this_total >= prev_best):
+        badges.append({"slug": "record_month", "emoji": "⚡", "label": "Рекорд месяца"})
+
+    # ✅ Plan complete
+    plan = operator_plan_progress(operator=operator, year=year, month=month)
+    if plan["target"] is not None and plan["percent"] >= 100:
+        badges.append({"slug": "plan_done", "emoji": "✅", "label": "План выполнен"})
+
+    # 📈 Consecutive-days streak
+    streak = _sales_streak(operator=operator)
+    if streak >= 2:
+        badges.append({"slug": "streak", "emoji": "📈", "label": f"+{streak} дней подряд"})
+
+    return badges
 
 
 # ---- per-operator statistics (dashboard drill-in) ---------------------
