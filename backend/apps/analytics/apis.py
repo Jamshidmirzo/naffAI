@@ -59,11 +59,16 @@ class LeaderboardApi(APIView):
 
     def get(self, request):
         date_from, date_to = _window(request)
+        # limit=0 (or missing) → return every operator with sales in the window.
+        # The screen dashboard relies on this to show the full ranking with the
+        # top 5 visually highlighted and the tail scrollable.
+        raw_limit = request.query_params.get("limit")
+        limit = int(raw_limit) if raw_limit not in (None, "", "0") else None
         return Response(
             leaderboard(
                 date_from=date_from,
                 date_to=date_to,
-                limit=int(request.query_params.get("limit", 20)),
+                limit=limit,
             )
         )
 

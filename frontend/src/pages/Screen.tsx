@@ -82,8 +82,9 @@ export default function Screen() {
 
   const lb = useQuery({
     queryKey: ["screen-lb", tick],
+    // limit=0 → backend returns every operator with sales this month.
     queryFn: () =>
-      api.get("/analytics/leaderboard/", { params: { ...params, limit: 10 } }).then((r) => r.data),
+      api.get("/analytics/leaderboard/", { params: { ...params, limit: 0 } }).then((r) => r.data),
     staleTime: Infinity,
   });
 
@@ -99,7 +100,9 @@ export default function Screen() {
     staleTime: Infinity,
   });
 
-  const top5 = (lb.data || []).slice(0, 5);
+  const allOps: any[] = lb.data || [];
+  const top5 = allOps.slice(0, 5);
+  const rest = allOps.slice(5);
 
   const planQueries = useQuery({
     queryKey: ["screen-plans", tick, top5.map((o: any) => o.operator_id).join(",")],
@@ -148,92 +151,112 @@ export default function Screen() {
       {/* Body: left leaderboard + right panel */}
       <div className="flex-1 flex gap-5 px-8 pb-3 min-h-0">
 
-        {/* LEFT: Top 5 */}
-        <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-hidden">
-          {top5.map((op: any, i: number) => {
-            const plan = planQueries.data?.[op.operator_id];
-            const hasPlan = plan?.target != null;
-            const pct = hasPlan ? Math.min(100, plan.percent) : 0;
+        {/* LEFT: full ranking — top 5 cards + rest as compact rows.
+            The container is scrollable; on a normal screen only the 5 tall
+            top cards fit without scroll, positions 6+ appear when you scroll. */}
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-3 leaderboard-scroll">
+            {top5.map((op: any, i: number) => {
+              const plan = planQueries.data?.[op.operator_id];
+              const hasPlan = plan?.target != null;
+              const pct = hasPlan ? Math.min(100, plan.percent) : 0;
 
-            return (
-              <div
-                key={op.operator_id}
-                className={`rounded-xl border bg-white/5 backdrop-blur-sm px-5 py-3 flex items-center gap-5 ${CARD_BORDER[i]}`}
-              >
-                {/* Rank */}
-                <div className="w-10 text-center shrink-0">
-                  {i < 3
-                    ? <span className="text-3xl">{MEDALS[i]}</span>
-                    : <span className="text-2xl font-black text-slate-500">{i + 1}</span>
-                  }
-                </div>
-
-                {/* Name + bar */}
-                <div className="flex-1 min-w-0">
-                  <div className={`text-2xl font-black truncate ${NAME_COLOR[i]}`}>
-                    {op.operator_name}
+              return (
+                <div
+                  key={op.operator_id}
+                  className={`rounded-xl border bg-white/5 backdrop-blur-sm px-5 py-3 flex items-center gap-5 ${CARD_BORDER[i]}`}
+                >
+                  {/* Rank */}
+                  <div className="w-10 text-center shrink-0">
+                    {i < 3
+                      ? <span className="text-3xl">{MEDALS[i]}</span>
+                      : <span className="text-2xl font-black text-slate-500">{i + 1}</span>
+                    }
                   </div>
-                  {(plan?.achievements?.length ?? 0) > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-1 mb-0.5">
-                      {plan.achievements.map((b: any) => (
-                        <span
-                          key={b.slug}
-                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-white/10 text-white/90"
-                        >
-                          {b.emoji} {b.label}
+
+                  {/* Name + bar */}
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-2xl font-black truncate ${NAME_COLOR[i]}`}>
+                      {op.operator_name}
+                    </div>
+                    {(plan?.achievements?.length ?? 0) > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-1 mb-0.5">
+                        {plan.achievements.map((b: any) => (
+                          <span
+                            key={b.slug}
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-white/10 text-white/90"
+                          >
+                            {b.emoji} {b.label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {hasPlan ? (
+                      <div className="mt-1.5">
+                        <div className="flex justify-between text-xs text-slate-400 mb-1">
+                          <span>{formatUZS(Number(plan.actual))} из {formatUZS(Number(plan.target))}</span>
+                          <span className={`font-bold ${pct >= 100 ? "text-emerald-400" : ""}`}>{pct}%</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-1000 ${BAR_COLORS[i]} ${pct >= 100 ? "!bg-emerald-400" : ""}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-slate-500 mt-1">{op.count} продаж</div>
+                    )}
+                  </div>
+
+                  {/* Amount */}
+                  <div className="text-right shrink-0">
+                    <div className={`text-2xl font-black tabular-nums ${NAME_COLOR[i]}`}>
+                      {formatUZS(Number(op.total))}
+                    </div>
+                    {hasPlan && (
+                      <div className="text-xs text-slate-400">{op.count} продаж</div>
+                    )}
+                    {pct >= 100 && (
+                      <div className="text-xs text-emerald-400 font-semibold">✓ план выполнен</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Rest of leaderboard (6+): plain, quiet rows — no medals, no bars. */}
+            {rest.length > 0 && (
+              <div className="pt-2">
+                <div className="text-[11px] uppercase tracking-[0.25em] text-slate-500 px-2 pb-2">
+                  Остальные операторы
+                </div>
+                <div className="rounded-xl border border-white/5 bg-white/[0.02] divide-y divide-white/5">
+                  {rest.map((op: any, i: number) => (
+                    <div
+                      key={op.operator_id}
+                      className="px-5 py-2.5 flex items-center gap-4 hover:bg-white/[0.03] transition-colors"
+                    >
+                      <div className="w-10 text-center shrink-0 text-lg font-bold text-slate-500 tabular-nums">
+                        {i + 6}
+                      </div>
+                      <div className="flex-1 min-w-0 flex items-center gap-2">
+                        <span className="text-base text-slate-200 truncate">
+                          {op.operator_name}
                         </span>
-                      ))}
-                    </div>
-                  )}
-                  {hasPlan ? (
-                    <div className="mt-1.5">
-                      <div className="flex justify-between text-xs text-slate-400 mb-1">
-                        <span>{formatUZS(Number(plan.actual))} из {formatUZS(Number(plan.target))}</span>
-                        <span className={`font-bold ${pct >= 100 ? "text-emerald-400" : ""}`}>{pct}%</span>
+                        <span className="text-xs text-slate-500 shrink-0">
+                          · {op.count} продаж
+                        </span>
                       </div>
-                      <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-1000 ${BAR_COLORS[i]} ${pct >= 100 ? "!bg-emerald-400" : ""}`}
-                          style={{ width: `${pct}%` }}
-                        />
+                      <div className="text-base font-semibold text-white tabular-nums shrink-0">
+                        {formatUZS(Number(op.total))}
                       </div>
                     </div>
-                  ) : (
-                    <div className="text-xs text-slate-500 mt-1">{op.count} продаж</div>
-                  )}
-                </div>
-
-                {/* Amount */}
-                <div className="text-right shrink-0">
-                  <div className={`text-2xl font-black tabular-nums ${NAME_COLOR[i]}`}>
-                    {formatUZS(Number(op.total))}
-                  </div>
-                  {hasPlan && (
-                    <div className="text-xs text-slate-400">{op.count} продаж</div>
-                  )}
-                  {pct >= 100 && (
-                    <div className="text-xs text-emerald-400 font-semibold">✓ план выполнен</div>
-                  )}
+                  ))}
                 </div>
               </div>
-            );
-          })}
-
-          {/* Rest of leaderboard (6–10) compact */}
-          {(lb.data || []).length > 5 && (
-            <div className="rounded-xl border border-white/5 bg-white/3 px-5 py-2">
-              <div className="text-xs uppercase tracking-widest text-slate-500 mb-2">Остальные</div>
-              <div className="grid grid-cols-2 gap-x-8 gap-y-1">
-                {(lb.data || []).slice(5, 10).map((op: any, i: number) => (
-                  <div key={op.operator_id} className="flex items-center justify-between text-sm">
-                    <span className="text-slate-400 tabular-nums w-5">{i + 6}.</span>
-                    <span className="flex-1 truncate text-slate-300 ml-1">{op.operator_name}</span>
-                    <span className="text-white font-semibold ml-2 tabular-nums">{formatUZS(Number(op.total))}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* RIGHT: KPI + recent sales */}

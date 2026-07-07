@@ -151,15 +151,23 @@ def kpi_snapshot(
 
 
 def leaderboard(
-    *, date_from: dt.datetime | None = None, date_to: dt.datetime | None = None, limit: int = 20
+    *,
+    date_from: dt.datetime | None = None,
+    date_to: dt.datetime | None = None,
+    limit: int | None = 20,
 ) -> list[dict]:
-    """Per-operator credit aggregated from SaleOperator lines (multi-op aware)."""
-    rows = (
+    """Per-operator credit aggregated from SaleOperator lines (multi-op aware).
+
+    Pass ``limit=None`` (or ``0``) to return every operator with sales in the
+    window — used by the big-screen dashboard which shows the full ranking.
+    """
+    qs = (
         _line_qs(SaleOperator, date_from=date_from, date_to=date_to)
         .values("operator_id", "operator__full_name", "operator__status")
         .annotate(total=Sum("amount"), count=Count("sale", distinct=True), avg_ticket=Avg("amount"))
-        .order_by("-total")[:limit]
+        .order_by("-total")
     )
+    rows = qs if not limit else qs[:limit]
     return [
         {
             "operator_id": r["operator_id"],
