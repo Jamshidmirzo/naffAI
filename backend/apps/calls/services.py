@@ -120,6 +120,13 @@ def callback_reminder_create(
     if timezone.is_naive(remind_at):
         remind_at = timezone.make_aware(remind_at, timezone.get_current_timezone())
 
+    # Row-lock the Lead so two parallel callers cannot each read "no active
+    # reminder", both create one, and end up with two live rows. `of=("self",)`
+    # keeps the lock to the Lead row itself (not the FK targets) — cheap
+    # and correct for our access pattern. Sqlite ignores select_for_update
+    # silently, which is fine for tests but the real safety net is Postgres.
+    lead = Lead.objects.select_for_update(of=("self",)).get(pk=lead.pk)
+
     # Any currently-live reminder on this lead is superseded — the freshest
     # one wins. We do this in one UPDATE to keep the state machine tight.
     CallbackReminder.objects.filter(
