@@ -57,6 +57,10 @@ LOCAL_APPS = [
     "apps.leads",
     "apps.calls",
     "apps.tg_userclient",
+    "apps.stickers",
+    "apps.greetings",
+    "apps.ai_chat",
+    "apps.marketing",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

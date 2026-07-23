@@ -9,6 +9,12 @@ from apps.leads.urls import (
     sheet_source_urlpatterns,
     telegram_urlpatterns,
 )
+from apps.greetings.urls import me_urlpatterns as greetings_me_urlpatterns
+from apps.stickers.urls import (
+    me_sticker_urlpatterns,
+    operator_sticker_urlpatterns,
+    palette_urlpatterns as stickers_palette_urlpatterns,
+)
 from apps.users.urls import me_urlpatterns as users_me_urlpatterns
 from apps.users.urls import (
     operator_account_urlpatterns as users_operator_account_urlpatterns,
@@ -17,11 +23,15 @@ from apps.users.urls import (
 urlpatterns = [
     path("auth/", include("apps.users.urls")),
     path("me/", include((users_me_urlpatterns, "users_me"))),
+    path("me/", include((me_sticker_urlpatterns, "users_me_sticker"))),
+    path("me/", include((greetings_me_urlpatterns, "greetings_me"))),
     # Manager-only account CRUD for operators. Mounted BEFORE
     # `apps.operators.urls` so `<int:operator_id>/account/...` doesn't
     # collide with the operators CRUD paths (they use `<int:pk>/`).
     path("operators/", include((users_operator_account_urlpatterns, "operator_accounts"))),
+    path("operators/", include((operator_sticker_urlpatterns, "operator_stickers"))),
     path("operators/", include("apps.operators.urls")),
+    path("stickers/", include((stickers_palette_urlpatterns, "stickers_palette"))),
     path("channels/", include("apps.catalog.urls_channels")),
     path("imei/", include("apps.catalog.urls_imei")),
     path("sales/", include("apps.sales.urls")),
@@ -42,4 +52,8 @@ urlpatterns = [
     path("telegram/", include((telegram_urlpatterns, "telegram"))),
     # Telegram user-client (Telethon MTProto — operator session management)
     path("tg-userclient/", include("apps.tg_userclient.urls")),
+    # F3.A AI-chat (manager-only, read-only tool calls)
+    path("ai-chat/", include("apps.ai_chat.urls")),
+    # F3.B Marketing analyst insights
+    path("marketing/", include("apps.marketing.urls")),
 ]

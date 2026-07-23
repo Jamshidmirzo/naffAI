@@ -16,6 +16,8 @@ import MyLeads from "./pages/MyLeads";
 import Leads from "./pages/Leads";
 import SheetSources from "./pages/SheetSources";
 import Profile from "./pages/Profile";
+import AIChat from "./pages/AIChat";
+import Marketing from "./pages/Marketing";
 import { useAuth } from "./store/auth";
 
 function Protected({ children }: { children: React.ReactNode }) {
@@ -75,6 +77,8 @@ export default function App() {
           <Route path="/analytics" element={<RoleGate allow={["manager", "team_lead"]}><Analytics /></RoleGate>} />
           <Route path="/payroll" element={<RoleGate allow={["manager", "team_lead"]}><Payroll /></RoleGate>} />
           <Route path="/audit" element={<RoleGate allow={["manager"]}><Audit /></RoleGate>} />
+          <Route path="/ai-chat" element={<RoleGate allow={["manager"]}><AIChat /></RoleGate>} />
+          <Route path="/marketing" element={<RoleGate allow={["manager", "team_lead"]}><Marketing /></RoleGate>} />
         </Route>
       </Routes>
     </>

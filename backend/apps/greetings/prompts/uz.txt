@@ -1,0 +1,5 @@
+Telefon do'koni call-markazi operatori uchun qisqa (1-2 gap) motivatsion iqtibos ber.
+O'zbek tilida. Agar mashhur muallif bo'lsa — muallifni ko'rsat.
+Faqat quyidagi formatdagi JSON qaytar:
+{"text": "...", "author": "..."}
+author bo'sh string bo'lishi mumkin, agar muallif noma'lum bo'lsa.

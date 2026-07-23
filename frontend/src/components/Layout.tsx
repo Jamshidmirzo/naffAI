@@ -4,6 +4,7 @@ import { useAuth } from "../store/auth";
 import { useTheme } from "../store/theme";
 import { tgStatus, TG_STATUS_KEY } from "../lib/tgUserclient";
 import { api } from "../lib/api";
+import MorningGreeting from "./MorningGreeting";
 import {
   LayoutDashboard,
   Users,
@@ -21,6 +22,7 @@ import {
   FileSpreadsheet,
   UserCircle,
   AlertTriangle,
+  Bot,
 } from "lucide-react";
 
 type NavItem = {
@@ -45,6 +47,8 @@ const TEAM_LEAD_ITEMS: NavItem[] = [
   { to: "/partners", label: "Партнёры", icon: Handshake, roles: ["team_lead", "manager"] },
   { to: "/analytics", label: "Аналитика", icon: LineChart, roles: ["team_lead", "manager"] },
   { to: "/payroll", label: "Зарплата", icon: Wallet, roles: ["team_lead", "manager"] },
+  { to: "/ai-chat", label: "AI-ассистент", icon: Bot, roles: ["manager"] },
+  { to: "/marketing", label: "Маркетинг", icon: LineChart, roles: ["manager", "team_lead"] },
   { to: "/sheet-sources", label: "Google Sheets", icon: FileSpreadsheet, roles: ["team_lead"] },
   { to: "/audit", label: "Журнал", icon: History, roles: ["team_lead"] },
 ];
@@ -72,6 +76,16 @@ export default function Layout() {
     },
     enabled: role === "manager" || role === "team_lead",
     refetchInterval: 30000,
+  });
+
+  const myStickerQ = useQuery({
+    queryKey: ["me", "sticker"],
+    queryFn: () =>
+      api.get<{ sticker: { emoji: string; is_rare: boolean } | null }>("/me/sticker/").then(
+        (r) => r.data
+      ),
+    enabled: role === "operator",
+    staleTime: 60000,
   });
 
   const tgNeedsAttention = role === 'operator' && tgStatusQ.data?.status && tgStatusQ.data.status !== 'active';
@@ -134,8 +148,16 @@ export default function Layout() {
           )}
         </nav>
         <div className="px-3 py-4 border-t border-gray-200 dark:border-slate-800 space-y-2">
-          <div className="px-3 text-xs text-gray-500 dark:text-slate-400">
-            {auth.username} · {auth.role}
+          <div className="px-3 text-xs text-gray-500 dark:text-slate-400 flex items-center gap-1">
+            {myStickerQ.data?.sticker?.emoji && (
+              <span className="text-base leading-none">
+                {myStickerQ.data.sticker.emoji}
+                {myStickerQ.data.sticker.is_rare && (
+                  <span className="text-[8px] text-amber-500 align-super">★</span>
+                )}
+              </span>
+            )}
+            <span>{auth.username} · {auth.role}</span>
           </div>
           <div className="relative">
             <NavLink
@@ -175,6 +197,7 @@ export default function Layout() {
       <main className="flex-1 p-8 max-w-[1400px] mx-auto w-full">
         <Outlet />
       </main>
+      {role === "operator" && <MorningGreeting language="ru" />}
     </div>
   );
 }

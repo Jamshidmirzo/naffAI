@@ -3,7 +3,8 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
-from django.db.models import Avg, Count, F, Sum
+from django.db import models
+from django.db.models import Avg, Count, F, Sum, Value
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 
@@ -225,3 +226,157 @@ def timeseries_daily(*, date_from, date_to) -> list[dict]:
         {"day": r["day"].isoformat(), "total": str(r["total"] or 0), "count": r["count"]}
         for r in rows
     ]
+
+
+# ---- F3.C: extended lead distribution / funnel / heatmap -----------------
+
+# Lead statuses grouped into buckets used by `leads_distribution_by_operator`.
+# Each bucket is a semantically-tight stage so the FE can stack them.
+_LEAD_STATUS_BUCKETS: dict[str, tuple[str, ...]] = {
+    "new": ("new",),
+    "assigned": ("assigned",),
+    "in_progress": ("in_progress", "callback_scheduled", "contacted_telegram", "no_answer"),
+    "won": ("won",),
+    "lost": ("lost", "archived"),
+    "needs_review": ("needs_review",),
+}
+
+
+def leads_distribution_by_operator() -> list[dict]:
+    """
+    Live active-lead counts per operator, grouped by high-level status
+    bucket. Used by the F3.C stacked bar chart.
+
+    Leads with no assigned operator are omitted (they belong to the
+    round-robin queue, not to a person).
+    """
+    from django.db.models import IntegerField
+    from django.db.models import Case, When
+
+    from apps.leads.models import Lead
+
+    inv: dict[str, str] = {}
+    for bucket, statuses in _LEAD_STATUS_BUCKETS.items():
+        for status in statuses:
+            inv[status] = bucket
+
+    lead_qs = Lead.objects.filter(operator__isnull=False)
+    lead_qs = lead_qs.annotate(
+        bucket=Case(
+            *[When(status=s, then=Value(b, output_field=models.CharField()))
+              for s, b in inv.items()],
+            default=Value("other", output_field=models.CharField()),
+            output_field=models.CharField(),
+        )
+    )
+
+    # Aggregate to (operator_id, bucket) -> count
+    rows = (
+        lead_qs.values("operator_id", "operator__full_name", "bucket")
+        .annotate(n=Count("id", output_field=IntegerField()))
+    )
+
+    per_operator: dict[int, dict] = {}
+    for r in rows:
+        oid = r["operator_id"]
+        entry = per_operator.setdefault(
+            oid,
+            {
+                "operator_id": oid,
+                "operator_name": r["operator__full_name"],
+                **{bucket: 0 for bucket in _LEAD_STATUS_BUCKETS},
+                "total": 0,
+            },
+        )
+        bucket = r["bucket"] if r["bucket"] in _LEAD_STATUS_BUCKETS else "in_progress"
+        entry[bucket] += r["n"]
+        entry["total"] += r["n"]
+
+    return sorted(per_operator.values(), key=lambda x: -x["total"])
+
+
+def operator_funnels(*, top_n: int = 10) -> list[dict]:
+    """
+    Per-operator funnel for the top-``top_n`` operators (by total leads).
+
+    Stages:
+      - leads_total  — # leads currently assigned or ever handled
+      - contacted    — leads with ≥ 1 CallAttempt by this operator
+      - callbacks    — leads with ≥ 1 pending/done CallbackReminder
+      - sales        — leads whose status transitioned to `won`
+    """
+    from apps.calls.models import CallAttempt, CallbackReminder
+    from apps.leads.models import Lead
+
+    top_ops = list(
+        Lead.objects.filter(operator__isnull=False)
+        .values("operator_id", "operator__full_name")
+        .annotate(n=Count("id"))
+        .order_by("-n")[:top_n]
+    )
+
+    result = []
+    for row in top_ops:
+        oid = row["operator_id"]
+        leads_total = row["n"]
+        contacted = (
+            CallAttempt.objects.filter(operator_id=oid)
+            .values("lead_id")
+            .distinct()
+            .count()
+        )
+        callbacks = (
+            CallbackReminder.objects.filter(operator_id=oid)
+            .values("lead_id")
+            .distinct()
+            .count()
+        )
+        sales = Lead.objects.filter(operator_id=oid, status="won").count()
+        result.append({
+            "operator_id": oid,
+            "operator_name": row["operator__full_name"],
+            "leads_total": leads_total,
+            "contacted": contacted,
+            "callbacks": callbacks,
+            "sales": sales,
+        })
+    return result
+
+
+def callback_hour_heatmap(*, days_back: int = 30) -> dict:
+    """
+    Callback-activity heatmap over the last ``days_back`` days.
+
+    Returns:
+      {
+        "operators": [{"id": ..., "name": ...}, ...],
+        "hours": [0..23],
+        "matrix": [[count, ...]]  # rows = operators, cols = hours
+      }
+    """
+    from apps.calls.models import CallbackReminder
+    from django.db.models.functions import ExtractHour
+
+    cutoff = timezone.now() - dt.timedelta(days=days_back)
+
+    rows = (
+        CallbackReminder.objects.filter(remind_at__gte=cutoff)
+        .annotate(hour=ExtractHour("remind_at"))
+        .values("operator_id", "operator__full_name", "hour")
+        .annotate(n=Count("id"))
+    )
+
+    op_map: dict[int, str] = {}
+    grid: dict[tuple[int, int], int] = {}
+    for r in rows:
+        oid = r["operator_id"]
+        op_map[oid] = r["operator__full_name"]
+        grid[(oid, int(r["hour"] or 0))] = int(r["n"] or 0)
+
+    operator_list = sorted(
+        [{"id": oid, "name": name} for oid, name in op_map.items()],
+        key=lambda x: x["name"] or "",
+    )
+    hours = list(range(24))
+    matrix = [[grid.get((op["id"], h), 0) for h in hours] for op in operator_list]
+    return {"operators": operator_list, "hours": hours, "matrix": matrix}

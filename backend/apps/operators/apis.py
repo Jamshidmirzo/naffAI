@@ -37,6 +37,7 @@ class OperatorSerializer(serializers.ModelSerializer):
         max_digits=16, decimal_places=2, read_only=True, required=False, default=None
     )
     account = serializers.SerializerMethodField()
+    sticker = serializers.SerializerMethodField()
 
     class Meta:
         model = Operator
@@ -52,11 +53,22 @@ class OperatorSerializer(serializers.ModelSerializer):
             "plan_target",
             "plan_actual",
             "account",
+            "sticker",
         ]
-        read_only_fields = ["id", "created_at", "updated_at", "account"]
+        read_only_fields = ["id", "created_at", "updated_at", "account", "sticker"]
 
     def get_account(self, obj: Operator) -> dict:
         return account_state(user_by_operator(obj))
+
+    def get_sticker(self, obj: Operator) -> dict | None:
+        try:
+            sticker = obj.sticker  # reverse OneToOne
+        except Exception:
+            return None
+        return {
+            "emoji": sticker.emoji,
+            "is_rare": sticker.is_rare,
+        }
 
 
 class OperatorListCreateApi(ListCreateAPIView):

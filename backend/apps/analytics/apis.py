@@ -10,8 +10,11 @@ from apps.users.permissions import IsTeamLeadOrManagerReadOnly
 from .selectors import (
     by_channel,
     by_model,
+    callback_hour_heatmap,
     kpi_snapshot,
     leaderboard,
+    leads_distribution_by_operator,
+    operator_funnels,
     resolve_period,
     timeseries_daily,
 )
@@ -105,6 +108,43 @@ class TimeseriesApi(APIView):
         if date_to is None:
             date_to = dt.datetime.now()
         return Response(timeseries_daily(date_from=date_from, date_to=date_to))
+
+
+class LeadsDistributionApi(APIView):
+    """
+    F3.C-1 — stacked bar chart data: active leads per operator, grouped by
+    high-level status bucket.
+    """
+
+    permission_classes = [IsTeamLeadOrManagerReadOnly]
+
+    def get(self, request):
+        return Response(leads_distribution_by_operator())
+
+
+class OperatorFunnelsApi(APIView):
+    """
+    F3.C-2 — small-multiples funnel: per-operator leads → contacted →
+    callbacks → sales.
+    """
+
+    permission_classes = [IsTeamLeadOrManagerReadOnly]
+
+    def get(self, request):
+        top_n = int(request.query_params.get("top_n", 10))
+        return Response(operator_funnels(top_n=top_n))
+
+
+class CallbackHeatmapApi(APIView):
+    """
+    F3.C-3 — hour-of-day heatmap of callback reminders per operator.
+    """
+
+    permission_classes = [IsTeamLeadOrManagerReadOnly]
+
+    def get(self, request):
+        days_back = int(request.query_params.get("days_back", 30))
+        return Response(callback_hour_heatmap(days_back=days_back))
 
 
 class AnalyticsExportApi(APIView):

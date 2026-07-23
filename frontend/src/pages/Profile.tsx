@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../store/auth";
 import { tgStatus, tgRevoke, TG_STATUS_KEY } from "../lib/tgUserclient";
 import TgConnectWizard from "../components/TgConnectWizard";
+import { StickerPicker } from "../components/StickerPicker";
 
 type Me = {
   username: string;
@@ -63,6 +64,13 @@ export default function Profile() {
     queryKey: ["me"],
     queryFn: () => api.get("/auth/me/").then((r) => r.data),
   });
+
+  const mySticker = useQuery<{ sticker: { emoji: string; is_rare: boolean } | null }>({
+    queryKey: ["me", "sticker"],
+    queryFn: () => api.get("/me/sticker/").then((r) => r.data),
+    enabled: !!me.data?.operator_id,
+  });
+  const [stickerOpen, setStickerOpen] = useState(false);
 
   const [oldPwd, setOldPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
@@ -145,6 +153,40 @@ export default function Profile() {
           )}
         </div>
       </div>
+
+      {me.data?.operator_id && (
+        <div className="card p-6 space-y-3">
+          <h2 className="text-lg font-semibold">Мой стикер</h2>
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 flex items-center justify-center text-4xl border rounded-lg border-gray-200 dark:border-slate-700">
+              {mySticker.data?.sticker?.emoji || (
+                <span className="text-gray-300 text-sm">нет</span>
+              )}
+            </div>
+            <div className="flex-1">
+              <div className="text-sm text-gray-500 dark:text-slate-400">
+                Ваш личный стикер отображается рядом с именем во всех разделах.
+              </div>
+              {mySticker.data?.sticker?.is_rare && (
+                <div className="text-xs text-amber-500 mt-1">Rare — уникальный на всю систему</div>
+              )}
+            </div>
+            <button className="btn-secondary" onClick={() => setStickerOpen(true)}>
+              Изменить
+            </button>
+          </div>
+        </div>
+      )}
+
+      {stickerOpen && (
+        <StickerPicker
+          operatorId={null}
+          currentEmoji={mySticker.data?.sticker?.emoji ?? null}
+          currentIsRare={mySticker.data?.sticker?.is_rare ?? false}
+          onChanged={() => mySticker.refetch()}
+          onClose={() => setStickerOpen(false)}
+        />
+      )}
 
       <form onSubmit={onSubmit} className="card p-6 space-y-4">
         <h2 className="text-lg font-semibold">Смена пароля</h2>

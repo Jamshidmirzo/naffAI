@@ -7,6 +7,7 @@ import { useAuth } from "../store/auth";
 import { formatUZS } from "../lib/format";
 import NumericInput from "../components/NumericInput";
 import AccountControls from "../components/AccountControls";
+import { StickerPicker } from "../components/StickerPicker";
 
 function PlanBar({ target, actual }: { target: string | null; actual: string | null }) {
   if (!target) return <span className="text-gray-400 dark:text-slate-600">—</span>;
@@ -46,6 +47,11 @@ export default function Operators() {
   const [deleteError, setDeleteError] = useState("");
   const [planModal, setPlanModal] = useState<{ id: number; name: string; current: string | null } | null>(null);
   const [planInput, setPlanInput] = useState("");
+  const [stickerModal, setStickerModal] = useState<{
+    id: number;
+    emoji: string | null;
+    isRare: boolean;
+  } | null>(null);
 
   const ops = useQuery({
     queryKey: ["operators", showInactive],
@@ -117,6 +123,7 @@ export default function Operators() {
           <thead className="bg-gray-50 dark:bg-slate-900 text-xs uppercase text-gray-600 dark:text-slate-400">
             <tr>
               <th className="px-4 py-2 text-left">Имя</th>
+              <th className="px-4 py-2 text-left">Стикер</th>
               <th className="px-4 py-2 text-left">Телефон</th>
               <th className="px-4 py-2 text-left">Статус</th>
               <th className="px-4 py-2 text-left">План (месяц)</th>
@@ -137,6 +144,32 @@ export default function Operators() {
                   onClick={() => nav(`/operators/${o.id}`)}
                 >
                   {o.full_name}
+                </td>
+                <td className="px-4 py-2">
+                  <button
+                    type="button"
+                    className="text-2xl leading-none hover:scale-125 transition-transform"
+                    title={
+                      (isTeamLead || isManager)
+                        ? "Изменить стикер"
+                        : o.sticker?.emoji
+                        ? "Стикер оператора"
+                        : "Нет стикера"
+                    }
+                    disabled={!(isTeamLead || isManager)}
+                    onClick={() =>
+                      setStickerModal({
+                        id: o.id,
+                        emoji: o.sticker?.emoji ?? null,
+                        isRare: o.sticker?.is_rare ?? false,
+                      })
+                    }
+                  >
+                    {o.sticker?.emoji || <span className="text-gray-300 text-base">—</span>}
+                    {o.sticker?.is_rare && (
+                      <span className="ml-0.5 text-[10px] text-amber-500 align-super">★</span>
+                    )}
+                  </button>
                 </td>
                 <td className="px-4 py-2 text-gray-600 dark:text-slate-400">{o.phone || "—"}</td>
                 <td className="px-4 py-2">
@@ -281,6 +314,18 @@ export default function Operators() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Sticker picker modal */}
+      {stickerModal && (
+        <StickerPicker
+          operatorId={stickerModal.id}
+          currentEmoji={stickerModal.emoji}
+          currentIsRare={stickerModal.isRare}
+          adminMode
+          onChanged={() => qc.invalidateQueries({ queryKey: ["operators"] })}
+          onClose={() => setStickerModal(null)}
+        />
       )}
 
       {/* Create modal */}
