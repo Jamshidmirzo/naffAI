@@ -17,6 +17,11 @@ dependencies = [
   "pydantic>=2.9",
   "aiogram>=3.13",
   "google-auth>=2.35",
+  "cryptography>=43.0",
+  "telethon>=1.36",
+  "asgiref>=3.8",
+  "google-genai>=1.0",
+  "sentry-sdk[django]>=2.0",
 ]
 
 [dependency-groups]

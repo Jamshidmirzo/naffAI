@@ -1,0 +1,19 @@
+[Unit]
+Description=naffAI Telegram User-Client runner
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/naffAI
+Environment=DJANGO_SETTINGS_MODULE=config.settings.prod
+EnvironmentFile=/opt/naffAI/.env
+ExecStart=/opt/naffAI/backend/.venv/bin/python manage.py run_tg_userclient
+Restart=always
+RestartSec=10
+User=root
+StandardOutput=append:/var/log/naffAI/tg-userclient.log
+StandardError=append:/var/log/naffAI/tg-userclient.log
+
+[Install]
+WantedBy=multi-user.target

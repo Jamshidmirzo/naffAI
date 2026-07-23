@@ -74,6 +74,14 @@ echo "[deploy] pulling images and starting stack..."
 docker compose -f docker-compose.prod.yml pull || true
 docker compose -f docker-compose.prod.yml up -d --build
 
+echo "[deploy] installing systemd service for Telegram User-Client..."
+mkdir -p /var/log/naffAI
+if [ -f deploy/systemd/naff-tg-userclient.service ]; then
+  install -m 644 deploy/systemd/naff-tg-userclient.service /etc/systemd/system/
+  systemctl daemon-reload || true
+  systemctl enable --now naff-tg-userclient.service || true
+fi
+
 echo "[deploy] waiting for web..."
 for i in {1..30}; do
   if curl -fsS "http://localhost/api/docs/" >/dev/null 2>&1; then

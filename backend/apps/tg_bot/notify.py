@@ -20,6 +20,8 @@ from __future__ import annotations
 import logging
 
 from django.conf import settings
+from django.utils import timezone
+from asgiref.sync import sync_to_async
 
 logger = logging.getLogger("tg_bot.notify")
 
@@ -32,11 +34,14 @@ async def send_callback_dm(user_id: int, reminder) -> bool:
     positional argument so callers don't have to import the model to
     build a dict payload.
     """
+    from apps.tg_bot.models import BotSubscription
+
     token = getattr(settings, "TELEGRAM_BOT_TOKEN", "")
     if not token or not user_id:
         return False
     try:
         from aiogram import Bot
+        from aiogram.exceptions import TelegramForbiddenError
         from aiogram.types import (
             InlineKeyboardButton,
             InlineKeyboardMarkup,
@@ -61,7 +66,29 @@ async def send_callback_dm(user_id: int, reminder) -> bool:
             ]
         )
         await bot.send_message(user_id, text, parse_mode="HTML", reply_markup=kb)
+
+        # Clear blocked_at if subscription exists and was blocked previously
+        def _clear_blocked():
+            sub = BotSubscription.objects.filter(chat_id=user_id).first()
+            if sub and sub.blocked_at is not None:
+                sub.blocked_at = None
+                sub.save(update_fields=["blocked_at"])
+
+        await sync_to_async(_clear_blocked)()
         return True
+    except TelegramForbiddenError:
+        def _mark_blocked():
+            sub = BotSubscription.objects.filter(chat_id=user_id).first()
+            if sub:
+                if not sub.blocked_at:
+                    sub.blocked_at = timezone.now()
+                    sub.save(update_fields=["blocked_at"])
+                return sub.id
+            return None
+
+        sub_id = await sync_to_async(_mark_blocked)()
+        logger.info("skipping DM: operator blocked bot subscription=%s", sub_id or user_id)
+        return False
     except Exception:
         logger.exception("send_callback_dm failed for user=%s cb=%s", user_id, reminder.id)
         return False

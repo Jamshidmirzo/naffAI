@@ -4,15 +4,11 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 
-def healthz(_request):
-    from django.http import JsonResponse
-
-    return JsonResponse({"status": "ok"})
-
+from apps.common.health import HealthCheckView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("healthz", healthz),
+    path("healthz", HealthCheckView.as_view(), name="healthz"),
     path("api/", include("config.api_urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(

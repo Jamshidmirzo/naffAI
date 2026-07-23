@@ -7,7 +7,7 @@ from .base import (
 )
 
 DEBUG = True
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
 CORS_ALLOW_ALL_ORIGINS = True
 
 # Dev fallback: if no key is configured, mint an ephemeral one so the app

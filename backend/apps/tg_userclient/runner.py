@@ -114,7 +114,7 @@ class ClientManager:
     async def _run_backfill(self, client: object, job: object) -> None:
         from asgiref.sync import sync_to_async
         from telethon.errors import FloodWaitError
-        from .services import _mark_done, _mark_error, _mark_running
+        from .services import _mark_done, _mark_error, _mark_pending, _mark_running
 
         logger.info(
             "backfill#%s start op=%s since=%s",
@@ -134,6 +134,11 @@ class ClientManager:
                 saved = await self._backfill_one_chat(client, job.session, dialog, job.since)
                 messages_saved += saved
                 chats_scanned += 1
+
+                # Heartbeat: update timestamp every 10 chats
+                if chats_scanned % 10 == 0:
+                    await sync_to_async(job.save)(update_fields=["updated_at"])
+
                 delay_sec = getattr(settings, "TG_BACKFILL_CHAT_DELAY_MS", 800) / 1000.0
                 await asyncio.sleep(delay_sec)
 
@@ -143,6 +148,13 @@ class ClientManager:
                 job.id, chats_scanned, messages_saved
             )
         except FloodWaitError as fw:
+            if fw.seconds > 300:  # >5 min
+                await sync_to_async(_mark_pending)(job)
+                logger.warning(
+                    "backfill#%s FloodWait %ss > 5min — releasing to PENDING",
+                    job.id, fw.seconds
+                )
+                return
             logger.warning("backfill#%s FloodWait %ss — pausing", job.id, fw.seconds)
             await asyncio.sleep(fw.seconds + 5)
         except Exception as exc:

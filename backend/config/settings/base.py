@@ -19,7 +19,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 # --- Security / debug ---
 SECRET_KEY = config("DJANGO_SECRET_KEY", default="dev-insecure-change-me-please")
 DEBUG = config("DJANGO_DEBUG", default=False, cast=bool)
-ALLOWED_HOSTS = config("DJANGO_ALLOWED_HOSTS", default="*", cast=Csv())
+ALLOWED_HOSTS = [h.strip() for h in config("DJANGO_ALLOWED_HOSTS", default="").split(",") if h.strip()]
 CSRF_TRUSTED_ORIGINS = config(
     "DJANGO_CSRF_TRUSTED_ORIGINS",
     default="http://localhost:5173,http://localhost:8000",
@@ -142,6 +142,15 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
     "PAGE_SIZE": 25,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "20/min",
+        "user": "1000/hour",
+        "login": "10/min",
+    },
 }
 
 SPECTACULAR_SETTINGS = {
@@ -253,6 +262,7 @@ TG_BACKFILL_SINCE = config("TG_BACKFILL_SINCE", default="2026-07-01")
 TG_BACKFILL_CHAT_DELAY_MS = config("TG_BACKFILL_CHAT_DELAY_MS", default=800, cast=int)
 TG_BACKFILL_BATCH_SIZE = config("TG_BACKFILL_BATCH_SIZE", default=200, cast=int)
 TG_BACKFILL_MAX_MESSAGES_PER_CHAT = config("TG_BACKFILL_MAX_MESSAGES_PER_CHAT", default=10000, cast=int)
+TG_STALE_RUNNING_TIMEOUT_MIN = config("TG_STALE_RUNNING_TIMEOUT_MIN", default=5, cast=int)
 # LLM provider for dialog analysis: gemini / openai / anthropic / none
 LLM_PROVIDER = config("LLM_PROVIDER", default="none")
 OPENAI_API_KEY = config("OPENAI_API_KEY", default="")
@@ -262,18 +272,34 @@ GEMINI_MODEL = config("GEMINI_MODEL", default="gemini-3.6-flash")
 GEMINI_FALLBACK_MODEL = config("GEMINI_FALLBACK_MODEL", default="gemini-2.5-flash-lite")
 
 # --- Logging ---
+LOG_DIR = config("LOG_DIR", default="")
+_handlers = {
+    "console": {
+        "class": "logging.StreamHandler",
+        "formatter": "default",
+        "level": "INFO",
+    }
+}
+if LOG_DIR:
+    _handlers["file"] = {
+        "class": "logging.handlers.RotatingFileHandler",
+        "filename": f"{LOG_DIR}/naffai.log",
+        "maxBytes": 10 * 1024 * 1024,
+        "backupCount": 5,
+        "formatter": "default",
+        "level": "INFO",
+    }
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
         "default": {"format": "[{asctime}] {levelname} {name}: {message}", "style": "{"},
     },
-    "handlers": {
-        "console": {"class": "logging.StreamHandler", "formatter": "default"},
-    },
-    "root": {"handlers": ["console"], "level": "INFO"},
+    "handlers": _handlers,
+    "root": {"handlers": list(_handlers.keys()), "level": "INFO"},
     "loggers": {
-        "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
-        "apps": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "django": {"handlers": list(_handlers.keys()), "level": "INFO", "propagate": False},
+        "apps": {"handlers": list(_handlers.keys()), "level": "DEBUG", "propagate": False},
     },
 }
