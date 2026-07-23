@@ -56,6 +56,7 @@ LOCAL_APPS = [
     "apps.tg_bot",
     "apps.leads",
     "apps.calls",
+    "apps.tg_userclient",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -188,6 +189,77 @@ GOOGLE_SHEETS_CREDENTIALS_JSON = config("GOOGLE_SHEETS_CREDENTIALS_JSON", defaul
 CALLBACK_OVERDUE_GRACE_MINUTES = config(
     "CALLBACK_OVERDUE_GRACE_MINUTES", default=30, cast=int
 )
+
+# --- Operator password reversible-encryption keys ---
+# Fernet keys used to (en|de)crypt the plaintext stored in `OperatorSecret`.
+# Generate a key with:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+#
+# In prod this MUST be set — see `config.settings.prod`. In `dev`/`test`
+# we fall back to an auto-generated ephemeral key (with a warning) so
+# local runs don't crash.
+#
+# Rotation: OPERATOR_PASSWORD_ENCRYPTION_KEYS is a JSON-ish dict
+# `{"1": "<key1>", "2": "<key2>"}`. OPERATOR_PASSWORD_ENCRYPTION_CURRENT_VERSION
+# selects which one is used for *encrypt*; all listed keys remain trusted
+# for *decrypt*. The single-key OPERATOR_PASSWORD_ENCRYPTION_KEY is kept
+# as a backwards-compatible fallback: if only it is set, it becomes v1.
+OPERATOR_PASSWORD_ENCRYPTION_KEY = config(
+    "OPERATOR_PASSWORD_ENCRYPTION_KEY", default=""
+)
+OPERATOR_PASSWORD_ENCRYPTION_KEYS: dict[str, str] = {}
+if OPERATOR_PASSWORD_ENCRYPTION_KEY:
+    OPERATOR_PASSWORD_ENCRYPTION_KEYS["1"] = OPERATOR_PASSWORD_ENCRYPTION_KEY
+_extra_password_keys = config("OPERATOR_PASSWORD_ENCRYPTION_KEYS_JSON", default="")
+if _extra_password_keys:
+    import json as _json
+
+    OPERATOR_PASSWORD_ENCRYPTION_KEYS.update(_json.loads(_extra_password_keys))
+OPERATOR_PASSWORD_ENCRYPTION_CURRENT_VERSION = config(
+    "OPERATOR_PASSWORD_ENCRYPTION_CURRENT_VERSION",
+    default=str(max((int(v) for v in OPERATOR_PASSWORD_ENCRYPTION_KEYS), default=1)),
+    cast=int,
+)
+
+# --- Telegram user-client (Telethon MTProto) ---
+# API credentials from https://my.telegram.org/apps — one pair for the whole app.
+TG_API_ID = config("TG_API_ID", default=0, cast=int)
+TG_API_HASH = config("TG_API_HASH", default="")
+# Fernet key for encrypting Telethon StringSession values in DB.
+# SEPARATE from OPERATOR_PASSWORD_ENCRYPTION_KEY — leak of one does not
+# compromise the other. Generate with:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+TG_SESSION_ENCRYPTION_KEY = config("TG_SESSION_ENCRYPTION_KEY", default="")
+TG_SESSION_ENCRYPTION_KEYS: dict[str, str] = {}
+if TG_SESSION_ENCRYPTION_KEY:
+    TG_SESSION_ENCRYPTION_KEYS["1"] = TG_SESSION_ENCRYPTION_KEY
+_extra_tg_keys = config("TG_SESSION_ENCRYPTION_KEYS_JSON", default="")
+if _extra_tg_keys:
+    import json as _json
+
+    TG_SESSION_ENCRYPTION_KEYS.update(_json.loads(_extra_tg_keys))
+TG_SESSION_ENCRYPTION_CURRENT_VERSION = config(
+    "TG_SESSION_ENCRYPTION_CURRENT_VERSION",
+    default=str(max((int(v) for v in TG_SESSION_ENCRYPTION_KEYS), default=1)),
+    cast=int,
+)
+# Feature flag: transcribe voice messages via Whisper (0 = skipped, 1 = enabled)
+TG_TRANSCRIBE_VOICE = config("TG_TRANSCRIBE_VOICE", default=False, cast=bool)
+TG_TRANSCRIBE_PROVIDER = config("TG_TRANSCRIBE_PROVIDER", default="openai")
+# Message retention in days (older messages are purged by cron)
+TG_MESSAGE_RETENTION_DAYS = config("TG_MESSAGE_RETENTION_DAYS", default=90, cast=int)
+# Backfill settings
+TG_BACKFILL_SINCE = config("TG_BACKFILL_SINCE", default="2026-07-01")
+TG_BACKFILL_CHAT_DELAY_MS = config("TG_BACKFILL_CHAT_DELAY_MS", default=800, cast=int)
+TG_BACKFILL_BATCH_SIZE = config("TG_BACKFILL_BATCH_SIZE", default=200, cast=int)
+TG_BACKFILL_MAX_MESSAGES_PER_CHAT = config("TG_BACKFILL_MAX_MESSAGES_PER_CHAT", default=10000, cast=int)
+# LLM provider for dialog analysis: gemini / openai / anthropic / none
+LLM_PROVIDER = config("LLM_PROVIDER", default="none")
+OPENAI_API_KEY = config("OPENAI_API_KEY", default="")
+ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", default="")
+GEMINI_API_KEY = config("GEMINI_API_KEY", default="")
+GEMINI_MODEL = config("GEMINI_MODEL", default="gemini-3.6-flash")
+GEMINI_FALLBACK_MODEL = config("GEMINI_FALLBACK_MODEL", default="gemini-2.5-flash-lite")
 
 # --- Logging ---
 LOGGING = {

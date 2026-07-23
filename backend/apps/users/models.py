@@ -2,6 +2,12 @@
 We keep Django's default `User` and attach a `Profile` with a role.
 
 Roles drive permission classes in `permissions.py`.
+
+`OperatorSecret` stores a reversibly-encrypted copy of the plaintext
+password so a manager can look it up later (business requirement — team
+lead needs to hand out credentials without forcing a reset every time).
+The Django hash still lives in `User.password`; both are updated in
+lock-step via `apps.users.services.user_password_set`.
 """
 
 from __future__ import annotations
@@ -40,6 +46,41 @@ class Profile(models.Model):
             "confirms their operator phone. Used to DM callback reminders."
         ),
     )
+    deleted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Soft-delete marker for operator accounts (set together with User.is_active=False).",
+    )
 
     def __str__(self) -> str:
         return f"{self.user.username} ({self.get_role_display()})"
+
+
+class OperatorSecret(models.Model):
+    """
+    Reversibly-encrypted password store — one row per User.
+
+    We keep the ciphertext (Fernet, key from settings) so a manager can
+    view the current password without resetting. The Django hash on
+    `User.password` remains the source of truth for auth; this row is a
+    convenience surface for the admin UI.
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="secret",
+    )
+    encrypted_password = models.BinaryField()
+    key_version = models.PositiveSmallIntegerField(
+        default=1,
+        help_text=(
+            "Which key from OPERATOR_PASSWORD_ENCRYPTION_KEYS was used to "
+            "encrypt this row. Read alongside encrypted_password so we can "
+            "rotate the master key without invalidating old rows."
+        ),
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"secret<{self.user_id}>"
