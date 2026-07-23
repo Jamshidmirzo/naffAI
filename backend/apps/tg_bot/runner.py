@@ -111,6 +111,9 @@ async def main() -> None:
         comment = State()
         confirming = State()
 
+    class LinkOperator(StatesGroup):
+        phone = State()
+
     bot = Bot(token=token)
     dp = Dispatcher(storage=MemoryStorage())
 
@@ -768,6 +771,54 @@ async def main() -> None:
         [BotCommand(command=name, description=t(key, "ru")) for name, key in common],
     )
 
+    # ---------- Operator link (FSM /link_operator) ----------
+
+    @dp.message(Command("link_operator"))
+    async def cmd_link_operator(msg: Message, state: FSMContext) -> None:
+        await msg.answer(
+            "Пришли номер, привязанный к твоему оператору (в формате +998...):"
+        )
+        await state.set_state(LinkOperator.phone)
+
+    @dp.message(LinkOperator.phone)
+    async def step_link_operator_phone(msg: Message, state: FSMContext) -> None:
+        raw = (msg.text or "").strip()
+        result = await asyncio.to_thread(_link_operator_by_phone, raw, msg.from_user.id)
+        await state.clear()
+        await msg.answer(result)
+
+    # ---------- Callback DM buttons ----------
+
+    @dp.callback_query(F.data.startswith("cb-done:"))
+    async def cb_done(cb: CallbackQuery) -> None:
+        try:
+            cb_id = int(cb.data.split(":", 1)[1])
+        except (ValueError, IndexError):
+            await cb.answer()
+            return
+        ok = await asyncio.to_thread(_bot_complete_callback, cb_id)
+        await cb.answer("Готово!" if ok else "Не удалось")
+        try:
+            await cb.message.edit_reply_markup(reply_markup=None)
+        except Exception:  # noqa: BLE001
+            pass
+
+    @dp.callback_query(F.data.startswith("cb-snooze:"))
+    async def cb_snooze(cb: CallbackQuery) -> None:
+        try:
+            _, cb_id_s, minutes_s = cb.data.split(":", 2)
+            cb_id = int(cb_id_s)
+            minutes = int(minutes_s)
+        except (ValueError, IndexError):
+            await cb.answer()
+            return
+        ok = await asyncio.to_thread(_bot_snooze_callback, cb_id, minutes)
+        await cb.answer(f"Отложено на +{minutes} мин" if ok else "Не удалось")
+        try:
+            await cb.message.edit_reply_markup(reply_markup=None)
+        except Exception:  # noqa: BLE001
+            pass
+
     logger.info("Bot started — polling…")
     asyncio.create_task(daily_report_scheduler())
     await dp.start_polling(bot)
@@ -807,6 +858,63 @@ def _create_sale(data: dict):
         allow_duplicate_imei=True,
         duplicate_override_comment="из Telegram-бота",
     )
+
+
+# ---------------------------------------------------------------------------
+# Operator linkage + callback DM handlers (sync helpers used from asyncio.to_thread)
+# ---------------------------------------------------------------------------
+
+
+def _link_operator_by_phone(raw_phone: str, tg_user_id: int) -> str:
+    from apps.common.validators import normalize_uz_phone
+    from apps.operators.models import Operator
+    from apps.users.models import Profile
+
+    normalized, valid = normalize_uz_phone(raw_phone)
+    if not valid:
+        return "Не смог разобрать номер. Формат: +998XXXXXXXXX"
+    op = Operator.objects.filter(phone=normalized).first()
+    if not op:
+        return (
+            f"Оператор с номером {normalized} не найден. "
+            "Попроси тимлида добавить твой номер в карточку оператора."
+        )
+    profile = Profile.objects.filter(operator=op).first()
+    if not profile:
+        return (
+            f"Оператор «{op.full_name}» найден, но у него нет пользователя. "
+            "Тимлид должен создать пользователя и привязать его к оператору."
+        )
+    if profile.telegram_user_id and profile.telegram_user_id != tg_user_id:
+        return "К этому оператору уже привязан другой Telegram-аккаунт."
+    profile.telegram_user_id = tg_user_id
+    profile.save(update_fields=["telegram_user_id"])
+    return f"Готово! Ты привязан к оператору «{op.full_name}»."
+
+
+def _bot_complete_callback(cb_id: int) -> bool:
+    from apps.calls.selectors import callback_get
+    from apps.calls.services import callback_reminder_complete
+
+    cb = callback_get(cb_id)
+    if not cb:
+        return False
+    callback_reminder_complete(reminder=cb)
+    return True
+
+
+def _bot_snooze_callback(cb_id: int, minutes: int) -> bool:
+    from apps.calls.selectors import callback_get
+    from apps.calls.services import callback_reminder_snooze
+
+    cb = callback_get(cb_id)
+    if not cb:
+        return False
+    try:
+        callback_reminder_snooze(reminder=cb, minutes=minutes)
+    except Exception:  # noqa: BLE001
+        return False
+    return True
 
 
 if __name__ == "__main__":
