@@ -28,6 +28,8 @@ interface ChatMessageRow {
   content: string;
   tool_calls: { name: string; arguments: Record<string, unknown> }[];
   tool_name: string;
+  model_used?: string;
+  provider_used?: string;
   created_at: string;
 }
 
@@ -227,10 +229,23 @@ function MessageBubble({ m }: { m: ChatMessageRow }) {
       </div>
     );
   }
+  const providerBadge =
+    m.provider_used && m.provider_used !== "none"
+      ? m.model_used
+        ? `через ${m.provider_used} / ${m.model_used}`
+        : `через ${m.provider_used}`
+      : null;
   return (
     <div className="flex justify-start">
-      <div className="bg-gray-100 dark:bg-slate-800 rounded-lg rounded-bl-none px-3 py-2 max-w-2xl whitespace-pre-wrap text-sm">
-        {m.content || "…"}
+      <div className="max-w-2xl">
+        <div className="bg-gray-100 dark:bg-slate-800 rounded-lg rounded-bl-none px-3 py-2 whitespace-pre-wrap text-sm">
+          {m.content || "…"}
+        </div>
+        {providerBadge && (
+          <div className="text-[10px] text-gray-400 dark:text-slate-500 mt-1 pl-1">
+            {providerBadge}
+          </div>
+        )}
       </div>
     </div>
   );

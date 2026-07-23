@@ -18,6 +18,7 @@ class MarketingInsight(TimestampedModel):
     top_products = models.JSONField(default=list)
     summary = models.TextField(blank=True, default="")
     model_version = models.CharField(max_length=64, default="")
+    provider_used = models.CharField(max_length=32, blank=True, default="")
 
     class Meta:
         unique_together = [("period_start", "period_end")]

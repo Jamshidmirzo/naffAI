@@ -47,6 +47,8 @@ class ChatMessage(TimestampedModel):
     content = models.TextField(blank=True, default="")
     tool_calls = models.JSONField(default=list, blank=True)
     tool_name = models.CharField(max_length=64, blank=True, default="")
+    model_used = models.CharField(max_length=100, blank=True, default="")
+    provider_used = models.CharField(max_length=32, blank=True, default="")
 
     class Meta:
         ordering = ["created_at"]

@@ -39,7 +39,17 @@ interface Insight {
   top_products: { product: string; mentions: number }[];
   summary: string;
   model_version: string;
+  provider_used?: string;
   created_at: string;
+}
+
+function providerLabel(insight: Insight): string {
+  const provider = insight.provider_used;
+  const model = insight.model_version;
+  if (!provider || provider === "fallback" || provider === "exhausted" || provider === "unknown") {
+    return model || provider || "";
+  }
+  return model ? `${provider} / ${model}` : provider;
 }
 
 export default function Marketing() {
@@ -146,7 +156,7 @@ export default function Marketing() {
               ))}
             </ul>
             <div className="text-xs text-gray-400 mt-3">
-              Модель: {latest.model_version}
+              Сгенерировано: {providerLabel(latest)}
             </div>
           </div>
         </>
@@ -173,7 +183,7 @@ export default function Marketing() {
                     {i.summary}
                   </td>
                   <td className="px-4 py-2 text-right text-xs text-gray-400">
-                    {i.model_version}
+                    {providerLabel(i)}
                   </td>
                 </tr>
               ))}

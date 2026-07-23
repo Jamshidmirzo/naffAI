@@ -21,7 +21,7 @@ from django.utils import timezone
 
 from apps.audit.services import AuditAction, audit_log_create
 from apps.leads.models import Lead
-from apps.tg_userclient.ai.provider import get_llm_provider
+from apps.tg_userclient.ai.provider import LLMChainExhaustedError, get_llm_provider
 
 from .models import MarketingInsight
 
@@ -126,6 +126,7 @@ def generate_marketing_insight(
     recommendations: list[str]
     summary: str
     model_version: str
+    provider_used: str
 
     try:
         provider = get_llm_provider()
@@ -143,11 +144,19 @@ def generate_marketing_insight(
             recommendations = _default_recommendations(sources)
             summary = raw[:400] or "LLM не вернул структурированный ответ."
         model_version = quote.model_version or "unknown"
+        provider_used = quote.provider or ""
+    except LLMChainExhaustedError as exc:
+        logger.warning("LLM chain exhausted for marketing insight: %s", exc)
+        recommendations = _default_recommendations(sources)
+        summary = "Отчёт сгенерирован без LLM (все провайдеры недоступны)."
+        model_version = "fallback"
+        provider_used = "exhausted"
     except Exception as exc:
         logger.warning("LLM failed for marketing insight: %s", exc)
         recommendations = _default_recommendations(sources)
         summary = "Отчёт сгенерирован без LLM (fallback)."
         model_version = "fallback"
+        provider_used = "fallback"
 
     insight, created = MarketingInsight.objects.update_or_create(
         period_start=period_start,
@@ -158,6 +167,7 @@ def generate_marketing_insight(
             "top_products": products,
             "summary": summary,
             "model_version": model_version,
+            "provider_used": provider_used,
         },
     )
     audit_log_create(

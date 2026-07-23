@@ -9,6 +9,7 @@
 
 ## Что нового
 
+- **Multi-provider LLM chain с автоматическим fallback** — единый `get_llm_provider()` строит цепочку из Gemini + GitHub Models (`openai/gpt-4o-mini`, `deepseek-v3`, `llama-3.3-70b`). При `429`/rate-limit молча переключается на следующего провайдера, метаданные `provider_used` и `model_used` сохраняются на каждом ответе и показываются бейджем в AI-чате и маркетинг-отчётах. Раздел «LLM chain и Student Pack» ниже.
 - **Pre-sale контур (Этап A)** — лиды из Google Sheets, авто-распределение по операторам round-robin, callback-реминдеры с TG-DM, операторская станция `/my` с блокировкой при просроченных callback'ах. Подробнее в разделе «Pre-sale (Этап A)» ниже.
 - **Мульти-аллокация продаж** — на одну продажу теперь можно повесить N операторов и N партнёров (Alif / Birzum / Hamroh / Cash / …), у каждого своя доля суммы. Премия и аналитика считают по строкам, а не по «основному» FK.
 - **Excel-импорт и -экспорт в формате `savdo` магазина** — листы `savdo` + `nomerla`, сплит-платежи `"Birzum+Hamroh"` / `"5300000+6900000"`, авто-распознавание `MM.DD.YY` vs `DD.MM.YY` локали дат, идемпотентный round-trip.
@@ -298,7 +299,7 @@ docker compose --profile bot up -d bot
 
 - **User Client (Telethon MTProto)**: модуль `apps.tg_userclient`. Приём сообщений 1-на-1 и групповых чатов операторов. Запуск: `python manage.py run_tg_userclient`.
 - **Backfill истории чатов**: Автоматическая фоновая подгрузка истории личных и групповых чатов при авторизации оператора. Настройки в `.env`: `TG_BACKFILL_SINCE=2026-07-01`, `TG_BACKFILL_CHAT_DELAY_MS=800`, `TG_BACKFILL_MAX_MESSAGES_PER_CHAT=10000`. Ручной перезапуск: `python manage.py retry_tg_backfill --all-errors`.
-- **AI Provider (Google Gemini)**: AI-анализ диалогов (`apps.tg_userclient.ai.provider.GeminiProvider`). Настройки в `.env`: `LLM_PROVIDER=gemini`, `GEMINI_API_KEY=...`, `GEMINI_MODEL=gemini-3.6-flash`, `GEMINI_FALLBACK_MODEL=gemini-2.5-flash-lite`. Автоматический fallback на `gemini-2.5-flash-lite` при исчерпании квоты (429). Запуск анализа: `python manage.py analyze_tg_dialogs`.
+- **AI Provider (мульти-провайдер с автоматическим fallback)**: анализ диалогов, AI-чат, маркетинг-инсайты и утренние цитаты работают через единый интерфейс `apps.tg_userclient.ai.provider.get_llm_provider()`. См. раздел «LLM chain и Student Pack» ниже.
 
 ### Telegram User-Client в prod
 
@@ -327,6 +328,81 @@ tail -f /var/log/naffAI/tg-userclient.log
    SENTRY_DSN=https://your-dsn-key@o0.ingest.sentry.io/0
    ```
 3. При запуске под `config.settings.prod` ошибки будут автоматически отправляться в Sentry без передачи персональных данных (PII).
+
+## LLM chain и Student Pack
+
+AI-фичи (AI-чат менеджера, маркетинг-инсайты, утренние цитаты, анализ TG-диалогов операторов) работают через **цепочку провайдеров** с автоматическим fallback: если первый провайдер вернул `429` (rate-limit) — движок молча переключается на следующего. Реализация — `apps/tg_userclient/ai/provider.py::LLMProviderChain`.
+
+### Модель на выбор
+
+Один интерфейс, четыре режима (`LLM_PROVIDER` в `.env`):
+
+- `chain` — **рекомендуется**. Идёт по `LLM_CHAIN` слева-направо, при 429 → следующий слот.
+- `gemini` — только Google Gemini (AI Studio).
+- `github_models` — только GitHub Models (OpenAI-совместимый эндпоинт).
+- `none` — no-op stub для тестов и оффлайн-разработки.
+
+### Конфигурация цепочки
+
+```env
+LLM_PROVIDER=chain
+LLM_CHAIN=gemini,github_models_gpt4omini,github_models_deepseek,github_models_llama
+
+# Ключи
+GEMINI_API_KEY=<из https://aistudio.google.com/apikey>
+GITHUB_MODELS_TOKEN=<вывод `gh auth token`>
+
+# Модели по каждому слоту (переопределяются независимо)
+LLM_CHAIN_GEMINI_MODEL=gemini-flash-latest
+LLM_CHAIN_GH_GPT4OMINI=openai/gpt-4o-mini
+LLM_CHAIN_GH_DEEPSEEK=deepseek/deepseek-v3-0324
+LLM_CHAIN_GH_LLAMA=meta/llama-3.3-70b-instruct
+LLM_CHAIN_GH_GPT41MINI=openai/gpt-4.1-mini
+```
+
+**Как получить GitHub Models токен**: обычный `gh auth login` в терминале (без Copilot Pro), затем:
+
+```bash
+gh auth token
+# → gho_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Скопируйте в `.env` как `GITHUB_MODELS_TOKEN=...`. Токен даёт доступ к 37+ моделям на [github.com/marketplace/models](https://github.com/marketplace/models).
+
+### Экономика цепочки (дефолт)
+
+| Слот | Модель | Лимит free-tier |
+|------|--------|-----------------|
+| 1 | `gemini-flash-latest` | 15 QPM (стабильная) / 5 QPM (preview) |
+| 2 | `openai/gpt-4o-mini` | 150 запросов/день |
+| 3 | `deepseek/deepseek-v3-0324` | 150 запросов/день |
+| 4 | `meta/llama-3.3-70b-instruct` | 150 запросов/день |
+
+Итого **~450–500 бесплатных AI-ответов в день** без Copilot Pro. Для магазина с 3-5 менеджерами в CRM и еженедельным маркетинг-отчётом этого хватает с большим запасом.
+
+### Как выглядит fallback в логах
+
+```
+INFO  llm.chain: generate_content succeeded with gemini(gemini-flash-latest)
+WARN  llm.chain: generate_content hit rate-limit on gemini(gemini-flash-latest), falling back (Gemini both models exhausted: 429 RESOURCE_EXHAUSTED)
+INFO  llm.chain: generate_content succeeded with github_models_gpt4omini(openai/gpt-4o-mini)
+```
+
+### UI-индикация
+
+- В AI-чате под каждым ответом ассистента — маленький бейдж `через github_models / openai/gpt-4o-mini`.
+- В маркетинг-отчётах в блоке «Рекомендации» — строка `Сгенерировано: gemini / gemini-flash-latest`.
+- Утренние цитаты и AI-инсайты по TG-диалогам сохраняют `provider_used` в БД (для аудита), но не показывают его оператору.
+
+### Обратная совместимость
+
+- Поле `provider` добавлено во все возвращаемые `dataclass`ы (`LLMResponse`, `QuoteResult`, `InsightResult`, `ChatResponse`).
+- Модели БД получили новые поля через миграции:
+  - `ai_chat.ChatMessage.model_used` + `.provider_used`
+  - `marketing.MarketingInsight.provider_used`
+  - `greetings.DailyQuote.provider_used`
+  - `tg_userclient.TgAiInsight.provider_used`
+- Старые конфиги `LLM_PROVIDER=gemini` продолжают работать без изменений (внутренний fallback `gemini-flash-latest → gemini-2.5-flash-lite` сохранён).
 
 ## ПРИНЯТЫЕ ДОПУЩЕНИЯ
 

@@ -22,6 +22,7 @@ class DailyQuote(TimestampedModel):
     text = models.TextField()
     author = models.CharField(max_length=128, blank=True, default="")
     generated_by_model = models.CharField(max_length=64, default="")
+    provider_used = models.CharField(max_length=32, blank=True, default="")
 
     class Meta:
         unique_together = [("quote_date", "language")]

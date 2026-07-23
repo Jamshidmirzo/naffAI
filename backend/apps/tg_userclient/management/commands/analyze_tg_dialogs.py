@@ -149,6 +149,8 @@ class Command(BaseCommand):
                     next_retry_at=None,
                 )
 
+                provider_used_raw = getattr(result, "provider", "") or ""
+                provider_used = provider_used_raw if isinstance(provider_used_raw, str) else ""
                 TgAiInsight.objects.create(
                     session=session,
                     chat=chat,
@@ -160,6 +162,7 @@ class Command(BaseCommand):
                     quality_score=result.quality_score,
                     red_flags=result.red_flags,
                     highlights=result.highlights,
+                    provider_used=provider_used,
                 )
                 analyzed += 1
                 self.stdout.write(

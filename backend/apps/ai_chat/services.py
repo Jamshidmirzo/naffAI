@@ -20,7 +20,11 @@ import logging
 from django.db import transaction
 
 from apps.audit.services import AuditAction, audit_log_create
-from apps.tg_userclient.ai.provider import ChatResponse, get_llm_provider
+from apps.tg_userclient.ai.provider import (
+    ChatResponse,
+    LLMChainExhaustedError,
+    get_llm_provider,
+)
 
 from .models import ChatMessage, ChatSession
 from .tools import TOOLS, call_tool
@@ -101,6 +105,18 @@ def handle_user_message(*, session: ChatSession, text: str) -> ChatMessage:
                 tool_specs=specs,
                 system_prompt=SYSTEM_PROMPT,
             )
+        except LLMChainExhaustedError as exc:
+            logger.warning("LLM chain exhausted for chat: %s", exc)
+            assistant = ChatMessage.objects.create(
+                session=session,
+                role=ChatMessage.ROLE_ASSISTANT,
+                content=(
+                    "AI-провайдеры сейчас недоступны (все резервы исчерпаны). "
+                    "Попробуйте через несколько минут."
+                ),
+                provider_used="exhausted",
+            )
+            return assistant
         except Exception as exc:
             logger.exception("LLM chat_with_tools failed: %s", exc)
             assistant = ChatMessage.objects.create(
@@ -115,6 +131,8 @@ def handle_user_message(*, session: ChatSession, text: str) -> ChatMessage:
                 session=session,
                 role=ChatMessage.ROLE_ASSISTANT,
                 content=response.text or "(пустой ответ)",
+                model_used=response.model_version or "",
+                provider_used=response.provider or "",
             )
             session.updated_at = assistant.updated_at
             session.save(update_fields=["updated_at"])
@@ -134,6 +152,8 @@ def handle_user_message(*, session: ChatSession, text: str) -> ChatMessage:
             role=ChatMessage.ROLE_ASSISTANT,
             content="",
             tool_calls=[{"name": tc.name, "arguments": tc.arguments} for tc in response.tool_calls],
+            model_used=response.model_version or "",
+            provider_used=response.provider or "",
         )
 
         # Run each tool and add a `tool` message per result.

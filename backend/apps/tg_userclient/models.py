@@ -142,6 +142,7 @@ class TgAiInsight(TimestampedModel):
     quality_score = models.IntegerField(null=True, blank=True)
     red_flags = models.JSONField(default=list)
     highlights = models.JSONField(default=list)
+    provider_used = models.CharField(max_length=32, blank=True, default="")
 
     class Meta:
         indexes = [

@@ -40,6 +40,7 @@ class InsightSerializer(serializers.ModelSerializer):
             "top_products",
             "summary",
             "model_version",
+            "provider_used",
             "created_at",
         ]
 

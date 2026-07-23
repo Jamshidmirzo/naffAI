@@ -20,7 +20,11 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.operators.models import Operator
-from apps.tg_userclient.ai.provider import QuoteResult, get_llm_provider
+from apps.tg_userclient.ai.provider import (
+    LLMChainExhaustedError,
+    QuoteResult,
+    get_llm_provider,
+)
 
 from .models import DailyGreetingShown, DailyQuote
 
@@ -67,6 +71,17 @@ def get_or_create_daily_quote(*, language: str, today: dt.date | None = None) ->
 
     try:
         result = provider.generate_quote(prompt=prompt)
+    except LLMChainExhaustedError as exc:
+        logger.warning("LLM chain exhausted for daily quote: %s — using static fallback", exc)
+        text, author = STATIC_FALLBACKS.get(lang, STATIC_FALLBACKS[DEFAULT_LANGUAGE])
+        return DailyQuote(
+            quote_date=today,
+            language=lang,
+            text=text,
+            author=author,
+            generated_by_model="fallback",
+            provider_used="exhausted",
+        )
     except Exception as exc:
         logger.warning("LLM generate_quote failed: %s — using static fallback", exc)
         text, author = STATIC_FALLBACKS.get(lang, STATIC_FALLBACKS[DEFAULT_LANGUAGE])
@@ -79,6 +94,7 @@ def get_or_create_daily_quote(*, language: str, today: dt.date | None = None) ->
             text=text,
             author=author,
             generated_by_model="fallback",
+            provider_used="fallback",
         )
 
     if not result.text.strip():
@@ -89,6 +105,7 @@ def get_or_create_daily_quote(*, language: str, today: dt.date | None = None) ->
             text=text,
             author=author,
             generated_by_model="fallback",
+            provider_used="fallback",
         )
 
     return DailyQuote.objects.create(
@@ -97,6 +114,7 @@ def get_or_create_daily_quote(*, language: str, today: dt.date | None = None) ->
         text=result.text.strip(),
         author=(result.author or "").strip(),
         generated_by_model=result.model_version or "unknown",
+        provider_used=result.provider or "",
     )
 
 

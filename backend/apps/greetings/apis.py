@@ -31,6 +31,7 @@ class MorningGreetingApi(APIView):
             "language": quote.language,
             "should_show": bool(show),
             "generated_by_model": quote.generated_by_model,
+            "provider_used": quote.provider_used,
         })
 
 

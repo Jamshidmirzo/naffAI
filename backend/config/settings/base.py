@@ -267,13 +267,38 @@ TG_BACKFILL_CHAT_DELAY_MS = config("TG_BACKFILL_CHAT_DELAY_MS", default=800, cas
 TG_BACKFILL_BATCH_SIZE = config("TG_BACKFILL_BATCH_SIZE", default=200, cast=int)
 TG_BACKFILL_MAX_MESSAGES_PER_CHAT = config("TG_BACKFILL_MAX_MESSAGES_PER_CHAT", default=10000, cast=int)
 TG_STALE_RUNNING_TIMEOUT_MIN = config("TG_STALE_RUNNING_TIMEOUT_MIN", default=5, cast=int)
-# LLM provider for dialog analysis: gemini / openai / anthropic / none
+# LLM provider — one of:
+#   chain          — walk `LLM_CHAIN` slots in order with 429 fallback
+#   gemini         — Google Gemini (AI Studio)
+#   github_models  — GitHub Models (OpenAI-compatible, uses gh auth token)
+#   openai / anthropic — legacy stubs
+#   none           — no-op stub for tests / offline dev
 LLM_PROVIDER = config("LLM_PROVIDER", default="none")
 OPENAI_API_KEY = config("OPENAI_API_KEY", default="")
 ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", default="")
 GEMINI_API_KEY = config("GEMINI_API_KEY", default="")
-GEMINI_MODEL = config("GEMINI_MODEL", default="gemini-3.6-flash")
+GEMINI_MODEL = config("GEMINI_MODEL", default="gemini-flash-latest")
 GEMINI_FALLBACK_MODEL = config("GEMINI_FALLBACK_MODEL", default="gemini-2.5-flash-lite")
+
+# GitHub Models — OpenAI-compatible endpoint.
+# Token: output of `gh auth token` (regular GitHub OAuth, no Copilot Pro).
+# Quota: 150 requests/day per model (across models on the same account).
+GITHUB_MODELS_TOKEN = config("GITHUB_MODELS_TOKEN", default="")
+
+# Ordered chain of provider slots. Each token references a key in
+# `LLM_CHAIN_MODELS`. When `LLM_PROVIDER=chain`, the first slot is tried
+# first and on `LLMRateLimitError` we advance to the next.
+LLM_CHAIN = config(
+    "LLM_CHAIN",
+    default="gemini,github_models_gpt4omini,github_models_deepseek,github_models_llama",
+)
+LLM_CHAIN_MODELS = {
+    "gemini": config("LLM_CHAIN_GEMINI_MODEL", default=GEMINI_MODEL),
+    "github_models_gpt4omini": config("LLM_CHAIN_GH_GPT4OMINI", default="openai/gpt-4o-mini"),
+    "github_models_deepseek": config("LLM_CHAIN_GH_DEEPSEEK", default="deepseek/deepseek-v3-0324"),
+    "github_models_llama": config("LLM_CHAIN_GH_LLAMA", default="meta/llama-3.3-70b-instruct"),
+    "github_models_gpt41mini": config("LLM_CHAIN_GH_GPT41MINI", default="openai/gpt-4.1-mini"),
+}
 
 # --- Logging ---
 LOG_DIR = config("LOG_DIR", default="")
