@@ -46,7 +46,6 @@ from .services import (
     telegram_link_upsert,
 )
 
-
 # ---- Serializers ---------------------------------------------------------
 
 

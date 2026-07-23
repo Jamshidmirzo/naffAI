@@ -18,7 +18,6 @@ from apps.operators.models import Operator, OperatorStatus
 
 from .models import Lead, LeadStatus, OperatorSheetAlias, TelegramLink
 
-
 # ---- Lead queries ---------------------------------------------------------
 
 

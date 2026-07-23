@@ -26,5 +26,5 @@ def test_normalize_valid_variants(raw, expected):
     ["", None, "12345", "abcdef", "+998", "0"],
 )
 def test_normalize_invalid(raw):
-    normalized, valid = normalize_uz_phone(raw)
+    _, valid = normalize_uz_phone(raw)
     assert valid is False

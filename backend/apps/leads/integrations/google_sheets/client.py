@@ -12,14 +12,12 @@ threadpool boundaries the rest of the project uses.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from pathlib import Path
 from typing import Any
 
 import httpx
-
 from django.conf import settings
 
 logger = logging.getLogger("leads.google_sheets")
@@ -56,8 +54,8 @@ class GoogleSheetsClient:
                 "GOOGLE_SHEETS_CREDENTIALS_JSON is empty — cannot authenticate"
             )
         try:
-            from google.oauth2 import service_account  # type: ignore[import-not-found]
             from google.auth.transport.requests import Request  # type: ignore[import-not-found]
+            from google.oauth2 import service_account  # type: ignore[import-not-found]
         except ImportError as exc:
             raise GoogleSheetsUnavailable(
                 "google-auth is not installed — `uv pip install google-auth`"

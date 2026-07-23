@@ -8,7 +8,6 @@ single source of truth.
 
 from __future__ import annotations
 
-
 IMEI_MIN_LEN = 6
 IMEI_MAX_LEN = 15
 
@@ -24,7 +23,6 @@ def extract_tac(imei: str) -> str:
 
 
 import re  # noqa: E402
-
 
 _UZ_PHONE_LEN = 9
 _UZ_PHONE_PREFIX = "+998"

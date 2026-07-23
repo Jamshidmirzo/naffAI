@@ -22,7 +22,6 @@ from .models import (
     CallOutcome,
 )
 
-
 # ---- Call attempts -------------------------------------------------------
 
 # When a call reports one of these outcomes we automatically move the

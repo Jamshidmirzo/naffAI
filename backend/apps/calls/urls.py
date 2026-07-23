@@ -9,7 +9,6 @@ from .apis import (
     LeadCallbackCreateApi,
 )
 
-
 # Endpoints nested under /api/leads/<pk>/…
 lead_nested_urlpatterns = [
     path("<int:pk>/call-attempts/", LeadCallAttemptCreateApi.as_view()),

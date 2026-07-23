@@ -17,7 +17,6 @@ from .models import (
     CallbackReminderStatus,
 )
 
-
 ACTIVE_REMINDER_STATUSES = (
     CallbackReminderStatus.PENDING,
     CallbackReminderStatus.SNOOZED,

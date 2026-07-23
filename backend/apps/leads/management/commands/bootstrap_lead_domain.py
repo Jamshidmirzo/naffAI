@@ -15,7 +15,6 @@ from django.core.management.base import BaseCommand
 from apps.leads.models import LeadStatus
 from apps.leads.services import operator_alias_upsert, sheet_source_upsert
 
-
 SPREADSHEET_ID = "140JC8hXXhI1VqBcsZK8yWvBZ05a4NOV7OiNKCz007W0"
 
 SHEET_1_COLUMN_MAP = {

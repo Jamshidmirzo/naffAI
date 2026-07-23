@@ -12,7 +12,6 @@ Endpoints:
 
 from __future__ import annotations
 
-from django.utils.dateparse import parse_datetime
 from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -20,14 +19,14 @@ from rest_framework.views import APIView
 from apps.common.exceptions import ApplicationError
 from apps.leads.selectors import lead_get
 from apps.operators.models import Operator
-from apps.users.permissions import IsAuthenticatedAnyRole, IsOperator, IsTeamLead
+from apps.users.permissions import IsAuthenticatedAnyRole, IsOperator
 
 from .models import CallAttempt, CallbackReminder, CallOutcome
 from .selectors import (
+    call_attempts_for_lead,
     callback_get,
     callbacks_due_soon_for_operator,
     callbacks_for_operator,
-    call_attempts_for_lead,
 )
 from .services import (
     call_attempt_log,
@@ -35,7 +34,6 @@ from .services import (
     callback_reminder_create,
     callback_reminder_snooze,
 )
-
 
 # ---- Serializers ---------------------------------------------------------
 

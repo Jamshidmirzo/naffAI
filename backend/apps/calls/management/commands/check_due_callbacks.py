@@ -19,7 +19,6 @@ import logging
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from django.utils import timezone
 
 from apps.calls.models import CallbackReminder, CallbackReminderStatus
 from apps.calls.selectors import callbacks_pending_due
@@ -90,7 +89,7 @@ class Command(BaseCommand):
         # Import lazily so tests / offline setups don't try to hit Telegram.
         try:
             from apps.tg_bot.notify import send_callback_dm
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("Telegram notifier unavailable — skipping DM fan-out")
             return 0
 
@@ -101,7 +100,7 @@ class Command(BaseCommand):
                 continue
             try:
                 ok = asyncio.run(send_callback_dm(profile.telegram_user_id, cb))
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.exception("DM send failed for cb#%s", cb.id)
                 ok = False
             if ok:

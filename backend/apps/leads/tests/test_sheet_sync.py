@@ -22,7 +22,6 @@ from apps.leads.models import (
 from apps.leads.services import lead_create_from_sheet_row
 from apps.operators.models import Operator, OperatorStatus
 
-
 SPREADSHEET_ID = "TEST_SS"
 
 

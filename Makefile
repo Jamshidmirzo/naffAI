@@ -1,4 +1,4 @@
-.PHONY: help up down logs migrate seed seed-tac test lint shell ps fresh deploy-frontend
+.PHONY: help up down logs migrate seed seed-tac seed-leads sync-sheets check-callbacks test lint shell ps fresh deploy-frontend
 
 help:
 	@echo "naffAI — основные команды:"
@@ -32,6 +32,15 @@ seed:
 
 seed-tac:
 	docker compose exec web python manage.py seed_tac --builtin
+
+seed-leads:
+	docker compose exec web python manage.py bootstrap_lead_domain
+
+sync-sheets:
+	docker compose exec web python manage.py sync_sheets_leads
+
+check-callbacks:
+	docker compose exec web python manage.py check_due_callbacks
 
 test:
 	cd backend && DJANGO_SETTINGS_MODULE=config.settings.test .venv/bin/python -m pytest

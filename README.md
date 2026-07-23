@@ -9,6 +9,7 @@
 
 ## Что нового
 
+- **Pre-sale контур (Этап A)** — лиды из Google Sheets, авто-распределение по операторам round-robin, callback-реминдеры с TG-DM, операторская станция `/my` с блокировкой при просроченных callback'ах. Подробнее в разделе «Pre-sale (Этап A)» ниже.
 - **Мульти-аллокация продаж** — на одну продажу теперь можно повесить N операторов и N партнёров (Alif / Birzum / Hamroh / Cash / …), у каждого своя доля суммы. Премия и аналитика считают по строкам, а не по «основному» FK.
 - **Excel-импорт и -экспорт в формате `savdo` магазина** — листы `savdo` + `nomerla`, сплит-платежи `"Birzum+Hamroh"` / `"5300000+6900000"`, авто-распознавание `MM.DD.YY` vs `DD.MM.YY` локали дат, идемпотентный round-trip.
 - **IMEI 6–15 цифр** (был ровно 15) — поддержка короткого внутреннего серийника + полного 15-значного.
@@ -145,6 +146,70 @@ docker compose exec web python manage.py seed_tac --file /path/to/tacdb.csv
 ImeiCheck при промахе локальной таблицы и тихо откатывается к ручному
 вводу при любых ошибках сети.
 
+## Pre-sale (Этап A)
+
+Контур «до продажи»: лид приходит из Google-формы (три листа с разным
+форматом), система нормализует телефон, распределяет по оператору
+(round-robin среди активных, пропуская тех, у кого есть просроченный
+callback), и живёт в новом разделе «Мои лиды» (`/my`). Продажа делается
+через кнопку «Продажа» на карточке лида — это оборачивает существующий
+`sale_create` и линкует его к лиду через `Sale.lead FK`.
+
+### Модель данных
+
+- `apps.leads.models.Lead` — лид + идемпотентный ключ `(sheet_source, sheet_row_index)`.
+- `apps.leads.models.LeadAssignment` — история назначений (round-robin / alias / ручное).
+- `apps.leads.models.SheetSource` — конфиг per-worksheet: `spreadsheet_id`, `gid`, `column_map` jsonb, `default_status`.
+- `apps.leads.models.OperatorSheetAlias` — `alias_name → operator FK`. Неизвестные alias'ы автоматически создаются с `operator=None`, тимлид биндит их в UI.
+- `apps.leads.models.TelegramLink` — phone → username кэш (кнопка «Написать в TG»).
+- `apps.calls.models.CallAttempt` — попытка звонка + исход.
+- `apps.calls.models.CallbackReminder` — реминдер с supersede-семантикой (один активный на лид).
+
+### Google Sheets integration setup
+
+1. Создать service-account в GCP, скачать JSON-ключ, положить на VPS
+   (например, в `/opt/naffAI/secrets/gsheets.json`).
+2. В Google Sheets прошарить таблицу
+   `140JC8hXXhI1VqBcsZK8yWvBZ05a4NOV7OiNKCz007W0` с ролью «Viewer» на
+   e-mail service-account'а.
+3. В `.env` прописать `GOOGLE_SHEETS_CREDENTIALS_JSON=/opt/naffAI/secrets/gsheets.json`.
+4. Прогнать миграции и sim-сид:
+   ```bash
+   docker compose exec web python manage.py migrate
+   docker compose exec web python manage.py bootstrap_lead_domain
+   ```
+   Это создаст три `SheetSource` (гид 2041870110, 523288785, 1712070933) и
+   placeholder-alias'ы `Nihola / Sevara / Yasmina / Abdulaziz` — админ
+   привязывает их к реальным операторам на странице `/sheet-sources`.
+5. Одноразовый импорт архива Bitrix (лист 3):
+   ```bash
+   docker compose exec web python manage.py import_sheet3_archive
+   ```
+6. Регулярный sync — через cron раз в минуту (см. ниже).
+
+### Cron (prod)
+
+Добавь в `crontab -e` на VPS:
+
+```
+* * * * * cd /opt/naffAI && docker compose exec -T web python manage.py sync_sheets_leads >> /var/log/naff/sync.log 2>&1
+* * * * * cd /opt/naffAI && docker compose exec -T web python manage.py check_due_callbacks >> /var/log/naff/callbacks.log 2>&1
+```
+
+Обе команды идемпотентны — safe re-run. `check_due_callbacks` помечает
+просроченные (`remind_at + CALLBACK_OVERDUE_GRACE_MINUTES < now()`) и
+рассылает DM операторам, у которых привязан TG-профиль (`/link_operator`
+в боте).
+
+### Пороги / политика
+
+- `CALLBACK_OVERDUE_GRACE_MINUTES=30` (env, дефолт 30) — через сколько
+  после `remind_at` реминдер становится `overdue`.
+- Оператор с ≥1 `overdue` не получает новых лидов (`operator_is_blocked_by_overdue_callbacks`).
+- Round-robin: активные операторы, отсортированы по количеству активных лидов ASC → выбирается наименее нагруженный. Ties — по `id` (стабильно).
+- Нормализация телефона: все не-цифры выкидываются, берутся последние 9 цифр, префикс `+998`. Если после этого длина ≠ 13 — `phone_invalid=true`, лид отправляется в «Требуют проверки».
+- Sale ↔ Lead: `Sale.lead` nullable FK. `lead_convert_to_sale` вызывает `sale_create` и переводит лид в `won`.
+
 ## Telegram-бот (фаза 5)
 
 ```bash
@@ -157,6 +222,14 @@ docker compose --profile bot up -d bot
 создаёт `Sale` со статусом `pending`. В UI на странице «Продажи»
 тимлид одним кликом подтверждает (`POST /api/sales/<id>/confirm/`)
 или редактирует/удаляет.
+
+**Оператор-режим (Этап A):**
+Оператор пишет боту `/link_operator`, вводит свой номер (тот же, что в
+карточке `Operator.phone`), бот сохраняет `Profile.telegram_user_id`.
+После этого cron `check_due_callbacks` шлёт ему DM за минуту до
+запланированного callback'а с inline-кнопками «✅ Сделано» и
+«⏰ +15 мин» — обе роутятся в те же сервисы, что и веб-UI
+(`callback_reminder_complete / _snooze`), audit trail единый.
 
 ## ПРИНЯТЫЕ ДОПУЩЕНИЯ
 
@@ -182,6 +255,7 @@ docker compose --profile bot up -d bot
 - Интеграция с 1С/бухгалтерией (по ТЗ out-of-scope — Excel-экспорта достаточно).
 - Более продвинутые отчёты по марже (нужна себестоимость каждой модели).
 - Notifier бота: дневные/месячные digest'ы тимлиду, alert'ы при пересечении порога (легко добавить, не было приоритетом).
+- **Этап B (pre-sale):** AI-скоринг лидов, funnel-аналитика (конверсия по этапам), WebSocket-нотификации вместо polling'а, эскалация неотвеченных лидов после N попыток.
 
 ## Качество
 

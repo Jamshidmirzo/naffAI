@@ -62,13 +62,13 @@ async def send_callback_dm(user_id: int, reminder) -> bool:
         )
         await bot.send_message(user_id, text, parse_mode="HTML", reply_markup=kb)
         return True
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception("send_callback_dm failed for user=%s cb=%s", user_id, reminder.id)
         return False
     finally:
         try:
             await bot.session.close()
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
 

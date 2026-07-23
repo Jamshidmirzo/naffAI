@@ -86,7 +86,7 @@ def sync_one(
                 )
                 if lead is not None:
                     imported += 1
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception(
                 "sheet_source=%s row=%s failed to import",
                 sheet_source.id,
@@ -132,7 +132,7 @@ def sync_all(*, force_full_scan: bool = False) -> list[SyncResult]:
                 r.errors,
                 r.max_row,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("sheet_source=%s sync run failed", src.id)
             results.append(
                 SyncResult(

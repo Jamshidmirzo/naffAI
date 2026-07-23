@@ -694,7 +694,7 @@ async def main() -> None:
         await cb.answer(t("saving", lang))
         try:
             sale = await asyncio.to_thread(_create_sale, data)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.exception("sale create failed")
             await cb.message.answer(t("save_fail", lang, exc=exc), parse_mode="Markdown")
             return
@@ -725,7 +725,7 @@ async def main() -> None:
 
             try:
                 rows = await asyncio.to_thread(_subs)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.exception("loading subscriptions failed")
                 continue
 
@@ -740,12 +740,12 @@ async def main() -> None:
                 if lang not in cache:
                     try:
                         cache[lang] = await asyncio.to_thread(_build_report, lang)
-                    except Exception:  # noqa: BLE001
+                    except Exception:
                         logger.exception("daily report build failed for lang=%s", lang)
                         cache[lang] = "report-build-failed"
                 try:
                     await bot.send_message(chat_id, cache[lang], parse_mode="Markdown")
-                except Exception:  # noqa: BLE001
+                except Exception:
                     logger.exception("send_message to %s failed", chat_id)
 
     # Slash-menu — Telegram caches per language, so we register for both.
@@ -800,7 +800,7 @@ async def main() -> None:
         await cb.answer("Готово!" if ok else "Не удалось")
         try:
             await cb.message.edit_reply_markup(reply_markup=None)
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
     @dp.callback_query(F.data.startswith("cb-snooze:"))
@@ -816,7 +816,7 @@ async def main() -> None:
         await cb.answer(f"Отложено на +{minutes} мин" if ok else "Не удалось")
         try:
             await cb.message.edit_reply_markup(reply_markup=None)
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
     logger.info("Bot started — polling…")
@@ -912,7 +912,7 @@ def _bot_snooze_callback(cb_id: int, minutes: int) -> bool:
         return False
     try:
         callback_reminder_snooze(reminder=cb, minutes=minutes)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return False
     return True
 
