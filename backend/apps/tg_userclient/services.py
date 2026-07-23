@@ -19,7 +19,7 @@ from django.utils import timezone
 
 from apps.audit.services import AuditAction, audit_log_create
 from apps.common.validators import normalize_uz_phone
-from apps.leads.models import Lead
+from apps.leads.models import Lead, LeadStatus
 
 from .crypto import decrypt_session, encrypt_session
 from .models import (
@@ -321,6 +321,11 @@ def tg_message_ingest(
         logger.warning("tg_message_ingest: session %s not found", session_id)
         return None
 
+    if partner_phone:
+        normalized_p, _ = normalize_uz_phone(partner_phone)
+        if normalized_p:
+            partner_phone = normalized_p
+
     # get_or_create chat
     chat, chat_created = TgChat.objects.get_or_create(
         session=session,
@@ -349,6 +354,17 @@ def tg_message_ingest(
             if lead:
                 chat.lead = lead
                 chat.save(update_fields=["lead", "updated_at"])
+
+    # Lead matching fallback by partner name
+    if chat.lead_id is None and chat.partner_name:
+        lead = (
+            Lead.objects.filter(full_name__iexact=chat.partner_name.strip())
+            .exclude(status=LeadStatus.ARCHIVED)
+            .first()
+        )
+        if lead:
+            chat.lead = lead
+            chat.save(update_fields=["lead", "updated_at"])
 
     # Determine transcript status for voice
     transcript_status = ""
@@ -483,9 +499,24 @@ def _mark_error(job: TgBackfillJob, err: str) -> None:
     )
 
 
+def _mark_pending(job: TgBackfillJob) -> None:
+    job.status = TgBackfillJobStatus.PENDING
+    job.started_at = None
+    job.save(update_fields=["status", "started_at", "updated_at"])
+    audit_log_create(
+        user=None,
+        action=AuditAction.UPDATE,
+        entity="tg_userclient.TgBackfillJob",
+        entity_id=job.id,
+        changes={"status": TgBackfillJobStatus.PENDING},
+        comment="TG backfill job released back to PENDING",
+    )
+
+
 def _reset_stale_running_jobs() -> int:
-    """Reset jobs stuck in RUNNING for >10 minutes back to PENDING."""
-    cutoff = timezone.now() - timedelta(minutes=10)
+    """Reset jobs stuck in RUNNING for >TG_STALE_RUNNING_TIMEOUT_MIN minutes back to PENDING."""
+    timeout_min = getattr(settings, "TG_STALE_RUNNING_TIMEOUT_MIN", 5)
+    cutoff = timezone.now() - timedelta(minutes=timeout_min)
     stale_jobs = TgBackfillJob.objects.filter(
         status=TgBackfillJobStatus.RUNNING,
         updated_at__lt=cutoff,

@@ -51,3 +51,20 @@ class IsAuthenticatedAnyRole(BasePermission):
 
     def has_permission(self, request, view) -> bool:
         return _role(request.user) in {Role.TEAM_LEAD, Role.MANAGER, Role.OPERATOR}
+
+
+class IsManager(BasePermission):
+    """
+    Manager-only surface: operator account CRUD (create login, view /
+    reset password, block, delete).
+
+    Note: superusers pass via _role() → TEAM_LEAD, which is intentionally
+    NOT granted here — the account-management endpoints are restricted to
+    the dedicated 'manager' role per business decision. Superuser access
+    is only granted explicitly below so ops can recover a lockout.
+    """
+
+    def has_permission(self, request, view) -> bool:
+        if request.user and request.user.is_superuser:
+            return True
+        return _role(request.user) == Role.MANAGER

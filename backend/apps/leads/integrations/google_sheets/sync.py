@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from django.db import transaction
 from django.utils import timezone
 
+from apps.common.exceptions import ApplicationError
 from apps.leads.models import SheetSource
 from apps.leads.services import (
     lead_create_from_sheet_row,
@@ -49,66 +50,98 @@ def sync_one(
     sheet_source: SheetSource,
     force_full_scan: bool = False,
 ) -> SyncResult:
-    worksheet_name = sheet_source.worksheet_name
-    if not worksheet_name:
-        worksheet_name = (
-            client.worksheet_name_by_gid(sheet_source.spreadsheet_id, sheet_source.gid)
-            or ""
-        )
-    if not worksheet_name:
-        logger.warning(
-            "No worksheet found for spreadsheet=%s gid=%s",
-            sheet_source.spreadsheet_id,
-            sheet_source.gid,
-        )
-        return SyncResult(sheet_source.id, 0, 0, 0, 1, sheet_source.last_synced_row)
-
-    rows = client.get_rows(sheet_source.spreadsheet_id, worksheet_name)
-    read = len(rows)
-    imported = 0
-    skipped = 0
-    errors = 0
-    max_row = sheet_source.last_synced_row
-
-    watermark = 0 if force_full_scan else sheet_source.last_synced_row
-
-    for row in rows:
-        row_index = int(row.get("__row__") or 0)
-        if row_index <= watermark:
-            skipped += 1
-            if row_index > max_row:
-                max_row = row_index
-            continue
-        try:
-            with transaction.atomic():
-                lead = lead_create_from_sheet_row(
-                    sheet_source=sheet_source, row_index=row_index, raw_row=row
+    try:
+        with transaction.atomic():
+            sheet_source = SheetSource.objects.select_for_update(of=("self",)).get(pk=sheet_source.id)
+            worksheet_name = sheet_source.worksheet_name
+            if not worksheet_name:
+                worksheet_name = (
+                    client.worksheet_name_by_gid(sheet_source.spreadsheet_id, sheet_source.gid)
+                    or ""
                 )
-                if lead is not None:
-                    imported += 1
-        except Exception:
-            logger.exception(
-                "sheet_source=%s row=%s failed to import",
+            if not worksheet_name:
+                logger.warning(
+                    "No worksheet found for spreadsheet=%s gid=%s",
+                    sheet_source.spreadsheet_id,
+                    sheet_source.gid,
+                )
+                raise ApplicationError("Worksheet not found")
+
+            rows = client.get_rows(sheet_source.spreadsheet_id, worksheet_name)
+
+            # Validation of required mapped columns
+            column_map = sheet_source.column_map or {}
+            has_phone = bool(column_map.get("phone") or column_map.get("phone_number"))
+            missing = []
+            if not column_map.get("full_name"):
+                missing.append("full_name")
+            if not has_phone:
+                missing.append("phone")
+            if missing:
+                raise ApplicationError(f"Sheet source #{sheet_source.id}: missing column mapping for {missing}")
+
+            first_row_headers = list(rows[0].keys()) if rows else []
+            phone_key = "phone" if column_map.get("phone") else "phone_number"
+            for key in ["full_name", phone_key]:
+                mapped = column_map[key]
+                if isinstance(mapped, str) and mapped not in first_row_headers:
+                    raise ApplicationError(f"Sheet source #{sheet_source.id}: mapped column '{mapped}' not found in sheet headers")
+
+            read = len(rows)
+            imported = 0
+            skipped = 0
+            errors = 0
+            max_row = sheet_source.last_synced_row
+
+            watermark = 0 if force_full_scan else sheet_source.last_synced_row
+
+            for row in rows:
+                row_index = int(row.get("__row__") or 0)
+                if row_index <= watermark:
+                    skipped += 1
+                    if row_index > max_row:
+                        max_row = row_index
+                    continue
+                try:
+                    with transaction.atomic():
+                        lead = lead_create_from_sheet_row(
+                            sheet_source=sheet_source, row_index=row_index, raw_row=row
+                        )
+                        if lead is not None:
+                            imported += 1
+                except Exception:
+                    logger.exception(
+                        "sheet_source=%s row=%s failed to import",
+                        sheet_source.id,
+                        row_index,
+                    )
+                    errors += 1
+                if row_index > max_row:
+                    max_row = row_index
+
+            if max_row > sheet_source.last_synced_row:
+                sheet_source_bump_watermark(
+                    sheet_source=sheet_source, last_row=max_row, synced_at=timezone.now()
+                )
+
+            if sheet_source.last_sync_error:
+                sheet_source.last_sync_error = ""
+                sheet_source.save(update_fields=["last_sync_error", "updated_at"])
+
+            return SyncResult(
                 sheet_source.id,
-                row_index,
+                read=read,
+                imported=imported,
+                skipped=skipped,
+                errors=errors,
+                max_row=max_row,
             )
-            errors += 1
-        if row_index > max_row:
-            max_row = row_index
-
-    if max_row > sheet_source.last_synced_row:
-        sheet_source_bump_watermark(
-            sheet_source=sheet_source, last_row=max_row, synced_at=timezone.now()
+    except Exception as exc:
+        SheetSource.objects.filter(pk=sheet_source.id).update(
+            last_sync_error=str(exc), updated_at=timezone.now()
         )
-
-    return SyncResult(
-        sheet_source.id,
-        read=read,
-        imported=imported,
-        skipped=skipped,
-        errors=errors,
-        max_row=max_row,
-    )
+        sheet_source.last_sync_error = str(exc)
+        raise
 
 
 def sync_all(*, force_full_scan: bool = False) -> list[SyncResult]:

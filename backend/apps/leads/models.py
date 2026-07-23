@@ -76,6 +76,7 @@ class SheetSource(TimestampedModel):
     )
     active = models.BooleanField(default=True)
     last_synced_at = models.DateTimeField(null=True, blank=True)
+    last_sync_error = models.TextField(blank=True, default="")
     last_synced_row = models.PositiveIntegerField(
         default=0,
         help_text=(

@@ -18,7 +18,7 @@ from rest_framework.views import APIView
 
 from apps.common.exceptions import ApplicationError
 from apps.leads.selectors import lead_get
-from apps.operators.models import Operator
+from apps.operators.selectors import operator_get
 from apps.users.permissions import IsAuthenticatedAnyRole, IsOperator
 
 from .models import CallAttempt, CallbackReminder, CallOutcome
@@ -103,7 +103,7 @@ def _operator_for_request(request) -> Operator | None:
         op_id = profile.operator_id if profile else None
     if not op_id:
         return None
-    return Operator.objects.filter(pk=op_id).first()
+    return operator_get(op_id)
 
 
 # ---- Views ---------------------------------------------------------------
@@ -129,7 +129,7 @@ class LeadCallAttemptCreateApi(APIView):
         v = ser.validated_data
         op = _operator_for_request(request)
         if op is None and v.get("operator_id"):
-            op = Operator.objects.filter(pk=v["operator_id"]).first()
+            op = operator_get(v["operator_id"])
         if op is None:
             return Response({"detail": "Не указан оператор"}, status=400)
         try:
@@ -181,7 +181,7 @@ class CallbackMineListApi(APIView):
         profile = getattr(request.user, "profile", None)
         if not profile or not profile.operator_id:
             return Response({"detail": "У пользователя не привязан оператор"}, status=400)
-        op = Operator.objects.filter(pk=profile.operator_id).first()
+        op = operator_get(profile.operator_id)
         if not op:
             return Response({"detail": "Оператор не найден"}, status=404)
         include_done = request.query_params.get("include_done") in ("1", "true")
@@ -201,7 +201,7 @@ class CallbackMineDueApi(APIView):
         profile = getattr(request.user, "profile", None)
         if not profile or not profile.operator_id:
             return Response({"detail": "У пользователя не привязан оператор"}, status=400)
-        op = Operator.objects.filter(pk=profile.operator_id).first()
+        op = operator_get(profile.operator_id)
         if not op:
             return Response({"detail": "Оператор не найден"}, status=404)
         try:

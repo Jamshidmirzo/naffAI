@@ -44,6 +44,7 @@ def lead_list(
     status: str | None = None,
     operator_id: int | None = None,
     source: str | None = None,
+    sheet_source_id: int | None = None,
     needs_review: bool | None = None,
     phone_invalid: bool | None = None,
     search: str | None = None,
@@ -55,6 +56,8 @@ def lead_list(
         qs = qs.filter(operator_id=operator_id)
     if source:
         qs = qs.filter(source=source)
+    if sheet_source_id:
+        qs = qs.filter(sheet_source_id=sheet_source_id)
     if needs_review is not None:
         qs = qs.filter(needs_review=needs_review)
     if phone_invalid is not None:

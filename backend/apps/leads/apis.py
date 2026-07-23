@@ -189,6 +189,7 @@ class LeadListCreateApi(ListCreateAPIView):
             status=qp.get("status") or None,
             operator_id=int(qp["operator"]) if qp.get("operator") else None,
             source=qp.get("source") or None,
+            sheet_source_id=int(qp["sheet_source"]) if qp.get("sheet_source") else None,
             needs_review=(
                 qp.get("needs_review") in ("1", "true", "True")
                 if qp.get("needs_review") is not None
@@ -234,9 +235,7 @@ class LeadMyListApi(APIView):
         if not op_id:
             return Response({"detail": "У пользователя не привязан оператор"}, status=400)
 
-        from apps.operators.models import Operator
-
-        operator = Operator.objects.filter(pk=op_id).first()
+        operator = operator_get(op_id)
         if not operator:
             return Response({"detail": "Оператор не найден"}, status=404)
 
@@ -264,9 +263,8 @@ class LeadReassignApi(APIView):
             return Response({"detail": "Не найден"}, status=404)
         ser = LeadReassignInputSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        from apps.operators.models import Operator
 
-        op = Operator.objects.filter(pk=ser.validated_data["operator_id"]).first()
+        op = operator_get(ser.validated_data["operator_id"])
         if not op:
             return Response({"detail": "Оператор не найден"}, status=400)
         try:
@@ -392,11 +390,10 @@ class OperatorSheetAliasListCreateApi(ListCreateAPIView):
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
-        from apps.operators.models import Operator
-
         op = None
         if data.get("operator"):
-            op = Operator.objects.filter(pk=data["operator"].id if hasattr(data["operator"], "id") else data["operator"]).first()
+            op_id = data["operator"].id if hasattr(data["operator"], "id") else data["operator"]
+            op = operator_get(op_id)
         try:
             obj = operator_alias_upsert(
                 alias_name=data["alias_name"],
@@ -419,13 +416,7 @@ class OperatorSheetAliasDetailApi(APIView):
             return Response({"detail": "Not found"}, status=404)
         op = obj.operator
         if "operator" in request.data:
-            from apps.operators.models import Operator
-
-            op = (
-                Operator.objects.filter(pk=request.data["operator"]).first()
-                if request.data["operator"]
-                else None
-            )
+            op = operator_get(request.data["operator"]) if request.data["operator"] else None
         try:
             updated = operator_alias_upsert(
                 alias_name=request.data.get("alias_name", obj.alias_name),

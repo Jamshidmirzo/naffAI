@@ -9,9 +9,16 @@ from rest_framework.views import APIView
 
 from apps.analytics.selectors import resolve_period
 from apps.users.permissions import IsTeamLead, IsTeamLeadOrManagerReadOnly
+from apps.users.selectors import account_state, user_by_operator
 
 from .models import Operator
-from .selectors import operator_achievements, operator_get, operator_list, operator_plan_progress, operator_stats
+from .selectors import (
+    operator_achievements,
+    operator_get,
+    operator_list,
+    operator_plan_progress,
+    operator_stats,
+)
 from .services import (
     operator_create,
     operator_deactivate,
@@ -29,6 +36,7 @@ class OperatorSerializer(serializers.ModelSerializer):
     plan_actual = serializers.DecimalField(
         max_digits=16, decimal_places=2, read_only=True, required=False, default=None
     )
+    account = serializers.SerializerMethodField()
 
     class Meta:
         model = Operator
@@ -43,8 +51,12 @@ class OperatorSerializer(serializers.ModelSerializer):
             "updated_at",
             "plan_target",
             "plan_actual",
+            "account",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at", "account"]
+
+    def get_account(self, obj: Operator) -> dict:
+        return account_state(user_by_operator(obj))
 
 
 class OperatorListCreateApi(ListCreateAPIView):

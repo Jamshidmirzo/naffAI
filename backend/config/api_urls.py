@@ -9,10 +9,18 @@ from apps.leads.urls import (
     sheet_source_urlpatterns,
     telegram_urlpatterns,
 )
-
+from apps.users.urls import me_urlpatterns as users_me_urlpatterns
+from apps.users.urls import (
+    operator_account_urlpatterns as users_operator_account_urlpatterns,
+)
 
 urlpatterns = [
     path("auth/", include("apps.users.urls")),
+    path("me/", include((users_me_urlpatterns, "users_me"))),
+    # Manager-only account CRUD for operators. Mounted BEFORE
+    # `apps.operators.urls` so `<int:operator_id>/account/...` doesn't
+    # collide with the operators CRUD paths (they use `<int:pk>/`).
+    path("operators/", include((users_operator_account_urlpatterns, "operator_accounts"))),
     path("operators/", include("apps.operators.urls")),
     path("channels/", include("apps.catalog.urls_channels")),
     path("imei/", include("apps.catalog.urls_imei")),
@@ -32,4 +40,6 @@ urlpatterns = [
     path("sheet-sources/", include((sheet_source_urlpatterns, "sheet_sources"))),
     path("operator-sheet-aliases/", include((alias_urlpatterns, "operator_sheet_aliases"))),
     path("telegram/", include((telegram_urlpatterns, "telegram"))),
+    # Telegram user-client (Telethon MTProto — operator session management)
+    path("tg-userclient/", include("apps.tg_userclient.urls")),
 ]

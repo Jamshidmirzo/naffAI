@@ -19,6 +19,8 @@ class BotSubscription(TimestampedModel):
     chat_title = models.CharField(max_length=128, blank=True, default="")
     is_active = models.BooleanField(default=False)
     language = models.CharField(max_length=4, choices=LANGUAGE_CHOICES, default="ru")
+    blocked_at = models.DateTimeField(null=True, blank=True)
+    last_daily_report_date = models.DateField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]

@@ -714,14 +714,24 @@ async def main() -> None:
             except asyncio.CancelledError:
                 return
 
-            from apps.tg_bot.models import BotSubscription
+            from apps.tg_bot.selectors import subscriptions_ready_for_dm
 
             def _subs():
                 from django.db import close_old_connections
                 close_old_connections()
+                today = timezone.localdate()
                 return list(
-                    BotSubscription.objects.filter(is_active=True).values_list("chat_id", "language")
+                    subscriptions_ready_for_dm()
+                    .exclude(last_daily_report_date=today)
+                    .values_list("id", "chat_id", "language")
                 )
+
+            def _mark_sent(sub_id: int):
+                from django.db import close_old_connections
+                from apps.tg_bot.models import BotSubscription
+                close_old_connections()
+                today = timezone.localdate()
+                BotSubscription.objects.filter(id=sub_id).update(last_daily_report_date=today)
 
             try:
                 rows = await asyncio.to_thread(_subs)
@@ -736,7 +746,7 @@ async def main() -> None:
 
             # Build report once per language so we don't aggregate N times for N subscribers.
             cache: dict[str, str] = {}
-            for chat_id, lang in rows:
+            for sub_id, chat_id, lang in rows:
                 if lang not in cache:
                     try:
                         cache[lang] = await asyncio.to_thread(_build_report, lang)
@@ -745,6 +755,7 @@ async def main() -> None:
                         cache[lang] = "report-build-failed"
                 try:
                     await bot.send_message(chat_id, cache[lang], parse_mode="Markdown")
+                    await asyncio.to_thread(_mark_sent, sub_id)
                 except Exception:
                     logger.exception("send_message to %s failed", chat_id)
 
@@ -792,16 +803,32 @@ async def main() -> None:
     @dp.callback_query(F.data.startswith("cb-done:"))
     async def cb_done(cb: CallbackQuery) -> None:
         try:
-            cb_id = int(cb.data.split(":", 1)[1])
+            _, cb_id_s = cb.data.split(":", 1)
+            cb_id = int(cb_id_s)
         except (ValueError, IndexError):
             await cb.answer()
             return
         ok = await asyncio.to_thread(_bot_complete_callback, cb_id)
-        await cb.answer("Готово!" if ok else "Не удалось")
-        try:
-            await cb.message.edit_reply_markup(reply_markup=None)
-        except Exception:
-            pass
+        if ok:
+            await cb.answer("Готово!")
+            try:
+                await cb.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+        else:
+            await cb.answer("Не удалось")
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[[
+                    InlineKeyboardButton(text="🔄 Повторить", callback_data=f"cb-done:{cb_id}")
+                ]]
+            )
+            try:
+                await cb.message.edit_text(
+                    "Не удалось отметить, попробуй ещё раз.",
+                    reply_markup=kb,
+                )
+            except Exception:
+                pass
 
     @dp.callback_query(F.data.startswith("cb-snooze:"))
     async def cb_snooze(cb: CallbackQuery) -> None:
@@ -813,11 +840,26 @@ async def main() -> None:
             await cb.answer()
             return
         ok = await asyncio.to_thread(_bot_snooze_callback, cb_id, minutes)
-        await cb.answer(f"Отложено на +{minutes} мин" if ok else "Не удалось")
-        try:
-            await cb.message.edit_reply_markup(reply_markup=None)
-        except Exception:
-            pass
+        if ok:
+            await cb.answer(f"Отложено на +{minutes} мин")
+            try:
+                await cb.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+        else:
+            await cb.answer("Не удалось")
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[[
+                    InlineKeyboardButton(text="🔄 Повторить", callback_data=f"cb-snooze:{cb_id}:{minutes}")
+                ]]
+            )
+            try:
+                await cb.message.edit_text(
+                    "Не удалось отложить, попробуй ещё раз.",
+                    reply_markup=kb,
+                )
+            except Exception:
+                pass
 
     logger.info("Bot started — polling…")
     asyncio.create_task(daily_report_scheduler())

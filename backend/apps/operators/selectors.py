@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
+from django.http import Http404
 from django.db.models import Count, DecimalField, F, OuterRef, Q, QuerySet, Subquery, Sum, Value
 from django.db.models.functions import Coalesce, TruncDate, TruncMonth
 from django.utils import timezone
@@ -10,6 +11,13 @@ from django.utils import timezone
 from apps.sales.models import Sale, SaleOperator, SalePartner
 
 from .models import Operator, OperatorMonthlyPlan, OperatorStatus
+
+
+def operator_get_by_id_or_404(operator_id: int) -> Operator:
+    try:
+        return Operator.objects.get(pk=operator_id)
+    except Operator.DoesNotExist:
+        raise Http404("Operator not found")
 
 
 def operator_list(

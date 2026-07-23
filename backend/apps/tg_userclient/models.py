@@ -187,3 +187,35 @@ class TgBackfillJob(TimestampedModel):
     def __str__(self) -> str:
         return f"TgBackfillJob#{self.pk} session={self.session_id} [{self.status}]"
 
+
+class TgAiInsightAttemptStatus(models.TextChoices):
+    SUCCESS = "success", "Успешно"
+    ERROR_RETRIABLE = "error_retriable", "Ошибка (повторить)"
+    ERROR_PERMANENT = "error_permanent", "Ошибка (неустранимая)"
+
+
+class TgAiInsightAttempt(models.Model):
+    chat = models.ForeignKey(
+        TgChat, on_delete=models.CASCADE, related_name="ai_attempts"
+    )
+    session = models.ForeignKey(
+        TgSession, on_delete=models.CASCADE, related_name="ai_attempts"
+    )
+    attempted_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(
+        max_length=20, choices=TgAiInsightAttemptStatus.choices
+    )
+    error_message = models.TextField(blank=True, default="")
+    next_retry_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["chat", "attempted_at"]),
+            models.Index(fields=["status", "next_retry_at"]),
+        ]
+        verbose_name = "TG AI Attempt"
+        verbose_name_plural = "TG AI Attempts"
+
+    def __str__(self) -> str:
+        return f"TgAiInsightAttempt#{self.pk} chat={self.chat_id} [{self.status}]"
+
