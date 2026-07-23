@@ -347,6 +347,42 @@ def lead_reassign(
         },
         comment=reason or "Ручное переназначение",
     )
+
+    # Move any live callback reminders on this lead over to the new
+    # operator. Without this the OLD operator keeps receiving DM nudges
+    # for a lead that no longer belongs to them, and the NEW operator
+    # never gets pinged. Local import avoids a leads<->calls cycle.
+    from apps.calls.models import CallbackReminder, CallbackReminderStatus
+
+    live_statuses = (
+        CallbackReminderStatus.PENDING,
+        CallbackReminderStatus.SNOOZED,
+        CallbackReminderStatus.OVERDUE,
+    )
+    reassigned = CallbackReminder.objects.filter(
+        lead=lead, status__in=live_statuses
+    ).exclude(operator_id=new_operator.id).update(
+        # Reset dm_sent_at so the new operator gets a fresh DM at the
+        # next cron tick — the old row's timestamp belongs to a message
+        # sent to a different person.
+        operator=new_operator,
+        dm_sent_at=None,
+    )
+    if reassigned:
+        audit_log_create(
+            user=user,
+            action=AuditAction.UPDATE,
+            entity="calls.CallbackReminder",
+            entity_id=lead.id,  # anchor to the lead — reminders are plural
+            changes={
+                "reassigned_to": new_operator.id,
+                "old_operator_id": old_op.id if old_op else None,
+                "count": reassigned,
+                "lead_id": lead.id,
+            },
+            comment="Reminders moved with lead reassignment",
+        )
+
     return assignment
 
 
