@@ -146,6 +146,69 @@ docker compose exec web python manage.py seed_tac --file /path/to/tacdb.csv
 ImeiCheck при промахе локальной таблицы и тихо откатывается к ручному
 вводу при любых ошибках сети.
 
+## Управление аккаунтами операторов (Этап B)
+
+Менеджер (роль `manager`) выдаёт логины операторам прямо из UI:
+`/operators` → колонка «Аккаунт» → «Создать логин».
+
+- **Логин** = нормализованный номер телефона оператора (`+998XXXXXXXXX`).
+  Login-endpoint принимает номер в любом формате — `+998…`, `998…` или
+  `901234567` — и приводит к каноническому виду.
+- **Пароль** можно ввести вручную (мин. 8 символов) или сгенерировать
+  кнопкой Generate (`Naff-XXXXXX`, `secrets` RNG).
+- **Двойное хранение.** Django-hash в `User.password` (источник правды
+  для входа) + Fernet-зашифрованный plaintext в `OperatorSecret`
+  (позволяет менеджеру посмотреть текущий пароль без сброса). Обе версии
+  обновляются атомарно из `apps.users.services.user_password_set`.
+- **Просмотр пароля.** Кнопка с ключом → API дёргает
+  `GET /api/operators/{id}/account/password/` → пишется `AuditLog` с
+  `changes.kind = "password_viewed"`, `user = actor`. Тимлид/владелец
+  видят кто и когда смотрел пароли в разделе «Журнал».
+- **Соло-смена пароля.** Оператор идёт в «Профиль» (шапка сайдбара),
+  вводит текущий и новый — обе версии пароля обновляются,
+  менеджер сразу видит новый в «Показать пароль».
+- **Блокировка / удаление.** Блокировка = `is_active=False`. Удаление
+  soft: аккаунт заблокирован, `Profile.deleted_at=now`, ciphertext стёрт
+  (Django-hash сохраняется, чтобы аудит-запись имела корректный FK).
+
+### Настройка Fernet-ключа
+
+Ключ обязателен в prod (`ImproperlyConfigured` без него). В `DEBUG=1`
+пустой ключ приводит к генерации эфемерного при старте — сохранённые под
+таким ключом пароли протухают после каждого рестарта, это ок только для
+локальной разработки.
+
+Сгенерировать боевой ключ:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Положить в `.env`:
+
+```env
+OPERATOR_PASSWORD_ENCRYPTION_KEY=<строка выше>
+```
+
+> **Безопасность.** Пароли хранятся обратимо-зашифрованно. При одновременной
+> компрометации БД и `.env` все пароли становятся читаемыми — держи Fernet-
+> ключ вне пути бэкапа БД (отдельный секретный менеджер, отдельный volume,
+> etc.). Плейн-пароль возвращается только из create / reset / view / self-
+> change endpoint'ов и никогда не пишется в `AuditLog.changes`.
+
+### API-сводка
+
+| Метод   | Путь                                              | Кто        |
+|---------|---------------------------------------------------|------------|
+| POST    | `/api/operators/{id}/account/`                    | manager    |
+| GET     | `/api/operators/{id}/account/password/`           | manager    |
+| POST    | `/api/operators/{id}/account/reset-password/`     | manager    |
+| POST    | `/api/operators/{id}/account/deactivate/`         | manager    |
+| POST    | `/api/operators/{id}/account/activate/`           | manager    |
+| DELETE  | `/api/operators/{id}/account/delete/`             | manager    |
+| POST    | `/api/me/change-password/`                        | любой auth |
+| POST    | `/api/auth/login/`                                | все        |
+
 ## Pre-sale (Этап A)
 
 Контур «до продажи»: лид приходит из Google-формы (три листа с разным
@@ -230,6 +293,40 @@ docker compose --profile bot up -d bot
 запланированного callback'а с inline-кнопками «✅ Сделано» и
 «⏰ +15 мин» — обе роутятся в те же сервисы, что и веб-UI
 (`callback_reminder_complete / _snooze`), audit trail единый.
+
+## Telegram User Client & AI-Анализ (Этап B)
+
+- **User Client (Telethon MTProto)**: модуль `apps.tg_userclient`. Приём сообщений 1-на-1 и групповых чатов операторов. Запуск: `python manage.py run_tg_userclient`.
+- **Backfill истории чатов**: Автоматическая фоновая подгрузка истории личных и групповых чатов при авторизации оператора. Настройки в `.env`: `TG_BACKFILL_SINCE=2026-07-01`, `TG_BACKFILL_CHAT_DELAY_MS=800`, `TG_BACKFILL_MAX_MESSAGES_PER_CHAT=10000`. Ручной перезапуск: `python manage.py retry_tg_backfill --all-errors`.
+- **AI Provider (Google Gemini)**: AI-анализ диалогов (`apps.tg_userclient.ai.provider.GeminiProvider`). Настройки в `.env`: `LLM_PROVIDER=gemini`, `GEMINI_API_KEY=...`, `GEMINI_MODEL=gemini-3.6-flash`, `GEMINI_FALLBACK_MODEL=gemini-2.5-flash-lite`. Автоматический fallback на `gemini-2.5-flash-lite` при исчерпании квоты (429). Запуск анализа: `python manage.py analyze_tg_dialogs`.
+
+### Telegram User-Client в prod
+
+Фоновый процессор `run_tg_userclient` работает как systemd-сервис на VPS:
+
+```bash
+# Статус сервиса
+systemctl status naff-tg-userclient
+
+# Перезапуск сервиса
+systemctl restart naff-tg-userclient
+
+# Просмотр логов
+journalctl -u naff-tg-userclient -f
+# или
+tail -f /var/log/naffAI/tg-userclient.log
+```
+
+### Ошибки в проде — Sentry (SaaS free tier)
+
+Для отслеживания необработанных исключений в продакшене поддерживается интеграция с [Sentry](https://sentry.io/signup/):
+
+1. Зарегистрируйтесь на [sentry.io](https://sentry.io/signup/) и создайте проект Django.
+2. Скопируйте DSN и добавьте в `.env`:
+   ```
+   SENTRY_DSN=https://your-dsn-key@o0.ingest.sentry.io/0
+   ```
+3. При запуске под `config.settings.prod` ошибки будут автоматически отправляться в Sentry без передачи персональных данных (PII).
 
 ## ПРИНЯТЫЕ ДОПУЩЕНИЯ
 
