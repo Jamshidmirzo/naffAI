@@ -386,6 +386,16 @@ def lead_convert_to_sale(*, lead: Lead, user=None, sale_data: dict):
     # Local import to avoid app-loading cycles.
     from apps.sales.services import sale_create
 
+    # Guard against a second conversion on the same lead: nothing at the
+    # DB level enforces uniqueness because a Sale.lead FK is nullable and
+    # shared with historical/backfilled sales. Without this check the
+    # caller could double-create and silently over-count the pipeline.
+    if lead.sales.filter(is_deleted=False).exists():
+        raise ApplicationError(
+            "Этот лид уже конвертирован в продажу",
+            {"field": "lead", "reason": "already_converted"},
+        )
+
     if not sale_data.get("operators") and not sale_data.get("operator_id"):
         if lead.operator_id is None:
             raise ApplicationError(
