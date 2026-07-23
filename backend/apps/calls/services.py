@@ -178,7 +178,14 @@ def callback_reminder_snooze(
 ) -> CallbackReminder:
     if minutes <= 0:
         raise ApplicationError("Минуты должны быть положительными", {"field": "minutes"})
-    new_remind_at = timezone.now() + dt.timedelta(minutes=minutes)
+    # Snooze from whichever is later — the current `remind_at` (if still in
+    # the future) or `now()` (if already overdue). This keeps the semantics
+    # consistent for both operator scenarios:
+    #   1) "I know I'm going to be busy, push me another 15 min"
+    #   2) "It just rang, but let me finish this other call — +15 min from now"
+    now = timezone.now()
+    base = max(now, reminder.remind_at)
+    new_remind_at = base + dt.timedelta(minutes=minutes)
     old_remind_at = reminder.remind_at
     reminder.remind_at = new_remind_at
     reminder.status = CallbackReminderStatus.SNOOZED

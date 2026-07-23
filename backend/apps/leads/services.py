@@ -242,14 +242,18 @@ def lead_create_from_sheet_row(
         comment="Импорт из Google Sheets",
     )
     if assigned_op is not None:
+        # We got a real operator from the alias, but a broken phone still
+        # trumps assignment — the team lead has to review before this lead
+        # goes into the call rotation.
         LeadAssignment.objects.create(
             lead=lead,
             operator=assigned_op,
             source=LeadAssignmentSource.SHEET_MANUAL,
             reason=f"alias «{operator_alias}»",
         )
-        lead.status = LeadStatus.ASSIGNED
-        lead.save(update_fields=["status", "updated_at"])
+        if not needs_review:
+            lead.status = LeadStatus.ASSIGNED
+            lead.save(update_fields=["status", "updated_at"])
     elif not needs_review and status == LeadStatus.NEW and valid:
         # No alias in the row, still valid → hand to auto-assignment.
         try:
