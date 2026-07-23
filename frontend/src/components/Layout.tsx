@@ -13,16 +13,33 @@ import {
   Moon,
   Sun,
   Monitor,
+  Contact2,
+  ClipboardList,
+  FileSpreadsheet,
 } from "lucide-react";
 
-const items = [
-  { to: "/", label: "Дашборд", icon: LayoutDashboard, end: true },
-  { to: "/sales", label: "Продажи", icon: ShoppingCart },
-  { to: "/operators", label: "Операторы", icon: Users },
-  { to: "/partners", label: "Партнёры", icon: Handshake },
-  { to: "/analytics", label: "Аналитика", icon: LineChart },
-  { to: "/payroll", label: "Зарплата", icon: Wallet },
-  { to: "/audit", label: "Журнал", icon: History },
+type NavItem = {
+  to: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  end?: boolean;
+  roles?: Array<"team_lead" | "manager" | "operator">;
+};
+
+const OPERATOR_ITEMS: NavItem[] = [
+  { to: "/my", label: "Мои лиды", icon: Contact2, end: true, roles: ["operator"] },
+];
+
+const TEAM_LEAD_ITEMS: NavItem[] = [
+  { to: "/", label: "Дашборд", icon: LayoutDashboard, end: true, roles: ["team_lead", "manager"] },
+  { to: "/leads", label: "Лиды", icon: ClipboardList, roles: ["team_lead", "manager"] },
+  { to: "/sales", label: "Продажи", icon: ShoppingCart, roles: ["team_lead", "manager"] },
+  { to: "/operators", label: "Операторы", icon: Users, roles: ["team_lead", "manager"] },
+  { to: "/partners", label: "Партнёры", icon: Handshake, roles: ["team_lead", "manager"] },
+  { to: "/analytics", label: "Аналитика", icon: LineChart, roles: ["team_lead", "manager"] },
+  { to: "/payroll", label: "Зарплата", icon: Wallet, roles: ["team_lead", "manager"] },
+  { to: "/sheet-sources", label: "Google Sheets", icon: FileSpreadsheet, roles: ["team_lead"] },
+  { to: "/audit", label: "Журнал", icon: History, roles: ["team_lead"] },
 ];
 
 const SCREEN_ITEM = { href: "/screen", label: "Экран монитора", icon: Monitor };
@@ -31,6 +48,12 @@ export default function Layout() {
   const auth = useAuth();
   const theme = useTheme();
   const nav = useNavigate();
+  const role = (auth.role as "team_lead" | "manager" | "operator" | null) || null;
+
+  const items: NavItem[] = [];
+  if (role === "operator") items.push(...OPERATOR_ITEMS);
+  else items.push(...TEAM_LEAD_ITEMS.filter((it) => !it.roles || it.roles.includes(role || "team_lead")));
+
   const onLogout = () => {
     auth.logout();
     nav("/login");
@@ -60,17 +83,19 @@ export default function Layout() {
               {it.label}
             </NavLink>
           ))}
-          <div className="pt-2 border-t border-gray-100 dark:border-slate-800 mt-2">
-            <a
-              href={SCREEN_ITEM.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition font-medium"
-            >
-              <SCREEN_ITEM.icon className="w-4 h-4" />
-              {SCREEN_ITEM.label}
-            </a>
-          </div>
+          {role !== "operator" && (
+            <div className="pt-2 border-t border-gray-100 dark:border-slate-800 mt-2">
+              <a
+                href={SCREEN_ITEM.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition font-medium"
+              >
+                <SCREEN_ITEM.icon className="w-4 h-4" />
+                {SCREEN_ITEM.label}
+              </a>
+            </div>
+          )}
         </nav>
         <div className="px-3 py-4 border-t border-gray-200 dark:border-slate-800 space-y-2">
           <div className="px-3 text-xs text-gray-500 dark:text-slate-400">
