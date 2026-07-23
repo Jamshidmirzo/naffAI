@@ -6,6 +6,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../store/auth";
 import { formatUZS } from "../lib/format";
 import NumericInput from "../components/NumericInput";
+import AccountControls from "../components/AccountControls";
 
 function PlanBar({ target, actual }: { target: string | null; actual: string | null }) {
   if (!target) return <span className="text-gray-400 dark:text-slate-600">—</span>;
@@ -36,6 +37,7 @@ export default function Operators() {
   const nav = useNavigate();
   const role = useAuth((s) => s.role);
   const isTeamLead = role === "team_lead";
+  const isManager = role === "manager";
 
   const [showInactive, setShowInactive] = useState(true);
   const [show, setShow] = useState(false);
@@ -118,6 +120,7 @@ export default function Operators() {
               <th className="px-4 py-2 text-left">Телефон</th>
               <th className="px-4 py-2 text-left">Статус</th>
               <th className="px-4 py-2 text-left">План (месяц)</th>
+              <th className="px-4 py-2 text-left">Аккаунт</th>
               <th className="px-4 py-2 text-right">Действие</th>
             </tr>
           </thead>
@@ -170,6 +173,15 @@ export default function Operators() {
                       </span>
                     )}
                   </div>
+                </td>
+                <td className="px-4 py-2">
+                  <AccountControls
+                    operatorId={o.id}
+                    operatorName={o.full_name}
+                    operatorPhone={o.phone || ""}
+                    account={o.account}
+                    canManage={isManager}
+                  />
                 </td>
                 <td className="px-4 py-2 text-right">
                   <div className="inline-flex items-center gap-1">

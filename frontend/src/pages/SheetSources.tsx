@@ -321,6 +321,7 @@ function AliasesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   });
   const [creating, setCreating] = useState(false);
   const items = q.data || [];
+  const unboundCount = items.filter((a) => !a.operator).length;
 
   const bind = async (alias: Alias, operatorId: number | null) => {
     await api.patch(`/operator-sheet-aliases/${alias.id}/`, { operator: operatorId });
@@ -329,7 +330,14 @@ function AliasesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <div>
+          {unboundCount > 0 && (
+            <span className="text-sm font-medium text-amber-600 dark:text-amber-400">
+              Непривязанных alias'ов: {unboundCount}
+            </span>
+          )}
+        </div>
         <button className="btn-primary text-sm" onClick={() => setCreating(true)}>
           + Alias
         </button>
@@ -345,7 +353,14 @@ function AliasesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
             {items.map((a) => (
               <tr key={a.id}>
-                <td className="px-3 py-2 font-medium">{a.alias_name}</td>
+                <td className="px-3 py-2 font-medium">
+                  {a.alias_name}
+                  {!a.operator && (
+                    <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300 ml-2">
+                      Не привязан
+                    </span>
+                  )}
+                </td>
                 <td className="px-3 py-2">
                   <select
                     className="input max-w-xs"
@@ -397,10 +412,6 @@ function NewAliasModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
     onSuccess: onDone,
     onError: (err: any) => setError(err?.response?.data?.detail || err?.message || "Ошибка"),
   });
-
-  useEffect(() => {
-    // no-op; kept for future auto-focus wiring
-  }, []);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

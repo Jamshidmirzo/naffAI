@@ -24,6 +24,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import TgDialogsPanel from "../components/TgDialogsPanel";
 
 const PERIOD_OPTIONS: { value: Period; label: string }[] = [
   { value: "day", label: "День" },
@@ -404,6 +405,16 @@ export default function OperatorDetail() {
           </table>
         </div>
       </div>
+
+      {/* TG Dialogs */}
+      {(role === 'team_lead' || role === 'manager') && (
+        <div className="card overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-200 dark:border-slate-800 text-sm font-medium">
+            TG-диалоги с клиентами
+          </div>
+          <TgDialogsPanel operatorId={Number(id)} />
+        </div>
+      )}
     </div>
   );
 }

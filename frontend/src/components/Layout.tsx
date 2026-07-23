@@ -1,6 +1,9 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../store/auth";
 import { useTheme } from "../store/theme";
+import { tgStatus, TG_STATUS_KEY } from "../lib/tgUserclient";
+import { api } from "../lib/api";
 import {
   LayoutDashboard,
   Users,
@@ -16,6 +19,8 @@ import {
   Contact2,
   ClipboardList,
   FileSpreadsheet,
+  UserCircle,
+  AlertTriangle,
 } from "lucide-react";
 
 type NavItem = {
@@ -24,6 +29,7 @@ type NavItem = {
   icon: React.ComponentType<{ className?: string }>;
   end?: boolean;
   roles?: Array<"team_lead" | "manager" | "operator">;
+  badge?: number;
 };
 
 const OPERATOR_ITEMS: NavItem[] = [
@@ -33,6 +39,7 @@ const OPERATOR_ITEMS: NavItem[] = [
 const TEAM_LEAD_ITEMS: NavItem[] = [
   { to: "/", label: "Дашборд", icon: LayoutDashboard, end: true, roles: ["team_lead", "manager"] },
   { to: "/leads", label: "Лиды", icon: ClipboardList, roles: ["team_lead", "manager"] },
+  { to: "/leads?needs_review=1", label: "Требуют проверки", icon: AlertTriangle, roles: ["team_lead", "manager"] },
   { to: "/sales", label: "Продажи", icon: ShoppingCart, roles: ["team_lead", "manager"] },
   { to: "/operators", label: "Операторы", icon: Users, roles: ["team_lead", "manager"] },
   { to: "/partners", label: "Партнёры", icon: Handshake, roles: ["team_lead", "manager"] },
@@ -50,6 +57,25 @@ export default function Layout() {
   const nav = useNavigate();
   const role = (auth.role as "team_lead" | "manager" | "operator" | null) || null;
 
+  const tgStatusQ = useQuery({
+    queryKey: TG_STATUS_KEY(),
+    queryFn: () => tgStatus().then(r => r.data),
+    enabled: role === 'operator',
+    refetchInterval: 30000,
+  });
+
+  const needsReviewQ = useQuery({
+    queryKey: ["needs-review-count"],
+    queryFn: async () => {
+      const { data } = await api.get<{ count?: number } | any[]>("/leads/?needs_review=1&page_size=1");
+      return Array.isArray(data) ? data.length : data.count || 0;
+    },
+    enabled: role === "manager" || role === "team_lead",
+    refetchInterval: 30000,
+  });
+
+  const tgNeedsAttention = role === 'operator' && tgStatusQ.data?.status && tgStatusQ.data.status !== 'active';
+
   const items: NavItem[] = [];
   if (role === "operator") items.push(...OPERATOR_ITEMS);
   else items.push(...TEAM_LEAD_ITEMS.filter((it) => !it.roles || it.roles.includes(role || "team_lead")));
@@ -66,23 +92,33 @@ export default function Layout() {
           <div className="text-xs text-gray-500 dark:text-slate-400">учёт продаж</div>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {items.map((it) => (
-            <NavLink
-              key={it.to}
-              to={it.to}
-              end={it.end}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${
-                  isActive
-                    ? "bg-accent/10 text-accent font-medium dark:bg-accent/20"
-                    : "text-gray-700 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-800"
-                }`
-              }
-            >
-              <it.icon className="w-4 h-4" />
-              {it.label}
-            </NavLink>
-          ))}
+          {items.map((it) => {
+            const count = it.to === "/leads?needs_review=1" ? needsReviewQ.data : undefined;
+            return (
+              <NavLink
+                key={it.to}
+                to={it.to}
+                end={it.end}
+                className={({ isActive }) =>
+                  `flex items-center justify-between px-3 py-2 rounded-lg text-sm transition ${
+                    isActive
+                      ? "bg-accent/10 text-accent font-medium dark:bg-accent/20"
+                      : "text-gray-700 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  }`
+                }
+              >
+                <div className="flex items-center gap-3">
+                  <it.icon className="w-4 h-4" />
+                  {it.label}
+                </div>
+                {count !== undefined && count > 0 && (
+                  <span className="px-1.5 py-0.5 text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 rounded-full">
+                    {count}
+                  </span>
+                )}
+              </NavLink>
+            );
+          })}
           {role !== "operator" && (
             <div className="pt-2 border-t border-gray-100 dark:border-slate-800 mt-2">
               <a
@@ -100,6 +136,21 @@ export default function Layout() {
         <div className="px-3 py-4 border-t border-gray-200 dark:border-slate-800 space-y-2">
           <div className="px-3 text-xs text-gray-500 dark:text-slate-400">
             {auth.username} · {auth.role}
+          </div>
+          <div className="relative">
+            <NavLink
+              to="/profile"
+              className={({ isActive }) =>
+                `btn-ghost w-full justify-start ${
+                  isActive ? "bg-accent/10 text-accent" : ""
+                }`
+              }
+            >
+              <UserCircle className="w-4 h-4" /> Профиль
+            </NavLink>
+            {tgNeedsAttention && (
+              <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full" title="TG-сессия отвалилась, обнови в профиле" />
+            )}
           </div>
           <button
             onClick={theme.toggle}

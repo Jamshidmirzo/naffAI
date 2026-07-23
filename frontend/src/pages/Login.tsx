@@ -5,6 +5,8 @@ import { api } from "../lib/api";
 import { useAuth } from "../store/auth";
 import { useTheme } from "../store/theme";
 
+import { apiErrorMessage } from "../lib/api-types";
+
 export default function Login() {
   const [username, setU] = useState("");
   const [password, setP] = useState("");
@@ -23,8 +25,8 @@ export default function Login() {
       const { data } = await api.post("/auth/login/", { username, password });
       setAuth(data.token, data.username, data.role);
       nav("/");
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Ошибка входа");
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -54,6 +56,10 @@ export default function Login() {
             autoComplete="username"
             autoFocus
           />
+          <div className="text-xs text-gray-400 dark:text-slate-500 mt-1">
+            Для операторов — номер телефона в любом формате (например,{" "}
+            <code>998901234567</code>).
+          </div>
         </div>
         <div>
           <label className="label">Пароль</label>

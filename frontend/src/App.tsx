@@ -15,6 +15,7 @@ import Login from "./pages/Login";
 import MyLeads from "./pages/MyLeads";
 import Leads from "./pages/Leads";
 import SheetSources from "./pages/SheetSources";
+import Profile from "./pages/Profile";
 import { useAuth } from "./store/auth";
 
 function Protected({ children }: { children: React.ReactNode }) {
@@ -42,33 +43,40 @@ function TeamLeadOnly({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+import { RoleGate } from "./components/RoleGate";
+import { Toaster } from "sonner";
+
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/screen" element={<Protected><Screen /></Protected>} />
-      <Route
-        element={
-          <Protected>
-            <Layout />
-          </Protected>
-        }
-      >
-        <Route path="/" element={<RoleAwareHome />} />
-        <Route path="/my" element={<MyLeads />} />
-        <Route path="/leads" element={<TeamLeadOnly><Leads /></TeamLeadOnly>} />
-        <Route path="/sheet-sources" element={<TeamLeadOnly><SheetSources /></TeamLeadOnly>} />
-        <Route path="/sales" element={<TeamLeadOnly><Sales /></TeamLeadOnly>} />
-        <Route path="/sales/new" element={<TeamLeadOnly><SaleCreate /></TeamLeadOnly>} />
-        <Route path="/sales/:id" element={<TeamLeadOnly><SaleDetail /></TeamLeadOnly>} />
-        <Route path="/sales/:id/edit" element={<TeamLeadOnly><SaleCreate /></TeamLeadOnly>} />
-        <Route path="/operators" element={<TeamLeadOnly><Operators /></TeamLeadOnly>} />
-        <Route path="/operators/:id" element={<TeamLeadOnly><OperatorDetail /></TeamLeadOnly>} />
-        <Route path="/partners" element={<TeamLeadOnly><Partners /></TeamLeadOnly>} />
-        <Route path="/analytics" element={<TeamLeadOnly><Analytics /></TeamLeadOnly>} />
-        <Route path="/payroll" element={<TeamLeadOnly><Payroll /></TeamLeadOnly>} />
-        <Route path="/audit" element={<TeamLeadOnly><Audit /></TeamLeadOnly>} />
-      </Route>
-    </Routes>
+    <>
+      <Toaster position="top-right" richColors />
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/screen" element={<Protected><Screen /></Protected>} />
+        <Route
+          element={
+            <Protected>
+              <Layout />
+            </Protected>
+          }
+        >
+          <Route path="/" element={<RoleAwareHome />} />
+          <Route path="/my" element={<MyLeads />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/leads" element={<RoleGate allow={["manager", "team_lead"]}><Leads /></RoleGate>} />
+          <Route path="/sheet-sources" element={<RoleGate allow={["manager", "team_lead"]}><SheetSources /></RoleGate>} />
+          <Route path="/sales" element={<RoleGate allow={["manager", "team_lead"]}><Sales /></RoleGate>} />
+          <Route path="/sales/new" element={<RoleGate allow={["manager", "team_lead"]}><SaleCreate /></RoleGate>} />
+          <Route path="/sales/:id" element={<RoleGate allow={["manager", "team_lead"]}><SaleDetail /></RoleGate>} />
+          <Route path="/sales/:id/edit" element={<RoleGate allow={["manager", "team_lead"]}><SaleCreate /></RoleGate>} />
+          <Route path="/operators" element={<RoleGate allow={["manager", "team_lead"]}><Operators /></RoleGate>} />
+          <Route path="/operators/:id" element={<RoleGate allow={["manager", "team_lead"]}><OperatorDetail /></RoleGate>} />
+          <Route path="/partners" element={<RoleGate allow={["manager", "team_lead"]}><Partners /></RoleGate>} />
+          <Route path="/analytics" element={<RoleGate allow={["manager", "team_lead"]}><Analytics /></RoleGate>} />
+          <Route path="/payroll" element={<RoleGate allow={["manager", "team_lead"]}><Payroll /></RoleGate>} />
+          <Route path="/audit" element={<RoleGate allow={["manager"]}><Audit /></RoleGate>} />
+        </Route>
+      </Routes>
+    </>
   );
 }

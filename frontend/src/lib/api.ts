@@ -1,7 +1,8 @@
 import axios from "axios";
+import { toast } from "sonner";
 
 export const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string) || "http://localhost:8000/api";
+  (import.meta.env.VITE_API_BASE_URL as string) || "http://localhost:8001/api";
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -20,6 +21,8 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       localStorage.removeItem("naffai_token");
       if (location.pathname !== "/login") location.href = "/login";
+    } else if (err.response?.status === 403) {
+      toast.error("Доступ запрещён");
     }
     return Promise.reject(err);
   }

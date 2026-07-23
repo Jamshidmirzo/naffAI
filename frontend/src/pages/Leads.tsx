@@ -6,8 +6,11 @@
  */
 
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Users } from "lucide-react";
+import { Modal } from "../components/Modal";
+import { apiErrorMessage } from "../lib/api-types";
 import { api } from "../lib/api";
 import {
   LEAD_STATUS_BADGE,
@@ -15,11 +18,16 @@ import {
   type Lead,
   type LeadStatus,
 } from "../lib/leads";
+import { Paginator } from "../components/Paginator";
 import { formatDate } from "../lib/format";
 
 type PagedLeads = { results: Lead[]; count?: number } | Lead[];
 
 type Operator = { id: number; full_name: string; status: string };
+
+type SheetSource = { id: number; name: string; gid: number; active: boolean };
+
+const PAGE_SIZE = 50;
 
 const STATUSES: Array<{ value: LeadStatus | ""; label: string }> = [
   { value: "", label: "Все" },
@@ -36,23 +44,58 @@ const STATUSES: Array<{ value: LeadStatus | ""; label: string }> = [
 
 export default function Leads() {
   const qc = useQueryClient();
-  const [status, setStatus] = useState<LeadStatus | "">("");
-  const [needsReview, setNeedsReview] = useState(false);
-  const [phoneInvalid, setPhoneInvalid] = useState(false);
-  const [search, setSearch] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const status = (searchParams.get("status") as LeadStatus) || "";
+  const needsReview = searchParams.get("needs_review") === "1";
+  const phoneInvalid = searchParams.get("phone_invalid") === "1";
+  const search = searchParams.get("search") || "";
+  const sheetSourceId = searchParams.get("sheet_source") ? Number(searchParams.get("sheet_source")) : null;
+  const page = Number(searchParams.get("page")) || 1;
+
   const [reassignFor, setReassignFor] = useState<Lead | null>(null);
 
+  const setFilter = (key: string, value: string | boolean | number | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (value === null || value === "" || value === false) {
+      next.delete(key);
+    } else if (typeof value === "boolean") {
+      next.set(key, "1");
+    } else {
+      next.set(key, String(value));
+    }
+    if (key !== "page") {
+      next.delete("page");
+    }
+    setSearchParams(next);
+  };
+
+  const sheetSources = useQuery({
+    queryKey: ["sheet-sources"],
+    queryFn: async (): Promise<SheetSource[]> => {
+      const { data } = await api.get<{ results?: SheetSource[] } | SheetSource[]>(
+        "/sheet-sources/"
+      );
+      return Array.isArray(data) ? data : data.results || [];
+    },
+  });
+
   const leads = useQuery({
-    queryKey: ["leads", status, needsReview, phoneInvalid, search],
-    queryFn: async (): Promise<Lead[]> => {
+    queryKey: ["leads", status, needsReview, phoneInvalid, search, sheetSourceId, page],
+    queryFn: async (): Promise<{ results: Lead[]; count: number }> => {
       const qp = new URLSearchParams();
       if (status) qp.set("status", status);
       if (needsReview) qp.set("needs_review", "1");
       if (phoneInvalid) qp.set("phone_invalid", "1");
       if (search) qp.set("search", search);
-      qp.set("limit", "100");
+      if (sheetSourceId) qp.set("sheet_source", String(sheetSourceId));
+      qp.set("page", String(page));
+      qp.set("page_size", String(PAGE_SIZE));
       const { data } = await api.get<PagedLeads>(`/leads/?${qp.toString()}`);
-      return Array.isArray(data) ? data : data.results;
+      if (Array.isArray(data)) {
+        return { results: data, count: data.length };
+      }
+      return { results: data.results || [], count: data.count || (data.results || []).length };
     },
     refetchInterval: 60_000,
   });
@@ -67,14 +110,15 @@ export default function Leads() {
     },
   });
 
-  const rows = leads.data || [];
+  const rows = leads.data?.results || [];
+  const totalCount = leads.data?.count || 0;
   const summary = useMemo(
     () => ({
-      total: rows.length,
+      total: totalCount,
       review: rows.filter((r) => r.needs_review).length,
       invalid: rows.filter((r) => r.phone_invalid).length,
     }),
-    [rows]
+    [rows, totalCount]
   );
 
   return (
@@ -83,10 +127,36 @@ export default function Leads() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Лиды</h1>
           <div className="text-sm text-gray-500 dark:text-slate-400">
-            Всего: {summary.total} · требуют проверки: {summary.review} · с плохим телефоном:{" "}
+            Всего: {totalCount} · требуют проверки: {summary.review} · с плохим телефоном:{" "}
             {summary.invalid}
           </div>
         </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-slate-800">
+        <button
+          className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            sheetSourceId === null
+              ? "border-emerald-500 text-emerald-600 dark:text-emerald-400"
+              : "border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200"
+          }`}
+          onClick={() => setFilter("sheet_source", null)}
+        >
+          Все ({summary.total})
+        </button>
+        {(sheetSources.data || []).map((s) => (
+          <button
+            key={s.id}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              sheetSourceId === s.id
+                ? "border-emerald-500 text-emerald-600 dark:text-emerald-400"
+                : "border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200"
+            }`}
+            onClick={() => setFilter("sheet_source", s.id)}
+          >
+            {s.name}
+          </button>
+        ))}
       </div>
 
       <div className="card p-4 flex flex-wrap gap-3">
@@ -94,12 +164,12 @@ export default function Leads() {
           className="input max-w-xs"
           placeholder="Поиск: имя / телефон / модель"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => setFilter("search", e.target.value)}
         />
         <select
           className="input max-w-xs"
           value={status}
-          onChange={(e) => setStatus(e.target.value as LeadStatus | "")}
+          onChange={(e) => setFilter("status", e.target.value)}
         >
           {STATUSES.map((s) => (
             <option key={s.value} value={s.value}>
@@ -111,7 +181,7 @@ export default function Leads() {
           <input
             type="checkbox"
             checked={needsReview}
-            onChange={(e) => setNeedsReview(e.target.checked)}
+            onChange={(e) => setFilter("needs_review", e.target.checked)}
           />
           Только требующие проверки
         </label>
@@ -119,9 +189,9 @@ export default function Leads() {
           <input
             type="checkbox"
             checked={phoneInvalid}
-            onChange={(e) => setPhoneInvalid(e.target.checked)}
+            onChange={(e) => setFilter("phone_invalid", e.target.checked)}
           />
-          Только с плохим телефоном
+          Только с невалидным телефоном
         </label>
       </div>
 
@@ -201,6 +271,13 @@ export default function Leads() {
         </table>
       </div>
 
+      <Paginator
+        page={page}
+        total={totalCount}
+        pageSize={PAGE_SIZE}
+        onChange={(p) => setFilter("page", p > 1 ? p : null)}
+      />
+
       {reassignFor && (
         <ReassignModal
           lead={reassignFor}
@@ -240,53 +317,47 @@ function ReassignModal({
       });
     },
     onSuccess: onDone,
-    onError: (err: any) => setError(err?.response?.data?.detail || err?.message || "Ошибка"),
+    onError: (err: unknown) => setError(apiErrorMessage(err)),
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md card p-5">
-        <div className="flex items-center justify-between mb-3">
-          <div className="font-semibold">
-            Переназначить: {lead.full_name || lead.phone}
-          </div>
-          <button className="btn-ghost text-xs" onClick={onClose}>
-            Закрыть
-          </button>
-        </div>
-        <label className="label">Оператор</label>
-        <select
-          className="input"
-          value={opId}
-          onChange={(e) => setOpId(e.target.value)}
+    <Modal
+      open={true}
+      title={`Переназначить: ${lead.full_name || lead.phone}`}
+      onClose={onClose}
+    >
+      <label className="label">Оператор</label>
+      <select
+        className="input"
+        value={opId}
+        onChange={(e) => setOpId(e.target.value)}
+      >
+        {operators.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.full_name}
+          </option>
+        ))}
+      </select>
+      <label className="label mt-3">Причина</label>
+      <input
+        className="input"
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Например: alias «Sevara» → Sevara Karimova"
+      />
+      {error && <div className="text-sm text-rose-600 mt-2">{error}</div>}
+      <div className="mt-4 flex gap-2 justify-end">
+        <button className="btn-ghost" onClick={onClose}>
+          Отмена
+        </button>
+        <button
+          className="btn-primary"
+          onClick={() => mut.mutate()}
+          disabled={mut.isPending}
         >
-          {operators.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.full_name}
-            </option>
-          ))}
-        </select>
-        <label className="label mt-3">Причина</label>
-        <input
-          className="input"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          placeholder="Например: alias «Sevara» → Sevara Karimova"
-        />
-        {error && <div className="text-sm text-rose-600 mt-2">{error}</div>}
-        <div className="mt-4 flex gap-2 justify-end">
-          <button className="btn-ghost" onClick={onClose}>
-            Отмена
-          </button>
-          <button
-            className="btn-primary"
-            onClick={() => mut.mutate()}
-            disabled={mut.isPending}
-          >
-            {mut.isPending ? "Сохраняем…" : "Переназначить"}
-          </button>
-        </div>
+          {mut.isPending ? "Сохраняем…" : "Переназначить"}
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }

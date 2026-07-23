@@ -13,10 +13,12 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Phone, MessageCircle, PhoneOff, AlarmClock, CheckCircle2, Clock } from "lucide-react";
+import { Phone, MessageCircle, AlarmClock, CheckCircle2, Clock, PhoneMissed, XCircle } from "lucide-react";
+import { Modal } from "../components/Modal";
+import { Paginator } from "../components/Paginator";
+import { apiErrorMessage } from "../lib/api-types";
 import { api } from "../lib/api";
 import {
-  CALL_OUTCOMES,
   type CallOutcome,
   type CallbackReminder,
   LEAD_STATUS_BADGE,
@@ -30,18 +32,26 @@ import { formatDate } from "../lib/format";
 type MyResponse = {
   operator: { id: number; full_name: string; status: string; blocked: boolean };
   results: Lead[];
+  count?: number;
 };
 
 export default function MyLeads() {
   const qc = useQueryClient();
+  const [page, setPage] = useState(1);
   const my = useQuery({
-    queryKey: ["leads-my"],
-    queryFn: () => api.get<MyResponse>("/leads/my/").then((r) => r.data),
+    queryKey: ["leads-my", page],
+    queryFn: () => api.get<MyResponse>(`/leads/my/?page=${page}`).then((r) => r.data),
     refetchInterval: 60_000,
   });
 
   const [callFor, setCallFor] = useState<Lead | null>(null);
   const [scheduleFor, setScheduleFor] = useState<Lead | null>(null);
+
+  const quickCall = useMutation({
+    mutationFn: ({ lead, outcome }: { lead: Lead; outcome: CallOutcome }) =>
+      api.post(`/leads/${lead.id}/call-attempts/`, { outcome }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["leads-my"] }),
+  });
 
   const watcher = useCallbackWatcher({ enabled: true });
 
@@ -124,38 +134,73 @@ export default function MyLeads() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <button
+              <a
+                href={`tel:${lead.phone}`}
                 className="btn-primary text-sm"
-                onClick={() => setCallFor(lead)}
-                disabled={!lead.phone}
-                title="Записать результат звонка"
+                aria-disabled={!lead.phone}
+                title="Позвонить (тел.)"
+                aria-label="Позвонить (тел.)"
               >
-                <Phone className="w-4 h-4" /> Звонок
-              </button>
+                <Phone className="w-4 h-4" /> Набрать
+              </a>
               <button
                 className="btn-ghost text-sm"
-                onClick={() => openTg(lead)}
+                onClick={() => setCallFor(lead)}
                 disabled={!lead.phone}
+                title="Поговорил — добавить комментарий"
+                aria-label="Поговорил — добавить комментарий"
               >
-                <MessageCircle className="w-4 h-4" /> TG
+                <CheckCircle2 className="w-4 h-4" /> Разговор
               </button>
               <button
                 className="btn-ghost text-sm"
                 onClick={() => setScheduleFor(lead)}
+                title="Просят перезвонить — назначить время"
+                aria-label="Просят перезвонить — назначить время"
               >
-                <AlarmClock className="w-4 h-4" /> Callback
+                <AlarmClock className="w-4 h-4" /> Перезвонить
               </button>
-              <a
-                href={`tel:${lead.phone}`}
+              <button
                 className="btn-ghost text-sm"
-                aria-disabled={!lead.phone}
+                disabled={quickCall.isPending}
+                onClick={() => quickCall.mutate({ lead, outcome: "no_answer" })}
+                title="Не берёт трубку"
+                aria-label="Не берёт трубку"
               >
-                <PhoneOff className="w-4 h-4" /> Набрать
-              </a>
+                <PhoneMissed className="w-4 h-4" /> Не взял
+              </button>
+              <button
+                className="btn-ghost text-sm"
+                disabled={!lead.phone}
+                onClick={async () => {
+                  await quickCall.mutateAsync({ lead, outcome: "tg_only" });
+                  openTg(lead);
+                }}
+                title="Написать в Telegram"
+                aria-label="Написать в Telegram"
+              >
+                <MessageCircle className="w-4 h-4" /> TG
+              </button>
+              <button
+                className="btn-ghost text-sm text-rose-600 dark:text-rose-400"
+                disabled={quickCall.isPending}
+                onClick={() => quickCall.mutate({ lead, outcome: "rejected" })}
+                title="Отказ"
+                aria-label="Отказ"
+              >
+                <XCircle className="w-4 h-4" /> Отказ
+              </button>
             </div>
           </div>
         ))}
       </div>
+
+      <Paginator
+        page={page}
+        total={my.data?.count || results.length}
+        pageSize={50}
+        onChange={setPage}
+      />
 
       {callFor && (
         <CallModal
@@ -201,56 +246,28 @@ function CallModal({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [outcome, setOutcome] = useState<CallOutcome>("talked_interested");
   const [comment, setComment] = useState("");
-  const [remindAt, setRemindAt] = useState("");
   const [error, setError] = useState("");
 
   const mut = useMutation({
     mutationFn: async () => {
-      const body: Record<string, unknown> = { outcome, comment };
-      if (outcome === "talked_callback") {
-        if (!remindAt) {
-          throw new Error("Укажите время callback'а");
-        }
-        body.callback_remind_at = new Date(remindAt).toISOString();
-      }
-      await api.post(`/leads/${lead.id}/call-attempts/`, body);
+      await api.post(`/leads/${lead.id}/call-attempts/`, {
+        outcome: "talked_interested",
+        comment,
+      });
     },
     onSuccess: onDone,
-    onError: (err: any) => {
-      setError(err?.response?.data?.detail || err?.message || "Ошибка");
+    onError: (err: unknown) => {
+      setError(apiErrorMessage(err));
     },
   });
 
   return (
-    <ModalShell title={`Звонок: ${lead.full_name || lead.phone}`} onClose={onClose}>
-      <label className="label">Исход</label>
-      <select
-        className="input"
-        value={outcome}
-        onChange={(e) => setOutcome(e.target.value as CallOutcome)}
-      >
-        {CALL_OUTCOMES.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-
-      {outcome === "talked_callback" && (
-        <>
-          <label className="label mt-3">Когда перезвонить</label>
-          <input
-            type="datetime-local"
-            className="input"
-            value={remindAt}
-            onChange={(e) => setRemindAt(e.target.value)}
-          />
-        </>
-      )}
-
-      <label className="label mt-3">Комментарий</label>
+    <Modal open={true} title={`Разговор: ${lead.full_name || lead.phone}`} onClose={onClose}>
+      <div className="text-sm text-gray-500 dark:text-slate-400 mb-2">
+        Клиент проявил интерес — оставь короткий комментарий (о чём поговорили).
+      </div>
+      <label className="label">Комментарий</label>
       <textarea
         className="input min-h-[80px]"
         value={comment}
@@ -272,7 +289,7 @@ function CallModal({
           {mut.isPending ? "Сохраняем…" : "Сохранить"}
         </button>
       </div>
-    </ModalShell>
+    </Modal>
   );
 }
 
@@ -289,6 +306,7 @@ function ScheduleCallbackModal({
   const [comment, setComment] = useState("");
   const [error, setError] = useState("");
 
+  const qc = useQueryClient();
   const mut = useMutation({
     mutationFn: async () => {
       if (!remindAt) throw new Error("Укажите время");
@@ -297,12 +315,16 @@ function ScheduleCallbackModal({
         comment,
       });
     },
-    onSuccess: onDone,
-    onError: (err: any) => setError(err?.response?.data?.detail || err?.message || "Ошибка"),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["leads-my"] });
+      qc.invalidateQueries({ queryKey: ["callbacks-mine-due"] });
+      onDone();
+    },
+    onError: (err: unknown) => setError(apiErrorMessage(err)),
   });
 
   return (
-    <ModalShell title={`Callback: ${lead.full_name || lead.phone}`} onClose={onClose}>
+    <Modal open={true} title={`Callback: ${lead.full_name || lead.phone}`} onClose={onClose}>
       <label className="label">Когда перезвонить</label>
       <input
         type="datetime-local"
@@ -330,7 +352,7 @@ function ScheduleCallbackModal({
           {mut.isPending ? "Сохраняем…" : "Назначить"}
         </button>
       </div>
-    </ModalShell>
+    </Modal>
   );
 }
 
@@ -343,12 +365,15 @@ function CallbackDueModal({
   onDismiss: (id: number) => void;
   onDone: () => void;
 }) {
+  const qc = useQueryClient();
   const cur = reminders[0];
   if (!cur) return null;
 
   const complete = async () => {
     try {
       await api.post(`/callbacks/${cur.id}/done/`);
+      qc.invalidateQueries({ queryKey: ["leads-my"] });
+      qc.invalidateQueries({ queryKey: ["callbacks-mine-due"] });
       onDismiss(cur.id);
       onDone();
     } catch {
@@ -359,6 +384,8 @@ function CallbackDueModal({
   const snooze = async (minutes: number) => {
     try {
       await api.post(`/callbacks/${cur.id}/snooze/`, { minutes });
+      qc.invalidateQueries({ queryKey: ["leads-my"] });
+      qc.invalidateQueries({ queryKey: ["callbacks-mine-due"] });
       onDismiss(cur.id);
       onDone();
     } catch {
@@ -367,21 +394,24 @@ function CallbackDueModal({
   };
 
   return (
-    <ModalShell title="Время callback'а!" onClose={() => onDismiss(cur.id)}>
+    <Modal open={true} title="Время callback'а!" onClose={() => onDismiss(cur.id)}>
       <div className="space-y-3">
-        <div>
-          <div className="text-sm text-gray-500 dark:text-slate-400">Клиент</div>
-          <div className="font-medium">{cur.lead_name || cur.lead_phone}</div>
-          <div className="text-sm">{cur.lead_phone}</div>
+        <div className="font-semibold text-lg">{cur.lead_name || "(без имени)"}</div>
+        <div className="text-sm text-slate-600 dark:text-slate-300">
+          Телефон: <span className="font-mono">{cur.lead_phone || "—"}</span>
         </div>
         <div className="text-sm text-gray-500 dark:text-slate-400 flex items-center gap-2">
           <Clock className="w-4 h-4" /> Назначено на {formatDate(cur.remind_at)}
         </div>
-        {cur.comment && <div className="text-sm">{cur.comment}</div>}
+        {cur.comment && (
+          <div className="text-xs bg-slate-100 dark:bg-slate-800 p-2 rounded border border-slate-200 dark:border-slate-700">
+            Заметка: {cur.comment}
+          </div>
+        )}
       </div>
       <div className="mt-5 flex flex-wrap gap-2 justify-end">
         <button className="btn-ghost" onClick={() => snooze(15)}>
-          +15 минут
+          +15 мин
         </button>
         <button className="btn-ghost" onClick={() => snooze(60)}>
           +1 час
@@ -390,30 +420,6 @@ function CallbackDueModal({
           <CheckCircle2 className="w-4 h-4" /> Сделано
         </button>
       </div>
-    </ModalShell>
-  );
-}
-
-function ModalShell({
-  title,
-  children,
-  onClose,
-}: {
-  title: string;
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md card p-5">
-        <div className="flex items-center justify-between mb-3">
-          <div className="font-semibold">{title}</div>
-          <button className="btn-ghost text-xs" onClick={onClose}>
-            Закрыть
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
+    </Modal>
   );
 }
