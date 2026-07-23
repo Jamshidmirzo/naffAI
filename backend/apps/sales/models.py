@@ -70,6 +70,16 @@ class Sale(TimestampedModel):
         max_length=16, choices=SaleStatus.choices, default=SaleStatus.CONFIRMED
     )
 
+    # Pre-sale linkage: if a Lead converted into this Sale, it stays linked.
+    # Nullable — most historical sales don't have an originating Lead.
+    lead = models.ForeignKey(
+        "leads.Lead",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="sales",
+    )
+
     class Meta:
         ordering = ["-sold_at"]
         indexes = [

@@ -54,6 +54,8 @@ LOCAL_APPS = [
     "apps.analytics",
     "apps.users",
     "apps.tg_bot",
+    "apps.leads",
+    "apps.calls",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -173,6 +175,19 @@ IMEI_ONLINE_API_KEY = config("IMEI_ONLINE_API_KEY", default="")
 TELEGRAM_BOT_ENABLED = config("TELEGRAM_BOT_ENABLED", default=False, cast=bool)
 TELEGRAM_BOT_TOKEN = config("TELEGRAM_BOT_TOKEN", default="")
 TELEGRAM_GROUP_ID = config("TELEGRAM_GROUP_ID", default="")
+
+# --- Google Sheets sync ---
+# Path to a service-account JSON key with read access to the spreadsheets
+# listed in `SheetSource`. Leave empty to disable sheet sync silently
+# (`sync_sheets_leads` will refuse to run instead of crashing).
+GOOGLE_SHEETS_CREDENTIALS_JSON = config("GOOGLE_SHEETS_CREDENTIALS_JSON", default="")
+
+# --- Callback reminder policy ---
+# A callback is "overdue" (and blocks the operator from receiving new leads
+# via round-robin) once `remind_at + CALLBACK_OVERDUE_GRACE_MINUTES` has passed.
+CALLBACK_OVERDUE_GRACE_MINUTES = config(
+    "CALLBACK_OVERDUE_GRACE_MINUTES", default=30, cast=int
+)
 
 # --- Logging ---
 LOGGING = {

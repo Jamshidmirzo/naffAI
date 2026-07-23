@@ -31,6 +31,15 @@ class Profile(models.Model):
         related_name="user_profiles",
         help_text="Linked when this user logs in as a specific operator.",
     )
+    telegram_user_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        unique=True,
+        help_text=(
+            "Populated by the bot's /link_operator FSM once the user "
+            "confirms their operator phone. Used to DM callback reminders."
+        ),
+    )
 
     def __str__(self) -> str:
         return f"{self.user.username} ({self.get_role_display()})"
