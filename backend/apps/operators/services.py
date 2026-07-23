@@ -53,17 +53,29 @@ def operator_reactivate(*, operator: Operator, user=None) -> Operator:
 @transaction.atomic
 def operator_delete(*, operator: Operator, user=None) -> None:
     """
-    Hard-delete an operator. All sale references are nullified first so the
-    sale history is preserved but no longer linked to this operator.
+    Hard-delete an operator.
+
+    Business rule (per user decision, restored in Wave 1.8): delete is
+    refused if the operator has any *active* (not soft-deleted) Sale
+    attached. Callers must either deactivate the operator instead or
+    soft-delete the sales first. Soft-deleted history rows do NOT block
+    the deletion — otherwise operators would become undeletable after
+    even a single cleanup.
+
+    All other side-effect rows (SaleOperator allocation lines, Profile
+    links, PayrollRule) are detached in-place and counted into a single
+    audit entry so we can reconstruct what the delete touched.
     """
     # Local imports to avoid app-loading cycles.
     from apps.payroll.models import PayrollRule
     from apps.sales.models import Sale, SaleOperator
     from apps.users.models import Profile
 
-    # Detach all sale references before deleting (PROTECT FK would otherwise block).
-    SaleOperator.objects.filter(operator=operator).delete()
-    Sale.objects.filter(operator=operator).update(operator=None)
+    if Sale.objects.filter(operator=operator, is_deleted=False).exists():
+        raise ValidationError(
+            "Удаление невозможно: у оператора есть активные продажи. "
+            "Используйте деактивацию или сначала удалите продажи."
+        )
 
     snapshot = {
         "id": operator.id,
@@ -71,16 +83,34 @@ def operator_delete(*, operator: Operator, user=None) -> None:
         "phone": operator.phone,
         "status": operator.status,
     }
-    Profile.objects.filter(operator=operator).update(operator=None)
-    PayrollRule.objects.filter(operator=operator).delete()
+
+    # Detach in a fixed order so the counts we record match the DELETE
+    # sequence. SaleOperator lines are wiped (they're per-sale allocation
+    # rows, not history). Sale FK is nulled to preserve historical rows.
+    sale_operator_rows_deleted = SaleOperator.objects.filter(
+        operator=operator
+    ).delete()[0]
+    sales_unlinked = Sale.objects.filter(operator=operator).update(operator=None)
+    profiles_unlinked = Profile.objects.filter(operator=operator).update(operator=None)
+    payroll_rules_deleted = PayrollRule.objects.filter(operator=operator).delete()[0]
+
     operator_id = operator.id
     operator.delete()
+
     audit_log_create(
         user=user,
         action=AuditAction.DELETE,
         entity="operators.Operator",
         entity_id=operator_id,
-        changes={"snapshot": snapshot},
+        changes={
+            "snapshot": snapshot,
+            "deleted_related": {
+                "sale_operator_rows_deleted": sale_operator_rows_deleted,
+                "sales_unlinked": sales_unlinked,
+                "profiles_unlinked": profiles_unlinked,
+                "payroll_rules_deleted": payroll_rules_deleted,
+            },
+        },
     )
 
 
