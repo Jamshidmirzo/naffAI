@@ -17,6 +17,7 @@ class Operator(TimestampedModel):
     )
     hired_at = models.DateField(null=True, blank=True)
     note = models.TextField(blank=True, default="")
+    daily_lesson_opt_out = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["full_name"]

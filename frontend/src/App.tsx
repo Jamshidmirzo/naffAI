@@ -18,6 +18,11 @@ import SheetSources from "./pages/SheetSources";
 import Profile from "./pages/Profile";
 import AIChat from "./pages/AIChat";
 import Marketing from "./pages/Marketing";
+import DailyLesson from "./pages/DailyLesson";
+import LessonsHistory from "./pages/LessonsHistory";
+import Scan from "./pages/Scan";
+import AttendanceToday from "./pages/AttendanceToday";
+import AttendanceReport from "./pages/AttendanceReport";
 import { useAuth } from "./store/auth";
 
 function Protected({ children }: { children: React.ReactNode }) {
@@ -54,6 +59,7 @@ export default function App() {
       <Toaster position="top-right" richColors />
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/scan" element={<Scan />} />
         <Route path="/screen" element={<Protected><Screen /></Protected>} />
         <Route
           element={
@@ -65,6 +71,8 @@ export default function App() {
           <Route path="/" element={<RoleAwareHome />} />
           <Route path="/my" element={<MyLeads />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/lessons/today" element={<DailyLesson />} />
+          <Route path="/lessons/history" element={<LessonsHistory />} />
           <Route path="/leads" element={<RoleGate allow={["manager", "team_lead"]}><Leads /></RoleGate>} />
           <Route path="/sheet-sources" element={<RoleGate allow={["manager", "team_lead"]}><SheetSources /></RoleGate>} />
           <Route path="/sales" element={<RoleGate allow={["manager", "team_lead"]}><Sales /></RoleGate>} />
@@ -79,6 +87,8 @@ export default function App() {
           <Route path="/audit" element={<RoleGate allow={["manager"]}><Audit /></RoleGate>} />
           <Route path="/ai-chat" element={<RoleGate allow={["manager"]}><AIChat /></RoleGate>} />
           <Route path="/marketing" element={<RoleGate allow={["manager", "team_lead"]}><Marketing /></RoleGate>} />
+          <Route path="/attendance/today" element={<RoleGate allow={["manager", "team_lead"]}><AttendanceToday /></RoleGate>} />
+          <Route path="/attendance/report" element={<RoleGate allow={["manager", "team_lead"]}><AttendanceReport /></RoleGate>} />
         </Route>
       </Routes>
     </>

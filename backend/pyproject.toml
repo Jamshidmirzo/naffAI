@@ -22,6 +22,7 @@ dependencies = [
   "asgiref>=3.8",
   "google-genai>=1.0",
   "sentry-sdk[django]>=2.0",
+  "qrcode[pil]>=8.0",
 ]
 
 [dependency-groups]

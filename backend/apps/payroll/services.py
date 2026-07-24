@@ -13,6 +13,8 @@ from apps.sales.selectors import operator_sales_aggregate
 
 from .models import PayoutType, PayrollRule
 from .selectors import payroll_rule_for
+from django.db import transaction
+from apps.audit.services import AuditAction, audit_log_create, audit_diff
 
 
 @dataclass
@@ -131,3 +133,32 @@ def compute_monthly_payroll(
             )
         )
     return lines
+
+
+@transaction.atomic
+def payroll_rule_create(*, user=None, **fields) -> PayrollRule:
+    rule = PayrollRule.objects.create(**fields)
+    audit_log_create(
+        user=user,
+        action=AuditAction.CREATE,
+        entity="payroll.PayrollRule",
+        entity_id=rule.id,
+        changes={k: str(v) for k, v in fields.items()},
+    )
+    return rule
+
+
+@transaction.atomic
+def payroll_rule_update(*, rule: PayrollRule, user=None, **fields) -> PayrollRule:
+    old = {f: str(getattr(rule, f)) for f in fields}
+    for k, v in fields.items():
+        setattr(rule, k, v)
+    rule.save()
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="payroll.PayrollRule",
+        entity_id=rule.id,
+        changes=audit_diff(old, {k: str(v) for k, v in fields.items()}),
+    )
+    return rule

@@ -19,7 +19,7 @@ User = get_user_model()
 # accidentally attaching a plaintext password / Fernet ciphertext / bot
 # token / API key to an audit diff.
 _SENSITIVE_KEY_RE = re.compile(
-    r"(password|secret|session|token|api_key|access_key)",
+    r"(password|secret|session|token|api_key|access_key|qr|hmac)",
     re.IGNORECASE,
 )
 _REDACTED = "<redacted>"

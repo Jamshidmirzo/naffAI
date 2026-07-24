@@ -2,8 +2,9 @@ import datetime as dt
 
 from django.utils.dateparse import parse_datetime
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateAPIView
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -25,6 +26,7 @@ from .services import (
     operator_delete,
     operator_plan_upsert,
     operator_reactivate,
+    operator_self_update_preferences,
     operator_update,
 )
 
@@ -218,3 +220,42 @@ class OperatorStatsApi(APIView):
             )
             payload["payroll"] = lines[0].as_dict() if lines else None
         return Response(payload)
+
+
+class MePreferencesApi(APIView):
+    """
+    GET/PATCH /api/me/preferences/ — operator's own notification prefs.
+
+    Only usable by users whose profile is linked to an `Operator`. Team
+    leads and managers get 404 (they have no operator row to configure).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    class OutputSerializer(serializers.Serializer):
+        daily_lesson_opt_out = serializers.BooleanField()
+
+    class InputSerializer(serializers.Serializer):
+        daily_lesson_opt_out = serializers.BooleanField(required=False)
+
+    def _get_operator(self, request) -> Operator:
+        profile = getattr(request.user, "profile", None)
+        op = getattr(profile, "operator", None) if profile else None
+        if not op:
+            raise NotFound("Настройки доступны только операторам")
+        return op
+
+    def get(self, request):
+        op = self._get_operator(request)
+        return Response({"daily_lesson_opt_out": op.daily_lesson_opt_out})
+
+    def patch(self, request):
+        op = self._get_operator(request)
+        serializer = self.InputSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        op = operator_self_update_preferences(
+            operator=op,
+            user=request.user,
+            **serializer.validated_data,
+        )
+        return Response({"daily_lesson_opt_out": op.daily_lesson_opt_out})

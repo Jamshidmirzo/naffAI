@@ -1,0 +1,10 @@
+[Unit]
+Description=naffAI attendance long-shift warning (every 30 min)
+
+[Timer]
+OnCalendar=*:00/30
+Persistent=true
+Unit=naff-attendance-long-shift-check.service
+
+[Install]
+WantedBy=timers.target

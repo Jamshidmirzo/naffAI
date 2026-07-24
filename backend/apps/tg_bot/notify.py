@@ -109,3 +109,69 @@ def _format_reminder(reminder) -> str:
         f"Товар: {lead.product_hint or '—'}\n"
         f"Назначено на: {reminder.remind_at:%d.%m %H:%M}"
     )
+
+
+async def send_long_shift_warning_dms(
+    operator_tg_id: int | None,
+    tl_tg_id: int | None,
+    log_id: int,
+    operator_name: str,
+    hours: int,
+) -> list[str]:
+    """
+    Sends long shift warning DMs to the operator and/or team lead.
+    Returns list of recipients to whom messages were successfully sent, e.g. ["operator", "team_lead"].
+    """
+    token = getattr(settings, "TELEGRAM_BOT_TOKEN", "")
+    sent_to = []
+    if not token:
+        logger.warning("TELEGRAM_BOT_TOKEN missing")
+        return sent_to
+
+    try:
+        from aiogram import Bot
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    except ImportError:
+        logger.warning("aiogram missing — DM skipped")
+        return sent_to
+
+    bot = Bot(token=token)
+    try:
+        if operator_tg_id:
+            text_op = f"{operator_name}, ты работаешь уже {hours} часов. Забыла отметить уход?"
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="🚪 Отметить уход",
+                            callback_data=f"attendance:auto_checkout_confirm:{log_id}",
+                        ),
+                        InlineKeyboardButton(
+                            text="💼 Нет, продолжаю",
+                            callback_data=f"attendance:continue_working:{log_id}",
+                        ),
+                    ]
+                ]
+            )
+            try:
+                await bot.send_message(operator_tg_id, text_op, parse_mode="HTML", reply_markup=kb)
+                sent_to.append("operator")
+            except Exception as e:
+                logger.warning("Failed to send long shift DM to operator %s: %s", operator_tg_id, e)
+
+        if tl_tg_id:
+            suffix = "" if operator_tg_id else " (нет TG у оператора)"
+            text_tl = f"{operator_name} работает уже {hours} часов без check-out. Проверь.{suffix}"
+            try:
+                await bot.send_message(tl_tg_id, text_tl, parse_mode="HTML")
+                sent_to.append("team_lead")
+            except Exception as e:
+                logger.warning("Failed to send long shift DM to team lead %s: %s", tl_tg_id, e)
+    finally:
+        try:
+            await bot.session.close()
+        except Exception:
+            pass
+
+    return sent_to
+

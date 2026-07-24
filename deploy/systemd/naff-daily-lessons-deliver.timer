@@ -1,0 +1,10 @@
+[Unit]
+Description=Deliver naffAI daily lessons via Telegram every morning at 07:30 Asia/Tashkent
+
+[Timer]
+OnCalendar=*-*-* 07:30:00 Asia/Tashkent
+Persistent=true
+Unit=naff-daily-lessons-deliver.service
+
+[Install]
+WantedBy=timers.target

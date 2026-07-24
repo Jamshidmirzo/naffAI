@@ -1,0 +1,10 @@
+[Unit]
+Description=Run naffAI daily lessons generator every morning at 05:30 Asia/Tashkent
+
+[Timer]
+OnCalendar=*-*-* 05:30:00 Asia/Tashkent
+Persistent=true
+Unit=naff-daily-lessons-generate.service
+
+[Install]
+WantedBy=timers.target

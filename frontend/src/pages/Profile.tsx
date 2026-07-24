@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, EyeOff, MessageCircle } from "lucide-react";
+import { Bell, Eye, EyeOff, MessageCircle } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../store/auth";
 import { tgStatus, tgRevoke, TG_STATUS_KEY } from "../lib/tgUserclient";
@@ -14,6 +14,10 @@ type Me = {
   operator_id: number | null;
   operator_name: string | null;
   telegram_user_id: number | null;
+};
+
+type Preferences = {
+  daily_lesson_opt_out: boolean;
 };
 
 const ROLE_LABEL: Record<string, string> = {
@@ -71,6 +75,42 @@ export default function Profile() {
     enabled: !!me.data?.operator_id,
   });
   const [stickerOpen, setStickerOpen] = useState(false);
+
+  const prefs = useQuery<Preferences>({
+    queryKey: ["me", "preferences"],
+    queryFn: () => api.get("/me/preferences/").then((r) => r.data),
+    enabled: !!me.data?.operator_id,
+  });
+
+  // Local shadow of the toggle so UI reacts instantly while the PATCH is
+  // in flight. Synced from the query result on load / after invalidation.
+  const [dailyLessonEnabled, setDailyLessonEnabled] = useState<boolean>(true);
+  const [prefStatus, setPrefStatus] = useState<{ kind: "ok" | "err"; text: string } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (prefs.data) {
+      setDailyLessonEnabled(!prefs.data.daily_lesson_opt_out);
+    }
+  }, [prefs.data]);
+
+  const updatePref = useMutation({
+    mutationFn: (nextEnabled: boolean) =>
+      api.patch("/me/preferences/", { daily_lesson_opt_out: !nextEnabled }),
+    onMutate: (nextEnabled: boolean) => {
+      setPrefStatus(null);
+      setDailyLessonEnabled(nextEnabled);
+    },
+    onSuccess: () => {
+      setPrefStatus({ kind: "ok", text: "Настройки сохранены" });
+      qc.invalidateQueries({ queryKey: ["me", "preferences"] });
+    },
+    onError: (_err, nextEnabled) => {
+      // roll back UI
+      setDailyLessonEnabled(!nextEnabled);
+      setPrefStatus({ kind: "err", text: "Не удалось сохранить настройки" });
+    },
+  });
 
   const [oldPwd, setOldPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
@@ -186,6 +226,56 @@ export default function Profile() {
           onChanged={() => mySticker.refetch()}
           onClose={() => setStickerOpen(false)}
         />
+      )}
+
+      {me.data?.operator_id && (
+        <div className="card p-6 space-y-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Bell className="w-5 h-5" /> Уведомления
+          </h2>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <div className="font-medium">Получать ежедневный разбор дня</div>
+              <div className="text-sm text-gray-500 dark:text-slate-400 mt-1">
+                Утреннее сообщение с AI-анализом вчерашнего дня и советами.
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={dailyLessonEnabled}
+              aria-label="Ежедневный разбор дня"
+              disabled={prefs.isLoading || updatePref.isPending}
+              onClick={() => updatePref.mutate(!dailyLessonEnabled)}
+              className={
+                "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors " +
+                "focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 " +
+                "disabled:opacity-60 disabled:cursor-not-allowed " +
+                (dailyLessonEnabled
+                  ? "bg-emerald-500"
+                  : "bg-gray-300 dark:bg-slate-600")
+              }
+            >
+              <span
+                className={
+                  "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform " +
+                  (dailyLessonEnabled ? "translate-x-5" : "translate-x-0.5")
+                }
+              />
+            </button>
+          </div>
+          {prefStatus && (
+            <div
+              className={
+                prefStatus.kind === "ok"
+                  ? "text-sm text-emerald-700 dark:text-emerald-400"
+                  : "text-sm text-red-600 dark:text-red-400"
+              }
+            >
+              {prefStatus.text}
+            </div>
+          )}
+        </div>
       )}
 
       <form onSubmit={onSubmit} className="card p-6 space-y-4">

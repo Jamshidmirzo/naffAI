@@ -61,6 +61,8 @@ LOCAL_APPS = [
     "apps.greetings",
     "apps.ai_chat",
     "apps.marketing",
+    "apps.lessons",
+    "apps.attendance",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -332,3 +334,15 @@ LOGGING = {
         "apps": {"handlers": list(_handlers.keys()), "level": "DEBUG", "propagate": False},
     },
 }
+
+# --- QR Attendance Settings ---
+QR_ATTENDANCE_HMAC_KEY = config("QR_ATTENDANCE_HMAC_KEY", default="")
+ATTENDANCE_ALLOWED_NETWORKS = config(
+    "ATTENDANCE_ALLOWED_NETWORKS",
+    default="",
+    cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
+)
+ATTENDANCE_SCAN_COOLDOWN_SECONDS = config("ATTENDANCE_SCAN_COOLDOWN_SECONDS", default=30, cast=int)
+
+REST_FRAMEWORK.setdefault("DEFAULT_THROTTLE_RATES", {})
+REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["attendance_scan_ip"] = "20/min"

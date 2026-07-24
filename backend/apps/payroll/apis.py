@@ -9,7 +9,8 @@ from apps.common.excel import new_workbook, workbook_response, write_sheet
 from apps.users.permissions import IsTeamLead, IsTeamLeadOrManagerReadOnly
 
 from .models import PayrollRule
-from .services import compute_monthly_payroll
+from .services import compute_monthly_payroll, payroll_rule_create, payroll_rule_update
+from apps.audit.services import audit_log_create
 
 
 class PayrollRuleSerializer(serializers.ModelSerializer):
@@ -36,11 +37,20 @@ class PayrollRuleListCreateApi(ListCreateAPIView):
     serializer_class = PayrollRuleSerializer
     queryset = PayrollRule.objects.all()
 
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        rule = payroll_rule_create(user=request.user, **serializer.validated_data)
+        return Response(self.get_serializer(rule).data, status=201)
+
 
 class PayrollRuleDetailApi(RetrieveUpdateAPIView):
     permission_classes = [IsTeamLead]
     serializer_class = PayrollRuleSerializer
     queryset = PayrollRule.objects.all()
+
+    def perform_update(self, serializer):
+        payroll_rule_update(rule=serializer.instance, user=self.request.user, **serializer.validated_data)
 
 
 def _ym(request) -> tuple[int, int]:
@@ -107,5 +117,12 @@ class PayrollMonthlyExportApi(APIView):
             money_columns=[3, 4, 7],
             int_columns=[2],
             totals_row=["ИТОГО", "", "", total_sales, "", "", "", total_payout],
+        )
+        audit_log_create(
+            user=request.user,
+            action="override",
+            entity="payroll.PayrollExport",
+            entity_id=f"{year}-{month:02d}",
+            changes={"year": year, "month": month}
         )
         return workbook_response(wb, f"payroll_{year}_{month:02d}.xlsx")

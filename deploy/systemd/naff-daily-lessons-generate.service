@@ -1,0 +1,17 @@
+[Unit]
+Description=naffAI daily lessons generator (LLM-backed micro-lessons for operators)
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/naffAI
+Environment=DJANGO_SETTINGS_MODULE=config.settings.prod
+EnvironmentFile=/opt/naffAI/.env
+ExecStart=/opt/naffAI/backend/.venv/bin/python manage.py generate_daily_lessons
+User=root
+StandardOutput=append:/var/log/naffAI/daily-lessons-generate.log
+StandardError=append:/var/log/naffAI/daily-lessons-generate.log
+
+[Install]
+WantedBy=multi-user.target

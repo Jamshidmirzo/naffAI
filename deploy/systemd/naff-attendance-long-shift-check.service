@@ -1,0 +1,11 @@
+[Unit]
+Description=naffAI attendance long-shift warning
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/naffAI
+EnvironmentFile=/opt/naffAI/.env
+ExecStart=/opt/naffAI/.venv/bin/python manage.py attendance_long_shift_check
+StandardOutput=append:/var/log/naffAI/attendance-long-shift.log
+StandardError=append:/var/log/naffAI/attendance-long-shift.log

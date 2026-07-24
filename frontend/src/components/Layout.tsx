@@ -23,6 +23,8 @@ import {
   UserCircle,
   AlertTriangle,
   Bot,
+  BookOpen,
+  Clock,
 } from "lucide-react";
 
 type NavItem = {
@@ -36,6 +38,7 @@ type NavItem = {
 
 const OPERATOR_ITEMS: NavItem[] = [
   { to: "/my", label: "Мои лиды", icon: Contact2, end: true, roles: ["operator"] },
+  { to: "/lessons/today", label: "Обучение", icon: BookOpen, roles: ["operator"] },
 ];
 
 const TEAM_LEAD_ITEMS: NavItem[] = [
@@ -43,6 +46,8 @@ const TEAM_LEAD_ITEMS: NavItem[] = [
   { to: "/leads", label: "Лиды", icon: ClipboardList, roles: ["team_lead", "manager"] },
   { to: "/leads?needs_review=1", label: "Требуют проверки", icon: AlertTriangle, roles: ["team_lead", "manager"] },
   { to: "/sales", label: "Продажи", icon: ShoppingCart, roles: ["team_lead", "manager"] },
+  { to: "/attendance/today", label: "Посещаемость", icon: Clock, roles: ["team_lead", "manager"] },
+  { to: "/attendance/report", label: "Отчёт посещаемости", icon: FileSpreadsheet, roles: ["team_lead", "manager"] },
   { to: "/operators", label: "Операторы", icon: Users, roles: ["team_lead", "manager"] },
   { to: "/partners", label: "Партнёры", icon: Handshake, roles: ["team_lead", "manager"] },
   { to: "/analytics", label: "Аналитика", icon: LineChart, roles: ["team_lead", "manager"] },
@@ -88,6 +93,17 @@ export default function Layout() {
     staleTime: 60000,
   });
 
+  const todayLessonQ = useQuery({
+    queryKey: ["lessons", "today", "peek"],
+    queryFn: () =>
+      api.get<{ opened_at: string | null } | null>("/lessons/today/?peek=1").then(
+        (r) => r.data
+      ),
+    enabled: role === "operator",
+    refetchInterval: 30000,
+    retry: false,
+  });
+
   const tgNeedsAttention = role === 'operator' && tgStatusQ.data?.status && tgStatusQ.data.status !== 'active';
 
   const items: NavItem[] = [];
@@ -108,6 +124,10 @@ export default function Layout() {
         <nav className="flex-1 px-3 py-4 space-y-1">
           {items.map((it) => {
             const count = it.to === "/leads?needs_review=1" ? needsReviewQ.data : undefined;
+            const hasNewLesson =
+              it.to === "/lessons/today" &&
+              todayLessonQ.data &&
+              todayLessonQ.data.opened_at === null;
             return (
               <NavLink
                 key={it.to}
@@ -129,6 +149,9 @@ export default function Layout() {
                   <span className="px-1.5 py-0.5 text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 rounded-full">
                     {count}
                   </span>
+                )}
+                {hasNewLesson && (
+                  <span className="w-2.5 h-2.5 bg-red-500 rounded-full flex-shrink-0" title="Новый разбор вчерашнего дня!" />
                 )}
               </NavLink>
             );

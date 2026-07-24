@@ -115,6 +115,39 @@ def operator_delete(*, operator: Operator, user=None) -> None:
 
 
 @transaction.atomic
+def operator_self_update_preferences(
+    *,
+    operator: Operator,
+    user=None,
+    daily_lesson_opt_out: bool | None = None,
+) -> Operator:
+    """
+    Operator-facing preferences update — narrower than `operator_update`
+    on purpose. The operator can toggle their own notification flags
+    without needing the team-lead permission.
+
+    Only the fields explicitly passed here are mutated; everything else
+    (name, phone, hired_at, ...) is off-limits from this surface.
+    """
+    changes: dict[str, str] = {}
+    if daily_lesson_opt_out is not None and daily_lesson_opt_out != operator.daily_lesson_opt_out:
+        old = operator.daily_lesson_opt_out
+        operator.daily_lesson_opt_out = daily_lesson_opt_out
+        operator.save(update_fields=["daily_lesson_opt_out", "updated_at"])
+        changes["daily_lesson_opt_out"] = f"{old} → {daily_lesson_opt_out}"
+
+    if changes:
+        audit_log_create(
+            user=user,
+            action=AuditAction.UPDATE,
+            entity="operators.Operator",
+            entity_id=operator.id,
+            changes={"self_preferences": changes},
+        )
+    return operator
+
+
+@transaction.atomic
 def operator_plan_upsert(*, operator: Operator, year: int, month: int, target_amount, user=None) -> OperatorMonthlyPlan:
     plan, created = OperatorMonthlyPlan.objects.update_or_create(
         operator=operator, year=year, month=month,

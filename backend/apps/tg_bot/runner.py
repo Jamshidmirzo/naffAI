@@ -798,6 +798,76 @@ async def main() -> None:
         await state.clear()
         await msg.answer(result)
 
+    # ---------- Attendance Check-in / Check-out ----------
+
+    @dp.message(Command("checkin"))
+    async def cmd_checkin(msg: Message) -> None:
+        tg_user_id = msg.from_user.id
+        username = msg.from_user.username or "-"
+        result = await asyncio.to_thread(_bot_attendance_checkin, tg_user_id, username)
+        await msg.answer(result, parse_mode="HTML")
+
+    @dp.message(Command("checkout"))
+    async def cmd_checkout(msg: Message) -> None:
+        tg_user_id = msg.from_user.id
+        username = msg.from_user.username or "-"
+        result = await asyncio.to_thread(_bot_attendance_checkout, tg_user_id, username)
+        await msg.answer(result, parse_mode="HTML")
+
+    @dp.message(Command("status"))
+    async def cmd_status(msg: Message) -> None:
+        tg_user_id = msg.from_user.id
+        result = await asyncio.to_thread(_bot_attendance_status, tg_user_id)
+        await msg.answer(result, parse_mode="HTML")
+
+    @dp.callback_query(F.data == "attendance:checkin")
+    async def cb_attendance_checkin(cb: CallbackQuery) -> None:
+        tg_user_id = cb.from_user.id
+        username = cb.from_user.username or "-"
+        result = await asyncio.to_thread(_bot_attendance_checkin, tg_user_id, username)
+        await cb.answer()
+        await cb.message.answer(result, parse_mode="HTML")
+
+    @dp.callback_query(F.data.startswith("attendance:auto_checkout_confirm:"))
+    async def cb_auto_checkout_confirm(cb: CallbackQuery) -> None:
+        try:
+            _, _, log_id_s = cb.data.split(":", 2)
+            log_id = int(log_id_s)
+        except (ValueError, IndexError):
+            await cb.answer()
+            return
+
+        res = await asyncio.to_thread(_bot_auto_checkout_confirm, cb.from_user.id, log_id)
+        if res["ok"]:
+            await cb.answer(res["msg"])
+            try:
+                await cb.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+            await cb.message.answer(res["text"])
+        else:
+            await cb.answer(res["msg"], show_alert=res.get("alert", False))
+
+    @dp.callback_query(F.data.startswith("attendance:continue_working:"))
+    async def cb_continue_working(cb: CallbackQuery) -> None:
+        try:
+            _, _, log_id_s = cb.data.split(":", 2)
+            log_id = int(log_id_s)
+        except (ValueError, IndexError):
+            await cb.answer()
+            return
+
+        res = await asyncio.to_thread(_bot_continue_working, cb.from_user.id, log_id)
+        if res["ok"]:
+            await cb.answer(res["msg"])
+            try:
+                await cb.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+            await cb.message.answer(res["text"])
+        else:
+            await cb.answer(res["msg"], show_alert=res.get("alert", False))
+
     # ---------- Callback DM buttons ----------
 
     @dp.callback_query(F.data.startswith("cb-done:"))
@@ -957,6 +1027,181 @@ def _bot_snooze_callback(cb_id: int, minutes: int) -> bool:
     except Exception:
         return False
     return True
+
+
+def _bot_attendance_checkin(tg_user_id: int, username: str) -> str:
+    from apps.users.models import Profile
+    from apps.attendance.services import (
+        process_attendance_event,
+        ScanRateLimitError,
+        TgCheckinDisabledError,
+    )
+    from apps.attendance.selectors import open_log_for_operator
+
+    profile = Profile.objects.filter(telegram_user_id=tg_user_id).first()
+    if not profile or not profile.operator:
+        return "Сначала привяжите аккаунт: /link_operator"
+
+    operator = profile.operator
+
+    open_log = open_log_for_operator(operator)
+    if open_log:
+        chk_in_local = timezone.localtime(open_log.checked_in_at)
+        return f"Смена уже открыта в {chk_in_local.strftime('%H:%M')}. Для завершения используйте /checkout."
+
+    try:
+        res = process_attendance_event(
+            operator=operator,
+            source="tg",
+            initiator=f"tg=@{username} id={tg_user_id}",
+            issue_token=False,
+        )
+        chk_time = timezone.localtime(timezone.now()).strftime("%H:%M")
+        lateness_min = 0
+        if res.get("was_late"):
+            from apps.attendance.selectors import attendance_settings_get
+
+            settings_obj = attendance_settings_get()
+            shift_start_time = settings_obj.shift_start
+            now_local = timezone.localtime(timezone.now())
+            if isinstance(shift_start_time, str):
+                h, m = map(int, shift_start_time.split(":")[:2])
+            else:
+                h, m = shift_start_time.hour, shift_start_time.minute
+            shift_start_dt = now_local.replace(hour=h, minute=m, second=0, microsecond=0)
+            lateness_min = int((now_local - shift_start_dt).total_seconds() / 60)
+            if lateness_min < 0:
+                lateness_min = 0
+
+        late_msg = f"\nОпоздание: {lateness_min} мин." if res.get("was_late") else ""
+        return f"Доброе утро, {operator.full_name}. Отмечен приход в {chk_time}.{late_msg}"
+
+    except ScanRateLimitError:
+        return "Подождите 30 секунд."
+    except TgCheckinDisabledError:
+        return "Отметка через Telegram отключена. Используйте QR на рабочей станции."
+    except Exception as exc:
+        return f"Ошибка: {str(exc)}"
+
+
+def _bot_attendance_checkout(tg_user_id: int, username: str) -> str:
+    from apps.users.models import Profile
+    from apps.attendance.services import (
+        process_attendance_event,
+        ScanRateLimitError,
+        TgCheckinDisabledError,
+    )
+    from apps.attendance.selectors import open_log_for_operator
+
+    profile = Profile.objects.filter(telegram_user_id=tg_user_id).first()
+    if not profile or not profile.operator:
+        return "Сначала привяжите аккаунт: /link_operator"
+
+    operator = profile.operator
+    open_log = open_log_for_operator(operator)
+    if not open_log:
+        return "Вы сегодня не отмечались. Отметьтесь по QR или командой /checkin."
+
+    try:
+        res = process_attendance_event(
+            operator=operator,
+            source="tg",
+            initiator=f"tg=@{username} id={tg_user_id}",
+            issue_token=False,
+        )
+        chk_in_str = timezone.localtime(open_log.checked_in_at).strftime("%H:%M")
+        chk_out_str = timezone.localtime(timezone.now()).strftime("%H:%M")
+        duration = res.get("duration_min", 0)
+        return f"До завтра, {operator.full_name}. Смена: {chk_in_str}–{chk_out_str} ({duration} мин)."
+    except ScanRateLimitError:
+        return "Подождите 30 секунд."
+    except TgCheckinDisabledError:
+        return "Отметка через Telegram отключена. Используйте QR на рабочей станции."
+    except Exception as exc:
+        return f"Ошибка: {str(exc)}"
+
+
+def _bot_attendance_status(tg_user_id: int) -> str:
+    from apps.users.models import Profile
+    from apps.attendance.selectors import open_log_for_operator
+
+    profile = Profile.objects.filter(telegram_user_id=tg_user_id).first()
+    if not profile or not profile.operator:
+        return "Сначала привяжите аккаунт: /link_operator"
+
+    operator = profile.operator
+    open_log = open_log_for_operator(operator)
+    if open_log:
+        chk_in_str = timezone.localtime(open_log.checked_in_at).strftime("%H:%M")
+        duration_sec = int((timezone.now() - open_log.checked_in_at).total_seconds())
+        hours = duration_sec // 3600
+        minutes = (duration_sec % 3600) // 60
+        return f"Вы на смене с {chk_in_str}, работаете {hours}ч {minutes}мин."
+    else:
+        return "Вы не на смене."
+
+
+def _bot_auto_checkout_confirm(tg_user_id: int, log_id: int) -> dict:
+    from apps.users.models import Profile
+    from apps.attendance.models import AttendanceLog
+    from apps.attendance.services import process_attendance_event
+
+    profile = Profile.objects.filter(telegram_user_id=tg_user_id).first()
+    if not profile or not profile.operator:
+        return {"ok": False, "msg": "Сначала привяжите аккаунт: /link_operator", "alert": True}
+
+    try:
+        log = AttendanceLog.objects.get(id=log_id)
+    except AttendanceLog.DoesNotExist:
+        return {"ok": False, "msg": "Лог смены не найден", "alert": True}
+
+    if log.operator_id != profile.operator_id:
+        return {"ok": False, "msg": "Это не твоя смена", "alert": True}
+
+    if log.checked_out_at is not None:
+        return {"ok": False, "msg": "Смена уже была закрыта ранее", "alert": True}
+
+    try:
+        res = process_attendance_event(
+            operator=profile.operator,
+            source="tg",
+            initiator=f"tg_callback_auto_checkout user_id={tg_user_id}",
+            issue_token=False,
+        )
+        duration = res.get("duration_min", 0)
+        return {
+            "ok": True,
+            "msg": "Смена закрыта",
+            "text": f"Хорошего вечера, {profile.operator.full_name}. Смена: {duration} мин.",
+        }
+    except Exception as exc:
+        return {"ok": False, "msg": f"Ошибка: {str(exc)}", "alert": True}
+
+
+def _bot_continue_working(tg_user_id: int, log_id: int) -> dict:
+    from apps.users.models import Profile
+    from apps.attendance.models import AttendanceLog
+
+    profile = Profile.objects.filter(telegram_user_id=tg_user_id).first()
+    if not profile or not profile.operator:
+        return {"ok": False, "msg": "Сначала привяжите аккаунт: /link_operator", "alert": True}
+
+    try:
+        log = AttendanceLog.objects.get(id=log_id)
+    except AttendanceLog.DoesNotExist:
+        return {"ok": False, "msg": "Лог смены не найден", "alert": True}
+
+    if log.operator_id != profile.operator_id:
+        return {"ok": False, "msg": "Это не твоя смена", "alert": True}
+
+    log.warning_dismissed_at = timezone.now()
+    log.save(update_fields=["warning_dismissed_at"])
+
+    return {
+        "ok": True,
+        "msg": "Продолжайте работу",
+        "text": "Ок, продолжай. Повторно не побеспокою.",
+    }
 
 
 if __name__ == "__main__":
