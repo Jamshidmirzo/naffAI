@@ -1051,3 +1051,59 @@ def get_provider() -> LLMProvider:
 
 
 get_llm_provider = get_provider
+
+
+def get_provider_by_key(key: str) -> LLMProvider:
+    """
+    Build a single provider identified by a chain-slot key from
+    ``LLM_CHAIN_MODELS`` (e.g. ``"gemini"``, ``"github_models_gpt4omini"``).
+    Bypasses the full chain — useful when the UI lets the user pick a
+    specific model. Falls back to ``NoneProvider`` if creds are missing.
+    """
+    if not key:
+        return get_provider()
+    chain_models = getattr(settings, "LLM_CHAIN_MODELS", None) or _default_chain_models()
+    model = chain_models.get(key)
+    try:
+        if key.startswith("gemini"):
+            api_key = getattr(settings, "GEMINI_API_KEY", "")
+            if not api_key:
+                return NoneProvider()
+            return GeminiProvider(
+                api_key=api_key,
+                model=model or getattr(settings, "GEMINI_MODEL", "gemini-flash-latest"),
+                fallback_model=getattr(settings, "GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite"),
+            )
+        if key.startswith("github_models"):
+            token = getattr(settings, "GITHUB_MODELS_TOKEN", "")
+            if not token or not model:
+                return NoneProvider()
+            return GitHubModelsProvider(token=token, model=model)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("llm.by_key: could not build '%s': %s", key, exc)
+    return NoneProvider()
+
+
+def list_available_providers() -> list[dict[str, str]]:
+    """
+    UI-facing list of provider slots. Only slots with valid creds are
+    included, so the front-end selector never shows dead options.
+    """
+    chain_models = getattr(settings, "LLM_CHAIN_MODELS", None) or _default_chain_models()
+    labels = {
+        "gemini": "Gemini Flash",
+        "github_models_gpt4omini": "GPT-4o mini",
+        "github_models_gpt41mini": "GPT-4.1 mini",
+        "github_models_deepseek": "DeepSeek v3",
+        "github_models_llama": "Llama 3.3 70B",
+    }
+    gemini_ok = bool(getattr(settings, "GEMINI_API_KEY", ""))
+    gh_ok = bool(getattr(settings, "GITHUB_MODELS_TOKEN", ""))
+    out: list[dict[str, str]] = []
+    for key, model in chain_models.items():
+        if key.startswith("gemini") and not gemini_ok:
+            continue
+        if key.startswith("github_models") and not gh_ok:
+            continue
+        out.append({"key": key, "label": labels.get(key, key), "model": model})
+    return out

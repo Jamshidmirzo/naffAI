@@ -1,11 +1,24 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, Eye, EyeOff, MessageCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Eye, EyeOff, QrCode } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../store/auth";
+import { useTheme } from "../store/theme";
+import { useLang } from "../store/lang";
 import { tgStatus, tgRevoke, TG_STATUS_KEY } from "../lib/tgUserclient";
 import TgConnectWizard from "../components/TgConnectWizard";
 import { StickerPicker } from "../components/StickerPicker";
+import {
+  Button,
+  Eyebrow,
+  Modal,
+  StatusBadge,
+  TabPill,
+  Toggle,
+  toast,
+} from "../components/ui";
+import { usePageHeader } from "../store/page";
 
 type Me = {
   username: string;
@@ -21,60 +34,47 @@ type Preferences = {
 };
 
 const ROLE_LABEL: Record<string, string> = {
-  team_lead: "Тимлид",
   manager: "Менеджер",
   operator: "Оператор",
 };
 
-function PasswordInput({
-  value,
-  onChange,
-  autoFocus,
-  autoComplete,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  autoFocus?: boolean;
-  autoComplete?: string;
-}) {
-  const [show, setShow] = useState(false);
+function initials(name: string) {
   return (
-    <div className="relative">
-      <input
-        className="input pr-10"
-        type={show ? "text" : "password"}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        autoComplete={autoComplete}
-        autoFocus={autoFocus}
-      />
-      <button
-        type="button"
-        onClick={() => setShow((v) => !v)}
-        className="absolute inset-y-0 right-2 flex items-center text-gray-400 dark:text-slate-500 hover:text-gray-700"
-        aria-label={show ? "Скрыть пароль" : "Показать пароль"}
-        tabIndex={-1}
-      >
-        {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-      </button>
-    </div>
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0])
+      .join("")
+      .toUpperCase() || "?"
   );
 }
 
 export default function Profile() {
   const auth = useAuth();
+  const nav = useNavigate();
+  const theme = useTheme();
+  const lang = useLang();
   const qc = useQueryClient();
+
+  usePageHeader({ title: "Профиль", subtitle: "Настройки аккаунта" });
+
   const me = useQuery<Me>({
     queryKey: ["me"],
     queryFn: () => api.get("/auth/me/").then((r) => r.data),
   });
 
-  const mySticker = useQuery<{ sticker: { emoji: string; is_rare: boolean } | null }>({
+  const mySticker = useQuery<{
+    sticker: { emoji: string; is_rare: boolean } | null;
+  }>({
     queryKey: ["me", "sticker"],
     queryFn: () => api.get("/me/sticker/").then((r) => r.data),
     enabled: !!me.data?.operator_id,
   });
+
   const [stickerOpen, setStickerOpen] = useState(false);
+  const [pwdOpen, setPwdOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const prefs = useQuery<Preferences>({
     queryKey: ["me", "preferences"],
@@ -82,140 +82,269 @@ export default function Profile() {
     enabled: !!me.data?.operator_id,
   });
 
-  // Local shadow of the toggle so UI reacts instantly while the PATCH is
-  // in flight. Synced from the query result on load / after invalidation.
   const [dailyLessonEnabled, setDailyLessonEnabled] = useState<boolean>(true);
-  const [prefStatus, setPrefStatus] = useState<{ kind: "ok" | "err"; text: string } | null>(
-    null,
-  );
   useEffect(() => {
-    if (prefs.data) {
-      setDailyLessonEnabled(!prefs.data.daily_lesson_opt_out);
-    }
+    if (prefs.data) setDailyLessonEnabled(!prefs.data.daily_lesson_opt_out);
   }, [prefs.data]);
 
   const updatePref = useMutation({
     mutationFn: (nextEnabled: boolean) =>
       api.patch("/me/preferences/", { daily_lesson_opt_out: !nextEnabled }),
-    onMutate: (nextEnabled: boolean) => {
-      setPrefStatus(null);
-      setDailyLessonEnabled(nextEnabled);
-    },
+    onMutate: (nextEnabled: boolean) => setDailyLessonEnabled(nextEnabled),
     onSuccess: () => {
-      setPrefStatus({ kind: "ok", text: "Настройки сохранены" });
+      toast.success("Настройка сохранена");
       qc.invalidateQueries({ queryKey: ["me", "preferences"] });
     },
     onError: (_err, nextEnabled) => {
-      // roll back UI
       setDailyLessonEnabled(!nextEnabled);
-      setPrefStatus({ kind: "err", text: "Не удалось сохранить настройки" });
+      toast.error("Не удалось сохранить настройку");
     },
   });
 
-  const [oldPwd, setOldPwd] = useState("");
-  const [newPwd, setNewPwd] = useState("");
-  const [confirmPwd, setConfirmPwd] = useState("");
-  const [status, setStatus] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
-
-  const queryClient = useQueryClient();
-  const [wizardOpen, setWizardOpen] = useState(false);
   const tgStatusQ = useQuery({
     queryKey: TG_STATUS_KEY(),
     queryFn: () => tgStatus().then((r) => r.data),
   });
+
   const revokeMut = useMutation({
     mutationFn: (sessionId: number) => tgRevoke(sessionId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: TG_STATUS_KEY() });
+      qc.invalidateQueries({ queryKey: TG_STATUS_KEY() });
       tgStatusQ.refetch();
+      toast.success("Telegram отключён");
     },
   });
 
-  const change = useMutation({
-    mutationFn: () =>
-      api.post("/me/change-password/", {
-        old_password: oldPwd,
-        new_password: newPwd,
-      }),
-    onSuccess: () => {
-      setStatus({ kind: "ok", text: "Пароль обновлён" });
-      setOldPwd("");
-      setNewPwd("");
-      setConfirmPwd("");
-    },
-    onError: (err: any) => {
-      const d = err?.response?.data;
-      const text =
-        d?.old_password?.[0] ||
-        d?.new_password?.[0] ||
-        d?.detail ||
-        "Не удалось изменить пароль";
-      setStatus({ kind: "err", text });
-    },
-  });
-
-  const onSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setStatus(null);
-    if (newPwd.length < 8) {
-      setStatus({ kind: "err", text: "Новый пароль должен быть не короче 8 символов" });
-      return;
-    }
-    if (newPwd !== confirmPwd) {
-      setStatus({ kind: "err", text: "Пароли не совпадают" });
-      return;
-    }
-    change.mutate();
-  };
+  const displayName =
+    me.data?.operator_name || me.data?.username || auth.username || "?";
+  const role = me.data?.role || auth.role || "";
+  const stickerEmoji = mySticker.data?.sticker?.emoji;
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <h1 className="text-2xl font-semibold">Мой профиль</h1>
-
-      <div className="card p-6 space-y-3">
-        <h2 className="text-lg font-semibold">Аккаунт</h2>
-        <div className="grid grid-cols-2 gap-y-2 text-sm">
-          <div className="text-gray-500 dark:text-slate-400">Логин</div>
-          <div className="font-mono">{me.data?.username || auth.username}</div>
-          <div className="text-gray-500 dark:text-slate-400">Роль</div>
-          <div>{ROLE_LABEL[me.data?.role || auth.role || ""] || me.data?.role}</div>
-          {me.data?.operator_name && (
-            <>
-              <div className="text-gray-500 dark:text-slate-400">Оператор</div>
-              <div>{me.data.operator_name}</div>
-            </>
-          )}
-          {me.data?.telegram_user_id && (
-            <>
-              <div className="text-gray-500 dark:text-slate-400">Telegram ID</div>
-              <div className="font-mono">{me.data.telegram_user_id}</div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {me.data?.operator_id && (
-        <div className="card p-6 space-y-3">
-          <h2 className="text-lg font-semibold">Мой стикер</h2>
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 flex items-center justify-center text-4xl border rounded-lg border-gray-200 dark:border-slate-700">
-              {mySticker.data?.sticker?.emoji || (
-                <span className="text-gray-300 text-sm">нет</span>
-              )}
-            </div>
-            <div className="flex-1">
-              <div className="text-sm text-gray-500 dark:text-slate-400">
-                Ваш личный стикер отображается рядом с именем во всех разделах.
-              </div>
-              {mySticker.data?.sticker?.is_rare && (
-                <div className="text-xs text-amber-500 mt-1">Rare — уникальный на всю систему</div>
-              )}
-            </div>
-            <button className="btn-secondary" onClick={() => setStickerOpen(true)}>
-              Изменить
-            </button>
+    <div className="mx-auto max-w-[760px] flex flex-col gap-5">
+      {/* --- HERO --- */}
+      <section
+        className="nf-hero animate-nfFadeUp"
+        style={{
+          borderRadius: 30,
+          padding: "30px 32px",
+          border: "1px solid var(--border)",
+        }}
+      >
+        <div className="flex items-center gap-5 flex-wrap">
+          <div
+            className="grid place-items-center text-white font-semibold shrink-0"
+            style={{
+              width: 62,
+              height: 62,
+              borderRadius: 18,
+              background: "var(--accent-grad)",
+              fontSize: 22,
+              boxShadow: "0 14px 30px -14px var(--accent)",
+            }}
+          >
+            {initials(displayName)}
           </div>
+          <div className="flex-1 min-w-0">
+            <div
+              className="font-semibold truncate"
+              style={{ fontSize: 24, letterSpacing: "-0.025em" }}
+            >
+              {displayName}
+            </div>
+            <div className="mt-1 flex items-center gap-2 flex-wrap text-[13px] text-muted">
+              <span>{ROLE_LABEL[role] || role || "—"}</span>
+              {stickerEmoji && (
+                <>
+                  <span>·</span>
+                  <span
+                    className="text-[16px] leading-none"
+                    title={mySticker.data?.sticker?.is_rare ? "Rare-стикер" : "Стикер"}
+                  >
+                    {stickerEmoji}
+                  </span>
+                  {mySticker.data?.sticker?.is_rare && (
+                    <StatusBadge tone="hot">rare</StatusBadge>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+          {me.data?.operator_id && (
+            <Button variant="secondary" onClick={() => nav("/scan")}>
+              <QrCode className="w-4 h-4" /> QR check-in
+            </Button>
+          )}
         </div>
+      </section>
+
+      {/* --- Settings --- */}
+      <section
+        className="nf-card animate-nfFadeUp"
+        style={{ padding: "8px 4px", animationDelay: "0.05s" }}
+      >
+        <div className="px-6 pt-4 pb-2 text-[13.5px] font-semibold">Настройки</div>
+        <SettingRow
+          label="Тема"
+          hint="Светлая или тёмная"
+          control={
+            <TabPill
+              value={theme.theme}
+              onChange={(v) => theme.set(v)}
+              items={[
+                { value: "light", label: "Светлая" },
+                { value: "dark", label: "Тёмная" },
+              ]}
+            />
+          }
+        />
+        <SettingRow
+          label="Язык"
+          hint="Язык интерфейса"
+          control={
+            <TabPill
+              value={lang.lang}
+              onChange={(v) => {
+                lang.set(v);
+                toast.success("Язык переключён");
+              }}
+              items={[
+                { value: "ru", label: "Русский" },
+                { value: "uz", label: "O‘zbekcha" },
+              ]}
+            />
+          }
+        />
+        {me.data?.operator_id && (
+          <SettingRow
+            label="Ежедневный разбор"
+            hint="Утреннее сообщение с AI-анализом вчерашнего дня"
+            control={
+              <Toggle
+                on={dailyLessonEnabled}
+                onChange={(v) => updatePref.mutate(v)}
+                disabled={prefs.isLoading || updatePref.isPending}
+                aria-label="Ежедневный разбор"
+              />
+            }
+          />
+        )}
+        {me.data?.operator_id && (
+          <SettingRow
+            label="Мой стикер"
+            hint={
+              mySticker.data?.sticker
+                ? "Отображается рядом с именем"
+                : "Стикер ещё не назначен"
+            }
+            control={
+              <Button variant="ghost" onClick={() => setStickerOpen(true)}>
+                {stickerEmoji ? `${stickerEmoji}  Изменить` : "Выбрать"}
+              </Button>
+            }
+          />
+        )}
+        <SettingRow
+          label="Пароль"
+          hint="Смена пароля от учётной записи"
+          control={
+            <Button variant="ghost" onClick={() => setPwdOpen(true)}>
+              Сбросить
+            </Button>
+          }
+          last
+        />
+      </section>
+
+      {/* --- Telegram --- */}
+      {me.data?.operator_id && (
+        <section
+          className="nf-card animate-nfFadeUp"
+          style={{ padding: "22px 26px", animationDelay: "0.1s" }}
+        >
+          <Eyebrow>Telegram</Eyebrow>
+          <div className="text-[15px] font-semibold mt-2">Подключение Telegram</div>
+          <p className="text-[13px] text-muted mt-1.5 max-w-md">
+            Позволяет системе анализировать переписки с клиентами и вести операторские
+            уведомления.
+          </p>
+
+          {tgStatusQ.isLoading ? (
+            <div className="mt-4 text-[13px] text-muted">Проверяем статус…</div>
+          ) : tgStatusQ.data?.status === "active" ? (
+            <div className="mt-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <StatusBadge tone="hot">подключено</StatusBadge>
+                <span className="text-[13px]">
+                  @{tgStatusQ.data.tg_username}
+                </span>
+                {tgStatusQ.data.last_connected_at && (
+                  <span className="text-[12px] text-muted">
+                    · {new Date(tgStatusQ.data.last_connected_at).toLocaleString("ru-RU")}
+                  </span>
+                )}
+              </div>
+              {tgStatusQ.data.latest_backfill_job && (
+                <div className="mt-3 text-[12.5px]">
+                  {tgStatusQ.data.latest_backfill_job.status === "running" && (
+                    <span style={{ color: "var(--accent)" }}>
+                      ⏳ Загружаем историю: {tgStatusQ.data.latest_backfill_job.chats_scanned}{" "}
+                      чатов, {tgStatusQ.data.latest_backfill_job.messages_saved} сообщений
+                    </span>
+                  )}
+                  {tgStatusQ.data.latest_backfill_job.status === "pending" && (
+                    <span style={{ color: "var(--accent)" }}>
+                      ⏳ В очереди на загрузку истории
+                    </span>
+                  )}
+                  {tgStatusQ.data.latest_backfill_job.status === "done" && (
+                    <span className="text-muted">
+                      ✓ История загружена ({tgStatusQ.data.latest_backfill_job.chats_scanned}{" "}
+                      чатов, {tgStatusQ.data.latest_backfill_job.messages_saved} сообщений)
+                    </span>
+                  )}
+                  {tgStatusQ.data.latest_backfill_job.status === "error" && (
+                    <span style={{ color: "var(--danger)" }}>
+                      ⚠ {tgStatusQ.data.latest_backfill_job.last_error}
+                    </span>
+                  )}
+                </div>
+              )}
+              <div className="mt-4">
+                <Button
+                  variant="ghost"
+                  onClick={() =>
+                    tgStatusQ.data?.session_id &&
+                    revokeMut.mutate(tgStatusQ.data.session_id)
+                  }
+                  disabled={revokeMut.isPending}
+                >
+                  Отключить
+                </Button>
+              </div>
+            </div>
+          ) : tgStatusQ.data?.status === "error" ? (
+            <div className="mt-4">
+              <div
+                className="text-[13px] rounded-xl px-3.5 py-2.5"
+                style={{
+                  background: "rgba(220,60,40,.08)",
+                  color: "var(--danger)",
+                  border: "1px solid rgba(220,60,40,.2)",
+                }}
+              >
+                {tgStatusQ.data.last_error || "Неизвестная ошибка"}
+              </div>
+              <div className="mt-3">
+                <Button onClick={() => setWizardOpen(true)}>Переподключить</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4">
+              <Button onClick={() => setWizardOpen(true)}>Подключить Telegram</Button>
+            </div>
+          )}
+        </section>
       )}
 
       {stickerOpen && (
@@ -228,173 +357,197 @@ export default function Profile() {
         />
       )}
 
-      {me.data?.operator_id && (
-        <div className="card p-6 space-y-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Bell className="w-5 h-5" /> Уведомления
-          </h2>
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1">
-              <div className="font-medium">Получать ежедневный разбор дня</div>
-              <div className="text-sm text-gray-500 dark:text-slate-400 mt-1">
-                Утреннее сообщение с AI-анализом вчерашнего дня и советами.
-              </div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={dailyLessonEnabled}
-              aria-label="Ежедневный разбор дня"
-              disabled={prefs.isLoading || updatePref.isPending}
-              onClick={() => updatePref.mutate(!dailyLessonEnabled)}
-              className={
-                "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors " +
-                "focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 " +
-                "disabled:opacity-60 disabled:cursor-not-allowed " +
-                (dailyLessonEnabled
-                  ? "bg-emerald-500"
-                  : "bg-gray-300 dark:bg-slate-600")
-              }
-            >
-              <span
-                className={
-                  "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform " +
-                  (dailyLessonEnabled ? "translate-x-5" : "translate-x-0.5")
-                }
-              />
-            </button>
-          </div>
-          {prefStatus && (
-            <div
-              className={
-                prefStatus.kind === "ok"
-                  ? "text-sm text-emerald-700 dark:text-emerald-400"
-                  : "text-sm text-red-600 dark:text-red-400"
-              }
-            >
-              {prefStatus.text}
-            </div>
-          )}
-        </div>
-      )}
-
-      <form onSubmit={onSubmit} className="card p-6 space-y-4">
-        <h2 className="text-lg font-semibold">Смена пароля</h2>
-        <div>
-          <label className="label">Текущий пароль</label>
-          <PasswordInput
-            value={oldPwd}
-            onChange={setOldPwd}
-            autoComplete="current-password"
-            autoFocus
-          />
-        </div>
-        <div>
-          <label className="label">Новый пароль</label>
-          <PasswordInput value={newPwd} onChange={setNewPwd} autoComplete="new-password" />
-          <div className="text-xs text-gray-400 mt-1">Минимум 8 символов.</div>
-        </div>
-        <div>
-          <label className="label">Повторите новый пароль</label>
-          <PasswordInput
-            value={confirmPwd}
-            onChange={setConfirmPwd}
-            autoComplete="new-password"
-          />
-        </div>
-        {status && (
-          <div
-            className={
-              status.kind === "ok"
-                ? "text-sm text-emerald-700 dark:text-emerald-400"
-                : "text-sm text-red-600 dark:text-red-400"
-            }
-          >
-            {status.text}
-          </div>
-        )}
-        <div className="flex justify-end">
-          <button
-            className="btn-primary"
-            disabled={change.isPending || !oldPwd || !newPwd || !confirmPwd}
-          >
-            {change.isPending ? "Сохранение…" : "Сменить пароль"}
-          </button>
-        </div>
-      </form>
-
-      <div className="card p-6 space-y-4">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <MessageCircle className="w-5 h-5" /> Telegram для анализа
-        </h2>
-        {tgStatusQ.isLoading ? (
-          <div>Загрузка...</div>
-        ) : tgStatusQ.data?.status === 'active' ? (
-          <div>
-            <p className="text-emerald-600 dark:text-emerald-400 font-medium">
-              Подключено. Аккаунт @{tgStatusQ.data.tg_username}. Последняя активность: {tgStatusQ.data.last_connected_at ? new Date(tgStatusQ.data.last_connected_at).toLocaleString('ru-RU') : '—'}
-            </p>
-            {tgStatusQ.data.latest_backfill_job && (
-              <div className="mt-2 text-xs text-gray-600 dark:text-slate-400">
-                {tgStatusQ.data.latest_backfill_job.status === "running" && (
-                  <span className="text-amber-600 dark:text-amber-400">
-                    ⏳ Загружаем историю переписок... Пройдено чатов: {tgStatusQ.data.latest_backfill_job.chats_scanned}, сохранено сообщений: {tgStatusQ.data.latest_backfill_job.messages_saved}
-                  </span>
-                )}
-                {tgStatusQ.data.latest_backfill_job.status === "pending" && (
-                  <span className="text-amber-600 dark:text-amber-400">
-                    ⏳ В очереди на загрузку истории переписок...
-                  </span>
-                )}
-                {tgStatusQ.data.latest_backfill_job.status === "done" && (
-                  <span className="text-emerald-600 dark:text-emerald-400">
-                    ✓ История загружена ({tgStatusQ.data.latest_backfill_job.chats_scanned} чатов, {tgStatusQ.data.latest_backfill_job.messages_saved} сообщений)
-                  </span>
-                )}
-                {tgStatusQ.data.latest_backfill_job.status === "error" && (
-                  <span className="text-red-500">
-                    ⚠ Ошибка загрузки истории: {tgStatusQ.data.latest_backfill_job.last_error}
-                  </span>
-                )}
-              </div>
-            )}
-            <button
-              className="btn-ghost text-red-500 mt-3"
-              onClick={() => tgStatusQ.data?.session_id && revokeMut.mutate(tgStatusQ.data.session_id)}
-              disabled={revokeMut.isPending}
-            >
-              Отключить
-            </button>
-          </div>
-        ) : tgStatusQ.data?.status === 'error' ? (
-          <div>
-            <p className="text-red-500 font-medium">
-              Ошибка: {tgStatusQ.data.last_error || 'Неизвестная ошибка'}
-            </p>
-            <button className="btn-primary mt-3" onClick={() => setWizardOpen(true)}>
-              Переподключить
-            </button>
-          </div>
-        ) : (
-          <div>
-            <p className="text-gray-500 dark:text-slate-400 mb-3">
-              Подключите Telegram, чтобы система могла анализировать ваши переписки с клиентами.
-            </p>
-            <button className="btn-primary" onClick={() => setWizardOpen(true)}>
-              Подключить Telegram
-            </button>
-          </div>
-        )}
-      </div>
-
       {wizardOpen && (
         <TgConnectWizard
           onClose={() => setWizardOpen(false)}
-          onSuccess={() => {
-            tgStatusQ.refetch();
-          }}
+          onSuccess={() => tgStatusQ.refetch()}
         />
       )}
+
+      <PasswordModal open={pwdOpen} onClose={() => setPwdOpen(false)} />
     </div>
+  );
+}
+
+// -------------------------------------------------------------------------
+
+function SettingRow({
+  label,
+  hint,
+  control,
+  last,
+}: {
+  label: string;
+  hint?: string;
+  control: React.ReactNode;
+  last?: boolean;
+}) {
+  return (
+    <div
+      className="flex items-center gap-4 px-6 py-4"
+      style={last ? undefined : { borderBottom: "1px solid var(--border)" }}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="text-[14px] font-medium">{label}</div>
+        {hint && <div className="text-[12.5px] text-muted mt-0.5">{hint}</div>}
+      </div>
+      <div className="shrink-0">{control}</div>
+    </div>
+  );
+}
+
+function PasswordInput({
+  value,
+  onChange,
+  placeholder,
+  autoFocus,
+  autoComplete,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  autoFocus?: boolean;
+  autoComplete?: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        className="nf-input pr-11"
+        type={show ? "text" : "password"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        autoFocus={autoFocus}
+      />
+      <button
+        type="button"
+        onClick={() => setShow((v) => !v)}
+        className="absolute inset-y-0 right-3 flex items-center text-muted hover:text-text transition"
+        tabIndex={-1}
+        aria-label={show ? "Скрыть пароль" : "Показать пароль"}
+      >
+        {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+      </button>
+    </div>
+  );
+}
+
+function PasswordModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [oldPwd, setOldPwd] = useState("");
+  const [newPwd, setNewPwd] = useState("");
+  const [confirmPwd, setConfirmPwd] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setOldPwd("");
+      setNewPwd("");
+      setConfirmPwd("");
+      setError("");
+    }
+  }, [open]);
+
+  const change = useMutation({
+    mutationFn: () =>
+      api.post("/me/change-password/", {
+        old_password: oldPwd,
+        new_password: newPwd,
+      }),
+    onSuccess: () => {
+      toast.success("Пароль обновлён");
+      onClose();
+    },
+    onError: (err: unknown) => {
+      const d = (err as { response?: { data?: Record<string, unknown> } })?.response?.data;
+      const text =
+        (d?.old_password as string[] | undefined)?.[0] ||
+        (d?.new_password as string[] | undefined)?.[0] ||
+        (d?.detail as string | undefined) ||
+        "Не удалось изменить пароль";
+      setError(text);
+    },
+  });
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    if (newPwd.length < 8) {
+      setError("Новый пароль должен быть не короче 8 символов");
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      setError("Пароли не совпадают");
+      return;
+    }
+    change.mutate();
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} width={440}>
+      <form onSubmit={submit} className="p-7">
+        <div className="text-[18px] font-semibold tracking-tight">Смена пароля</div>
+        <p className="text-[13px] text-muted mt-1">
+          Минимум 8 символов
+        </p>
+        <div className="mt-5 flex flex-col gap-4">
+          <div>
+            <div className="nf-col mb-1.5">Текущий пароль</div>
+            <PasswordInput
+              value={oldPwd}
+              onChange={setOldPwd}
+              autoComplete="current-password"
+              autoFocus
+            />
+          </div>
+          <div>
+            <div className="nf-col mb-1.5">Новый пароль</div>
+            <PasswordInput
+              value={newPwd}
+              onChange={setNewPwd}
+              autoComplete="new-password"
+            />
+          </div>
+          <div>
+            <div className="nf-col mb-1.5">Повторите новый пароль</div>
+            <PasswordInput
+              value={confirmPwd}
+              onChange={setConfirmPwd}
+              autoComplete="new-password"
+            />
+          </div>
+          {error && (
+            <div
+              className="text-[13px] rounded-xl px-3.5 py-2.5"
+              style={{
+                background: "rgba(220,60,40,.08)",
+                color: "var(--danger)",
+                border: "1px solid rgba(220,60,40,.2)",
+              }}
+            >
+              {error}
+            </div>
+          )}
+        </div>
+        <div className="mt-6 flex gap-2 justify-end">
+          <Button variant="ghost" type="button" onClick={onClose}>
+            Отмена
+          </Button>
+          <Button
+            type="submit"
+            disabled={change.isPending || !oldPwd || !newPwd || !confirmPwd}
+          >
+            {change.isPending ? "Сохранение…" : "Сменить"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

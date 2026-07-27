@@ -39,6 +39,10 @@ export type Lead = {
   sheet_source_name: string | null;
   sheet_row_index: number | null;
   metadata: Record<string, unknown>;
+  postponed_at: string | null;
+  postponed_by: number | null;
+  postponed_by_name: string | null;
+  postpone_reason: string;
   created_at: string;
   updated_at: string;
 };

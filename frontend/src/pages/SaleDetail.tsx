@@ -1,35 +1,207 @@
+import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, AlertTriangle, CheckCircle, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { RotateCcw, Sparkles, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
-import { formatDate, formatUZS, toDateInputValue } from "../lib/format";
-import { useState } from "react";
+import { formatDate, formatUZS } from "../lib/format";
+import {
+  Button,
+  Eyebrow,
+  Modal,
+  StatusBadge,
+  toast,
+} from "../components/ui";
+import { usePageHeader } from "../store/page";
+import { SalesFormModal } from "../components/sales/SalesFormModal";
+
+interface OperatorLine {
+  operator: number;
+  operator_name: string;
+  amount: string;
+}
+interface PartnerLine {
+  partner: number;
+  partner_name: string;
+  amount: string;
+}
+interface Gift {
+  id: number;
+  name: string;
+  cost: string | null;
+}
+
+/** Format ISO date as «сегодня в 14:32» / «12 июля в 09:15». */
+function fmtRelativeTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    const today = new Date();
+    const sameDay =
+      d.getFullYear() === today.getFullYear() &&
+      d.getMonth() === today.getMonth() &&
+      d.getDate() === today.getDate();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday =
+      d.getFullYear() === yesterday.getFullYear() &&
+      d.getMonth() === yesterday.getMonth() &&
+      d.getDate() === yesterday.getDate();
+    const time = d.toLocaleTimeString("ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    if (sameDay) return `сегодня в ${time}`;
+    if (isYesterday) return `вчера в ${time}`;
+    const dateStr = d.toLocaleDateString("ru-RU", {
+      day: "numeric",
+      month: "long",
+    });
+    return `${dateStr} в ${time}`;
+  } catch {
+    return formatDate(iso);
+  }
+}
+
+/* -----------------------------------------------------------------
+ * AI insights — mock data, swap for real endpoint later.
+ * ---------------------------------------------------------------- */
+const AI_INSIGHT_POOL: Array<Array<{ tag: string; text: string }>> = [
+  [
+    { tag: "Чек", text: "Средний чек на 12% выше медианы месяца." },
+    { tag: "Скорость", text: "Продажа закрыта за 8 минут — быстрее 90% сделок." },
+    { tag: "Оператор", text: "Оператор в топ-3 по конверсии за последние 30 дней." },
+    { tag: "Рекомендация", text: "Клиент подходит для допродажи чехла и стекла." },
+  ],
+  [
+    { tag: "Чек", text: "Сумма ниже среднего чека на 4% — типично для канала." },
+    { tag: "Скорость", text: "Диалог занял 22 минуты, чуть выше средней." },
+    { tag: "Оператор", text: "5-я продажа этой модели за неделю — стабильно." },
+    { tag: "Рекомендация", text: "Проверить сплит: обычно этот оператор берёт 60%." },
+  ],
+  [
+    { tag: "Чек", text: "Крупная продажа — топ-10% по сумме за месяц." },
+    { tag: "Скорость", text: "Быстрая сделка через партнёрский канал." },
+    { tag: "Оператор", text: "Оператор впервые продал эту модель — новый рекорд." },
+    { tag: "Рекомендация", text: "Занести кейс в разбор дня для команды." },
+  ],
+];
+
+interface AiPanelProps {
+  saleId: string | undefined;
+}
+function AiPanel({ saleId }: AiPanelProps) {
+  const [busy, setBusy] = useState(false);
+  const [seed, setSeed] = useState(0);
+  const insights = AI_INSIGHT_POOL[seed % AI_INSIGHT_POOL.length];
+
+  const regenerate = () => {
+    setBusy(true);
+    setTimeout(() => {
+      setSeed((s) => s + 1);
+      setBusy(false);
+      toast.success("Анализ обновлён");
+    }, 900);
+  };
+
+  return (
+    <div
+      className="nf-card animate-nfFadeUp"
+      style={{
+        background:
+          "linear-gradient(165deg, rgba(242,86,11,.07), var(--surface) 55%)",
+        padding: "24px 26px",
+      }}
+    >
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2.5">
+          <div
+            className="grid place-items-center text-white shrink-0"
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: 7,
+              background: "var(--accent-grad)",
+              boxShadow: "0 6px 14px -6px var(--accent)",
+            }}
+          >
+            <Sparkles className="w-3 h-3" />
+          </div>
+          <div className="text-[15px] font-semibold tracking-tight">AI-анализ</div>
+        </div>
+        <button
+          type="button"
+          onClick={regenerate}
+          disabled={busy}
+          className="text-[12px] text-muted hover:text-text transition disabled:opacity-50"
+        >
+          {busy ? "…" : "Заново"}
+        </button>
+      </div>
+
+      {busy ? (
+        <div className="py-8 text-center text-[12.5px] text-muted animate-nfFade">
+          сравниваю с 1284 продажами за месяц…
+        </div>
+      ) : (
+        <div className="flex flex-col">
+          {insights.map((ins, i) => (
+            <div
+              key={`${seed}-${i}`}
+              className="py-3 animate-nfFadeUp"
+              style={{
+                borderBottom:
+                  i < insights.length - 1 ? "1px solid var(--border)" : undefined,
+                animationDelay: `${0.05 + i * 0.06}s`,
+              }}
+            >
+              <div
+                className="text-[12.5px] font-semibold uppercase tracking-wider"
+                style={{ color: "var(--accent)", letterSpacing: "0.06em" }}
+              >
+                {ins.tag}
+              </div>
+              <div className="text-[13.5px] mt-1 leading-[1.5]">{ins.text}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {saleId && (
+        <div className="mt-3 text-[11px] text-muted">
+          Анализ для продажи #{saleId} · mock
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* -----------------------------------------------------------------
+ * Page
+ * ---------------------------------------------------------------- */
 
 export default function SaleDetail() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
   const qc = useQueryClient();
+
   const [returnReason, setReturnReason] = useState("");
   const [showReturn, setShowReturn] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
-  const [editingDate, setEditingDate] = useState(false);
-  const [newDate, setNewDate] = useState("");
-  const [editingDiscount, setEditingDiscount] = useState(false);
-  const [newDiscount, setNewDiscount] = useState("");
-  const [discountError, setDiscountError] = useState("");
+  const [editOpen, setEditOpen] = useState(false);
 
   const q = useQuery({
     queryKey: ["sale", id],
     queryFn: () => api.get(`/sales/${id}/`).then((r) => r.data),
   });
 
-  const confirmMut = useMutation({
-    mutationFn: () => api.post(`/sales/${id}/confirm/`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["sale", id] });
-      qc.invalidateQueries({ queryKey: ["sales"] });
+  usePageHeader(
+    {
+      title: "Продажа",
+      subtitle: id ? `#${id}` : undefined,
+      back: "/sales",
     },
-  });
+    [id],
+  );
 
   const returnMut = useMutation({
     mutationFn: (reason: string) => api.post(`/sales/${id}/return/`, { reason }),
@@ -37,554 +209,350 @@ export default function SaleDetail() {
       qc.invalidateQueries({ queryKey: ["sale", id] });
       qc.invalidateQueries({ queryKey: ["sales"] });
       setShowReturn(false);
+      setReturnReason("");
+      toast.success("Возврат оформлен");
     },
+    onError: () => toast.error("Не удалось оформить возврат"),
   });
 
   const deleteMut = useMutation({
     mutationFn: () => api.delete(`/sales/${id}/`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sales"] });
+      toast.success("Продажа удалена");
       nav("/sales");
     },
+    onError: () => toast.error("Не удалось удалить продажу"),
   });
 
-  const saveDateMut = useMutation({
-    mutationFn: (dateStr: string) =>
-      api.patch(`/sales/${id}/`, { sold_at: `${dateStr}T12:00:00` }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["sale", id] });
-      qc.invalidateQueries({ queryKey: ["sales"] });
-      setEditingDate(false);
-    },
-  });
+  const s = q.data;
 
-  const saveDiscountMut = useMutation({
-    mutationFn: (value: string) =>
-      api.patch(`/sales/${id}/`, { discount: Number(value || 0).toFixed(2) }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["sale", id] });
-      qc.invalidateQueries({ queryKey: ["sales"] });
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-      setEditingDiscount(false);
-      setDiscountError("");
-    },
-    onError: (err: any) => {
-      const d = err?.response?.data || {};
-      setDiscountError(d.detail || "Не удалось сохранить скидку");
-    },
-  });
+  const operatorLines: OperatorLine[] = s?.operator_lines ?? [];
+  const partnerLines: PartnerLine[] = s?.partner_lines ?? [];
+
+  const opTotal = useMemo(
+    () => operatorLines.reduce((sum, l) => sum + Number(l.amount), 0),
+    [operatorLines],
+  );
 
   if (q.isLoading) {
     return (
-      <div className="flex items-center justify-center py-20 text-gray-500 dark:text-slate-400">
+      <div className="mx-auto max-w-[1180px] py-20 text-center text-muted text-[14px]">
         Загрузка…
       </div>
     );
   }
 
-  if (q.isError || !q.data) {
+  if (q.isError || !s) {
     return (
-      <div className="text-center py-20">
-        <div className="text-red-600 dark:text-red-400 mb-4">Продажа не найдена</div>
-        <button className="btn-ghost" onClick={() => nav("/sales")}>
-          <ArrowLeft className="w-4 h-4" /> Назад к списку
-        </button>
+      <div className="mx-auto max-w-[1180px] py-16 text-center">
+        <div
+          className="text-[14px] mb-4 rounded-2xl px-5 py-4 inline-block"
+          style={{
+            background: "rgba(220,60,40,.08)",
+            color: "var(--danger)",
+            border: "1px solid rgba(220,60,40,.2)",
+          }}
+        >
+          Продажа не найдена
+        </div>
+        <div>
+          <Button variant="ghost" onClick={() => nav("/sales")}>
+            Назад к списку
+          </Button>
+        </div>
       </div>
     );
   }
 
-  const s = q.data;
+  const isReturned = !!s.is_returned;
+  const isDeleted = !!s.is_deleted;
   const isPending = s.status === "pending";
-  const isReturned = s.is_returned;
-  const isDeleted = s.is_deleted;
+  const isGift = Array.isArray(s.gifts) && s.gifts.length > 0;
 
-  const operatorLines: { operator: number; operator_name: string; amount: string }[] =
-    s.operator_lines || [];
-  const partnerLines: { partner: number; partner_name: string; amount: string }[] =
-    s.partner_lines || [];
+  const badge = isReturned
+    ? { tone: "danger" as const, text: "возврат" }
+    : isDeleted
+    ? { tone: "neutral" as const, text: "удалена" }
+    : isPending
+    ? { tone: "hot" as const, text: "ожидает" }
+    : { tone: "neutral" as const, text: "оплачено" };
 
-  const opTotal = operatorLines.reduce((sum, l) => sum + Number(l.amount), 0);
-  const partnerTotal = partnerLines.reduce((sum, l) => sum + Number(l.amount), 0);
+  const primaryOp = operatorLines[0];
+  const opSummary = primaryOp
+    ? operatorLines.length === 1
+      ? primaryOp.operator_name
+      : `${primaryOp.operator_name} +${operatorLines.length - 1}`
+    : s.operator_name ?? "—";
+
+  const opSplitLabel = (line: OperatorLine) => {
+    if (opTotal <= 0) return "";
+    const pct = (Number(line.amount) / opTotal) * 100;
+    return `${pct.toFixed(0)}%`;
+  };
+
+  const partnerSummary = partnerLines.length
+    ? partnerLines.map((p) => p.partner_name).join(", ")
+    : s.channel_name ?? "—";
+
+  const giftsSummary = isGift
+    ? (s.gifts as Gift[]).map((g) => g.name).join(", ")
+    : "—";
+
+  const tiles = [
+    { label: "Сумма", value: formatUZS(s.total_price ?? s.amount) },
+    { label: "Канал", value: partnerSummary },
+    { label: "Оператор", value: opSummary, hint: primaryOp ? opSplitLabel(primaryOp) : "" },
+    { label: "Клиент", value: s.client_name || s.client_phone || "—" },
+    { label: "Дата", value: formatDate(s.sold_at) },
+    { label: "Подарки", value: giftsSummary },
+  ];
+
+  // History (audit_events) — optional; fallback to created/updated.
+  const history: Array<{ text: string; who: string; when: string }> = (
+    (s.audit_events as Array<{ description?: string; actor_name?: string; created_at?: string }>) ??
+    []
+  ).map((e) => ({
+    text: e.description ?? "изменение",
+    who: e.actor_name ?? "система",
+    when: formatDate(e.created_at ?? null),
+  }));
+  if (history.length === 0) {
+    history.push(
+      {
+        text: `Продажа создана · ${formatUZS(s.amount)}`,
+        who: primaryOp?.operator_name ?? "система",
+        when: formatDate(s.created_at),
+      },
+      ...(s.updated_at && s.updated_at !== s.created_at
+        ? [
+            {
+              text: "Обновлена запись",
+              who: "система",
+              when: formatDate(s.updated_at),
+            },
+          ]
+        : []),
+    );
+  }
 
   return (
-    <div className="max-w-3xl">
-      <button
-        className="btn-ghost mb-4"
-        onClick={() => nav("/sales")}
+    <div className="mx-auto max-w-[1180px]">
+      <div
+        className="grid gap-5"
+        style={{ gridTemplateColumns: "minmax(0, 1.35fr) minmax(0, 1fr)" }}
       >
-        <ArrowLeft className="w-4 h-4" /> Назад
-      </button>
-
-      <div className="flex items-center gap-3 mb-6">
-        <h1 className="text-2xl font-semibold">Продажа #{s.id}</h1>
-        {isReturned && (
-          <span className="badge bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300">
-            возврат
-          </span>
-        )}
-        {isDeleted && (
-          <span className="badge bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400">
-            удалена
-          </span>
-        )}
-        {isPending && (
-          <span className="badge bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300">
-            ожидает подтверждения
-          </span>
-        )}
-        {!isPending && !isReturned && !isDeleted && (
-          <span className="badge bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
-            подтверждена
-          </span>
-        )}
-      </div>
-
-      {/* Main info */}
-      <div className="card p-6 mb-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <div className="label">IMEI</div>
-            <div className="font-mono text-sm">{s.imei}</div>
-          </div>
-          <div>
-            <div className="label">Модель</div>
-            <div className="text-sm font-medium">
-              {s.phone_model}
-              {(s.quantity ?? 1) > 1 && (
-                <span className="ml-1 text-gray-500 dark:text-slate-400 font-normal">
-                  × {s.quantity} шт
-                </span>
-              )}
-            </div>
-          </div>
-          <div>
-            <div className="label">Дата продажи</div>
-            {editingDate ? (
-              <div className="flex items-center gap-1">
-                <input
-                  type="date"
-                  className="input"
-                  value={newDate || toDateInputValue(s.sold_at)}
-                  max={toDateInputValue(new Date())}
-                  onChange={(e) => setNewDate(e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="btn-ghost px-2"
-                  onClick={() =>
-                    saveDateMut.mutate(newDate || toDateInputValue(s.sold_at))
-                  }
-                  disabled={saveDateMut.isPending}
-                >
-                  <CheckCircle className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost px-2"
-                  onClick={() => {
-                    setEditingDate(false);
-                    setNewDate("");
+        {/* LEFT COLUMN */}
+        <div className="flex flex-col gap-5 min-w-0">
+          {/* Main card */}
+          <section
+            className="nf-card animate-nfFadeUp"
+            style={{ padding: "28px 32px" }}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <Eyebrow>ПРОДАЖА #{s.id}</Eyebrow>
+                <h1
+                  className="font-semibold mt-2 truncate"
+                  style={{
+                    fontSize: 30,
+                    letterSpacing: "-0.03em",
+                    lineHeight: 1.15,
                   }}
                 >
-                  ✕
-                </button>
+                  {s.phone_model || "Модель не указана"}
+                </h1>
+                <div className="text-[13px] text-muted mt-1.5">
+                  IMEI <span className="font-mono text-text">{s.imei}</span>
+                  {" · "}
+                  {fmtRelativeTime(s.sold_at)}
+                </div>
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setNewDate(toDateInputValue(s.sold_at));
-                  setEditingDate(true);
-                }}
-                className="text-sm hover:text-accent inline-flex items-center gap-1 group"
-                title="Изменить дату"
-              >
-                {formatDate(s.sold_at)}
-                <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100" />
-              </button>
-            )}
-          </div>
-          <div>
-            <div className="label">Сумма</div>
-            <div className="text-lg font-semibold">{formatUZS(s.amount)}</div>
-          </div>
-        </div>
-
-        {/* Discount + net row: inline-editable; on save the backend
-            proportionally reduces every operator-line credit and writes
-            a dedicated audit entry tagged «Скидка». */}
-        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-800 grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div>
-            <div className="label">Скидка</div>
-            {editingDiscount ? (
-              <div className="flex items-center gap-1">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  className="input w-32"
-                  value={newDiscount}
-                  placeholder="0"
-                  onChange={(e) =>
-                    setNewDiscount(e.target.value.replace(/\D/g, ""))
-                  }
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  className="btn-ghost px-2"
-                  onClick={() => saveDiscountMut.mutate(newDiscount || "0")}
-                  disabled={saveDiscountMut.isPending}
-                >
-                  <CheckCircle className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost px-2"
-                  onClick={() => {
-                    setEditingDiscount(false);
-                    setDiscountError("");
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setNewDiscount(
-                    Number(s.discount) > 0
-                      ? String(Math.round(Number(s.discount)))
-                      : "",
-                  );
-                  setEditingDiscount(true);
-                }}
-                className="text-sm hover:text-accent inline-flex items-center gap-1 group"
-                title="Изменить скидку"
-              >
-                {Number(s.discount) > 0 ? (
-                  <span className="text-red-600 dark:text-red-400 font-medium">
-                    − {formatUZS(s.discount)}
-                  </span>
-                ) : (
-                  <span className="text-gray-400 dark:text-slate-500">—</span>
-                )}
-                <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100" />
-              </button>
-            )}
-            {discountError && (
-              <div className="text-xs text-red-600 dark:text-red-400 mt-1">
-                {discountError}
-              </div>
-            )}
-          </div>
-          <div>
-            <div className="label">Итог (с учётом скидки)</div>
-            <div className="text-lg font-semibold text-emerald-700 dark:text-emerald-400">
-              {formatUZS(s.total_price ?? s.amount)}
+              <StatusBadge tone={badge.tone}>{badge.text}</StatusBadge>
             </div>
-          </div>
-          {Number(s.discount) > 0 && (
-            <div className="md:col-span-1 col-span-2 text-xs text-gray-500 dark:text-slate-400 self-end">
-              Кредит операторов уменьшен пропорционально на сумму скидки.
-            </div>
-          )}
-        </div>
 
-        {(s.client_name || s.client_phone) && (
-          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-800 grid grid-cols-2 gap-4">
-            {s.client_name && (
-              <div>
-                <div className="label">Клиент</div>
-                <div className="text-sm font-medium">{s.client_name}</div>
-              </div>
-            )}
-            {s.client_phone && (
-              <div>
-                <div className="label">Телефон клиента</div>
-                <div className="text-sm font-medium">{s.client_phone}</div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {s.comment && (
-          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-800">
-            <div className="label">Комментарий</div>
-            <div className="text-sm text-gray-700 dark:text-slate-300">{s.comment}</div>
-          </div>
-        )}
-      </div>
-
-      {/* Operator allocation — stored amounts are NET (post-discount).
-          Gross share is reverse-computed and shown next to the credited
-          figure when a discount is applied. */}
-      <div className="card overflow-hidden mb-4">
-        <div className="px-5 py-4 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between">
-          <div className="text-sm font-medium">Операторы</div>
-          <div className="text-xs text-gray-500 dark:text-slate-400">
-            {operatorLines.length} {operatorLines.length === 1 ? "оператор" : "операторов"}
-            {Number(s.discount) > 0 && (
-              <span className="ml-2 text-red-600 dark:text-red-400">
-                после скидки
-              </span>
-            )}
-          </div>
-        </div>
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 dark:bg-slate-900 text-xs uppercase text-gray-600 dark:text-slate-400">
-            <tr>
-              <th className="px-5 py-2 text-left">Оператор</th>
-              {Number(s.discount) > 0 && (
-                <th className="px-5 py-2 text-right">До скидки</th>
-              )}
-              <th className="px-5 py-2 text-right">Кредит (нетто)</th>
-              <th className="px-5 py-2 text-right">Доля</th>
-            </tr>
-          </thead>
-          <tbody>
-            {operatorLines.map((line, i) => {
-              const pct = opTotal > 0 ? (Number(line.amount) / opTotal) * 100 : 0;
-              const grossShare =
-                opTotal > 0
-                  ? (Number(line.amount) / opTotal) * Number(s.amount)
-                  : Number(line.amount);
-              return (
-                <tr key={i} className="border-t border-gray-100 dark:border-slate-800">
-                  <td className="px-5 py-3 font-medium">{line.operator_name}</td>
-                  {Number(s.discount) > 0 && (
-                    <td className="px-5 py-3 text-right text-gray-400 dark:text-slate-500 line-through">
-                      {formatUZS(grossShare)}
-                    </td>
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {tiles.map((t) => (
+                <div
+                  key={t.label}
+                  className="nf-tile"
+                  style={{ padding: "14px 16px" }}
+                >
+                  <div
+                    className="text-[11.5px] uppercase tracking-wider text-muted"
+                    style={{ letterSpacing: "0.06em" }}
+                  >
+                    {t.label}
+                  </div>
+                  <div
+                    className="mt-1 text-[15px] font-semibold tabular-nums truncate"
+                    title={t.value}
+                  >
+                    {t.value}
+                  </div>
+                  {t.hint && (
+                    <div className="text-[11.5px] text-muted mt-0.5">{t.hint}</div>
                   )}
-                  <td className="px-5 py-3 text-right">{formatUZS(line.amount)}</td>
-                  <td className="px-5 py-3 text-right text-gray-500 dark:text-slate-400">
-                    {pct.toFixed(1)}%
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-          {operatorLines.length > 1 && (
-            <tfoot className="bg-gray-50 dark:bg-slate-900 font-medium">
-              <tr>
-                <td className="px-5 py-2">Итого</td>
-                {Number(s.discount) > 0 && (
-                  <td className="px-5 py-2 text-right text-gray-400 dark:text-slate-500 line-through">
-                    {formatUZS(s.amount)}
-                  </td>
-                )}
-                <td className="px-5 py-2 text-right">{formatUZS(opTotal)}</td>
-                <td className="px-5 py-2 text-right text-gray-500 dark:text-slate-400">100%</td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
-      </div>
-
-      {/* Partner allocation */}
-      <div className="card overflow-hidden mb-4">
-        <div className="px-5 py-4 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between">
-          <div className="text-sm font-medium">Партнёры (способы оплаты)</div>
-          <div className="text-xs text-gray-500 dark:text-slate-400">
-            {partnerLines.length} {partnerLines.length === 1 ? "партнёр" : "партнёров"}
-          </div>
-        </div>
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 dark:bg-slate-900 text-xs uppercase text-gray-600 dark:text-slate-400">
-            <tr>
-              <th className="px-5 py-2 text-left">Партнёр</th>
-              <th className="px-5 py-2 text-right">Сумма</th>
-              <th className="px-5 py-2 text-right">Доля</th>
-            </tr>
-          </thead>
-          <tbody>
-            {partnerLines.map((line, i) => {
-              const pct = partnerTotal > 0 ? (Number(line.amount) / partnerTotal) * 100 : 0;
-              return (
-                <tr key={i} className="border-t border-gray-100 dark:border-slate-800">
-                  <td className="px-5 py-3 font-medium">{line.partner_name}</td>
-                  <td className="px-5 py-3 text-right">{formatUZS(line.amount)}</td>
-                  <td className="px-5 py-3 text-right text-gray-500 dark:text-slate-400">
-                    {pct.toFixed(1)}%
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-          {partnerLines.length > 1 && (
-            <tfoot className="bg-gray-50 dark:bg-slate-900 font-medium">
-              <tr>
-                <td className="px-5 py-2">Итого</td>
-                <td className="px-5 py-2 text-right">{formatUZS(partnerTotal)}</td>
-                <td className="px-5 py-2 text-right text-gray-500 dark:text-slate-400">100%</td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
-      </div>
-
-      {/* Gifts */}
-      {s.gifts && s.gifts.length > 0 && (
-        <div className="card overflow-hidden mb-4">
-          <div className="px-5 py-4 border-b border-gray-200 dark:border-slate-800 text-sm font-medium">
-            Подарки
-          </div>
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-slate-900 text-xs uppercase text-gray-600 dark:text-slate-400">
-              <tr>
-                <th className="px-5 py-2 text-left">Название</th>
-                <th className="px-5 py-2 text-right">Себестоимость</th>
-              </tr>
-            </thead>
-            <tbody>
-              {s.gifts.map((g: { id: number; name: string; cost: string | null }) => (
-                <tr key={g.id} className="border-t border-gray-100 dark:border-slate-800">
-                  <td className="px-5 py-3">{g.name}</td>
-                  <td className="px-5 py-3 text-right">
-                    {g.cost ? formatUZS(g.cost) : "—"}
-                  </td>
-                </tr>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Return info */}
-      {isReturned && (
-        <div className="card p-5 mb-4 border-red-200 dark:border-red-800/40 bg-red-50/50 dark:bg-red-900/10">
-          <div className="flex items-center gap-2 text-red-700 dark:text-red-400 text-sm font-medium mb-2">
-            <AlertTriangle className="w-4 h-4" /> Возврат
-          </div>
-          <div className="text-sm text-gray-700 dark:text-slate-300">
-            <span className="text-gray-500 dark:text-slate-400">Дата возврата:</span>{" "}
-            {formatDate(s.returned_at)}
-          </div>
-          {s.return_reason && (
-            <div className="text-sm text-gray-700 dark:text-slate-300 mt-1">
-              <span className="text-gray-500 dark:text-slate-400">Причина:</span>{" "}
-              {s.return_reason}
             </div>
-          )}
-        </div>
-      )}
 
-      {/* Meta */}
-      <div className="card p-5 mb-6">
-        <div className="text-sm font-medium mb-3">Информация</div>
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div>
-            <span className="text-gray-500 dark:text-slate-400">Создано:</span>{" "}
-            {formatDate(s.created_at)}
-          </div>
-          <div>
-            <span className="text-gray-500 dark:text-slate-400">Обновлено:</span>{" "}
-            {formatDate(s.updated_at)}
-          </div>
-          <div>
-            <span className="text-gray-500 dark:text-slate-400">Основной оператор:</span>{" "}
-            {s.operator_name}
-          </div>
-          <div>
-            <span className="text-gray-500 dark:text-slate-400">Основной канал:</span>{" "}
-            {s.channel_name}
-          </div>
+            {operatorLines.length > 1 && (
+              <div
+                className="mt-4 pt-4 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-muted"
+                style={{ borderTop: "1px solid var(--border)" }}
+              >
+                <div className="font-semibold text-text">Сплит:</div>
+                {operatorLines.map((l, i) => (
+                  <span key={i}>
+                    {l.operator_name} · {opSplitLabel(l)} ({formatUZS(l.amount)})
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {s.comment && (
+              <div
+                className="mt-4 pt-4 text-[13.5px]"
+                style={{ borderTop: "1px solid var(--border)" }}
+              >
+                <div className="nf-col mb-1.5">Комментарий</div>
+                <div>{s.comment}</div>
+              </div>
+            )}
+
+            {!isDeleted && (
+              <div className="mt-6 flex flex-wrap gap-2">
+                <Button onClick={() => setEditOpen(true)}>Редактировать</Button>
+                {!isReturned && (
+                  <Button variant="secondary" onClick={() => setShowReturn(true)}>
+                    <RotateCcw className="w-3.5 h-3.5" /> Оформить возврат
+                  </Button>
+                )}
+                <Button variant="danger" onClick={() => setShowDelete(true)}>
+                  <Trash2 className="w-3.5 h-3.5" /> Удалить
+                </Button>
+              </div>
+            )}
+          </section>
+
+          {/* History card */}
+          <section
+            className="nf-card animate-nfFadeUp"
+            style={{ padding: 24, animationDelay: "0.1s" }}
+          >
+            <div className="text-[15px] font-semibold tracking-tight mb-4">
+              История изменений
+            </div>
+            <ol className="flex flex-col gap-3.5">
+              {history.map((h, i) => (
+                <li
+                  key={i}
+                  className="grid items-start gap-3"
+                  style={{ gridTemplateColumns: "7px 1fr" }}
+                >
+                  <div
+                    className="mt-[7px]"
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: 99,
+                      background: "var(--accent)",
+                    }}
+                  />
+                  <div>
+                    <div className="text-[13.5px]">{h.text}</div>
+                    <div className="text-[11.5px] text-muted mt-0.5">
+                      {h.who} · {h.when}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
+        </div>
+
+        {/* RIGHT COLUMN */}
+        <div className="min-w-0">
+          <AiPanel saleId={id} />
         </div>
       </div>
 
-      {/* Actions */}
-      {!isDeleted && (
-        <div className="flex flex-wrap gap-2">
-          <button
-            className="btn-primary"
-            onClick={() => nav(`/sales/${id}/edit`)}
-          >
-            <Pencil className="w-4 h-4" /> Редактировать
-          </button>
-          {isPending && (
-            <button
-              className="btn-primary"
-              onClick={() => confirmMut.mutate()}
-              disabled={confirmMut.isPending}
-            >
-              <CheckCircle className="w-4 h-4" />
-              {confirmMut.isPending ? "Подтверждение…" : "Подтвердить"}
-            </button>
-          )}
-          {!isReturned && (
-            <button
-              className="btn-ghost text-amber-700 dark:text-amber-400"
-              onClick={() => setShowReturn(true)}
-            >
-              <RotateCcw className="w-4 h-4" /> Возврат
-            </button>
-          )}
-          <button
-            className="btn-ghost text-red-600 dark:text-red-400"
-            onClick={() => setShowDelete(true)}
-          >
-            <Trash2 className="w-4 h-4" /> Удалить
-          </button>
-        </div>
-      )}
+      {/* Edit modal */}
+      <SalesFormModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        editingId={id}
+        onSaved={() => {
+          qc.invalidateQueries({ queryKey: ["sale", id] });
+        }}
+      />
 
       {/* Return modal */}
-      {showReturn && (
-        <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
-          <div className="card p-6 w-full max-w-md space-y-4">
-            <h2 className="text-lg font-semibold">Оформить возврат</h2>
-            <div>
-              <label className="label">Причина возврата</label>
-              <textarea
-                className="input"
-                rows={3}
-                value={returnReason}
-                onChange={(e) => setReturnReason(e.target.value)}
-                placeholder="Укажите причину возврата…"
-                autoFocus
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <button className="btn-ghost" onClick={() => setShowReturn(false)}>
-                Отмена
-              </button>
-              <button
-                className="btn bg-amber-600 text-white hover:bg-amber-700"
-                onClick={() => returnMut.mutate(returnReason)}
-                disabled={returnMut.isPending}
-              >
-                {returnMut.isPending ? "Оформление…" : "Оформить возврат"}
-              </button>
-            </div>
+      <Modal
+        open={showReturn}
+        onClose={() => setShowReturn(false)}
+        width={440}
+      >
+        <div className="p-7">
+          <div className="text-[18px] font-semibold tracking-tight">
+            Оформить возврат
+          </div>
+          <div className="text-[13px] text-muted mt-1">
+            Продажа #{s.id} · {s.phone_model}
+          </div>
+          <div className="mt-5">
+            <div className="nf-col mb-1.5">Причина возврата</div>
+            <textarea
+              className="nf-input min-h-[80px]"
+              rows={3}
+              value={returnReason}
+              onChange={(e) => setReturnReason(e.target.value)}
+              placeholder="Например: брак экрана, клиент передумал"
+              autoFocus
+            />
+          </div>
+          <div className="mt-6 flex gap-2 justify-end">
+            <Button variant="ghost" onClick={() => setShowReturn(false)}>
+              Отмена
+            </Button>
+            <Button
+              onClick={() => returnMut.mutate(returnReason)}
+              disabled={returnMut.isPending || !returnReason.trim()}
+            >
+              {returnMut.isPending ? "Оформление…" : "Оформить возврат"}
+            </Button>
           </div>
         </div>
-      )}
+      </Modal>
 
-      {/* Delete confirm modal */}
-      {showDelete && (
-        <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
-          <div className="card p-6 w-full max-w-md space-y-4">
-            <h2 className="text-lg font-semibold text-red-600 dark:text-red-400">Удалить продажу?</h2>
-            <p className="text-sm text-gray-600 dark:text-slate-400">
-              Продажа #{s.id} ({s.phone_model}, {formatUZS(s.amount)}) будет помечена как удалённая.
-              Это действие можно отменить через админку.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button className="btn-ghost" onClick={() => setShowDelete(false)}>
-                Отмена
-              </button>
-              <button
-                className="btn bg-red-600 text-white hover:bg-red-700"
-                onClick={() => deleteMut.mutate()}
-                disabled={deleteMut.isPending}
-              >
-                {deleteMut.isPending ? "Удаление…" : "Удалить"}
-              </button>
-            </div>
+      {/* Delete modal */}
+      <Modal open={showDelete} onClose={() => setShowDelete(false)} width={420}>
+        <div className="p-7">
+          <div
+            className="text-[18px] font-semibold tracking-tight"
+            style={{ color: "var(--danger)" }}
+          >
+            Удалить продажу?
+          </div>
+          <div className="text-[13px] text-muted mt-2">
+            Продажа #{s.id} — {s.phone_model} · {formatUZS(s.amount)}. Будет
+            помечена как удалённая, восстановление — через админку.
+          </div>
+          <div className="mt-6 flex gap-2 justify-end">
+            <Button variant="ghost" onClick={() => setShowDelete(false)}>
+              Отмена
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => deleteMut.mutate()}
+              disabled={deleteMut.isPending}
+            >
+              {deleteMut.isPending ? "Удаление…" : "Удалить"}
+            </Button>
           </div>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }

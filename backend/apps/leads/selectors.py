@@ -77,10 +77,16 @@ def leads_for_operator(
     *,
     status: str | None = None,
     include_archived: bool = False,
+    view: str = "active",
 ) -> QuerySet[Lead]:
     """
     Leads currently assigned to `operator` — used by the operator workstation
     (`/api/leads/my/`).
+
+    `view` filters by the operator-set postpone flag:
+      - "active"    (default): only lead where postponed_at IS NULL
+      - "postponed": only lead where postponed_at IS NOT NULL
+      - "all":       no postpone filter
     """
     qs = Lead.objects.select_related("operator", "sheet_source").filter(
         operator=operator
@@ -89,6 +95,13 @@ def leads_for_operator(
         qs = qs.filter(status=status)
     elif not include_archived:
         qs = qs.filter(status__in=ACTIVE_LEAD_STATUSES)
+
+    if view == "active":
+        qs = qs.filter(postponed_at__isnull=True)
+        return qs.order_by("-updated_at")
+    if view == "postponed":
+        qs = qs.filter(postponed_at__isnull=False)
+        return qs.order_by("-postponed_at")
     return qs.order_by("-updated_at")
 
 

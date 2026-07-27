@@ -64,3 +64,22 @@ operator_account_urlpatterns = [
         name="operator-account-delete",
     ),
 ]
+
+
+# Manager-facing user CRUD for web accounts (managers/team-leads only —
+# operators have their own /operators/{id}/account/… surface).
+from .apis import UserDeleteApi, UserListCreateApi, UserResetPasswordApi
+
+users_urlpatterns = [
+    path("", UserListCreateApi.as_view(), name="users-list-create"),
+    path(
+        "<int:user_id>/reset-password/",
+        UserResetPasswordApi.as_view(),
+        name="user-reset-password",
+    ),
+    path(
+        "<int:user_id>/delete/",
+        UserDeleteApi.as_view(),
+        name="user-delete",
+    ),
+]

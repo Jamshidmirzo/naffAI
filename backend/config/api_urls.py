@@ -19,6 +19,7 @@ from apps.stickers.urls import (
 from apps.users.urls import me_urlpatterns as users_me_urlpatterns
 from apps.users.urls import (
     operator_account_urlpatterns as users_operator_account_urlpatterns,
+    users_urlpatterns,
 )
 from apps.attendance.urls import me_urlpatterns as attendance_me_urlpatterns
 
@@ -62,4 +63,6 @@ urlpatterns = [
     path("marketing/", include("apps.marketing.urls")),
     path("lessons/", include("apps.lessons.urls")),
     path("attendance/", include("apps.attendance.urls")),
+    # Manager-only user management (web accounts, not operators).
+    path("users/", include((users_urlpatterns, "users"))),
 ]

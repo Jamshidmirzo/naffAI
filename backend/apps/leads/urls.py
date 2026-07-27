@@ -5,8 +5,10 @@ from .apis import (
     LeadDetailApi,
     LeadListCreateApi,
     LeadMyListApi,
+    LeadPostponeApi,
     LeadReassignApi,
     LeadStatusApi,
+    LeadUnpostponeApi,
     OperatorSheetAliasDetailApi,
     OperatorSheetAliasListCreateApi,
     SheetSourceDetailApi,
@@ -20,6 +22,8 @@ urlpatterns = [
     path("<int:pk>/", LeadDetailApi.as_view()),
     path("<int:pk>/reassign/", LeadReassignApi.as_view()),
     path("<int:pk>/status/", LeadStatusApi.as_view()),
+    path("<int:pk>/postpone/", LeadPostponeApi.as_view()),
+    path("<int:pk>/unpostpone/", LeadUnpostponeApi.as_view()),
     path("<int:pk>/convert-to-sale/", LeadConvertToSaleApi.as_view()),
 ]
 

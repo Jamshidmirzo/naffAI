@@ -1,11 +1,18 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { AlertTriangle, Calendar, Moon, User, X } from "lucide-react";
 import { api } from "../lib/api";
-import KpiCard from "../components/KpiCard";
-import { Calendar, User, Clock, AlertTriangle, Moon } from "lucide-react";
-import { RoleGate } from "../components/RoleGate";
-import { Modal } from "../components/Modal";
-import { toast } from "sonner";
+import {
+  Button,
+  Eyebrow,
+  Modal,
+  StatusBadge,
+  toast,
+} from "../components/ui";
+import { usePageHeader } from "../store/page";
+import { useT } from "../lib/i18n";
+import { DashKpiCard } from "../components/dashboard/KpiCard";
 
 interface AttendanceEvent {
   id: number;
@@ -16,8 +23,6 @@ interface AttendanceEvent {
   was_late: boolean;
   duration_min: number | null;
   auto_closed: boolean;
-  manually_closed?: boolean;
-  manually_closed_by_name?: string;
   source: "qr" | "tg" | "manual";
 }
 
@@ -31,250 +36,322 @@ interface AttendanceReport {
   present: AttendanceEvent[];
   late: AttendanceEvent[];
   absent: AbsentOperator[];
-  counts: {
-    present: number;
-    late: number;
-    absent: number;
-  };
+  counts: { present: number; late: number; absent: number };
+}
+
+function fmtTime(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Tashkent",
+  });
 }
 
 export default function AttendanceToday() {
-  const [tab, setTab] = useState<"today">("today");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-
-  // Manual close state
   const [closingLog, setClosingLog] = useState<{ id: number; name: string } | null>(null);
   const [closeNote, setCloseNote] = useState("");
 
-  const { data: report, isLoading: isLoadingReport, refetch } = useQuery<AttendanceReport>({
-    queryKey: ["attendance-report", date],
-    queryFn: () => api.get<AttendanceReport>(`/attendance/report/?date=${date}`).then((r) => r.data),
-  });
+  const t = useT();
+  usePageHeader({ title: t("attendance.today.title"), subtitle: t("attendance.today.subtitle") }, [t("attendance.today.title")]);
 
-  const formatTime = (isoString: string | null) => {
-    if (!isoString) return "-";
-    return new Date(isoString).toLocaleTimeString("ru-RU", {
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: "Asia/Tashkent",
-    });
-  };
+  const { data: report, isLoading, refetch } = useQuery<AttendanceReport>({
+    queryKey: ["attendance-report", date],
+    queryFn: () =>
+      api.get<AttendanceReport>(`/attendance/report/?date=${date}`).then((r) => r.data),
+    refetchInterval: 60_000,
+  });
 
   const handleCloseSubmit = async () => {
     if (!closingLog) return;
     try {
       await api.post(`/attendance/logs/${closingLog.id}/close/`, { note: closeNote });
-      toast.success("Смена успешно закрыта");
+      toast.success("Смена закрыта");
       setClosingLog(null);
       setCloseNote("");
       refetch();
-    } catch (err) {
+    } catch {
       toast.error("Не удалось закрыть смену");
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Посещаемость</h1>
-          <p className="text-sm text-gray-500 dark:text-slate-400">
-            Контроль присутствия операторов на рабочих местах
-          </p>
-        </div>
-
-        <div className="flex bg-gray-100 dark:bg-slate-900 rounded-lg p-1">
-          <button
-            onClick={() => setTab("today")}
-            className={`px-4 py-2 text-sm font-semibold rounded-md transition ${
-              tab === "today"
-                ? "bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm"
-                : "text-gray-500 hover:text-gray-900 dark:hover:text-white"
-            }`}
+    <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
+      {/* Hero + QR */}
+      <section
+        className="nf-hero animate-nfFadeUp"
+        style={{
+          borderRadius: 24,
+          padding: "26px 32px",
+          border: "1px solid var(--border)",
+        }}
+      >
+        <div className="grid gap-5 md:grid-cols-[112px,1fr,auto] items-center">
+          <div
+            className="grid place-items-center"
+            style={{
+              width: 112,
+              height: 112,
+              borderRadius: 20,
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+            }}
           >
-            Отчёт по дням
-          </button>
+            <div className="text-center">
+              <div
+                className="grid grid-cols-3 gap-0.5 mx-auto"
+                style={{ width: 60, height: 60 }}
+              >
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      background: i % 3 === 0 || i === 4 ? "var(--text)" : "transparent",
+                      borderRadius: 2,
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="mt-1 text-[9px] font-semibold text-muted uppercase tracking-wide">
+                QR
+              </div>
+            </div>
+          </div>
+          <div>
+            <Eyebrow>QR CHECK-IN</Eyebrow>
+            <div
+              className="font-semibold mt-2"
+              style={{ fontSize: 24, letterSpacing: "-0.025em" }}
+            >
+              QR-код для отметки на входе
+            </div>
+            <div className="text-[13px] text-muted mt-1.5 max-w-md">
+              Распечатайте и повесьте у входа. Операторы отмечаются камерой телефона.
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 items-end">
+            <Link to="/scan" target="_blank">
+              <Button>Открыть экран /scan</Button>
+            </Link>
+            <Button variant="ghost" onClick={() => toast("Скоро — генерация PNG")}>
+              Скачать PNG
+            </Button>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {tab === "today" && (
-        <div className="space-y-6">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-gray-600 dark:text-slate-400 flex items-center gap-1.5">
-              <Calendar className="w-4 h-4" /> Выберите дату:
-            </span>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-lg px-3 py-1.5 text-sm"
+      {/* KPIs */}
+      {report && (
+        <section className="grid gap-[13px] grid-cols-1 md:grid-cols-3">
+          <DashKpiCard
+            index={0}
+            label="На смене сейчас"
+            value={report.counts.present}
+            format={(n) => `${Math.round(n)} / ${report.total_active_operators}`}
+            hint="Операторов сегодня"
+          />
+          <DashKpiCard
+            index={1}
+            label="Опоздали"
+            value={report.counts.late}
+            format={(n) => `${Math.round(n)}`}
+            hint="Более чем на 15 мин"
+          />
+          <DashKpiCard
+            index={2}
+            label="Не пришли"
+            value={report.counts.absent}
+            format={(n) => `${Math.round(n)}`}
+            hint="Не отметились"
+          />
+        </section>
+      )}
+
+      {/* Date filter */}
+      <section className="flex items-center gap-3">
+        <span className="nf-col flex items-center gap-1.5">
+          <Calendar className="w-3.5 h-3.5" /> Дата:
+        </span>
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="nf-input py-2 px-3.5 w-auto text-[13px]"
+        />
+      </section>
+
+      {/* Present operators table */}
+      <section className="nf-card overflow-hidden">
+        <div className="px-6 pt-5 pb-3 text-[15px] font-semibold tracking-tight">
+          На смене
+        </div>
+        <div
+          className="grid gap-2 px-6 pb-3 nf-col"
+          style={{ gridTemplateColumns: "1.3fr .8fr .8fr .7fr .6fr .5fr .8fr" }}
+        >
+          <div>Оператор</div>
+          <div>Пришёл</div>
+          <div>Ушёл</div>
+          <div>Длит.</div>
+          <div className="text-center">Опозд.</div>
+          <div className="text-center">Канал</div>
+          <div className="text-right">Действия</div>
+        </div>
+        {isLoading ? (
+          <div className="text-center text-muted py-12 text-[13px]">Загрузка…</div>
+        ) : (report?.present.length ?? 0) === 0 ? (
+          <div className="text-center text-muted py-12 text-[13px]">
+            Ни один оператор сегодня ещё не пришёл
+          </div>
+        ) : (
+          <div>
+            {(report?.present ?? []).map((e, i) => (
+              <div
+                key={e.id}
+                className="nf-row animate-nfFadeUp"
+                style={{
+                  gridTemplateColumns: "1.3fr .8fr .8fr .7fr .6fr .5fr .8fr",
+                  animationDelay: `${0.02 + i * 0.035}s`,
+                  cursor: "default",
+                }}
+              >
+                <div className="font-medium truncate flex items-center gap-2">
+                  <span
+                    className="w-2 h-2 rounded-full inline-block"
+                    style={{
+                      background: e.checked_out_at ? "var(--faint2)" : "var(--accent)",
+                    }}
+                  />
+                  {e.operator_name}
+                </div>
+                <div className="text-muted tabular-nums">{fmtTime(e.checked_in_at)}</div>
+                <div>
+                  {e.checked_out_at ? (
+                    <span className="text-muted tabular-nums">
+                      {fmtTime(e.checked_out_at)}
+                    </span>
+                  ) : e.auto_closed ? (
+                    <span className="text-muted text-[12px] inline-flex items-center gap-1">
+                      <Moon className="w-3 h-3" /> 23:00 авто
+                    </span>
+                  ) : (
+                    <StatusBadge tone="hot">на смене</StatusBadge>
+                  )}
+                </div>
+                <div className="text-muted tabular-nums">
+                  {e.duration_min !== null ? `${e.duration_min} мин` : "—"}
+                </div>
+                <div className="text-center">
+                  {e.was_late ? (
+                    <span
+                      style={{ color: "var(--accent)" }}
+                      className="inline-flex items-center gap-0.5 text-[12px] font-semibold"
+                    >
+                      <AlertTriangle className="w-3 h-3" /> да
+                    </span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
+                </div>
+                <div className="text-center text-[11px] uppercase text-muted tracking-wide">
+                  {e.source}
+                </div>
+                <div className="text-right">
+                  {!e.checked_out_at && !e.auto_closed && (
+                    <button
+                      onClick={() =>
+                        setClosingLog({ id: e.id, name: e.operator_name })
+                      }
+                      className="text-[12px] font-semibold px-2.5 py-1.5 rounded-full transition"
+                      style={{
+                        background: "rgba(220,60,40,.1)",
+                        color: "var(--danger)",
+                      }}
+                    >
+                      Закрыть
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Absent list */}
+      {report?.absent && report.absent.length > 0 && (
+        <section className="nf-card overflow-hidden">
+          <div className="px-6 pt-5 pb-3 text-[15px] font-semibold tracking-tight">
+            Не пришли ({report.absent.length})
+          </div>
+          <div>
+            {report.absent.map((op, i) => (
+              <div
+                key={op.id}
+                className="nf-row animate-nfFadeUp"
+                style={{
+                  gridTemplateColumns: "1fr",
+                  padding: "12px 24px",
+                  animationDelay: `${0.02 + i * 0.03}s`,
+                  cursor: "default",
+                }}
+              >
+                <div className="flex items-center gap-2.5">
+                  <User className="w-3.5 h-3.5 text-muted" />
+                  <span>{op.full_name}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Manual close modal */}
+      <Modal
+        open={!!closingLog}
+        onClose={() => setClosingLog(null)}
+        width={440}
+      >
+        <div className="p-7">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div>
+              <div className="text-[18px] font-semibold tracking-tight">
+                Закрыть смену
+              </div>
+              <div className="text-[13px] text-muted mt-1">
+                {closingLog?.name} — время ухода будет зафиксировано сейчас
+              </div>
+            </div>
+            <button
+              onClick={() => setClosingLog(null)}
+              className="grid place-items-center rounded-full hover:bg-[color:var(--faint)] transition"
+              style={{ width: 32, height: 32 }}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div>
+            <div className="nf-col mb-1.5">Комментарий (необязательно)</div>
+            <textarea
+              value={closeNote}
+              onChange={(e) => setCloseNote(e.target.value)}
+              className="nf-input min-h-[80px]"
+              placeholder="Например: клиент задержал"
+              maxLength={280}
+              rows={3}
             />
           </div>
-
-          {report && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <KpiCard
-                label="На месте"
-                value={`${report.counts.present} / ${report.total_active_operators}`}
-                sub="Операторов сегодня"
-              />
-              <KpiCard
-                label="Опоздали"
-                value={`${report.counts.late}`}
-                sub="Более чем на 15 мин"
-              />
-              <KpiCard
-                label="Отсутствуют"
-                value={`${report.counts.absent}`}
-                sub="Не отметились"
-              />
-            </div>
-          )}
-
-          <div className="card overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-200 dark:border-slate-800 text-sm font-medium">
-              Присутствующие операторы
-            </div>
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-slate-900 text-xs uppercase text-gray-600 dark:text-slate-400">
-                <tr>
-                  <th className="px-5 py-3 text-left">Имя оператора</th>
-                  <th className="px-5 py-3 text-left">Пришёл</th>
-                  <th className="px-5 py-3 text-left">Ушёл</th>
-                  <th className="px-5 py-3 text-left">Длительность</th>
-                  <th className="px-5 py-3 text-center">Опоздание</th>
-                  <th className="px-5 py-3 text-center">Канал</th>
-                  <RoleGate allow={["team_lead", "manager"]}>
-                    <th className="px-5 py-3 text-center">Действия</th>
-                  </RoleGate>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-150 dark:divide-slate-800">
-                {isLoadingReport && (
-                  <tr>
-                    <td colSpan={7} className="px-5 py-8 text-center text-gray-500">
-                      Загрузка отчёта...
-                    </td>
-                  </tr>
-                )}
-                {!isLoadingReport && report?.present.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-5 py-8 text-center text-gray-500">
-                      Ни один оператор сегодня ещё не пришёл.
-                    </td>
-                  </tr>
-                )}
-                {report?.present.map((e) => (
-                  <tr key={e.id} className="hover:bg-gray-50 dark:hover:bg-slate-800/40">
-                    <td className="px-5 py-3.5 font-semibold text-gray-900 dark:text-slate-200">
-                      {e.operator_name}
-                    </td>
-                    <td className="px-5 py-3.5 whitespace-nowrap">
-                      {formatTime(e.checked_in_at)}
-                    </td>
-                    <td className="px-5 py-3.5 whitespace-nowrap">
-                      {e.checked_out_at ? (
-                        formatTime(e.checked_out_at)
-                      ) : e.auto_closed ? (
-                        <span className="text-gray-400 flex items-center gap-1">
-                          <Moon className="w-3.5 h-3.5" /> 23:00 (авто)
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 rounded-full">
-                          на смене
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      {e.duration_min !== null ? `${e.duration_min} мин` : "-"}
-                    </td>
-                    <td className="px-5 py-3.5 text-center">
-                      {e.was_late ? (
-                        <span className="text-red-600 dark:text-red-400 font-semibold inline-flex items-center gap-0.5">
-                          <AlertTriangle className="w-3.5 h-3.5" /> Да
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3.5 text-center text-xs font-mono uppercase text-gray-500">
-                      {e.source}
-                    </td>
-                    <RoleGate allow={["team_lead", "manager"]}>
-                      <td className="px-5 py-3.5 text-center">
-                        {!e.checked_out_at && !e.auto_closed && (
-                          <button
-                            onClick={() => setClosingLog({ id: e.id, name: e.operator_name })}
-                            className="px-2.5 py-1 text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 rounded transition"
-                          >
-                            Закрыть смену
-                          </button>
-                        )}
-                      </td>
-                    </RoleGate>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mt-6 flex gap-2 justify-end">
+            <Button variant="ghost" onClick={() => setClosingLog(null)}>
+              Отмена
+            </Button>
+            <Button variant="danger" onClick={handleCloseSubmit}>
+              Закрыть смену
+            </Button>
           </div>
-
-          {!isLoadingReport && report?.absent.length && report.absent.length > 0 ? (
-            <div className="card overflow-hidden border-red-100 dark:border-red-950/20">
-              <div className="px-5 py-4 border-b border-red-100 bg-red-50/20 dark:border-red-950/20 text-sm font-semibold text-red-800 dark:text-red-400">
-                Отсутствующие
-              </div>
-              <table className="w-full text-sm">
-                <tbody className="divide-y divide-gray-150 dark:divide-slate-800">
-                  {report.absent.map((op) => (
-                    <tr key={op.id} className="hover:bg-red-50/10 transition">
-                      <td className="px-5 py-3 font-medium flex items-center gap-2 text-gray-700 dark:text-slate-300">
-                        <User className="w-4 h-4 text-gray-400" />
-                        {op.full_name}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
         </div>
-      )}
-
-      {/* Manual close confirmation modal */}
-      {closingLog && (
-        <Modal
-          open={!!closingLog}
-          title={`Закрыть смену оператора ${closingLog.name}?`}
-          onClose={() => setClosingLog(null)}
-        >
-          <div className="space-y-4">
-            <p className="text-sm text-gray-500">
-              Вы принудительно завершаете текущую открытую смену. Будет зафиксировано время ухода.
-            </p>
-            <div>
-              <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">
-                Комментарий (необязательно)
-              </label>
-              <textarea
-                value={closeNote}
-                onChange={(e) => setCloseNote(e.target.value)}
-                className="w-full border border-gray-250 dark:border-slate-800 rounded-lg p-2.5 text-sm bg-white dark:bg-slate-950"
-                placeholder="Комментарий к закрытию смены (макс. 280 символов)"
-                maxLength={280}
-                rows={3}
-              />
-            </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <button onClick={() => setClosingLog(null)} className="btn-secondary py-2 px-4">
-                Отмена
-              </button>
-              <button onClick={handleCloseSubmit} className="btn-primary bg-red-600 hover:bg-red-500 py-2 px-4">
-                Закрыть
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      </Modal>
     </div>
   );
 }

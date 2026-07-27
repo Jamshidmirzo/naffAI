@@ -1,36 +1,30 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download } from "lucide-react";
 import { api, API_BASE_URL } from "../lib/api";
-import { formatNumber, formatUZS } from "../lib/format";
+import { formatUZS } from "../lib/format";
 import { buildPeriodParams, periodTitle, type MonthChoice } from "../lib/period";
 import MonthPicker from "../components/MonthPicker";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Button, Eyebrow } from "../components/ui";
+import { usePageHeader } from "../store/page";
+import { useT } from "../lib/i18n";
 
-interface LeadsDistributionRow {
+interface LeaderboardRow {
   operator_id: number;
   operator_name: string;
-  new: number;
-  assigned: number;
-  in_progress: number;
-  won: number;
-  lost: number;
-  needs_review: number;
-  total: number;
+  total: number | string;
+  count?: number | string;
 }
-
+interface ByChannelRow {
+  channel_name: string;
+  total: number | string;
+  count: number | string;
+}
+interface ByModelRow {
+  phone_model: string;
+  count: number | string;
+  total: number | string;
+}
 interface FunnelRow {
   operator_id: number;
   operator_name: string;
@@ -39,69 +33,51 @@ interface FunnelRow {
   callbacks: number;
   sales: number;
 }
-
 interface HeatmapPayload {
   operators: { id: number; name: string }[];
   hours: number[];
   matrix: number[][];
 }
 
-const LEAD_BUCKET_COLORS: Record<string, string> = {
-  new: "#94A3B8",
-  assigned: "#60A5FA",
-  in_progress: "#F59E0B",
-  won: "#10B981",
-  lost: "#EF4444",
-  needs_review: "#A78BFA",
-};
-
-const LEAD_BUCKET_LABELS: Record<string, string> = {
-  new: "Новые",
-  assigned: "Назначены",
-  in_progress: "В работе",
-  won: "Продажи",
-  lost: "Потеряны",
-  needs_review: "На проверке",
-};
-
-const PIE_COLORS = ["#2563EB", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"];
+function millions(n: number) {
+  if (Math.abs(n) >= 1_000_000)
+    return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")} млн`;
+  if (Math.abs(n) >= 1_000) return `${Math.round(n / 1_000)} тыс`;
+  return Math.round(n).toString();
+}
 
 export default function Analytics() {
   const [choice, setChoice] = useState<MonthChoice>({ kind: "current" });
-
   const params = buildPeriodParams("month", choice);
   const paramKey = JSON.stringify(params);
   const title = periodTitle("month", choice);
 
+  const t = useT();
+  usePageHeader({ title: t("analytics.title"), subtitle: title }, [t("analytics.title"), title]);
+
   const exportParams = new URLSearchParams(
-    Object.entries(params).filter(([, v]) => v != null) as [string, string][]
+    Object.entries(params).filter(([, v]) => v != null) as [string, string][],
   ).toString();
 
-  const lb = useQuery({
+  const lb = useQuery<LeaderboardRow[]>({
     queryKey: ["lb", paramKey],
-    queryFn: () => api.get("/analytics/leaderboard/", { params }).then((r) => r.data),
-  });
-  const ch = useQuery({
-    queryKey: ["by-channel", paramKey],
-    queryFn: () => api.get("/analytics/by-channel/", { params }).then((r) => r.data),
-  });
-  const md = useQuery({
-    queryKey: ["by-model", paramKey],
-    queryFn: () => api.get("/analytics/by-model/", { params }).then((r) => r.data),
-  });
-
-  // F3.C — extended charts. These are all live/current (not filtered by
-  // the month picker) since they answer "what does the pipeline look like
-  // right now?" rather than "what happened in this window?".
-  const leadsDist = useQuery<LeadsDistributionRow[]>({
-    queryKey: ["leads-distribution"],
     queryFn: () =>
-      api.get<LeadsDistributionRow[]>("/analytics/leads-distribution/").then((r) => r.data),
+      api.get<LeaderboardRow[]>("/analytics/leaderboard/", { params }).then((r) => r.data),
+  });
+  const ch = useQuery<ByChannelRow[]>({
+    queryKey: ["by-channel", paramKey],
+    queryFn: () =>
+      api.get<ByChannelRow[]>("/analytics/by-channel/", { params }).then((r) => r.data),
+  });
+  const md = useQuery<ByModelRow[]>({
+    queryKey: ["by-model", paramKey],
+    queryFn: () =>
+      api.get<ByModelRow[]>("/analytics/by-model/", { params }).then((r) => r.data),
   });
   const funnels = useQuery<FunnelRow[]>({
     queryKey: ["operator-funnels"],
     queryFn: () =>
-      api.get<FunnelRow[]>("/analytics/operator-funnels/?top_n=10").then((r) => r.data),
+      api.get<FunnelRow[]>("/analytics/operator-funnels/?top_n=20").then((r) => r.data),
   });
   const heatmap = useQuery<HeatmapPayload>({
     queryKey: ["callback-heatmap"],
@@ -109,162 +85,280 @@ export default function Analytics() {
       api.get<HeatmapPayload>("/analytics/callback-heatmap/?days_back=30").then((r) => r.data),
   });
 
+  const teamFunnel = useMemo(() => {
+    const rows = funnels.data ?? [];
+    return rows.reduce(
+      (acc, r) => {
+        acc.leads += r.leads_total;
+        acc.contacted += r.contacted;
+        acc.callbacks += r.callbacks;
+        acc.sales += r.sales;
+        return acc;
+      },
+      { leads: 0, contacted: 0, callbacks: 0, sales: 0 },
+    );
+  }, [funnels.data]);
+
+  const channels = useMemo(() => {
+    const rows = (ch.data ?? []).slice(0, 6);
+    const total = rows.reduce((a, r) => a + Number(r.total), 0);
+    return rows.map((r) => ({
+      name: r.channel_name,
+      total: Number(r.total),
+      pct: total ? Math.round((Number(r.total) / total) * 100) : 0,
+    }));
+  }, [ch.data]);
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-2xl font-semibold">Аналитика</h1>
+    <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
+      {/* Controls */}
+      <section className="flex flex-wrap items-center justify-between gap-3 animate-nfFadeUp">
+        <div>
+          <Eyebrow>{title.toUpperCase()}</Eyebrow>
+          <div className="text-[15px] font-semibold mt-1">Аналитика по команде</div>
+        </div>
         <div className="flex items-center gap-2">
           <MonthPicker value={choice} onChange={setChoice} />
           <a
             href={`${API_BASE_URL}/analytics/export.xlsx${exportParams ? "?" + exportParams : ""}`}
-            className="btn-ghost"
           >
-            <Download className="w-4 h-4" /> Excel
+            <Button variant="secondary">
+              <Download className="w-3.5 h-3.5" /> Excel
+            </Button>
           </a>
         </div>
-      </div>
+      </section>
 
-      <div className="card p-5">
-        <div className="text-sm font-medium mb-4">Лидерборд операторов · {title}</div>
-        <ResponsiveContainer width="100%" height={260}>
-          <BarChart
-            data={(lb.data || []).map((r: any) => ({ name: r.operator_name, total: Number(r.total) }))}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
-            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} />
-            <Tooltip formatter={(v: any) => formatUZS(v)} />
-            <Bar dataKey="total" fill="#2563EB" radius={[6, 6, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="card p-5">
-          <div className="text-sm font-medium mb-4">По партнёрам · {title}</div>
-          <ResponsiveContainer width="100%" height={240}>
-            <PieChart>
-              <Pie
-                data={(ch.data || []).map((r: any) => ({ name: r.channel_name, value: Number(r.total) }))}
-                dataKey="value"
-                nameKey="name"
-                outerRadius={90}
-              >
-                {(ch.data || []).map((_: any, i: number) => (
-                  <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(v: any) => formatUZS(v)} />
-            </PieChart>
-          </ResponsiveContainer>
+      {/* Team funnel + Channels */}
+      <section className="grid gap-[13px] md:grid-cols-2">
+        <div className="nf-card p-6 animate-nfFadeUp">
+          <div className="text-[15px] font-semibold tracking-tight">Воронка команды</div>
+          <div className="text-[12.5px] text-muted mt-1">Лиды → контакт → callback → продажа</div>
+          <div className="mt-5 flex flex-col gap-3">
+            <FunnelBar label="Лиды" value={teamFunnel.leads} max={teamFunnel.leads || 1} />
+            <FunnelBar
+              label="Дозвоны"
+              value={teamFunnel.contacted}
+              max={teamFunnel.leads || 1}
+            />
+            <FunnelBar
+              label="Callback"
+              value={teamFunnel.callbacks}
+              max={teamFunnel.leads || 1}
+            />
+            <FunnelBar
+              label="Продажи"
+              value={teamFunnel.sales}
+              max={teamFunnel.leads || 1}
+              accent
+            />
+          </div>
         </div>
 
-        <div className="card overflow-hidden">
-          <div className="px-5 py-4 border-b text-sm font-medium">Топ моделей · {title}</div>
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-slate-900 text-xs uppercase text-gray-600 dark:text-slate-400">
-              <tr>
-                <th className="px-4 py-2 text-left">Модель</th>
-                <th className="px-4 py-2 text-right">Кол-во</th>
-                <th className="px-4 py-2 text-right">Сумма</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(md.data || []).length === 0 && (
-                <tr>
-                  <td colSpan={3} className="px-4 py-6 text-center text-gray-500 dark:text-slate-400">
-                    Нет данных за период
-                  </td>
-                </tr>
-              )}
-              {(md.data || []).slice(0, 12).map((r: any, i: number) => (
-                <tr key={i} className="border-t border-gray-100 dark:border-slate-800">
-                  <td className="px-4 py-2">{r.phone_model}</td>
-                  <td className="px-4 py-2 text-right">{formatNumber(r.count)}</td>
-                  <td className="px-4 py-2 text-right">{formatUZS(r.total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="card p-5">
-        <div className="text-sm font-medium mb-1">Распределение лидов по операторам</div>
-        <div className="text-xs text-gray-500 dark:text-slate-400 mb-4">
-          Активные лиды в разрезе стадий воронки
-        </div>
-        <ResponsiveContainer width="100%" height={320}>
-          <BarChart data={leadsDist.data ?? []}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
-            <XAxis dataKey="operator_name" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} />
-            <Tooltip />
-            <Legend />
-            {Object.keys(LEAD_BUCKET_COLORS).map((bucket) => (
-              <Bar
-                key={bucket}
-                dataKey={bucket}
-                stackId="s"
-                fill={LEAD_BUCKET_COLORS[bucket]}
-                name={LEAD_BUCKET_LABELS[bucket]}
-              />
-            ))}
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div className="card p-5">
-        <div className="text-sm font-medium mb-1">Воронка по каждому оператору (top 10)</div>
-        <div className="text-xs text-gray-500 dark:text-slate-400 mb-4">
-          Лиды → контакт → callback → продажа
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {(funnels.data ?? []).map((f) => {
-            const maxV = Math.max(f.leads_total, 1);
-            const bar = (v: number, color: string) => (
-              <div className="mb-1">
-                <div className="flex justify-between text-[10px] text-gray-500 dark:text-slate-400">
-                  <span>{v}</span>
+        <div className="nf-card p-6 animate-nfFadeUp" style={{ animationDelay: "0.05s" }}>
+          <div className="text-[15px] font-semibold tracking-tight">Каналы продаж</div>
+          <div className="text-[12.5px] text-muted mt-1">Доля в выручке · {title}</div>
+          <div className="mt-5 flex flex-col gap-4">
+            {channels.length === 0 && (
+              <div className="text-[13px] text-muted text-center py-6">Нет данных</div>
+            )}
+            {channels.map((c, i) => (
+              <div key={c.name}>
+                <div className="flex items-center justify-between text-[13px] mb-1.5">
+                  <span className="font-medium truncate">{c.name || "—"}</span>
+                  <span className="tabular-nums text-muted">
+                    {formatUZS(c.total)} · {c.pct}%
+                  </span>
                 </div>
-                <div className="h-1.5 rounded-full bg-gray-100 dark:bg-slate-800">
+                <div
+                  className="h-[7px] rounded-full overflow-hidden"
+                  style={{ background: "var(--faint)" }}
+                >
                   <div
-                    className="h-full rounded-full"
-                    style={{ width: `${(v / maxV) * 100}%`, backgroundColor: color }}
+                    className="h-full rounded-full transition-all duration-700 ease-nf"
+                    style={{
+                      width: `${c.pct}%`,
+                      background:
+                        i === 0
+                          ? "var(--accent-grad)"
+                          : `linear-gradient(90deg, var(--accent2), var(--accent))`,
+                      opacity: i === 0 ? 1 : 0.7 - i * 0.1,
+                    }}
                   />
                 </div>
               </div>
-            );
-            return (
-              <div key={f.operator_id} className="rounded-lg border border-gray-100 dark:border-slate-800 p-3">
-                <div className="text-xs font-medium truncate mb-2">{f.operator_name}</div>
-                <div className="text-[10px] uppercase text-gray-400 mt-1">Лиды</div>
-                {bar(f.leads_total, "#94A3B8")}
-                <div className="text-[10px] uppercase text-gray-400">Контакт</div>
-                {bar(f.contacted, "#60A5FA")}
-                <div className="text-[10px] uppercase text-gray-400">Callback</div>
-                {bar(f.callbacks, "#F59E0B")}
-                <div className="text-[10px] uppercase text-gray-400">Продажи</div>
-                {bar(f.sales, "#10B981")}
-              </div>
-            );
-          })}
-          {(funnels.data ?? []).length === 0 && (
-            <div className="col-span-full text-center text-gray-500 py-8 text-sm">
-              Нет данных
-            </div>
-          )}
+            ))}
+          </div>
         </div>
-      </div>
+      </section>
 
-      <div className="card p-5 overflow-x-auto">
-        <div className="text-sm font-medium mb-1">
-          Тепловая карта callback-активности (30 дней)
+      {/* Leaderboard bars */}
+      <section
+        className="nf-card p-6 animate-nfFadeUp"
+        style={{ animationDelay: "0.1s" }}
+      >
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <div className="text-[15px] font-semibold tracking-tight">
+              Топ операторов
+            </div>
+            <div className="text-[12.5px] text-muted mt-0.5">По выручке · {title}</div>
+          </div>
         </div>
-        <div className="text-xs text-gray-500 dark:text-slate-400 mb-4">
-          Часы дня — колонки; операторы — строки; интенсивность цвета — количество callback'ов
+        <div className="flex flex-col gap-3">
+          {(lb.data ?? []).length === 0 && (
+            <div className="text-[13px] text-muted text-center py-6">Нет данных</div>
+          )}
+          {(() => {
+            const max = Math.max(
+              1,
+              ...(lb.data ?? []).map((r) => Number(r.total)),
+            );
+            return (lb.data ?? []).slice(0, 10).map((r, i) => {
+              const total = Number(r.total);
+              const pct = (total / max) * 100;
+              return (
+                <div
+                  key={r.operator_id}
+                  className="grid items-center gap-3 animate-nfFadeUp"
+                  style={{
+                    gridTemplateColumns: "22px 1fr auto",
+                    animationDelay: `${0.03 + i * 0.045}s`,
+                  }}
+                >
+                  <div
+                    className="grid place-items-center text-[11px] tabular-nums font-semibold"
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 99,
+                      background: i === 0 ? "var(--accent-grad)" : "var(--faint)",
+                      color: i === 0 ? "#fff" : "var(--muted)",
+                    }}
+                  >
+                    {i + 1}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[13.5px] font-medium truncate mb-1">
+                      {r.operator_name}
+                    </div>
+                    <div
+                      className="h-[5px] rounded-full overflow-hidden"
+                      style={{ background: "var(--faint)" }}
+                    >
+                      <div
+                        className="h-full rounded-full transition-all duration-700 ease-nf"
+                        style={{
+                          width: `${pct}%`,
+                          background: "var(--accent-grad)",
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="text-[13px] tabular-nums font-semibold shrink-0">
+                    {millions(total)}
+                  </div>
+                </div>
+              );
+            });
+          })()}
+        </div>
+      </section>
+
+      {/* Top models */}
+      <section
+        className="nf-card overflow-hidden animate-nfFadeUp"
+        style={{ animationDelay: "0.15s" }}
+      >
+        <div className="px-6 pt-5 pb-3 flex items-center justify-between">
+          <div>
+            <div className="text-[15px] font-semibold tracking-tight">Топ моделей</div>
+            <div className="text-[12.5px] text-muted mt-0.5">По продажам · {title}</div>
+          </div>
+        </div>
+        <div
+          className="grid gap-2 px-6 pb-3 nf-col"
+          style={{ gridTemplateColumns: "1.5fr .8fr .8fr" }}
+        >
+          <div>Модель</div>
+          <div className="text-right">Кол-во</div>
+          <div className="text-right">Сумма</div>
+        </div>
+        {(md.data ?? []).length === 0 ? (
+          <div className="text-center text-muted py-10 text-[13px]">Нет данных</div>
+        ) : (
+          <div>
+            {(md.data ?? []).slice(0, 12).map((r, i) => (
+              <div
+                key={i}
+                className="nf-row animate-nfFadeUp"
+                style={{
+                  gridTemplateColumns: "1.5fr .8fr .8fr",
+                  animationDelay: `${0.02 + i * 0.03}s`,
+                  cursor: "default",
+                }}
+              >
+                <div className="truncate font-medium">{r.phone_model || "—"}</div>
+                <div className="text-right tabular-nums text-muted">
+                  {Number(r.count)}
+                </div>
+                <div className="text-right tabular-nums font-semibold">
+                  {formatUZS(Number(r.total))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Heatmap */}
+      <section
+        className="nf-card p-6 overflow-x-auto animate-nfFadeUp"
+        style={{ animationDelay: "0.2s" }}
+      >
+        <div className="text-[15px] font-semibold tracking-tight">
+          Тепловая карта callback-активности
+        </div>
+        <div className="text-[12.5px] text-muted mt-1 mb-5">
+          Часы дня — колонки; операторы — строки; интенсивность = число callback'ов · 30 дней
         </div>
         <HeatmapView payload={heatmap.data} />
+      </section>
+    </div>
+  );
+}
+
+function FunnelBar({
+  label,
+  value,
+  max,
+  accent,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  accent?: boolean;
+}) {
+  const pct = Math.min(100, (value / max) * 100);
+  return (
+    <div>
+      <div className="flex items-center justify-between text-[13px] mb-1.5">
+        <span className="font-medium">{label}</span>
+        <span className="tabular-nums text-muted">{value}</span>
+      </div>
+      <div
+        className="rounded-full overflow-hidden"
+        style={{ height: 26, background: "var(--faint)" }}
+      >
+        <div
+          className="h-full rounded-full transition-all duration-700 ease-nf"
+          style={{
+            width: `${pct}%`,
+            background: accent
+              ? "var(--accent-grad)"
+              : "linear-gradient(90deg, rgba(242,86,11,.55), rgba(242,86,11,.35))",
+          }}
+        />
       </div>
     </div>
   );
@@ -272,18 +366,19 @@ export default function Analytics() {
 
 function HeatmapView({ payload }: { payload: HeatmapPayload | undefined }) {
   if (!payload || payload.operators.length === 0) {
-    return <div className="text-center text-gray-500 py-8 text-sm">Нет данных</div>;
+    return <div className="text-center text-muted py-8 text-[13px]">Нет данных</div>;
   }
   const maxV = Math.max(1, ...payload.matrix.flat());
   return (
-    <table className="text-xs">
+    <table className="text-[11.5px] border-separate" style={{ borderSpacing: 2 }}>
       <thead>
         <tr>
-          <th className="text-left pr-3 pb-2 font-normal text-gray-500">Оператор \\ час</th>
+          <th className="text-left pr-4 font-normal text-muted"></th>
           {payload.hours.map((h) => (
             <th
               key={h}
-              className="w-6 text-center pb-2 font-normal text-gray-400"
+              className="font-normal text-muted tabular-nums text-center"
+              style={{ width: 22 }}
             >
               {h}
             </th>
@@ -293,20 +388,27 @@ function HeatmapView({ payload }: { payload: HeatmapPayload | undefined }) {
       <tbody>
         {payload.operators.map((op, ri) => (
           <tr key={op.id}>
-            <td className="pr-3 py-0.5 whitespace-nowrap truncate max-w-40">{op.name}</td>
+            <td className="pr-4 py-0.5 whitespace-nowrap max-w-[180px] truncate text-[12px]">
+              {op.name}
+            </td>
             {payload.hours.map((h, hi) => {
               const v = payload.matrix[ri][hi];
               const intensity = v === 0 ? 0 : Math.min(1, v / maxV);
               return (
                 <td
                   key={h}
-                  className="w-6 h-6 text-center"
+                  className="text-center tabular-nums"
                   title={`${op.name}, ${h}:00 → ${v}`}
                   style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 6,
                     background:
                       v === 0
-                        ? "transparent"
-                        : `rgba(37, 99, 235, ${0.15 + intensity * 0.75})`,
+                        ? "var(--faint)"
+                        : `rgba(242,86,11,${(0.12 + intensity * 0.85).toFixed(3)})`,
+                    color: intensity > 0.55 ? "#fff" : "var(--muted)",
+                    fontSize: 10,
                   }}
                 >
                   {v > 0 ? v : ""}

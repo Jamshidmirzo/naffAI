@@ -2,7 +2,7 @@ import { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../store/auth";
 
-type Role = "manager" | "team_lead" | "operator";
+type Role = "manager" | "operator";
 
 interface Props {
   allow: Role[];

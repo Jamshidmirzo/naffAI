@@ -6,6 +6,7 @@ const KEY = "naffai_theme";
 
 function applyTheme(t: Theme) {
   const root = document.documentElement;
+  root.setAttribute("data-nf", t);
   if (t === "dark") root.classList.add("dark");
   else root.classList.remove("dark");
 }

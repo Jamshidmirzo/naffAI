@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import Layout from "./components/Layout";
+import AppShell from "./components/layout/AppShell";
 import Dashboard from "./pages/Dashboard";
 import Sales from "./pages/Sales";
 import SaleCreate from "./pages/SaleCreate";
@@ -23,7 +23,15 @@ import LessonsHistory from "./pages/LessonsHistory";
 import Scan from "./pages/Scan";
 import AttendanceToday from "./pages/AttendanceToday";
 import AttendanceReport from "./pages/AttendanceReport";
+import Placeholder from "./pages/Placeholder";
+import Notifications from "./pages/Notifications";
+import SalesToday from "./pages/SalesToday";
+import Reports from "./pages/Reports";
+import TgQueue from "./pages/TgQueue";
+import Users from "./pages/Users";
 import { useAuth } from "./store/auth";
+import { RoleGate } from "./components/RoleGate";
+import { ToastHost } from "./components/ui";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const token = useAuth((s) => s.token);
@@ -31,32 +39,16 @@ function Protected({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-/**
- * Operators are locked to the workstation (`/my`) — they don't get a
- * separate landing page. Team leads and managers land on the dashboard.
- */
 function RoleAwareHome() {
   const role = useAuth((s) => s.role);
   if (role === "operator") return <Navigate to="/my" replace />;
   return <Dashboard />;
 }
 
-/** Guard team-lead-only routes. Falls back to `/my` for operators. */
-function TeamLeadOnly({ children }: { children: React.ReactNode }) {
-  const role = useAuth((s) => s.role);
-  if (role !== "team_lead" && role !== "manager") {
-    return <Navigate to="/my" replace />;
-  }
-  return <>{children}</>;
-}
-
-import { RoleGate } from "./components/RoleGate";
-import { Toaster } from "sonner";
-
 export default function App() {
   return (
     <>
-      <Toaster position="top-right" richColors />
+      <ToastHost />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/scan" element={<Scan />} />
@@ -64,31 +56,39 @@ export default function App() {
         <Route
           element={
             <Protected>
-              <Layout />
+              <AppShell />
             </Protected>
           }
         >
           <Route path="/" element={<RoleAwareHome />} />
           <Route path="/my" element={<MyLeads />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/notifications" element={<Notifications />} />
           <Route path="/lessons/today" element={<DailyLesson />} />
           <Route path="/lessons/history" element={<LessonsHistory />} />
-          <Route path="/leads" element={<RoleGate allow={["manager", "team_lead"]}><Leads /></RoleGate>} />
-          <Route path="/sheet-sources" element={<RoleGate allow={["manager", "team_lead"]}><SheetSources /></RoleGate>} />
-          <Route path="/sales" element={<RoleGate allow={["manager", "team_lead"]}><Sales /></RoleGate>} />
-          <Route path="/sales/new" element={<RoleGate allow={["manager", "team_lead"]}><SaleCreate /></RoleGate>} />
-          <Route path="/sales/:id" element={<RoleGate allow={["manager", "team_lead"]}><SaleDetail /></RoleGate>} />
-          <Route path="/sales/:id/edit" element={<RoleGate allow={["manager", "team_lead"]}><SaleCreate /></RoleGate>} />
-          <Route path="/operators" element={<RoleGate allow={["manager", "team_lead"]}><Operators /></RoleGate>} />
-          <Route path="/operators/:id" element={<RoleGate allow={["manager", "team_lead"]}><OperatorDetail /></RoleGate>} />
-          <Route path="/partners" element={<RoleGate allow={["manager", "team_lead"]}><Partners /></RoleGate>} />
-          <Route path="/analytics" element={<RoleGate allow={["manager", "team_lead"]}><Analytics /></RoleGate>} />
-          <Route path="/payroll" element={<RoleGate allow={["manager", "team_lead"]}><Payroll /></RoleGate>} />
+          <Route path="/leads" element={<RoleGate allow={["manager"]}><Leads /></RoleGate>} />
+          <Route path="/calls" element={<RoleGate allow={["manager"]}><Placeholder title="Звонки" /></RoleGate>} />
+          <Route path="/reports" element={<RoleGate allow={["manager"]}><Reports /></RoleGate>} />
+          <Route path="/catalog" element={<RoleGate allow={["manager"]}><Placeholder title="Каталог / TAC" /></RoleGate>} />
+          <Route path="/stickers" element={<RoleGate allow={["manager"]}><Placeholder title="Стикеры" /></RoleGate>} />
+          <Route path="/users" element={<RoleGate allow={["manager"]}><Users /></RoleGate>} />
+          <Route path="/sales-today" element={<RoleGate allow={["manager"]}><SalesToday /></RoleGate>} />
+          <Route path="/tg-queue" element={<RoleGate allow={["manager"]}><TgQueue /></RoleGate>} />
+          <Route path="/sheet-sources" element={<RoleGate allow={["manager"]}><SheetSources /></RoleGate>} />
+          <Route path="/sales" element={<RoleGate allow={["manager"]}><Sales /></RoleGate>} />
+          <Route path="/sales/new" element={<RoleGate allow={["manager"]}><SaleCreate /></RoleGate>} />
+          <Route path="/sales/:id" element={<RoleGate allow={["manager"]}><SaleDetail /></RoleGate>} />
+          <Route path="/sales/:id/edit" element={<RoleGate allow={["manager"]}><SaleCreate /></RoleGate>} />
+          <Route path="/operators" element={<RoleGate allow={["manager"]}><Operators /></RoleGate>} />
+          <Route path="/operators/:id" element={<RoleGate allow={["manager"]}><OperatorDetail /></RoleGate>} />
+          <Route path="/partners" element={<RoleGate allow={["manager"]}><Partners /></RoleGate>} />
+          <Route path="/analytics" element={<RoleGate allow={["manager"]}><Analytics /></RoleGate>} />
+          <Route path="/payroll" element={<RoleGate allow={["manager"]}><Payroll /></RoleGate>} />
           <Route path="/audit" element={<RoleGate allow={["manager"]}><Audit /></RoleGate>} />
           <Route path="/ai-chat" element={<RoleGate allow={["manager"]}><AIChat /></RoleGate>} />
-          <Route path="/marketing" element={<RoleGate allow={["manager", "team_lead"]}><Marketing /></RoleGate>} />
-          <Route path="/attendance/today" element={<RoleGate allow={["manager", "team_lead"]}><AttendanceToday /></RoleGate>} />
-          <Route path="/attendance/report" element={<RoleGate allow={["manager", "team_lead"]}><AttendanceReport /></RoleGate>} />
+          <Route path="/marketing" element={<RoleGate allow={["manager"]}><Marketing /></RoleGate>} />
+          <Route path="/attendance/today" element={<RoleGate allow={["manager"]}><AttendanceToday /></RoleGate>} />
+          <Route path="/attendance/report" element={<RoleGate allow={["manager"]}><AttendanceReport /></RoleGate>} />
         </Route>
       </Routes>
     </>

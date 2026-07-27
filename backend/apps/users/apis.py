@@ -242,3 +242,138 @@ class OperatorAccountDeleteApi(APIView):
             raise NotFound("У оператора нет аккаунта")
         account_soft_delete(user=user, actor=request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# Users management (managers list + create + reset + delete)
+# Mounted at /api/users/ from config.api_urls.
+# ---------------------------------------------------------------------------
+
+from django.utils import timezone
+from .models import Profile, Role
+from .services import AuditAction, audit_log_create
+from .utils import generate_temp_password
+from .services import user_password_set
+
+
+class UserListCreateApi(APIView):
+    """GET /users/ — list managers/team-leads; POST — create a new one."""
+
+    permission_classes = [IsManager]
+
+    class CreateSerializer(serializers.Serializer):
+        username = serializers.CharField(max_length=150)
+        password = serializers.CharField(required=False, allow_blank=True)
+        role = serializers.ChoiceField(
+            choices=[Role.MANAGER, Role.TEAM_LEAD], default=Role.MANAGER
+        )
+
+    def get(self, request):
+        # We only list web-only accounts (not operator-linked ones —
+        # those are managed via /operators/{id}/account/…).
+        rows = []
+        for user in (
+            User.objects.filter(is_active=True)
+            .exclude(profile__operator__isnull=False)
+            .select_related("profile")
+            .order_by("username")
+        ):
+            profile = getattr(user, "profile", None)
+            rows.append({
+                "id": user.id,
+                "username": user.username,
+                "role": profile.role if profile else "team_lead",
+                "is_active": user.is_active,
+                "is_superuser": user.is_superuser,
+                "date_joined": user.date_joined.isoformat() if user.date_joined else None,
+                "last_login": user.last_login.isoformat() if user.last_login else None,
+            })
+        return Response(rows)
+
+    def post(self, request):
+        s = self.CreateSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        username = s.validated_data["username"].strip()
+        role = s.validated_data.get("role") or Role.MANAGER
+        plain = s.validated_data.get("password") or generate_temp_password()
+
+        if User.objects.filter(username=username).exists():
+            return Response(
+                {"detail": "Пользователь с таким логином уже существует"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = User.objects.create(username=username, is_active=True)
+        user_password_set(user=user, plain=plain)
+        Profile.objects.update_or_create(user=user, defaults={"role": role})
+        audit_log_create(
+            user=request.user,
+            action=AuditAction.CREATE,
+            entity="users.User",
+            entity_id=user.id,
+            changes={"username": username, "role": role},
+        )
+        return Response(
+            {
+                "id": user.id,
+                "username": user.username,
+                "role": role,
+                "is_active": True,
+                "password": plain,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class UserResetPasswordApi(APIView):
+    """POST /users/{id}/reset-password/"""
+
+    permission_classes = [IsManager]
+
+    def post(self, request, user_id: int):
+        try:
+            user = User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            raise NotFound("Пользователь не найден")
+        if user.id == request.user.id:
+            return Response(
+                {"detail": "Смените свой пароль через /me/change-password/"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        plain = generate_temp_password()
+        user_password_set(user=user, plain=plain)
+        audit_log_create(
+            user=request.user,
+            action=AuditAction.UPDATE,
+            entity="users.User",
+            entity_id=user.id,
+            changes={"password_reset": True},
+        )
+        return Response({"id": user.id, "username": user.username, "password": plain})
+
+
+class UserDeleteApi(APIView):
+    """POST /users/{id}/delete/ — soft-delete (deactivate) or hard for su."""
+
+    permission_classes = [IsManager]
+
+    def post(self, request, user_id: int):
+        try:
+            user = User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            raise NotFound("Пользователь не найден")
+        if user.id == request.user.id:
+            return Response(
+                {"detail": "Нельзя удалить самого себя"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user.is_active = False
+        user.save(update_fields=["is_active"])
+        audit_log_create(
+            user=request.user,
+            action=AuditAction.DELETE,
+            entity="users.User",
+            entity_id=user.id,
+            changes={"deactivated_at": timezone.now().isoformat()},
+        )
+        return Response({"id": user.id, "is_active": False})

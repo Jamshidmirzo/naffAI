@@ -1,52 +1,103 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, EyeOff, Plus } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../store/auth";
 import { formatUZS } from "../lib/format";
 import NumericInput from "../components/NumericInput";
-import AccountControls from "../components/AccountControls";
 import { StickerPicker } from "../components/StickerPicker";
+import {
+  Button,
+  Card,
+  Chip,
+  Modal,
+  StatusBadge,
+  toast,
+} from "../components/ui";
+import { usePageHeader } from "../store/page";
+import { useT } from "../lib/i18n";
 
-function PlanBar({ target, actual }: { target: string | null; actual: string | null }) {
-  if (!target) return <span className="text-gray-400 dark:text-slate-600">—</span>;
-  const pct = Math.min(100, Math.round((Number(actual || 0) / Number(target)) * 100));
+type OperatorStatus = "active" | "trainee" | "inactive";
+type StatusFilter = "all" | OperatorStatus;
+
+interface OperatorRow {
+  id: number;
+  full_name: string;
+  phone: string | null;
+  status: OperatorStatus;
+  hired_at: string | null;
+  plan_target: string | null;
+  plan_actual: string | null;
+  sticker?: { emoji: string | null; is_rare: boolean } | null;
+  account?: unknown;
+  month_total?: string | number | null;
+  month_count?: number | null;
+}
+
+const STATUS_TABS: { key: StatusFilter; label: string }[] = [
+  { key: "all", label: "Все" },
+  { key: "active", label: "Активные" },
+  { key: "inactive", label: "Уволенные" },
+];
+
+const STATUS_LABEL: Record<OperatorStatus, string> = {
+  active: "активен",
+  trainee: "стажёр",
+  inactive: "неактивен",
+};
+
+function initials(name: string) {
   return (
-    <div className="w-36">
-      <div className="flex justify-between text-xs text-gray-500 dark:text-slate-400 mb-0.5">
-        <span>{pct}%</span>
-        <span>{formatUZS(Number(actual || 0))}</span>
-      </div>
-      <div className="h-1.5 rounded-full bg-gray-200 dark:bg-slate-700 overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all ${
-            pct >= 100 ? "bg-emerald-500" : pct >= 70 ? "bg-blue-500" : "bg-amber-400"
-          }`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <div className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">
-        из {formatUZS(Number(target))}
-      </div>
-    </div>
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0])
+      .join("")
+      .toUpperCase() || "?"
   );
+}
+
+function fmtDate(iso: string | null) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString("ru-RU", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return "";
+  }
 }
 
 export default function Operators() {
   const qc = useQueryClient();
   const nav = useNavigate();
   const role = useAuth((s) => s.role);
-  const isTeamLead = role === "team_lead";
   const isManager = role === "manager";
 
-  const [showInactive, setShowInactive] = useState(true);
-  const [show, setShow] = useState(false);
-  const [form, setForm] = useState({ full_name: "", phone: "", status: "active", note: "" });
+  usePageHeader({ title: (useT())("operators.title"), subtitle: "Управление командой" });
+
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState({
+    full_name: "",
+    phone: "",
+    status: "active" as OperatorStatus,
+    note: "",
+  });
+
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
   const [deleteError, setDeleteError] = useState("");
+
   const [planModal, setPlanModal] = useState<{ id: number; name: string; current: string | null } | null>(null);
   const [planInput, setPlanInput] = useState("");
+
   const [stickerModal, setStickerModal] = useState<{
     id: number;
     emoji: string | null;
@@ -54,24 +105,29 @@ export default function Operators() {
   } | null>(null);
 
   const ops = useQuery({
-    queryKey: ["operators", showInactive],
+    queryKey: ["operators", true],
     queryFn: () =>
-      api.get("/operators/", { params: { include_inactive: showInactive ? 1 : 0 } }).then((r) => r.data),
+      api.get("/operators/", { params: { include_inactive: 1 } }).then((r) => r.data),
   });
 
   const create = useMutation({
-    mutationFn: (data: any) => api.post("/operators/", data),
+    mutationFn: (data: typeof form) => api.post("/operators/", data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["operators"] });
-      setShow(false);
+      setShowCreate(false);
       setForm({ full_name: "", phone: "", status: "active", note: "" });
+      toast.success("Оператор добавлен");
     },
+    onError: () => toast.error("Не удалось добавить оператора"),
   });
 
   const toggle = useMutation({
     mutationFn: ({ id, active }: { id: number; active: boolean }) =>
       api.post(`/operators/${id}/${active ? "reactivate" : "deactivate"}/`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["operators"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["operators"] });
+      toast.success("Статус обновлён");
+    },
   });
 
   const remove = useMutation({
@@ -81,10 +137,12 @@ export default function Operators() {
       qc.invalidateQueries({ queryKey: ["operators-list-all"] });
       setConfirmDelete(null);
       setDeleteError("");
+      toast.success("Оператор удалён");
     },
-    onError: (err: any) => {
-      const msg = err?.response?.data?.detail || "Не удалось удалить оператора";
-      setDeleteError(typeof msg === "string" ? msg : "Не удалось удалить оператора");
+    onError: (err: unknown) => {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      const msg = typeof detail === "string" ? detail : "Не удалось удалить оператора";
+      setDeleteError(msg);
     },
   });
 
@@ -95,228 +153,345 @@ export default function Operators() {
       qc.invalidateQueries({ queryKey: ["operators"] });
       setPlanModal(null);
       setPlanInput("");
+      toast.success("План сохранён");
     },
   });
 
-  const rows = ops.data?.results || [];
+  const rows: OperatorRow[] = ops.data?.results || [];
+
+  const filtered = useMemo(() => {
+    let out = rows;
+    if (statusFilter === "active") {
+      out = out.filter((o) => o.status === "active" || o.status === "trainee");
+    } else if (statusFilter === "inactive") {
+      out = out.filter((o) => o.status === "inactive");
+    }
+    if (search.trim()) {
+      const s = search.trim().toLowerCase();
+      out = out.filter(
+        (o) =>
+          o.full_name.toLowerCase().includes(s) ||
+          (o.phone || "").toLowerCase().includes(s),
+      );
+    }
+    return out;
+  }, [rows, statusFilter, search]);
+
+  const selected = useMemo(
+    () => filtered.find((o) => o.id === selectedId) || null,
+    [filtered, selectedId],
+  );
+
+  const totalCount = rows.length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Операторы</h1>
-        <div className="flex items-center gap-2">
-          <button
-            className="btn-ghost text-sm flex items-center gap-1"
-            onClick={() => setShowInactive((v) => !v)}
-          >
-            {showInactive ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            {showInactive ? "Скрыть неактивных" : "Показать неактивных"}
-          </button>
-          <button className="btn-primary" onClick={() => setShow(true)}>
-            <Plus className="w-4 h-4" /> Добавить
-          </button>
+    <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
+      {/* Toolbar */}
+      <section className="flex flex-wrap items-center gap-3 animate-nfFadeUp">
+        <div className="relative flex-1 min-w-[220px] max-w-md">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+          <input
+            className="nf-input pl-11"
+            placeholder="Поиск: имя или телефон…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
-      </div>
+        <div className="flex flex-wrap gap-2">
+          {STATUS_TABS.map((t) => (
+            <Chip
+              key={t.key}
+              active={statusFilter === t.key}
+              onClick={() => setStatusFilter(t.key)}
+            >
+              {t.label}
+            </Chip>
+          ))}
+        </div>
+        {isManager && (
+          <div className="ml-auto">
+            <Button onClick={() => setShowCreate(true)}>
+              <Plus className="w-3.5 h-3.5" /> Добавить оператора
+            </Button>
+          </div>
+        )}
+      </section>
 
-      <div className="card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 dark:bg-slate-900 text-xs uppercase text-gray-600 dark:text-slate-400">
-            <tr>
-              <th className="px-4 py-2 text-left">Имя</th>
-              <th className="px-4 py-2 text-left">Стикер</th>
-              <th className="px-4 py-2 text-left">Телефон</th>
-              <th className="px-4 py-2 text-left">Статус</th>
-              <th className="px-4 py-2 text-left">План (месяц)</th>
-              <th className="px-4 py-2 text-left">Аккаунт</th>
-              <th className="px-4 py-2 text-right">Действие</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((o: any) => (
-              <tr
-                key={o.id}
-                className={`border-t border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/40 ${
-                  o.status === "inactive" ? "opacity-50" : ""
-                }`}
-              >
-                <td
-                  className="px-4 py-2 cursor-pointer text-blue-700 dark:text-blue-400 hover:underline"
-                  onClick={() => nav(`/operators/${o.id}`)}
-                >
-                  {o.full_name}
-                </td>
-                <td className="px-4 py-2">
-                  <button
-                    type="button"
-                    className="text-2xl leading-none hover:scale-125 transition-transform"
-                    title={
-                      (isTeamLead || isManager)
-                        ? "Изменить стикер"
-                        : o.sticker?.emoji
-                        ? "Стикер оператора"
-                        : "Нет стикера"
-                    }
-                    disabled={!(isTeamLead || isManager)}
-                    onClick={() =>
-                      setStickerModal({
-                        id: o.id,
-                        emoji: o.sticker?.emoji ?? null,
-                        isRare: o.sticker?.is_rare ?? false,
-                      })
-                    }
+      {/* Two-column */}
+      <section className="grid gap-5" style={{ gridTemplateColumns: "1.15fr 1fr" }}>
+        {/* Left: list */}
+        <div className="nf-card overflow-hidden">
+          {ops.isLoading ? (
+            <div className="text-center text-muted py-14 text-[13px]">Загрузка…</div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center text-muted py-14 text-[13px]">
+              {rows.length === 0 ? "Операторов пока нет" : "Ничего не найдено"}
+            </div>
+          ) : (
+            <ul className="flex flex-col">
+              {filtered.map((o, i) => {
+                const isSelected = selectedId === o.id;
+                const inactive = o.status === "inactive";
+                const monthTotal = Number(o.month_total ?? o.plan_actual ?? 0);
+                const monthCount = o.month_count ?? 0;
+                return (
+                  <li
+                    key={o.id}
+                    onClick={() => setSelectedId(o.id)}
+                    className="grid gap-3 items-center cursor-pointer animate-nfFadeUp"
+                    style={{
+                      gridTemplateColumns: "36px 1fr auto",
+                      padding: "12px 18px",
+                      borderTop: i === 0 ? undefined : "1px solid var(--border)",
+                      background: isSelected ? "var(--faint)" : undefined,
+                      opacity: inactive ? 0.55 : 1,
+                      transition: "background 200ms cubic-bezier(.2,.7,.2,1)",
+                      animationDelay: `${0.02 + i * 0.035}s`,
+                    }}
                   >
-                    {o.sticker?.emoji || <span className="text-gray-300 text-base">—</span>}
-                    {o.sticker?.is_rare && (
-                      <span className="ml-0.5 text-[10px] text-amber-500 align-super">★</span>
-                    )}
-                  </button>
-                </td>
-                <td className="px-4 py-2 text-gray-600 dark:text-slate-400">{o.phone || "—"}</td>
-                <td className="px-4 py-2">
-                  <span
-                    className={`badge ${
-                      o.status === "active"
-                        ? "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300"
-                        : o.status === "trainee"
-                        ? "bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300"
-                        : "bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400"
-                    }`}
-                  >
-                    {o.status === "active" ? "активен" : o.status === "trainee" ? "стажёр" : "неактивен"}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <div
-                    className={isTeamLead ? "cursor-pointer group inline-block" : "inline-block"}
-                    onClick={
-                      isTeamLead
-                        ? () => {
-                            setPlanModal({ id: o.id, name: o.full_name, current: o.plan_target });
-                            setPlanInput(
-                              o.plan_target ? String(Math.round(Number(o.plan_target))) : ""
-                            );
-                          }
-                        : undefined
-                    }
-                  >
-                    <PlanBar target={o.plan_target} actual={o.plan_actual} />
-                    {isTeamLead && (
-                      <span className="text-xs text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity block mt-0.5">
-                        изменить
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td className="px-4 py-2">
-                  <AccountControls
-                    operatorId={o.id}
-                    operatorName={o.full_name}
-                    operatorPhone={o.phone || ""}
-                    account={o.account}
-                    canManage={isManager}
-                  />
-                </td>
-                <td className="px-4 py-2 text-right">
-                  <div className="inline-flex items-center gap-1">
-                    <button
-                      className="btn-ghost text-xs"
-                      onClick={() => toggle.mutate({ id: o.id, active: o.status === "inactive" })}
+                    <div
+                      className="grid place-items-center font-semibold text-[12px]"
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 13,
+                        background: isSelected ? "var(--accent-grad)" : "var(--faint2)",
+                        color: isSelected ? "#fff" : "var(--muted)",
+                      }}
                     >
-                      {o.status === "inactive" ? "Активировать" : "Деактивировать"}
-                    </button>
-                    {isTeamLead && (
-                      <button
-                        className="btn-ghost text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10"
-                        onClick={() => {
-                          setDeleteError("");
-                          setConfirmDelete({ id: o.id, name: o.full_name });
-                        }}
-                      >
-                        Удалить
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                      {initials(o.full_name)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="text-[14.5px] font-medium truncate">
+                          {o.full_name}
+                        </span>
+                        {o.sticker?.emoji && (
+                          <span className="text-[15px] leading-none shrink-0">
+                            {o.sticker.emoji}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[12px] text-muted truncate">
+                        {o.phone || "нет телефона"}
+                        {o.hired_at && <> · с {fmtDate(o.hired_at)}</>}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[14px] font-semibold tabular-nums">
+                        {formatUZS(monthTotal)}
+                      </div>
+                      <div className="text-[11.5px] text-muted tabular-nums">
+                        {monthCount} продаж
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
 
-      {/* Plan edit modal */}
-      {planModal && (
-        <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
-          <div className="card p-6 w-full max-w-sm space-y-4">
-            <h2 className="text-lg font-semibold">План на месяц</h2>
-            <p className="text-sm text-gray-600 dark:text-slate-400">{planModal.name}</p>
-            <div>
-              <label className="label">Цель (сум)</label>
+        {/* Right: sticky preview */}
+        <div style={{ position: "sticky", top: 100, alignSelf: "flex-start" }}>
+          {selected ? (
+            <Card padded className="animate-nfFadeUp">
+              <div className="flex items-start gap-3">
+                <div
+                  className="grid place-items-center text-white font-semibold text-[16px] shrink-0"
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: 16,
+                    background: "var(--accent-grad)",
+                  }}
+                >
+                  {initials(selected.full_name)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[19px] font-semibold tracking-tight truncate">
+                    {selected.full_name}
+                  </div>
+                  <div className="text-[13px] text-muted mt-0.5 truncate">
+                    {selected.phone || "нет телефона"}
+                  </div>
+                  <div className="mt-2">
+                    <StatusBadge tone={selected.status === "active" ? "hot" : "neutral"}>
+                      {STATUS_LABEL[selected.status]}
+                    </StatusBadge>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className="grid gap-[13px] mt-5"
+                style={{ gridTemplateColumns: "repeat(3, 1fr)" }}
+              >
+                <div className="nf-tile" style={{ padding: "14px 16px" }}>
+                  <div className="text-[11px] text-muted uppercase tracking-wide">План</div>
+                  <div className="text-[18px] font-semibold tabular-nums mt-1">
+                    {selected.plan_target ? formatUZS(Number(selected.plan_target)) : "—"}
+                  </div>
+                </div>
+                <div className="nf-tile" style={{ padding: "14px 16px" }}>
+                  <div className="text-[11px] text-muted uppercase tracking-wide">Сделал</div>
+                  <div className="text-[18px] font-semibold tabular-nums mt-1">
+                    {formatUZS(Number(selected.plan_actual || 0))}
+                  </div>
+                </div>
+                <div className="nf-tile" style={{ padding: "14px 16px" }}>
+                  <div className="text-[11px] text-muted uppercase tracking-wide">%</div>
+                  <div className="text-[18px] font-semibold tabular-nums mt-1">
+                    {selected.plan_target
+                      ? `${Math.round(
+                          (Number(selected.plan_actual || 0) / Number(selected.plan_target)) * 100,
+                        )}%`
+                      : "—"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Button onClick={() => nav(`/operators/${selected.id}`)}>
+                  Открыть карточку
+                </Button>
+                {isManager && (
+                  <>
+                    <Button
+                      variant="secondary"
+                      onClick={() =>
+                        setStickerModal({
+                          id: selected.id,
+                          emoji: selected.sticker?.emoji ?? null,
+                          isRare: selected.sticker?.is_rare ?? false,
+                        })
+                      }
+                    >
+                      Стикер
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setPlanModal({
+                          id: selected.id,
+                          name: selected.full_name,
+                          current: selected.plan_target,
+                        });
+                        setPlanInput(
+                          selected.plan_target
+                            ? String(Math.round(Number(selected.plan_target)))
+                            : "",
+                        );
+                      }}
+                    >
+                      План
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() =>
+                        toggle.mutate({ id: selected.id, active: selected.status === "inactive" })
+                      }
+                    >
+                      {selected.status === "inactive" ? "Активировать" : "Деактивировать"}
+                    </Button>
+                    <Button
+                      variant="danger"
+                      onClick={() => {
+                        setDeleteError("");
+                        setConfirmDelete({ id: selected.id, name: selected.full_name });
+                      }}
+                    >
+                      Удалить
+                    </Button>
+                  </>
+                )}
+              </div>
+            </Card>
+          ) : (
+            <Card padded className="animate-nfFadeUp">
+              <div className="text-center py-6">
+                <div className="text-[14px] font-medium">Выберите оператора</div>
+                <div className="text-[12.5px] text-muted mt-1.5">
+                  {totalCount} {totalCount === 1 ? "оператор" : "операторов"} в команде
+                </div>
+              </div>
+            </Card>
+          )}
+        </div>
+      </section>
+
+      {/* Plan modal */}
+      <Modal open={!!planModal} onClose={() => setPlanModal(null)} width={420}>
+        {planModal && (
+          <div className="p-7">
+            <div className="text-[18px] font-semibold tracking-tight">План на месяц</div>
+            <div className="text-[13px] text-muted mt-1">{planModal.name}</div>
+            <div className="mt-5">
+              <div className="nf-col mb-1.5">Цель (сум)</div>
               <NumericInput
-                className="input"
+                className="nf-input"
                 value={planInput}
                 onChange={setPlanInput}
                 placeholder="например 100 000 000"
                 autoFocus
               />
             </div>
-            <div className="flex justify-end gap-2">
-              <button className="btn-ghost" onClick={() => setPlanModal(null)}>
-                Отмена
-              </button>
-              <button
-                className="btn-primary"
-                disabled={!planInput || setPlan.isPending}
+            <div className="mt-6 flex gap-2 justify-end">
+              <Button variant="ghost" onClick={() => setPlanModal(null)}>Отмена</Button>
+              <Button
                 onClick={() => setPlan.mutate({ id: planModal.id, target_amount: planInput })}
+                disabled={!planInput || setPlan.isPending}
               >
                 {setPlan.isPending ? "Сохранение…" : "Сохранить"}
-              </button>
+              </Button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
-      {/* Delete confirm modal */}
-      {confirmDelete && (
-        <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
-          <div className="card p-6 w-full max-w-md space-y-4">
-            <h2 className="text-lg font-semibold">Удалить оператора</h2>
-            <p className="text-sm text-gray-600 dark:text-slate-400">
-              Удалить оператора{" "}
-              <span className="font-medium text-gray-900 dark:text-slate-100">{confirmDelete.name}</span>?
-              Действие необратимо. Удаление возможно только для операторов без продаж — иначе используйте
-              деактивацию.
-            </p>
+      {/* Delete confirm */}
+      <Modal open={!!confirmDelete} onClose={() => { setConfirmDelete(null); setDeleteError(""); }} width={460}>
+        {confirmDelete && (
+          <div className="p-7">
+            <div className="text-[18px] font-semibold tracking-tight">Удалить оператора</div>
+            <div className="text-[13px] text-muted mt-2">
+              Удалить оператора <span className="text-text font-medium">{confirmDelete.name}</span>?
+              Действие необратимо. Удаление возможно только для операторов без продаж — иначе
+              используйте деактивацию.
+            </div>
             {deleteError && (
-              <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 rounded-lg px-3 py-2">
+              <div
+                className="mt-3 text-[13px] rounded-xl px-3.5 py-2.5"
+                style={{
+                  background: "rgba(220,60,40,.08)",
+                  color: "var(--danger)",
+                  border: "1px solid rgba(220,60,40,.2)",
+                }}
+              >
                 {deleteError}
               </div>
             )}
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => {
-                  setConfirmDelete(null);
-                  setDeleteError("");
-                }}
+            <div className="mt-6 flex gap-2 justify-end">
+              <Button
+                variant="ghost"
+                onClick={() => { setConfirmDelete(null); setDeleteError(""); }}
                 disabled={remove.isPending}
               >
                 Отмена
-              </button>
-              <button
-                type="button"
-                className="btn-primary bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700"
+              </Button>
+              <Button
+                variant="danger"
                 onClick={() => remove.mutate(confirmDelete.id)}
                 disabled={remove.isPending}
               >
                 {remove.isPending ? "Удаление…" : "Удалить"}
-              </button>
+              </Button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
-      {/* Sticker picker modal */}
+      {/* Sticker picker */}
       {stickerModal && (
         <StickerPicker
           operatorId={stickerModal.id}
@@ -329,54 +504,56 @@ export default function Operators() {
       )}
 
       {/* Create modal */}
-      {show && (
-        <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              create.mutate(form);
-            }}
-            className="card p-6 w-full max-w-md space-y-4"
-          >
-            <h2 className="text-lg font-semibold">Новый оператор</h2>
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} width={460}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            create.mutate(form);
+          }}
+          className="p-7"
+        >
+          <div className="text-[18px] font-semibold tracking-tight">Новый оператор</div>
+          <div className="mt-5 flex flex-col gap-4">
             <div>
-              <label className="label">ФИО</label>
+              <div className="nf-col mb-1.5">ФИО</div>
               <input
-                className="input"
+                className="nf-input"
                 required
                 value={form.full_name}
                 onChange={(e) => setForm({ ...form, full_name: e.target.value })}
               />
             </div>
             <div>
-              <label className="label">Телефон</label>
+              <div className="nf-col mb-1.5">Телефон</div>
               <input
-                className="input"
+                className="nf-input"
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
               />
             </div>
             <div>
-              <label className="label">Статус</label>
+              <div className="nf-col mb-1.5">Статус</div>
               <select
-                className="input"
+                className="nf-input"
                 value={form.status}
-                onChange={(e) => setForm({ ...form, status: e.target.value })}
+                onChange={(e) => setForm({ ...form, status: e.target.value as OperatorStatus })}
               >
                 <option value="active">Активный</option>
                 <option value="trainee">Стажёр</option>
                 <option value="inactive">Неактивный</option>
               </select>
             </div>
-            <div className="flex justify-end gap-2">
-              <button type="button" className="btn-ghost" onClick={() => setShow(false)}>
-                Отмена
-              </button>
-              <button className="btn-primary">Сохранить</button>
-            </div>
-          </form>
-        </div>
-      )}
+          </div>
+          <div className="mt-6 flex gap-2 justify-end">
+            <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>
+              Отмена
+            </Button>
+            <Button type="submit" disabled={create.isPending}>
+              {create.isPending ? "…" : "Сохранить"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

@@ -24,6 +24,7 @@ from apps.tg_userclient.ai.provider import (
     ChatResponse,
     LLMChainExhaustedError,
     get_llm_provider,
+    get_provider_by_key,
 )
 
 from .models import ChatMessage, ChatSession
@@ -33,14 +34,43 @@ logger = logging.getLogger("apps.ai_chat")
 
 MAX_TOOL_TURNS = 5
 
-SYSTEM_PROMPT = (
-    "Ты — read-only AI-ассистент для менеджера call-центра магазина телефонов naffAI. "
-    "У тебя есть набор функций для чтения данных: лидов, продаж, операторов, "
-    "воронок и callback'ов. Всегда предпочитай реальные данные вымыслу. "
-    "Отвечай кратко, по-русски. Форматируй числа с разделителями тысяч. "
-    "Если пользователь просит сделать действие (создать, удалить, назначить) — "
-    "объясни что ты только для чтения."
+_BASE_PROMPT_RU = (
+    "Ты — read-only AI-ассистент для менеджера call-центра магазина телефонов "
+    "naffAI в Ташкенте (Узбекистан). У тебя есть набор функций (tools) для "
+    "чтения РЕАЛЬНЫХ данных из базы: продаж, лидов, операторов, воронок, "
+    "callback'ов, каналов, моделей телефонов.\n\n"
+    "КРИТИЧЕСКИЕ ПРАВИЛА:\n"
+    "1. НИКОГДА не придумывай числа, имена операторов, суммы, модели. Если "
+    "нужны данные — ОБЯЗАТЕЛЬНО вызови подходящую функцию.\n"
+    "2. Все суммы — в узбекских сумах (UZS/сум). Никогда не используй "
+    "рубли, доллары, евро — только сум. Форматируй с разделителями тысяч, "
+    "например «41 500 000 сум».\n"
+    "3. {LANG_RULE}\n"
+    "4. Если пользователь просит сделать действие (создать, удалить, "
+    "назначить, изменить) — объясни, что ты только для чтения.\n"
+    "5. Если функция вернула пустой результат — так и скажи: «за период "
+    "продаж нет» / «лидов нет», а не выдумывай."
 )
+
+LANG_RULES = {
+    "ru": "Отвечай кратко, по-русски. Не пересказывай данные буквально — выделяй главное.",
+    "uz": (
+        "Отвечай ТОЛЬКО на узбекском языке (o'zbekcha, lotin yozuvida). "
+        "Никогда не переходи на русский, даже если вопрос был на русском. "
+        "Кратко, выделяй главное. Валюта: so'm."
+    ),
+}
+
+
+def build_system_prompt(language: str = "ru") -> str:
+    lang = (language or "ru").lower()
+    if lang not in LANG_RULES:
+        lang = "ru"
+    return _BASE_PROMPT_RU.replace("{LANG_RULE}", LANG_RULES[lang])
+
+
+# Kept as module-level alias for backwards compatibility (older imports).
+SYSTEM_PROMPT = build_system_prompt("ru")
 
 
 @transaction.atomic
@@ -78,7 +108,13 @@ def _history_payload(session: ChatSession) -> list[dict]:
     return payload
 
 
-def handle_user_message(*, session: ChatSession, text: str) -> ChatMessage:
+def handle_user_message(
+    *,
+    session: ChatSession,
+    text: str,
+    provider_key: str = "",
+    language: str = "ru",
+) -> ChatMessage:
     """
     Drive the tool-calling loop and return the final assistant message.
     """
@@ -91,11 +127,17 @@ def handle_user_message(*, session: ChatSession, text: str) -> ChatMessage:
         action=AuditAction.CREATE,
         entity="ai_chat.ChatMessage",
         entity_id=user_msg.id,
-        changes={"role": "user", "session_id": session.id},
+        changes={
+            "role": "user",
+            "session_id": session.id,
+            "provider_key": provider_key,
+            "language": language,
+        },
     )
 
-    provider = get_llm_provider()
+    provider = get_provider_by_key(provider_key) if provider_key else get_llm_provider()
     specs = _tool_specs_for_llm()
+    prompt = build_system_prompt(language)
 
     for turn in range(MAX_TOOL_TURNS + 1):
         history = _history_payload(session)
@@ -103,7 +145,7 @@ def handle_user_message(*, session: ChatSession, text: str) -> ChatMessage:
             response: ChatResponse = provider.chat_with_tools(
                 history=history,
                 tool_specs=specs,
-                system_prompt=SYSTEM_PROMPT,
+                system_prompt=prompt,
             )
         except LLMChainExhaustedError as exc:
             logger.warning("LLM chain exhausted for chat: %s", exc)

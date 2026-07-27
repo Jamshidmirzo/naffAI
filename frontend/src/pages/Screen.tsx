@@ -1,308 +1,165 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
-import { formatUZS } from "../lib/format";
-import { buildPeriodParams } from "../lib/period";
+import { BarsScene } from "../components/three/BarsScene";
 
 const REFRESH_SEC = 30;
-const MEDALS: Record<number, string> = { 0: "🥇", 1: "🥈", 2: "🥉" };
-const BAR_COLORS = [
-  "bg-yellow-400",
-  "bg-slate-300",
-  "bg-orange-400",
-  "bg-indigo-400",
-  "bg-emerald-400",
-];
-const CARD_BORDER = [
-  "border-yellow-500/50 shadow-[0_0_40px_rgba(251,191,36,0.2)]",
-  "border-slate-400/30 shadow-[0_0_25px_rgba(148,163,184,0.1)]",
-  "border-orange-600/30",
-  "border-indigo-500/20",
-  "border-emerald-500/20",
-];
-const NAME_COLOR = [
-  "text-yellow-300",
-  "text-slate-200",
-  "text-orange-300",
-  "text-white",
-  "text-white",
-];
 
-function useCountdown(sec: number, onZero: () => void) {
-  const [left, setLeft] = useState(sec);
-  useEffect(() => {
-    setLeft(sec);
-    const t = setInterval(() => {
-      setLeft((p) => {
-        if (p <= 1) { onZero(); return sec; }
-        return p - 1;
-      });
-    }, 1000);
-    return () => clearInterval(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sec]);
-  return left;
-}
-
-function useClock() {
-  const [time, setTime] = useState(() => new Date());
-  useEffect(() => {
-    const t = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  return time;
-}
-
-function Ticker({ sales }: { sales: any[] }) {
-  if (!sales.length) return null;
-  const items = [...sales, ...sales]; // duplicate for seamless loop
-  return (
-    <div className="overflow-hidden whitespace-nowrap border-t border-white/10 bg-black/30 py-2 px-4">
-      <div className="inline-flex gap-12 animate-[marquee_40s_linear_infinite]">
-        {items.map((s: any, i: number) => (
-          <span key={i} className="text-sm text-slate-300">
-            <span className="text-white font-semibold">{s.operator_name || "—"}</span>
-            {" → "}
-            <span className="text-indigo-300">{s.phone_model}</span>
-            {" · "}
-            <span className="text-emerald-400 font-semibold">{formatUZS(s.amount)}</span>
-          </span>
-        ))}
-      </div>
-    </div>
-  );
+function millions(n: number) {
+  if (Math.abs(n) >= 1_000_000) {
+    return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")} млн`;
+  }
+  if (Math.abs(n) >= 1_000) return `${Math.round(n / 1_000)} тыс`;
+  return Math.round(n).toString();
 }
 
 export default function Screen() {
+  const nav = useNavigate();
   const [tick, setTick] = useState(0);
-  const now = useClock();
-  const countdown = useCountdown(REFRESH_SEC, () => setTick((t) => t + 1));
 
-  const params = buildPeriodParams("month", { kind: "current" });
+  useEffect(() => {
+    const t = setInterval(() => setTick((v) => v + 1), REFRESH_SEC * 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const lb = useQuery({
-    queryKey: ["screen-lb", tick],
-    // limit=0 → backend returns every operator with sales this month.
+    queryKey: ["screen-lb-v2", tick],
     queryFn: () =>
-      api.get("/analytics/leaderboard/", { params: { ...params, limit: 0 } }).then((r) => r.data),
+      api
+        .get("/analytics/leaderboard/", { params: { period: "month", limit: 5 } })
+        .then((r) => r.data),
     staleTime: Infinity,
   });
 
-  const kpi = useQuery({
-    queryKey: ["screen-kpi", tick],
-    queryFn: () => api.get("/analytics/kpi/", { params }).then((r) => r.data),
-    staleTime: Infinity,
-  });
-
-  const recent = useQuery({
-    queryKey: ["screen-recent", tick],
-    queryFn: () => api.get("/sales/?limit=20").then((r) => r.data),
-    staleTime: Infinity,
-  });
-
-  const allOps: any[] = lb.data || [];
-  const top5 = allOps.slice(0, 5);
-  const rest = allOps.slice(5);
-
-  const planQueries = useQuery({
-    queryKey: ["screen-plans", tick, top5.map((o: any) => o.operator_id).join(",")],
-    queryFn: async () => {
-      if (!top5.length) return {};
-      const results = await Promise.all(
-        top5.map((o: any) =>
-          api.get(`/operators/${o.operator_id}/plan/`).then((r) => r.data).catch(() => null)
-        )
-      );
-      return Object.fromEntries(top5.map((o: any, i: number) => [o.operator_id, results[i]]));
-    },
-    enabled: top5.length > 0,
-    staleTime: Infinity,
-  });
-
-  const recentSales: any[] = recent.data?.results || [];
-  const monthLabel = now.toLocaleString("ru-RU", { month: "long", year: "numeric" });
+  const rows: Array<{
+    operator_id: number;
+    operator_name: string;
+    total: number | string;
+    count: number | string;
+  }> = lb.data || [];
 
   return (
-    <div className="h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white flex flex-col overflow-hidden select-none"
-      style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
+    <div
+      className="fixed inset-0 z-[100] flex flex-col text-white overflow-hidden select-none"
+      style={{
+        background: "#08080a",
+        fontFamily:
+          '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, "Segoe UI", sans-serif',
+      }}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-8 pt-5 pb-3 shrink-0">
-        <div className="flex items-baseline gap-4">
-          <span className="text-3xl">🏆</span>
+      {/* 3D bars scene — top-right ambient */}
+      <BarsScene
+        values={rows.map((r) => Number(r.count) || Number(r.total) || 1)}
+        className="absolute top-0 right-0 pointer-events-none"
+        style={{ width: 460, height: 320, opacity: 0.6 }}
+      />
+
+      {/* HEADER */}
+      <header className="flex items-center justify-between px-14 pt-10 pb-4 shrink-0">
+        <div className="flex items-center gap-3">
+          <div
+            className="grid place-items-center text-white font-bold text-[16px]"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: "linear-gradient(145deg, #ff9d47, #f2560b)",
+              boxShadow: "0 10px 24px -10px #f2560b",
+            }}
+          >
+            n
+          </div>
           <div>
-            <div className="text-xs uppercase tracking-[0.25em] text-indigo-400">Рейтинг продаж</div>
-            <h1 className="text-3xl font-black tracking-tight uppercase leading-none">
-              Топ операторов&nbsp;
-              <span className="text-indigo-400">{monthLabel}</span>
-            </h1>
+            <div className="text-[20px] font-semibold tracking-tight">
+              Табло продаж · сегодня
+            </div>
+            <div
+              className="text-[12px] mt-0.5"
+              style={{ color: "rgba(255,255,255,.4)" }}
+            >
+              обновление каждые {REFRESH_SEC} сек
+            </div>
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-3xl font-mono font-bold tabular-nums">
-            {now.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-          </div>
-          <div className="text-xs text-slate-400 mt-0.5">
-            обновление через <span className="text-indigo-300 font-bold tabular-nums">{countdown}с</span>
-          </div>
-        </div>
-      </div>
+        <button
+          onClick={() => nav("/")}
+          className="rounded-full px-5 py-2 text-[13px] transition"
+          style={{
+            background: "rgba(255,255,255,.06)",
+            color: "rgba(255,255,255,.75)",
+          }}
+        >
+          Выйти
+        </button>
+      </header>
 
-      {/* Body: left leaderboard + right panel */}
-      <div className="flex-1 flex gap-5 px-8 pb-3 min-h-0">
-
-        {/* LEFT: full ranking — top 5 cards + rest as compact rows.
-            The container is scrollable; on a normal screen only the 5 tall
-            top cards fit without scroll, positions 6+ appear when you scroll. */}
-        <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-3 leaderboard-scroll">
-            {top5.map((op: any, i: number) => {
-              const plan = planQueries.data?.[op.operator_id];
-              const hasPlan = plan?.target != null;
-              const pct = hasPlan ? Math.min(100, plan.percent) : 0;
-
-              return (
+      {/* LEADERBOARD */}
+      <div className="flex-1 flex items-center justify-center overflow-hidden">
+        <div className="w-full max-w-[1400px] px-16">
+          {rows.length === 0 && (
+            <div
+              className="text-center py-20"
+              style={{ color: "rgba(255,255,255,.4)" }}
+            >
+              Пока нет данных за месяц
+            </div>
+          )}
+          {rows.map((op, i) => {
+            const total = Number(op.total);
+            const isFirst = i === 0;
+            return (
+              <div
+                key={op.operator_id}
+                className="grid items-center animate-nfSlide"
+                style={{
+                  gridTemplateColumns: "80px 1fr auto",
+                  padding: "22px 0",
+                  borderTop: i === 0 ? undefined : "1px solid rgba(255,255,255,.08)",
+                  animationDelay: `${i * 0.09}s`,
+                }}
+              >
                 <div
-                  key={op.operator_id}
-                  className={`rounded-xl border bg-white/5 backdrop-blur-sm px-5 py-3 flex items-center gap-5 ${CARD_BORDER[i]}`}
+                  className="font-semibold tabular-nums text-center"
+                  style={{
+                    fontSize: 56,
+                    letterSpacing: "-0.02em",
+                    color: isFirst ? "#f2560b" : "rgba(255,255,255,.3)",
+                    lineHeight: 1,
+                  }}
                 >
-                  {/* Rank */}
-                  <div className="w-10 text-center shrink-0">
-                    {i < 3
-                      ? <span className="text-3xl">{MEDALS[i]}</span>
-                      : <span className="text-2xl font-black text-slate-500">{i + 1}</span>
-                    }
+                  {i + 1}
+                </div>
+                <div className="flex items-baseline gap-4 min-w-0 pl-6">
+                  <div
+                    className="font-semibold truncate"
+                    style={{ fontSize: 46, letterSpacing: "-0.03em", lineHeight: 1.05 }}
+                  >
+                    {op.operator_name}
                   </div>
-
-                  {/* Name + bar */}
-                  <div className="flex-1 min-w-0">
-                    <div className={`text-2xl font-black truncate ${NAME_COLOR[i]}`}>
-                      {op.operator_name}
-                    </div>
-                    {(plan?.achievements?.length ?? 0) > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-1 mb-0.5">
-                        {plan.achievements.map((b: any) => (
-                          <span
-                            key={b.slug}
-                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-white/10 text-white/90"
-                          >
-                            {b.emoji} {b.label}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {hasPlan ? (
-                      <div className="mt-1.5">
-                        <div className="flex justify-between text-xs text-slate-400 mb-1">
-                          <span>{formatUZS(Number(plan.actual))} из {formatUZS(Number(plan.target))}</span>
-                          <span className={`font-bold ${pct >= 100 ? "text-emerald-400" : ""}`}>{pct}%</span>
-                        </div>
-                        <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-1000 ${BAR_COLORS[i]} ${pct >= 100 ? "!bg-emerald-400" : ""}`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-xs text-slate-500 mt-1">{op.count} продаж</div>
-                    )}
-                  </div>
-
-                  {/* Amount */}
-                  <div className="text-right shrink-0">
-                    <div className={`text-2xl font-black tabular-nums ${NAME_COLOR[i]}`}>
-                      {formatUZS(Number(op.total))}
-                    </div>
-                    {hasPlan && (
-                      <div className="text-xs text-slate-400">{op.count} продаж</div>
-                    )}
-                    {pct >= 100 && (
-                      <div className="text-xs text-emerald-400 font-semibold">✓ план выполнен</div>
-                    )}
+                  <div
+                    className="text-[30px] tabular-nums shrink-0"
+                    style={{ color: "rgba(255,255,255,.4)" }}
+                  >
+                    {op.count} шт
                   </div>
                 </div>
-              );
-            })}
-
-            {/* Rest of leaderboard (6+): plain, quiet rows — no medals, no bars. */}
-            {rest.length > 0 && (
-              <div className="pt-2">
-                <div className="text-[11px] uppercase tracking-[0.25em] text-slate-500 px-2 pb-2">
-                  Остальные операторы
-                </div>
-                <div className="rounded-xl border border-white/5 bg-white/[0.02] divide-y divide-white/5">
-                  {rest.map((op: any, i: number) => (
-                    <div
-                      key={op.operator_id}
-                      className="px-5 py-2.5 flex items-center gap-4 hover:bg-white/[0.03] transition-colors"
-                    >
-                      <div className="w-10 text-center shrink-0 text-lg font-bold text-slate-500 tabular-nums">
-                        {i + 6}
-                      </div>
-                      <div className="flex-1 min-w-0 flex items-center gap-2">
-                        <span className="text-base text-slate-200 truncate">
-                          {op.operator_name}
-                        </span>
-                        <span className="text-xs text-slate-500 shrink-0">
-                          · {op.count} продаж
-                        </span>
-                      </div>
-                      <div className="text-base font-semibold text-white tabular-nums shrink-0">
-                        {formatUZS(Number(op.total))}
-                      </div>
-                    </div>
-                  ))}
+                <div
+                  className="font-semibold tabular-nums text-right"
+                  style={{
+                    fontSize: 46,
+                    letterSpacing: "-0.03em",
+                    color: isFirst ? "#f2560b" : "#fff",
+                    lineHeight: 1.05,
+                  }}
+                >
+                  {millions(total)}
                 </div>
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* RIGHT: KPI + recent sales */}
-        <div className="w-80 shrink-0 flex flex-col gap-3 min-h-0">
-
-          {/* Team total */}
-          <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-4 shrink-0">
-            <div className="text-xs uppercase tracking-widest text-indigo-400 mb-1">Команда · {monthLabel}</div>
-            <div className="text-3xl font-black text-white tabular-nums">
-              {formatUZS(kpi.data?.month?.total || 0)}
-            </div>
-            <div className="text-sm text-indigo-300 mt-0.5">
-              {kpi.data?.month?.count || 0} продаж · {kpi.data?.operators_active || 0} операторов
-            </div>
-          </div>
-
-          {/* Recent sales feed */}
-          <div className="flex-1 rounded-xl border border-white/10 bg-white/3 flex flex-col min-h-0 overflow-hidden">
-            <div className="px-4 pt-3 pb-2 text-xs uppercase tracking-widest text-slate-500 shrink-0 border-b border-white/5">
-              Последние продажи
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-0">
-              {recentSales.slice(0, 12).map((s: any, i: number) => (
-                <div key={s.id}
-                  className={`px-4 py-2.5 flex flex-col gap-0.5 ${i % 2 === 0 ? "bg-white/2" : ""} border-b border-white/5 last:border-0`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-white truncate">{s.operator_name || "—"}</span>
-                    <span className="text-sm font-bold text-emerald-400 tabular-nums shrink-0 ml-2">{formatUZS(s.amount)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-indigo-300 truncate">{s.phone_model}</span>
-                    <span className="text-xs text-slate-500 tabular-nums shrink-0 ml-2">
-                      {new Date(s.sold_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
+            );
+          })}
         </div>
       </div>
-
-      {/* Ticker */}
-      <Ticker sales={recentSales.slice(0, 15)} />
     </div>
   );
 }

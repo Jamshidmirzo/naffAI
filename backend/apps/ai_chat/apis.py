@@ -6,6 +6,7 @@ from rest_framework.generics import ListCreateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.tg_userclient.ai.provider import list_available_providers
 from apps.users.permissions import IsManager
 
 from .models import ChatMessage, ChatSession
@@ -66,10 +67,24 @@ class ChatMessagesApi(APIView):
         content = (request.data or {}).get("content", "").strip()
         if not content:
             raise ValidationError({"content": "Пустое сообщение."})
-        assistant_msg = handle_user_message(session=session, text=content)
+        provider_key = (request.data or {}).get("provider_key", "") or ""
+        language = (request.data or {}).get("language", "") or "ru"
+        assistant_msg = handle_user_message(
+            session=session,
+            text=content,
+            provider_key=provider_key,
+            language=language,
+        )
         # Return the full message history — simpler for the FE.
         rows = session_messages(session)
         return Response({
             "messages": ChatMessageSerializer(rows, many=True).data,
             "last_assistant_id": assistant_msg.id,
         })
+
+
+class ChatProvidersApi(APIView):
+    permission_classes = [IsManager]
+
+    def get(self, request):
+        return Response(list_available_providers())

@@ -1,10 +1,14 @@
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Download, Filter, Plus, RotateCcw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { ChevronLeft, ChevronRight, Download, Filter, Plus, RotateCcw, Search } from "lucide-react";
 import { api } from "../lib/api";
 import { formatDate, formatUZS } from "../lib/format";
 import { MultiSelectPopover } from "../components/MultiSelectPopover";
+import { Button, Chip, StatusBadge } from "../components/ui";
+import { SalesFormModal } from "../components/sales/SalesFormModal";
+import { usePageHeader } from "../store/page";
+import { useT } from "../lib/i18n";
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 const DEFAULT_LIMIT = 50;
@@ -19,6 +23,15 @@ type Paginated<T> = {
 type Option = { id: number; name: string };
 type OperatorOption = { id: number; full_name: string };
 
+type StatusFilter = "" | "returned" | "gift" | "regular";
+
+const STATUS_TABS: { key: StatusFilter; label: string }[] = [
+  { key: "", label: "Все" },
+  { key: "regular", label: "Продажи" },
+  { key: "returned", label: "Возвраты" },
+  { key: "gift", label: "Подарки" },
+];
+
 function paramsToObject(sp: URLSearchParams): Record<string, string | string[]> {
   const obj: Record<string, string | string[]> = {};
   for (const key of new Set(sp.keys())) {
@@ -30,48 +43,38 @@ function paramsToObject(sp: URLSearchParams): Record<string, string | string[]> 
 
 export default function Sales() {
   const nav = useNavigate();
+  const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [downloading, setDownloading] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
-  // The single source of truth for filters + pagination is the URL.
-  // Reading helpers below normalize that into typed local values; every
-  // mutation goes through `update()` which patches the searchParams.
+  const t = useT();
+  usePageHeader({ title: t("sales.title"), subtitle: t("sales.subtitle") }, [t("sales.title")]);
 
   const limit = Number(searchParams.get("limit") || DEFAULT_LIMIT);
   const offset = Number(searchParams.get("offset") || 0);
   const search = searchParams.get("search") || "";
   const dateFrom = searchParams.get("date_from") || "";
   const dateTo = searchParams.get("date_to") || "";
-  const statusVal = searchParams.get("status") || "";
+  const statusVal = (searchParams.get("status_filter") || "") as StatusFilter;
   const partnerIds = searchParams.getAll("partner_ids").map(Number).filter(Boolean);
   const operatorIds = searchParams.getAll("operator_ids").map(Number).filter(Boolean);
 
-  // Filters panel is open by default if any filter (other than pagination)
-  // is active — so the user instantly sees what's narrowing their results.
   const anyFilterActive = useMemo(
-    () =>
-      Boolean(
-        search ||
-          dateFrom ||
-          dateTo ||
-          statusVal ||
-          partnerIds.length ||
-          operatorIds.length,
-      ),
-    [search, dateFrom, dateTo, statusVal, partnerIds.length, operatorIds.length],
+    () => Boolean(dateFrom || dateTo || partnerIds.length || operatorIds.length),
+    [dateFrom, dateTo, partnerIds.length, operatorIds.length],
   );
-  const [filtersOpen, setFiltersOpen] = useState(anyFilterActive);
 
-  // Always ensure limit is present in the URL so the React Query key is
-  // stable across reloads and the pagination component has a number to
-  // diff against. Offset stays implicit at 0 until the user paginates.
-  if (!searchParams.has("limit")) {
-    const next = new URLSearchParams(searchParams);
-    next.set("limit", String(DEFAULT_LIMIT));
-    setSearchParams(next, { replace: true });
-  }
+  useEffect(() => {
+    if (!searchParams.has("limit")) {
+      const next = new URLSearchParams(searchParams);
+      next.set("limit", String(DEFAULT_LIMIT));
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  /** Mutate URL state. Resets offset to 0 unless `keepOffset` is true. */
   const update = (
     patch: Record<string, string | string[] | null>,
     opts?: { keepOffset?: boolean },
@@ -80,11 +83,8 @@ export default function Sales() {
     for (const [key, value] of Object.entries(patch)) {
       next.delete(key);
       if (value === null || value === "" || (Array.isArray(value) && value.length === 0)) continue;
-      if (Array.isArray(value)) {
-        value.forEach((v) => next.append(key, String(v)));
-      } else {
-        next.set(key, String(value));
-      }
+      if (Array.isArray(value)) value.forEach((v) => next.append(key, String(v)));
+      else next.set(key, String(value));
     }
     if (!opts?.keepOffset) next.delete("offset");
     if (!next.has("limit")) next.set("limit", String(DEFAULT_LIMIT));
@@ -92,25 +92,30 @@ export default function Sales() {
   };
 
   const resetFilters = () => {
-    setSearchParams(new URLSearchParams({ limit: String(limit) }));
+    const next = new URLSearchParams();
+    next.set("limit", String(limit));
+    setSearchParams(next);
   };
 
-  // --- Data ---------------------------------------------------------------
+  // Build actual API params — map status_filter -> is_returned/is_gift.
+  const apiParams = useMemo(() => {
+    const p = new URLSearchParams(searchParams);
+    p.delete("status_filter");
+    if (statusVal === "returned") p.set("is_returned", "true");
+    if (statusVal === "gift") p.set("is_gift", "true");
+    if (statusVal === "regular") p.set("is_returned", "false");
+    return p;
+  }, [searchParams, statusVal]);
+
   const queryKey = useMemo(
-    () => ["sales", paramsToObject(searchParams)],
-    // `searchParams` identity changes whenever the URL changes — using
-    // its string form keeps React Query's key stable & comparable.
+    () => ["sales", paramsToObject(apiParams)],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [searchParams.toString()],
+    [apiParams.toString()],
   );
 
   const sales = useQuery<Paginated<any>>({
     queryKey,
-    queryFn: () =>
-      // Pass the live URLSearchParams instance straight to axios so
-      // repeating keys (?partner_ids=1&partner_ids=2) survive without
-      // a custom paramsSerializer.
-      api.get("/sales/", { params: searchParams }).then((r) => r.data),
+    queryFn: () => api.get("/sales/", { params: apiParams }).then((r) => r.data),
     placeholderData: (prev) => prev,
   });
 
@@ -128,17 +133,14 @@ export default function Sales() {
     [partnersQ.data],
   );
   const operatorOptions = useMemo<Option[]>(
-    () =>
-      (operatorsQ.data?.results || []).map((o) => ({ id: o.id, name: o.full_name })),
+    () => (operatorsQ.data?.results || []).map((o) => ({ id: o.id, name: o.full_name })),
     [operatorsQ.data],
   );
 
-  // --- Excel export -------------------------------------------------------
   const downloadExcel = async () => {
     setDownloading(true);
     try {
-      const exportParams = new URLSearchParams(searchParams);
-      // The export endpoint doesn't paginate — drop the pagination keys.
+      const exportParams = new URLSearchParams(apiParams);
       exportParams.delete("limit");
       exportParams.delete("offset");
       const r = await api.get("/sales/export.xlsx", {
@@ -156,14 +158,11 @@ export default function Sales() {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-    } catch {
-      alert("Не удалось скачать Excel — попробуй ещё раз");
     } finally {
       setDownloading(false);
     }
   };
 
-  // --- Pagination helpers -------------------------------------------------
   const total = sales.data?.count ?? 0;
   const rangeStart = total === 0 ? 0 : offset + 1;
   const rangeEnd = Math.min(offset + limit, total);
@@ -175,253 +174,220 @@ export default function Sales() {
   const goNext = () =>
     update({ offset: String(offset + limit) }, { keepOffset: true });
 
+  const rows = sales.data?.results || [];
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Продажи</h1>
-        <div className="flex gap-2">
+    <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
+      {/* --- TOOLBAR --- */}
+      <section className="flex flex-wrap items-center gap-3 animate-nfFadeUp">
+        <div className="relative flex-1 min-w-[240px] max-w-md">
+          <Search
+            className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted"
+            aria-hidden
+          />
+          <input
+            className="nf-input pl-11"
+            placeholder="Поиск по IMEI, модели, оператору…"
+            value={search}
+            onChange={(e) => update({ search: e.target.value })}
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {STATUS_TABS.map((t) => (
+            <Chip
+              key={t.key}
+              active={statusVal === t.key}
+              onClick={() => update({ status_filter: t.key || null })}
+            >
+              {t.label}
+            </Chip>
+          ))}
+        </div>
+        <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
-            className="btn-ghost"
+            className="nf-btn nf-btn--ghost"
+            style={{ padding: "9px 14px" }}
             onClick={() => setFiltersOpen((v) => !v)}
           >
-            <Filter className="w-4 h-4" />
-            Фильтры
+            <Filter className="w-3.5 h-3.5" /> Фильтры
             {anyFilterActive && (
-              <span className="ml-1 inline-flex items-center justify-center rounded-full bg-indigo-600 text-white text-xs w-5 h-5">
+              <span
+                className="ml-1 grid place-items-center text-[10px] font-bold text-white rounded-full"
+                style={{ width: 16, height: 16, background: "var(--accent)" }}
+              >
                 {[
-                  search ? 1 : 0,
                   dateFrom ? 1 : 0,
                   dateTo ? 1 : 0,
-                  statusVal ? 1 : 0,
                   partnerIds.length ? 1 : 0,
                   operatorIds.length ? 1 : 0,
                 ].reduce((a, b) => a + b, 0)}
               </span>
             )}
           </button>
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={downloadExcel}
-            disabled={downloading}
-          >
-            <Download className="w-4 h-4" /> {downloading ? "Скачивание…" : "Excel"}
-          </button>
-          <Link to="/sales/new" className="btn-primary">
-            <Plus className="w-4 h-4" /> Новая продажа
-          </Link>
+          <Button variant="secondary" onClick={downloadExcel} disabled={downloading}>
+            <Download className="w-3.5 h-3.5" /> {downloading ? "…" : "Excel"}
+          </Button>
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="w-3.5 h-3.5" /> Новая продажа
+          </Button>
         </div>
-      </div>
+      </section>
+
+      <SalesFormModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onSaved={(newId) => {
+          qc.invalidateQueries({ queryKey: ["sales"] });
+          if (newId) nav(`/sales/${newId}`);
+        }}
+      />
 
       {filtersOpen && (
-        <div className="card p-4 space-y-3">
-          <div className="flex flex-wrap gap-3 items-end">
-            <div className="flex-1 min-w-[16rem]">
-              <label className="block text-xs text-gray-500 dark:text-slate-400 mb-1">
-                Поиск
-              </label>
-              <input
-                className="input"
-                placeholder="IMEI, модель, оператор…"
-                value={search}
-                onChange={(e) => update({ search: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 dark:text-slate-400 mb-1">
-                Дата от
-              </label>
-              <input
-                type="date"
-                className="input"
-                value={dateFrom}
-                onChange={(e) => update({ date_from: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 dark:text-slate-400 mb-1">
-                Дата до
-              </label>
-              <input
-                type="date"
-                className="input"
-                value={dateTo}
-                onChange={(e) => update({ date_to: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 dark:text-slate-400 mb-1">
-                Статус
-              </label>
-              <select
-                className="input"
-                value={statusVal || ""}
-                onChange={(e) => update({ status: e.target.value || null })}
-              >
-                <option value="">Все</option>
-                <option value="pending">Ожидает</option>
-                <option value="confirmed">Подтверждено</option>
-              </select>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-3 items-center">
-            <MultiSelectPopover
-              label="Партнёры"
-              options={partnerOptions}
-              selectedIds={partnerIds}
-              onChange={(ids) => update({ partner_ids: ids.map(String) })}
+        <section className="nf-card p-5 flex flex-wrap gap-4 items-end animate-nfFadeUp">
+          <div>
+            <div className="nf-col mb-1.5">Дата от</div>
+            <input
+              type="date"
+              className="nf-input"
+              value={dateFrom}
+              onChange={(e) => update({ date_from: e.target.value })}
             />
-            <MultiSelectPopover
-              label="Операторы"
-              options={operatorOptions}
-              selectedIds={operatorIds}
-              onChange={(ids) => update({ operator_ids: ids.map(String) })}
-            />
-            {anyFilterActive && (
-              <button type="button" className="btn-ghost" onClick={resetFilters}>
-                <RotateCcw className="w-4 h-4" /> Сбросить
-              </button>
-            )}
           </div>
-        </div>
+          <div>
+            <div className="nf-col mb-1.5">Дата до</div>
+            <input
+              type="date"
+              className="nf-input"
+              value={dateTo}
+              onChange={(e) => update({ date_to: e.target.value })}
+            />
+          </div>
+          <MultiSelectPopover
+            label="Партнёры"
+            options={partnerOptions}
+            selectedIds={partnerIds}
+            onChange={(ids) => update({ partner_ids: ids.map(String) })}
+          />
+          <MultiSelectPopover
+            label="Операторы"
+            options={operatorOptions}
+            selectedIds={operatorIds}
+            onChange={(ids) => update({ operator_ids: ids.map(String) })}
+          />
+          {anyFilterActive && (
+            <button type="button" className="nf-btn nf-btn--ghost" onClick={resetFilters}>
+              <RotateCcw className="w-3.5 h-3.5" /> Сбросить
+            </button>
+          )}
+        </section>
       )}
 
-      <div className="card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 dark:bg-slate-900 text-gray-600 dark:text-slate-400 text-xs uppercase">
-            <tr>
-              <th className="px-4 py-2 text-left">Дата</th>
-              <th className="px-4 py-2 text-left">IMEI</th>
-              <th className="px-4 py-2 text-left">Модель</th>
-              <th className="px-4 py-2 text-center">Кол-во</th>
-              <th className="px-4 py-2 text-left">Оператор</th>
-              <th className="px-4 py-2 text-left">Партнёр</th>
-              <th className="px-4 py-2 text-right">Сумма</th>
-              <th className="px-4 py-2 text-right">Скидка</th>
-              <th className="px-4 py-2 text-right">Итог</th>
-              <th className="px-4 py-2 text-center">Статус</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(sales.data?.results || []).map((s: any) => (
-              <tr
+      {/* --- TABLE --- */}
+      <section className="nf-card overflow-hidden">
+        <div
+          className="grid gap-2 px-6 pt-5 pb-3 nf-col"
+          style={{ gridTemplateColumns: "90px 1.1fr .9fr 1.2fr .9fr .9fr .8fr" }}
+        >
+          <div>Время</div>
+          <div>Оператор</div>
+          <div>Канал</div>
+          <div>Модель</div>
+          <div>IMEI</div>
+          <div className="text-right">Сумма</div>
+          <div className="text-right">Статус</div>
+        </div>
+
+        {sales.isLoading ? (
+          <div className="text-center text-muted py-16 text-[13px]">Загрузка…</div>
+        ) : rows.length === 0 ? (
+          <div className="text-center text-muted py-16 text-[13px]">
+            Ничего не найдено — измените запрос или фильтры
+          </div>
+        ) : (
+          <div>
+            {rows.map((s: any, i: number) => (
+              <div
                 key={s.id}
-                className="border-t border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/40 cursor-pointer"
                 onClick={() => nav(`/sales/${s.id}`)}
+                className="nf-row animate-nfFadeUp"
+                style={{
+                  gridTemplateColumns: "90px 1.1fr .9fr 1.2fr .9fr .9fr .8fr",
+                  animationDelay: `${0.03 + i * 0.045}s`,
+                }}
               >
-                <td className="px-4 py-2 text-gray-600 dark:text-slate-400">
-                  {formatDate(s.sold_at)}
-                </td>
-                <td className="px-4 py-2 font-mono text-xs">{s.imei}</td>
-                <td className="px-4 py-2">{s.phone_model}</td>
-                <td className="px-4 py-2 text-center tabular-nums">
-                  {s.quantity ?? 1}
-                </td>
-                <td className="px-4 py-2">
-                  {s.operator_name}
+                <div className="text-muted tabular-nums">{formatDate(s.sold_at)}</div>
+                <div className="truncate font-medium">
+                  {s.operator_name || "—"}
                   {s.operator_lines?.length > 1 && (
-                    <span
-                      className="ml-1 text-xs text-gray-400 dark:text-slate-500"
-                      title={s.operator_lines
-                        .map((l: any) => `${l.operator_name}: ${l.amount}`)
-                        .join("\n")}
-                    >
+                    <span className="ml-1 text-[11px] text-muted">
                       +{s.operator_lines.length - 1}
                     </span>
                   )}
-                </td>
-                <td className="px-4 py-2 text-gray-600 dark:text-slate-400">
-                  {s.channel_name}
-                  {s.partner_lines?.length > 1 && (
-                    <span
-                      className="ml-1 text-xs text-gray-400 dark:text-slate-500"
-                      title={s.partner_lines
-                        .map((l: any) => `${l.partner_name}: ${l.amount}`)
-                        .join("\n")}
-                    >
-                      +{s.partner_lines.length - 1}
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-2 text-right">{formatUZS(s.amount)}</td>
-                <td className="px-4 py-2 text-right text-red-600 dark:text-red-400">
-                  {Number(s.discount) > 0 ? `− ${formatUZS(s.discount)}` : "—"}
-                </td>
-                <td className="px-4 py-2 text-right font-medium">
+                </div>
+                <div className="text-muted truncate">{s.channel_name || "—"}</div>
+                <div className="truncate">{s.phone_model || "—"}</div>
+                <div className="text-muted font-mono text-[12px] truncate">{s.imei || "—"}</div>
+                <div className="text-right font-semibold tabular-nums">
                   {formatUZS(s.total_price ?? s.amount)}
-                </td>
-                <td className="px-4 py-2 text-center">
+                </div>
+                <div className="text-right">
                   {s.is_returned ? (
-                    <span className="badge bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300">
-                      возврат
-                    </span>
+                    <StatusBadge tone="danger">возврат</StatusBadge>
                   ) : s.status === "pending" ? (
-                    <span className="badge bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300">
-                      ожидает
-                    </span>
+                    <StatusBadge tone="hot">ожидает</StatusBadge>
                   ) : (
-                    <span className="badge bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
-                      ОК
-                    </span>
+                    <StatusBadge>оплачено</StatusBadge>
                   )}
-                </td>
-              </tr>
+                </div>
+              </div>
             ))}
-          </tbody>
-        </table>
-        {sales.isLoading && (
-          <div className="px-4 py-12 text-center text-gray-500 dark:text-slate-400 text-sm">
-            Загрузка…
-          </div>
-        )}
-        {!sales.isLoading && sales.data?.results?.length === 0 && (
-          <div className="px-4 py-12 text-center text-gray-500 dark:text-slate-400 text-sm">
-            Нет продаж
           </div>
         )}
 
-        {/* Pagination footer — always shown when there's at least one row */}
         {total > 0 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-slate-800 text-sm">
-            <div className="flex items-center gap-2 text-gray-600 dark:text-slate-400">
+          <div
+            className="flex items-center justify-between px-6 py-4 text-[13px]"
+            style={{ borderTop: "1px solid var(--border)" }}
+          >
+            <div className="flex items-center gap-2 text-muted">
               <span>На странице:</span>
               <select
-                className="input py-1 px-2 w-auto"
+                className="nf-input py-1.5 px-3 w-auto text-[13px]"
                 value={limit}
                 onChange={(e) => update({ limit: e.target.value })}
               >
                 {PAGE_SIZE_OPTIONS.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
+                  <option key={n} value={n}>{n}</option>
                 ))}
               </select>
-              <span className="ml-2">
+              <span className="ml-3 tabular-nums">
                 {rangeStart}–{rangeEnd} из {total}
               </span>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="btn-ghost"
+                className="nf-btn nf-btn--ghost"
+                style={{ padding: "9px 14px" }}
                 onClick={goPrev}
                 disabled={!hasPrev}
               >
-                <ChevronLeft className="w-4 h-4" /> Назад
+                <ChevronLeft className="w-3.5 h-3.5" /> Назад
               </button>
               <button
                 type="button"
-                className="btn-ghost"
+                className="nf-btn nf-btn--ghost"
+                style={{ padding: "9px 14px" }}
                 onClick={goNext}
                 disabled={!hasNext}
               >
-                Вперёд <ChevronRight className="w-4 h-4" />
+                Вперёд <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

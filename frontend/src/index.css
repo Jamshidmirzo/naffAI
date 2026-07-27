@@ -2,54 +2,392 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   naffAI design tokens — handoff-compliant.
+   Theme is switched via `data-nf="light" | "dark"` on <html>.
+   ============================================================ */
+
+:root,
+html[data-nf="light"] {
+  --bg: #fbfbfd;
+  --surface: #ffffff;
+  --surface2: #f6f6f8;
+  --border: rgba(0, 0, 0, 0.07);
+  --text: #1d1d1f;
+  --muted: rgba(0, 0, 0, 0.45);
+  --faint: rgba(0, 0, 0, 0.045);
+  --faint2: rgba(0, 0, 0, 0.08);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+
+  --accent: #f2560b;
+  --accent2: #ff9d47;
+  --accent-grad: linear-gradient(145deg, var(--accent2), var(--accent));
+  --danger: rgb(220, 60, 40);
+
+  --sidebar: linear-gradient(
+    180deg,
+    rgba(255, 247, 241, 0.95),
+    rgba(251, 251, 253, 0.95)
+  );
+  --hero: radial-gradient(
+    120% 140% at 88% 10%,
+    #ffe3cd 0%,
+    #fff5ee 42%,
+    #ffffff 78%
+  );
+  --scoreboard-bg: #08080a;
+}
+
+html[data-nf="dark"] {
+  --bg: #08080a;
+  --surface: #141417;
+  --surface2: #1b1b1f;
+  --border: rgba(255, 255, 255, 0.09);
+  --text: #f2f2f4;
+  --muted: rgba(255, 255, 255, 0.46);
+  --faint: rgba(255, 255, 255, 0.06);
+  --faint2: rgba(255, 255, 255, 0.12);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+
+  --sidebar: linear-gradient(
+    180deg,
+    rgba(30, 20, 14, 0.9),
+    rgba(10, 10, 12, 0.95)
+  );
+  --hero: radial-gradient(
+    120% 140% at 88% 10%,
+    rgba(242, 86, 11, 0.28) 0%,
+    rgba(30, 18, 10, 0.6) 42%,
+    #111114 78%
+  );
+}
+
 @layer base {
-  html { font-family: Inter, system-ui, sans-serif; }
-  body { @apply bg-gray-50 text-gray-900 dark:bg-slate-950 dark:text-slate-100; }
+  html {
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica,
+      "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    color-scheme: light dark;
+  }
+
+  html,
+  body {
+    background: var(--bg);
+    color: var(--text);
+    transition: background 0.45s ease, color 0.45s ease;
+  }
+
+  body {
+    min-height: 100vh;
+  }
+
+  * {
+    border-color: var(--border);
+  }
+
+  p,
+  li {
+    text-wrap: pretty;
+  }
+
+  .tnum,
+  [data-tnum] {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
+/* ============================================================
+   Component primitives (thin @apply layer over tokens).
+   Prefer using explicit classes here over ad-hoc utilities.
+   ============================================================ */
 @layer components {
-  .card {
-    @apply bg-white border border-gray-200 rounded-xl shadow-sm
-           dark:bg-slate-900 dark:border-slate-800;
+  /* --- surfaces -------------------------------------------------- */
+  .nf-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    box-shadow: var(--shadow);
   }
-  .btn {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg
-           font-medium text-sm transition;
+  .nf-tile {
+    background: var(--surface2);
+    border-radius: 16px;
   }
-  .btn-primary {
-    @apply btn bg-accent text-white hover:bg-accent-hover;
+
+  /* --- buttons -------------------------------------------------- */
+  .nf-btn {
+    @apply inline-flex items-center justify-center gap-2 font-medium
+           transition-all duration-200 ease-nf
+           disabled:pointer-events-none;
+    padding: 11px 22px;
+    border-radius: 99px;
+    font-size: 14px;
+    font-weight: 550;
+    line-height: 1.15;
+    white-space: nowrap;
   }
-  .btn-ghost {
-    @apply btn text-gray-700 hover:bg-gray-100
-           dark:text-slate-300 dark:hover:bg-slate-800;
+  .nf-btn--primary {
+    color: #fff;
+    background: var(--accent-grad);
+    box-shadow: 0 10px 24px -10px var(--accent);
   }
-  .input {
-    @apply w-full rounded-lg border border-gray-300 px-3 py-2 text-sm
-           bg-white text-gray-900
-           focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20
-           dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100
-           dark:focus:border-accent dark:placeholder:text-slate-500;
+  .nf-btn--primary:hover:not(:disabled) {
+    transform: translateY(-2px);
   }
-  .input.is-invalid {
-    @apply border-red-400 focus:border-red-500 focus:ring-red-500/20
-           dark:border-red-500/60;
+  .nf-btn--primary:disabled {
+    background: var(--faint);
+    color: var(--muted);
+    box-shadow: none;
   }
-  .label {
-    @apply block text-xs font-medium uppercase tracking-wide text-gray-500 mb-1
-           dark:text-slate-400;
+  .nf-btn--secondary {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
   }
-  .badge {
-    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  .nf-btn--secondary:hover:not(:disabled) {
+    border-color: var(--accent);
+  }
+  .nf-btn--ghost {
+    background: var(--faint);
+    color: var(--text);
+    border: 1px solid transparent;
+  }
+  .nf-btn--ghost:hover:not(:disabled) {
+    background: var(--faint2);
+  }
+  .nf-btn--danger {
+    background: var(--faint);
+    color: var(--danger);
+  }
+
+  /* --- chips / filter pills ------------------------------------ */
+  .nf-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 16px;
+    border-radius: 99px;
+    background: var(--faint);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
+    border: 1px solid transparent;
+  }
+  .nf-chip:hover {
+    background: var(--faint2);
+  }
+  .nf-chip--active {
+    background: var(--text);
+    color: var(--bg);
+  }
+  .nf-chip--active:hover {
+    background: var(--text);
+  }
+
+  /* --- tab pills (contained switcher) -------------------------- */
+  .nf-tabs {
+    display: inline-flex;
+    padding: 3px;
+    background: var(--faint);
+    border-radius: 12px;
+    gap: 2px;
+  }
+  .nf-tab {
+    padding: 7px 14px;
+    border-radius: 9px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
+    background: transparent;
+    border: 0;
+    white-space: nowrap;
+  }
+  .nf-tab--active {
+    background: var(--surface);
+    color: var(--text);
+    font-weight: 600;
+    box-shadow: 0 2px 8px -3px rgba(0, 0, 0, 0.25);
+  }
+
+  /* --- status badge -------------------------------------------- */
+  .nf-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.4;
+    background: var(--faint);
+    color: var(--muted);
+  }
+  .nf-badge--hot {
+    background: rgba(242, 86, 11, 0.14);
+    color: var(--accent);
+  }
+  .nf-badge--danger {
+    background: rgba(220, 60, 40, 0.12);
+    color: var(--danger);
+  }
+
+  /* --- inputs -------------------------------------------------- */
+  .nf-input {
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: 14px;
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .nf-input:focus,
+  .nf-input:not(:placeholder-shown):valid {
+    border-color: var(--accent);
+  }
+  .nf-input.is-invalid {
+    border-color: rgba(220, 60, 40, 0.6);
+  }
+  .nf-input::placeholder {
+    color: var(--muted);
+  }
+
+  /* --- toggle -------------------------------------------------- */
+  .nf-toggle {
+    position: relative;
+    width: 46px;
+    height: 27px;
+    border-radius: 99px;
+    background: var(--faint2);
+    cursor: pointer;
+    transition: background 300ms cubic-bezier(0.2, 0.7, 0.2, 1);
+    flex-shrink: 0;
+  }
+  .nf-toggle[data-on="true"] {
+    background: var(--accent);
+  }
+  .nf-toggle::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 21px;
+    height: 21px;
+    border-radius: 99px;
+    background: #fff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    transition: transform 300ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .nf-toggle[data-on="true"]::after {
+    transform: translateX(19px);
+  }
+
+  /* --- eyebrow / column-heading typography --------------------- */
+  .nf-eyebrow {
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .nf-col {
+    font-size: 10.5px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  /* --- checkbox (custom) --------------------------------------- */
+  .nf-check {
+    width: 19px;
+    height: 19px;
+    border-radius: 6px;
+    border: 1.5px solid var(--border);
+    background: var(--surface);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 180ms cubic-bezier(0.2, 0.7, 0.2, 1);
+    flex-shrink: 0;
+  }
+  .nf-check[data-on="true"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  /* --- sidebar nav item ---------------------------------------- */
+  .nf-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: 11px;
+    color: var(--text);
+    font-size: 13.2px;
+    font-weight: 500;
+    transition: all 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
+    text-decoration: none;
+  }
+  .nf-nav-item:hover {
+    background: var(--faint);
+  }
+  .nf-nav-item--active {
+    background: var(--faint);
+    color: var(--text);
+    font-weight: 600;
+  }
+  .nf-nav-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 99px;
+    background: var(--faint2);
+    flex-shrink: 0;
+    transition: background 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .nf-nav-dot[data-active="true"] {
+    background: var(--accent);
+  }
+
+  /* --- row hover for tables ------------------------------------ */
+  .nf-row {
+    display: grid;
+    align-items: center;
+    padding: 13px 24px;
+    border-top: 1px solid var(--border);
+    transition: background 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
+    cursor: pointer;
+    font-size: 13.2px;
+  }
+  .nf-row:hover {
+    background: var(--faint);
   }
 }
 
-@keyframes marquee {
-  0%   { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
+/* ============================================================
+   Utility helpers not covered by Tailwind cleanly.
+   ============================================================ */
+.nf-hero {
+  background: var(--hero);
 }
+.nf-sidebar {
+  background: var(--sidebar);
+}
+.nf-scroll-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+.nf-scroll-thin::-webkit-scrollbar-track { background: transparent; }
+.nf-scroll-thin::-webkit-scrollbar-thumb { background: var(--faint2); border-radius: 3px; }
+.nf-scroll-thin::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+.nf-scroll-thin { scrollbar-width: thin; scrollbar-color: var(--faint2) transparent; }
 
-/* Custom scrollbar for the big-screen leaderboard — dark, unobtrusive.
-   Falls back to browser default outside this container. */
 .leaderboard-scroll::-webkit-scrollbar { width: 6px; }
 .leaderboard-scroll::-webkit-scrollbar-track { background: transparent; }
 .leaderboard-scroll::-webkit-scrollbar-thumb {
@@ -62,4 +400,9 @@
 .leaderboard-scroll {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }

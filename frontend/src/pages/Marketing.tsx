@@ -1,12 +1,3 @@
-/**
- * F3.B — AI marketing analyst dashboard.
- *
- * - Widget: conversion by source (bar chart)
- * - Widget: top products
- * - Section: LLM recommendations
- * - History list (paginated by backend `insights_list`)
- */
-
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCcw } from "lucide-react";
@@ -21,6 +12,9 @@ import {
 } from "recharts";
 import { api } from "../lib/api";
 import { apiErrorMessage } from "../lib/api-types";
+import { Button, Eyebrow, toast } from "../components/ui";
+import { usePageHeader } from "../store/page";
+import { useT } from "../lib/i18n";
 
 interface SourceStat {
   sheet_source_id: number;
@@ -49,12 +43,14 @@ function providerLabel(insight: Insight): string {
   if (!provider || provider === "fallback" || provider === "exhausted" || provider === "unknown") {
     return model || provider || "";
   }
-  return model ? `${provider} / ${model}` : provider;
+  return model ? `${provider} · ${model}` : provider;
 }
 
 export default function Marketing() {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+
+  usePageHeader({ title: (useT())("marketing.title"), subtitle: "AI-инсайты по источникам" });
 
   const listQ = useQuery<Insight[]>({
     queryKey: ["marketing", "insights"],
@@ -73,6 +69,7 @@ export default function Marketing() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["marketing", "insights"] });
       setError(null);
+      toast.success("Инсайт сгенерирован");
     },
     onError: (err) => setError(apiErrorMessage(err)),
   });
@@ -82,114 +79,152 @@ export default function Marketing() {
     : [];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Маркетинг-аналитик</h1>
-        <button
-          className="btn-primary"
-          onClick={() => generateMut.mutate()}
-          disabled={generateMut.isPending}
-        >
-          <RefreshCcw className="w-4 h-4" />
-          {generateMut.isPending ? "Считаем…" : "Обновить (7 дней)"}
-        </button>
+    <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
+      <div className="flex items-center justify-between gap-3 animate-nfFadeUp">
+        <div className="text-[13px] text-muted">
+          {insights.length > 0 ? `Всего инсайтов: ${insights.length}` : "Инсайтов ещё нет"}
+        </div>
+        <Button onClick={() => generateMut.mutate()} disabled={generateMut.isPending}>
+          <RefreshCcw className="w-3.5 h-3.5" />
+          {generateMut.isPending ? "Считаем…" : "Сгенерировать (7 дней)"}
+        </Button>
       </div>
 
-      {error && <div className="text-sm text-red-500">{error}</div>}
+      {error && (
+        <div
+          className="text-[13px] rounded-xl px-3.5 py-2.5"
+          style={{
+            background: "rgba(220,60,40,.08)",
+            color: "var(--danger)",
+            border: "1px solid rgba(220,60,40,.2)",
+          }}
+        >
+          {error}
+        </div>
+      )}
 
       {!latest && !listQ.isLoading && (
-        <div className="card p-6 text-center text-gray-500 dark:text-slate-400">
-          Ещё нет ни одного отчёта. Нажмите «Обновить», чтобы сгенерировать первый.
+        <div
+          className="nf-card p-8 text-center text-[13.5px] text-muted animate-nfFadeUp"
+        >
+          Ещё нет ни одного отчёта. Нажмите «Сгенерировать», чтобы построить первый.
         </div>
       )}
 
       {latest && (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="card p-5 lg:col-span-2">
-              <div className="text-sm font-medium mb-1">
-                Конверсия по источникам · {latest.period_start} — {latest.period_end}
+          <section className="grid gap-[13px] lg:grid-cols-[2fr,1fr]">
+            <div
+              className="nf-card p-6 animate-nfFadeUp"
+              style={{ animationDelay: "0.05s" }}
+            >
+              <Eyebrow>Конверсия по источникам</Eyebrow>
+              <div className="mt-1 text-[15px] font-semibold tracking-tight">
+                {latest.period_start} — {latest.period_end}
               </div>
-              <div className="text-xs text-gray-500 dark:text-slate-400 mb-4">
+              <div className="text-[12.5px] text-muted mb-4">
                 Лиды и конверсия в продажу
               </div>
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={sourceBars}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--faint)" />
                   <XAxis dataKey="source_name" tick={{ fontSize: 11 }} />
                   <YAxis yAxisId="l" tick={{ fontSize: 11 }} />
                   <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Bar yAxisId="l" dataKey="leads" fill="#94A3B8" name="Лиды" />
-                  <Bar yAxisId="l" dataKey="converted" fill="#10B981" name="Продажи" />
-                  <Bar yAxisId="r" dataKey="conversion_rate" fill="#F59E0B" name="Конверсия, %" />
+                  <Bar yAxisId="l" dataKey="leads" fill="rgba(0,0,0,.25)" name="Лиды" />
+                  <Bar yAxisId="l" dataKey="converted" fill="#ff9d47" name="Продажи" />
+                  <Bar yAxisId="r" dataKey="conversion_rate" fill="#f2560b" name="Конверсия, %" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
 
-            <div className="card p-5">
-              <div className="text-sm font-medium mb-3">Топ товаров</div>
-              <ul className="space-y-1 text-sm">
+            <div
+              className="nf-card p-6 animate-nfFadeUp"
+              style={{ animationDelay: "0.1s" }}
+            >
+              <div className="text-[15px] font-semibold tracking-tight mb-3">
+                Топ товаров
+              </div>
+              <ul className="flex flex-col gap-2 text-[13.5px]">
                 {latest.top_products.slice(0, 10).map((p) => (
-                  <li key={p.product} className="flex justify-between">
+                  <li
+                    key={p.product}
+                    className="flex justify-between py-2"
+                    style={{ borderBottom: "1px solid var(--border)" }}
+                  >
                     <span className="truncate">{p.product}</span>
-                    <span className="text-gray-500 dark:text-slate-400 ml-2">
-                      {p.mentions}
-                    </span>
+                    <span className="text-muted ml-2 tabular-nums">{p.mentions}</span>
                   </li>
                 ))}
                 {latest.top_products.length === 0 && (
-                  <li className="text-gray-400 text-sm">Нет данных</li>
+                  <li className="text-muted py-4 text-center">Нет данных</li>
                 )}
               </ul>
             </div>
-          </div>
+          </section>
 
-          <div className="card p-5">
-            <div className="text-sm font-medium mb-3">Рекомендации от AI</div>
-            <div className="text-sm text-gray-600 dark:text-slate-300 mb-4 italic">
+          <section
+            className="nf-card p-6 animate-nfFadeUp"
+            style={{ animationDelay: "0.15s" }}
+          >
+            <Eyebrow>Рекомендации от AI</Eyebrow>
+            <div className="text-[14px] text-muted italic mt-3 mb-4">
               {latest.summary}
             </div>
-            <ul className="space-y-2 text-sm list-disc list-inside">
+            <ul className="flex flex-col gap-2.5 text-[14px]">
               {latest.targeting_recommendations.map((r, i) => (
-                <li key={i}>{r}</li>
+                <li key={i} className="flex gap-3">
+                  <span
+                    className="mt-2 shrink-0 w-1.5 h-1.5 rounded-full"
+                    style={{ background: "var(--accent)" }}
+                  />
+                  <span>{r}</span>
+                </li>
               ))}
             </ul>
-            <div className="text-xs text-gray-400 mt-3">
-              Сгенерировано: {providerLabel(latest)}
+            <div className="text-[11px] text-muted mt-4 uppercase tracking-wide">
+              {providerLabel(latest)}
             </div>
-          </div>
+          </section>
         </>
       )}
 
       {insights.length > 1 && (
-        <div className="card">
-          <div className="px-5 py-3 border-b text-sm font-medium">История</div>
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-slate-900 text-xs uppercase text-gray-500">
-              <tr>
-                <th className="px-4 py-2 text-left">Период</th>
-                <th className="px-4 py-2 text-left">Резюме</th>
-                <th className="px-4 py-2 text-right">Модель</th>
-              </tr>
-            </thead>
-            <tbody>
-              {insights.slice(1).map((i) => (
-                <tr key={i.id} className="border-t border-gray-100 dark:border-slate-800">
-                  <td className="px-4 py-2 whitespace-nowrap">
-                    {i.period_start} — {i.period_end}
-                  </td>
-                  <td className="px-4 py-2 text-gray-600 dark:text-slate-400 truncate max-w-xl">
-                    {i.summary}
-                  </td>
-                  <td className="px-4 py-2 text-right text-xs text-gray-400">
-                    {providerLabel(i)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <section className="nf-card overflow-hidden">
+          <div className="px-6 pt-5 pb-3 text-[15px] font-semibold tracking-tight">
+            История
+          </div>
+          <div
+            className="grid gap-2 px-6 pb-3 nf-col"
+            style={{ gridTemplateColumns: ".8fr 2fr .6fr" }}
+          >
+            <div>Период</div>
+            <div>Резюме</div>
+            <div className="text-right">Модель</div>
+          </div>
+          <div>
+            {insights.slice(1).map((i, idx) => (
+              <div
+                key={i.id}
+                className="nf-row animate-nfFadeUp"
+                style={{
+                  gridTemplateColumns: ".8fr 2fr .6fr",
+                  animationDelay: `${0.02 + idx * 0.035}s`,
+                  cursor: "default",
+                }}
+              >
+                <div className="text-muted tabular-nums whitespace-nowrap">
+                  {i.period_start} — {i.period_end}
+                </div>
+                <div className="text-muted truncate">{i.summary}</div>
+                <div className="text-right text-[11px] uppercase text-muted tracking-wide">
+                  {providerLabel(i)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
     </div>
   );

@@ -10,6 +10,13 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
+  const url = config.url || "";
+  // Never attach a stale token to auth endpoints — a bad token there
+  // makes DRF reject the request before it reaches the login view.
+  if (/\/auth\/(login|logout)/.test(url)) {
+    if (config.headers) delete (config.headers as Record<string, unknown>).Authorization;
+    return config;
+  }
   const token = localStorage.getItem("naffai_token");
   if (token) config.headers.Authorization = `Token ${token}`;
   return config;
@@ -20,9 +27,17 @@ api.interceptors.response.use(
   (err) => {
     if (err.response?.status === 401) {
       localStorage.removeItem("naffai_token");
+      localStorage.removeItem("naffai_username");
+      localStorage.removeItem("naffai_role");
       if (location.pathname !== "/login") location.href = "/login";
     } else if (err.response?.status === 403) {
-      toast.error("Доступ запрещён");
+      // Silence role-scoped endpoints (e.g. manager hitting operator's /my/)
+      // — RoleGate already routes users to their home; a global toast just
+      // spams noise.
+      const url = err.config?.url || "";
+      if (!/\/(my|mine)\/?/.test(url)) {
+        toast.error("Доступ запрещён");
+      }
     }
     return Promise.reject(err);
   }

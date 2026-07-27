@@ -11,7 +11,21 @@ class OperatorStatus(models.TextChoices):
 
 class Operator(TimestampedModel):
     full_name = models.CharField(max_length=128)
-    phone = models.CharField(max_length=32, blank=True, default="")
+    # Рабочий номер — используется для логина, TG-подключения,
+    # уведомлений. Обязателен перед созданием учётки и TG-сессии.
+    phone = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        help_text="Рабочий номер (+998XXXXXXXXX). Используется для входа и Telegram.",
+    )
+    # Личный номер — только для менеджерских контактов, необязателен.
+    personal_phone = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        help_text="Личный номер оператора. Опционально.",
+    )
     status = models.CharField(
         max_length=16, choices=OperatorStatus.choices, default=OperatorStatus.ACTIVE
     )

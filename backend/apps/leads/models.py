@@ -206,6 +206,26 @@ class Lead(TimestampedModel):
         on_delete=models.SET_NULL,
         related_name="created_leads",
     )
+    postponed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Когда оператор нажал «Отложить на потом». NULL = активный.",
+    )
+    postponed_by = models.ForeignKey(
+        "operators.Operator",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Кто отложил. При reassign обнуляется.",
+    )
+    postpone_reason = models.CharField(
+        max_length=280,
+        blank=True,
+        default="",
+        help_text="Комментарий оператора: «после обеда», «ждёт зарплату», …",
+    )
 
     class Meta:
         ordering = ["-created_at"]

@@ -17,10 +17,12 @@ def open_log_for_operator(operator: Operator) -> AttendanceLog | None:
 
 
 def logs_for_operator(operator: Operator, *, since: dt.date, until: dt.date) -> QuerySet:
-    # Get datetime bounds in Tashkent timezone
+    # Get datetime bounds in the active (Tashkent) timezone. Django 5 /
+    # Python 3.9+ ships zoneinfo which uses `.replace(tzinfo=...)`, not
+    # the old pytz `.localize()` API.
     tz = timezone.get_current_timezone()
-    start_dt = tz.localize(dt.datetime.combine(since, dt.time.min))
-    end_dt = tz.localize(dt.datetime.combine(until, dt.time.max))
+    start_dt = dt.datetime.combine(since, dt.time.min).replace(tzinfo=tz)
+    end_dt = dt.datetime.combine(until, dt.time.max).replace(tzinfo=tz)
 
     return AttendanceLog.objects.filter(
         operator=operator,

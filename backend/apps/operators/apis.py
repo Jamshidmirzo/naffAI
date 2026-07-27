@@ -47,6 +47,7 @@ class OperatorSerializer(serializers.ModelSerializer):
             "id",
             "full_name",
             "phone",
+            "personal_phone",
             "status",
             "hired_at",
             "note",

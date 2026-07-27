@@ -117,3 +117,31 @@ export const tgBackfillJobs = (operatorId: number) =>
 
 export const tgRetryBackfill = (params: { operator_id?: number; session_id?: number }) =>
   api.post<{ job_id: number; status: string }>("/tg-userclient/backfill-jobs/retry/", params);
+
+export interface TgCoachingIssue {
+  message_id: number;
+  severity: "high" | "mid" | "low";
+  problem: string;
+  suggestion: string;
+}
+
+export interface TgCoachingResult {
+  summary: string;
+  issues: TgCoachingIssue[];
+  has_voice_selected: boolean;
+  provider: string;
+  model: string;
+  created_at: string;
+  error?: string;
+}
+
+export const tgCoaching = (
+  chat_id: number,
+  message_ids: number[],
+  language: "ru" | "uz" = "ru",
+) =>
+  api.post<TgCoachingResult>("/tg-userclient/coaching/", {
+    chat_id,
+    message_ids,
+    language,
+  });

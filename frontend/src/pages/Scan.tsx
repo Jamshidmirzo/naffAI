@@ -1,222 +1,146 @@
-import { useState, useEffect, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Html5QrcodeScanner } from "html5-qrcode";
-import { Camera, CheckCircle2, XCircle, LogIn, RefreshCw, AlertTriangle, LogOut } from "lucide-react";
-import { useAttendanceScan, ScanResponse } from "../hooks/useAttendanceScan";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { Download, LogIn, RefreshCw } from "lucide-react";
+import qrcode from "qrcode-generator";
+import { Button, Eyebrow } from "../components/ui";
 
-type State = "idle" | "scanning" | "success_in" | "success_out" | "error";
+/**
+ * Public kiosk screen shown at the office entrance. It renders a QR that
+ * points to the login page — operators scan it with their own phone
+ * camera, land in the web app on the phone, and mark check-in from there.
+ *
+ * No browser camera permission is needed here — the phone does the
+ * scanning; the kiosk just displays the code.
+ */
+
+const QR_CELL = 8;
+const QR_MARGIN = 2;
+
+function renderQrToCanvas(canvas: HTMLCanvasElement, text: string) {
+  const qr = qrcode(0, "M");
+  qr.addData(text);
+  qr.make();
+  const count = qr.getModuleCount();
+  const size = (count + QR_MARGIN * 2) * QR_CELL;
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = "#101013";
+  for (let r = 0; r < count; r++) {
+    for (let c = 0; c < count; c++) {
+      if (qr.isDark(r, c)) {
+        ctx.fillRect(
+          (c + QR_MARGIN) * QR_CELL,
+          (r + QR_MARGIN) * QR_CELL,
+          QR_CELL,
+          QR_CELL,
+        );
+      }
+    }
+  }
+}
 
 export default function Scan() {
-  const navigate = useNavigate();
-  const { scan } = useAttendanceScan();
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [tick, setTick] = useState(0);
 
-  const [state, setState] = useState<State>("idle");
-  const [operatorName, setOperatorName] = useState("");
-  const [latenessMsg, setLatenessMsg] = useState("");
-  const [durationMsg, setDurationMsg] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const target = useMemo(() => {
+    if (typeof window === "undefined") return "https://naffai.uz/login";
+    return `${window.location.origin}/login?src=qr`;
+  }, []);
 
-  const startScanner = () => {
-    setState("scanning");
+  useEffect(() => {
+    if (canvasRef.current) renderQrToCanvas(canvasRef.current, target);
+  }, [target, tick]);
+
+  const downloadPng = () => {
+    if (!canvasRef.current) return;
+    const url = canvasRef.current.toDataURL("image/png");
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "naffai-qr.png";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   };
 
-  useEffect(() => {
-    if (state !== "scanning") {
-      if (scannerRef.current) {
-        try {
-          scannerRef.current.clear();
-        } catch (e) {
-          // ignore
-        }
-        scannerRef.current = null;
-      }
-      return;
-    }
-
-    // Delay initialization slightly to ensure element with id 'qr-reader' is mounted
-    const timer = setTimeout(() => {
-      const scanner = new Html5QrcodeScanner(
-        "qr-reader",
-        { fps: 10, qrbox: 250 },
-        /* verbose= */ false
-      );
-
-      scanner.render(
-        async (decodedText) => {
-          // Success callback
-          try {
-            // Stop scanning immediately before calling API to prevent double-scan
-            scanner.clear();
-            scannerRef.current = null;
-
-            const res = await scan(decodedText);
-            setOperatorName(res.operator.full_name);
-
-            if (res.action === "check_in") {
-              if (res.was_late) {
-                setLatenessMsg("Вы опоздали!");
-              } else {
-                setLatenessMsg("");
-              }
-              setState("success_in");
-            } else {
-              setDurationMsg(`Смена закрыта. Длительность: ${res.duration_min} мин.`);
-              setState("success_out");
-            }
-          } catch (err: any) {
-            const status = err.response?.status;
-            if (status === 410) {
-              setErrorMessage("Ваш QR-код отозван. Обратитесь к тимлиду за новым.");
-            } else if (status === 429) {
-              setErrorMessage("Слишком часто! Подождите 30 секунд между сканированиями.");
-            } else if (status === 403) {
-              setErrorMessage("Сканирование заблокировано: это устройство находится вне офисной сети.");
-            } else if (status === 400) {
-              setErrorMessage("Неверный QR-код. Отсканируйте актуальный код из профиля.");
-            } else {
-              setErrorMessage("Ошибка подключения к серверу. Попробуйте еще раз.");
-            }
-            setState("error");
-          }
-        },
-        () => {
-          // Silent scan failure
-        }
-      );
-
-      scannerRef.current = scanner;
-    }, 100);
-
-    return () => {
-      clearTimeout(timer);
-      if (scannerRef.current) {
-        try {
-          scannerRef.current.clear();
-        } catch (e) {
-          // ignore
-        }
-      }
-    };
-  }, [state]);
-
-  // Handle redirects on success
-  useEffect(() => {
-    if (state === "success_in") {
-      const timer = setTimeout(() => {
-        navigate("/");
-      }, 1500);
-      return () => clearTimeout(timer);
-    }
-    if (state === "success_out") {
-      const timer = setTimeout(() => {
-        setState("idle");
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [state, navigate]);
-
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4">
-      {/* Header link */}
-      <div className="absolute top-6 right-6">
+    <div className="min-h-screen relative overflow-hidden">
+      <div className="absolute inset-0 nf-hero" />
+
+      <div className="absolute top-6 right-6 z-10">
         <Link
           to="/login"
-          className="flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-500 transition"
+          className="nf-btn nf-btn--ghost text-[13px]"
+          style={{ padding: "9px 14px" }}
         >
-          <LogIn className="w-4 h-4" />
-          Войти по паролю
+          <LogIn className="w-3.5 h-3.5" /> Войти по паролю
         </Link>
       </div>
 
-      <div className="w-full max-w-md card p-6 md:p-8 text-center space-y-6 shadow-xl">
-        {state === "idle" && (
-          <div className="space-y-6 py-4">
-            <div className="w-16 h-16 bg-blue-50 dark:bg-slate-900 text-blue-600 rounded-2xl flex items-center justify-center mx-auto">
-              <Camera className="w-8 h-8" />
-            </div>
-            <div className="space-y-2">
-              <h1 className="text-xl md:text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-                Быстрый вход по QR
-              </h1>
-              <p className="text-sm text-gray-500 dark:text-slate-400 leading-relaxed">
-                Покажите ваш личный QR-код веб-камере, чтобы начать смену и войти в систему.
-              </p>
-            </div>
-            <button onClick={startScanner} className="btn-primary w-full py-3 flex items-center justify-center gap-2">
-              <Camera className="w-5 h-5" />
-              Включить камеру
-            </button>
-          </div>
-        )}
+      <div className="relative z-10 min-h-screen grid place-items-center px-4 py-10">
+        <div
+          className="animate-nfPop text-center"
+          style={{
+            width: 420,
+            maxWidth: "100%",
+            borderRadius: 34,
+            padding: "36px 32px 32px",
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            boxShadow: "0 40px 90px -40px rgba(0,0,0,.4)",
+          }}
+        >
+          <Eyebrow>QR CHECK-IN</Eyebrow>
+          <h1
+            className="font-semibold mt-2"
+            style={{ fontSize: 26, letterSpacing: "-0.025em", lineHeight: 1.15 }}
+          >
+            Отсканируйте QR
+            <br />
+            своим телефоном
+          </h1>
+          <p className="text-[13px] text-muted mt-2 max-w-[280px] mx-auto">
+            Откроется вход в систему. Войдите под своим логином и отметьте начало смены.
+          </p>
 
-        {state === "scanning" && (
-          <div className="space-y-4">
-            <h2 className="font-bold text-gray-900 dark:text-white">Сканирование QR</h2>
-            <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-slate-800 bg-black aspect-square max-w-xs mx-auto">
-              <div id="qr-reader" className="w-full h-full" />
-            </div>
-            <p className="text-xs text-gray-500">Поднесите ваш QR-код к камере устройства</p>
-            <button
-              onClick={() => setState("idle")}
-              className="btn-ghost text-sm text-red-600 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 w-full"
-            >
-              Отмена
-            </button>
+          <div
+            className="mt-6 mx-auto grid place-items-center"
+            style={{
+              width: 260,
+              height: 260,
+              borderRadius: 24,
+              background: "#fff",
+              padding: 14,
+              border: "1px solid var(--border)",
+            }}
+          >
+            <canvas
+              ref={canvasRef}
+              style={{ width: "100%", height: "100%", imageRendering: "pixelated" }}
+              aria-label="QR-код для входа"
+            />
           </div>
-        )}
 
-        {state === "success_in" && (
-          <div className="space-y-4 py-8 animate-pulse">
-            <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto" />
-            <div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Добро пожаловать!</h2>
-              <p className="text-lg font-semibold text-emerald-600 mt-1">{operatorName}</p>
-              <p className="text-sm text-gray-500 mt-2">Смена успешно открыта.</p>
-              {latenessMsg && (
-                <div className="mt-4 px-3 py-1 bg-amber-50 dark:bg-amber-950/20 text-amber-600 border border-amber-200 dark:border-amber-900/30 rounded-full inline-flex items-center gap-1 text-xs font-semibold">
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  {latenessMsg}
-                </div>
-              )}
-            </div>
+          <div
+            className="mt-4 text-[11.5px] text-muted rounded-xl px-3 py-2"
+            style={{ background: "var(--faint)" }}
+          >
+            Ссылка: <span className="font-mono text-text">{target}</span>
           </div>
-        )}
 
-        {state === "success_out" && (
-          <div className="space-y-4 py-8">
-            <LogOut className="w-16 h-16 text-blue-500 mx-auto" />
-            <div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Смена завершена</h2>
-              <p className="text-lg font-semibold text-blue-600 mt-1">{operatorName}</p>
-              <p className="text-sm text-gray-500 mt-2">{durationMsg}</p>
-              <p className="text-xs text-gray-400 mt-4">До встречи завтра!</p>
-            </div>
+          <div className="mt-5 flex flex-wrap gap-2 justify-center">
+            <Button variant="secondary" onClick={downloadPng}>
+              <Download className="w-3.5 h-3.5" /> Скачать PNG
+            </Button>
+            <Button variant="ghost" onClick={() => setTick((v) => v + 1)}>
+              <RefreshCw className="w-3.5 h-3.5" /> Перерисовать
+            </Button>
           </div>
-        )}
-
-        {state === "error" && (
-          <div className="space-y-6 py-4">
-            <XCircle className="w-16 h-16 text-red-500 mx-auto" />
-            <div className="space-y-2">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Ошибка сканирования</h2>
-              <p className="text-sm text-gray-600 dark:text-slate-400">{errorMessage}</p>
-            </div>
-            <button
-              onClick={() => setState("scanning")}
-              className="btn-primary w-full py-2.5 flex items-center justify-center gap-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Повторить попытку
-            </button>
-            <button
-              onClick={() => setState("idle")}
-              className="btn-ghost w-full text-sm text-gray-500"
-            >
-              Вернуться на главную
-            </button>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

@@ -1,15 +1,21 @@
 /**
  * Admin CRUD for `SheetSource` (per-worksheet column mapping) and
  * `OperatorSheetAlias` (sheet alias → real operator binding).
- *
- * Column map is edited as raw JSON — the admin will only need it a
- * handful of times per year and the shape is documented in the field
- * placeholder.
  */
 
-import { useEffect, useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus, X } from "lucide-react";
 import { api } from "../lib/api";
+import {
+  Button,
+  Modal,
+  StatusBadge,
+  TabPill,
+  toast,
+  type TabItem,
+} from "../components/ui";
+import { usePageHeader } from "../store/page";
 
 type SheetSource = {
   id: number;
@@ -32,58 +38,33 @@ type Alias = {
 };
 
 type Operator = { id: number; full_name: string; status: string };
+type TabKey = "sources" | "aliases";
+
+const TABS: TabItem<TabKey>[] = [
+  { value: "sources", label: "Листы" },
+  { value: "aliases", label: "Alias'ы операторов" },
+];
 
 export default function SheetSources() {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"sources" | "aliases">("sources");
+  const [tab, setTab] = useState<TabKey>("sources");
+
+  usePageHeader({
+    title: "Google-Sheets",
+    subtitle: "Источники лидов и alias'ы операторов",
+  });
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Google Sheets</h1>
-        <div className="text-sm text-gray-500 dark:text-slate-400">
-          Маппинг листов на модель лида и alias'ы операторов.
-        </div>
+    <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
+      <div className="animate-nfFadeUp">
+        <TabPill value={tab} onChange={setTab} items={TABS} />
       </div>
-
-      <div className="border-b border-gray-200 dark:border-slate-800 flex gap-4">
-        <TabButton active={tab === "sources"} onClick={() => setTab("sources")}>
-          Листы
-        </TabButton>
-        <TabButton active={tab === "aliases"} onClick={() => setTab("aliases")}>
-          Alias'ы операторов
-        </TabButton>
-      </div>
-
       {tab === "sources" ? <SheetSourcesPanel qc={qc} /> : <AliasesPanel qc={qc} />}
     </div>
   );
 }
 
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`pb-2 -mb-px border-b-2 text-sm font-medium ${
-        active
-          ? "border-accent text-accent"
-          : "border-transparent text-gray-500 hover:text-gray-800 dark:text-slate-400 dark:hover:text-slate-100"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-// ---- Sheet sources ------------------------------------------------------
+// -------- Sheet sources -----------------------------------------------------
 
 function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const q = useQuery({
@@ -100,61 +81,76 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const items = q.data || [];
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <button className="btn-primary text-sm" onClick={() => setShowCreate(true)}>
-          + Добавить лист
-        </button>
+    <>
+      <div className="flex items-center justify-between animate-nfFadeUp">
+        <div className="text-[13px] text-muted">Всего листов: {items.length}</div>
+        <Button onClick={() => setShowCreate(true)}>
+          <Plus className="w-3.5 h-3.5" /> Добавить лист
+        </Button>
       </div>
-      <div className="card overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-50 dark:bg-slate-800/40 text-xs uppercase text-gray-500 dark:text-slate-400">
-            <tr>
-              <th className="text-left px-3 py-2">Название</th>
-              <th className="text-left px-3 py-2">Spreadsheet</th>
-              <th className="text-left px-3 py-2">gid</th>
-              <th className="text-left px-3 py-2">Дефолт</th>
-              <th className="text-left px-3 py-2">Последняя строка</th>
-              <th className="text-right px-3 py-2">Действия</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
-            {items.map((src) => (
-              <tr key={src.id} className="hover:bg-gray-50/70 dark:hover:bg-slate-800/40">
-                <td className="px-3 py-2 font-medium">
-                  {src.name}
+      <section className="nf-card overflow-hidden">
+        <div
+          className="grid gap-2 px-6 pt-5 pb-3 nf-col"
+          style={{ gridTemplateColumns: "1.1fr 1.3fr .5fr .8fr .9fr .6fr" }}
+        >
+          <div>Название</div>
+          <div>Spreadsheet</div>
+          <div>gid</div>
+          <div>Дефолт</div>
+          <div>Последняя строка</div>
+          <div className="text-right">Действия</div>
+        </div>
+        {items.length === 0 ? (
+          <div className="text-center text-muted py-12 text-[13px]">
+            Пока не настроены
+          </div>
+        ) : (
+          <div>
+            {items.map((src, i) => (
+              <div
+                key={src.id}
+                className="nf-row animate-nfFadeUp"
+                style={{
+                  gridTemplateColumns: "1.1fr 1.3fr .5fr .8fr .9fr .6fr",
+                  animationDelay: `${0.02 + i * 0.035}s`,
+                  cursor: "default",
+                }}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium truncate">{src.name}</span>
                   {!src.active && (
-                    <span className="text-xs text-gray-400 ml-2">(отключён)</span>
+                    <StatusBadge tone="neutral">off</StatusBadge>
                   )}
-                </td>
-                <td className="px-3 py-2 font-mono text-xs">{src.spreadsheet_id}</td>
-                <td className="px-3 py-2 font-mono text-xs">{src.gid}</td>
-                <td className="px-3 py-2">{src.default_status}</td>
-                <td className="px-3 py-2">
-                  #{src.last_synced_row}
+                </div>
+                <div className="font-mono text-[12px] text-muted truncate">
+                  {src.spreadsheet_id}
+                </div>
+                <div className="font-mono text-[12px] text-muted tabular-nums">
+                  {src.gid}
+                </div>
+                <div className="text-muted">{src.default_status}</div>
+                <div>
+                  <div className="tabular-nums">#{src.last_synced_row}</div>
                   {src.last_synced_at && (
-                    <div className="text-xs text-gray-400">
+                    <div className="text-[11px] text-muted">
                       {new Date(src.last_synced_at).toLocaleString("ru-RU")}
                     </div>
                   )}
-                </td>
-                <td className="px-3 py-2 text-right">
-                  <button className="btn-ghost text-xs" onClick={() => setEdit(src)}>
+                </div>
+                <div className="text-right">
+                  <button
+                    className="nf-btn nf-btn--ghost"
+                    style={{ padding: "7px 12px", fontSize: 12 }}
+                    onClick={() => setEdit(src)}
+                  >
                     Редактировать
                   </button>
-                </td>
-              </tr>
+                </div>
+              </div>
             ))}
-            {!items.length && (
-              <tr>
-                <td colSpan={6} className="text-center text-gray-500 py-6">
-                  Пока не настроены
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        )}
+      </section>
 
       {(edit || showCreate) && (
         <SheetSourceForm
@@ -167,10 +163,11 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
             setEdit(null);
             setShowCreate(false);
             qc.invalidateQueries({ queryKey: ["sheet-sources"] });
+            toast.success("Сохранено");
           }}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -191,7 +188,7 @@ function SheetSourceForm({
   const [defaultStatus, setDefaultStatus] = useState(value?.default_status || "new");
   const [active, setActive] = useState(value?.active ?? true);
   const [mapJson, setMapJson] = useState(
-    JSON.stringify(value?.column_map || {}, null, 2)
+    JSON.stringify(value?.column_map || {}, null, 2),
   );
   const [error, setError] = useState("");
 
@@ -212,34 +209,42 @@ function SheetSourceForm({
         default_status: defaultStatus,
         active,
       };
-      if (isEdit) {
-        await api.patch(`/sheet-sources/${value!.id}/`, body);
-      } else {
-        await api.post("/sheet-sources/", body);
-      }
+      if (isEdit) await api.patch(`/sheet-sources/${value!.id}/`, body);
+      else await api.post("/sheet-sources/", body);
     },
     onSuccess: onDone,
-    onError: (err: any) => setError(err?.response?.data?.detail || err?.message || "Ошибка"),
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { detail?: string } }; message?: string };
+      setError(e?.response?.data?.detail || e?.message || "Ошибка");
+    },
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-2xl card p-5 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-3">
-          <div className="font-semibold">{isEdit ? "Редактировать лист" : "Новый лист"}</div>
-          <button className="btn-ghost text-xs" onClick={onClose}>
-            Закрыть
+    <Modal open onClose={onClose} width={640}>
+      <div className="p-7">
+        <div className="flex items-start justify-between mb-4">
+          <div className="text-[18px] font-semibold tracking-tight">
+            {isEdit ? "Редактировать лист" : "Новый лист"}
+          </div>
+          <button
+            onClick={onClose}
+            className="grid place-items-center rounded-full hover:bg-[color:var(--faint)] transition"
+            style={{ width: 32, height: 32 }}
+          >
+            <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="label">Название</label>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Дефолтный статус</label>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Название">
+            <input
+              className="nf-input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </Field>
+          <Field label="Дефолтный статус">
             <select
-              className="input"
+              className="nf-input"
               value={defaultStatus}
               onChange={(e) => setDefaultStatus(e.target.value)}
             >
@@ -247,62 +252,72 @@ function SheetSourceForm({
               <option value="archived">archived</option>
               <option value="needs_review">needs_review</option>
             </select>
-          </div>
+          </Field>
           <div className="col-span-2">
-            <label className="label">Spreadsheet ID</label>
-            <input className="input font-mono" value={ss} onChange={(e) => setSs(e.target.value)} />
+            <Field label="Spreadsheet ID">
+              <input
+                className="nf-input font-mono"
+                value={ss}
+                onChange={(e) => setSs(e.target.value)}
+              />
+            </Field>
           </div>
-          <div>
-            <label className="label">gid</label>
+          <Field label="gid">
             <input
-              className="input font-mono"
+              className="nf-input font-mono"
               value={gid}
               onChange={(e) => setGid(e.target.value)}
             />
-          </div>
-          <div>
-            <label className="label">Название листа (опц.)</label>
-            <input className="input" value={ws} onChange={(e) => setWs(e.target.value)} />
-          </div>
-          <div className="col-span-2">
-            <label className="label">Column map (JSON)</label>
-            <textarea
-              className="input font-mono text-xs min-h-[220px]"
-              value={mapJson}
-              onChange={(e) => setMapJson(e.target.value)}
-              placeholder='{"full_name": "full_name", "phone": "phone_number", "operator_alias": {"column_index": 5}}'
+          </Field>
+          <Field label="Название листа (опц.)">
+            <input
+              className="nf-input"
+              value={ws}
+              onChange={(e) => setWs(e.target.value)}
             />
-          </div>
+          </Field>
           <div className="col-span-2">
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={active}
-                onChange={(e) => setActive(e.target.checked)}
+            <Field label="Column map (JSON)">
+              <textarea
+                className="nf-input font-mono text-[12px] min-h-[220px]"
+                value={mapJson}
+                onChange={(e) => setMapJson(e.target.value)}
+                placeholder='{"full_name": "full_name", "phone": "phone_number"}'
               />
-              Активен (участвует в sync)
-            </label>
+            </Field>
+          </div>
+          <div className="col-span-2 flex items-center gap-2 text-[13.5px]">
+            <input
+              type="checkbox"
+              checked={active}
+              onChange={(e) => setActive(e.target.checked)}
+              id="active"
+            />
+            <label htmlFor="active">Активен (участвует в sync)</label>
           </div>
         </div>
-        {error && <div className="text-sm text-rose-600 mt-2">{error}</div>}
-        <div className="mt-4 flex gap-2 justify-end">
-          <button className="btn-ghost" onClick={onClose}>
-            Отмена
-          </button>
-          <button
-            className="btn-primary"
-            onClick={() => mut.mutate()}
-            disabled={mut.isPending}
+        {error && (
+          <div
+            className="mt-4 text-[13px] rounded-xl px-3.5 py-2.5"
+            style={{ background: "rgba(220,60,40,.08)", color: "var(--danger)" }}
           >
+            {error}
+          </div>
+        )}
+        <div className="mt-6 flex gap-2 justify-end">
+          <Button variant="ghost" onClick={onClose}>
+            Отмена
+          </Button>
+          <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
             {mut.isPending ? "Сохраняем…" : "Сохранить"}
-          </button>
+          </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
-// ---- Aliases -----------------------------------------------------------
+// -------- Aliases ----------------------------------------------------------
 
 function AliasesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const q = useQuery({
@@ -326,46 +341,62 @@ function AliasesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const bind = async (alias: Alias, operatorId: number | null) => {
     await api.patch(`/operator-sheet-aliases/${alias.id}/`, { operator: operatorId });
     qc.invalidateQueries({ queryKey: ["operator-sheet-aliases"] });
+    toast.success("Привязано");
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          {unboundCount > 0 && (
-            <span className="text-sm font-medium text-amber-600 dark:text-amber-400">
-              Непривязанных alias'ов: {unboundCount}
+    <>
+      <div className="flex items-center justify-between animate-nfFadeUp">
+        <div className="text-[13px]">
+          {unboundCount > 0 ? (
+            <span style={{ color: "var(--accent)" }} className="font-semibold">
+              Непривязанных: {unboundCount}
             </span>
+          ) : (
+            <span className="text-muted">Всего alias'ов: {items.length}</span>
           )}
         </div>
-        <button className="btn-primary text-sm" onClick={() => setCreating(true)}>
-          + Alias
-        </button>
+        <Button onClick={() => setCreating(true)}>
+          <Plus className="w-3.5 h-3.5" /> Alias
+        </Button>
       </div>
-      <div className="card overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-50 dark:bg-slate-800/40 text-xs uppercase text-gray-500 dark:text-slate-400">
-            <tr>
-              <th className="text-left px-3 py-2">Alias (как в листе)</th>
-              <th className="text-left px-3 py-2">Оператор</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
-            {items.map((a) => (
-              <tr key={a.id}>
-                <td className="px-3 py-2 font-medium">
-                  {a.alias_name}
+      <section className="nf-card overflow-hidden">
+        <div
+          className="grid gap-2 px-6 pt-5 pb-3 nf-col"
+          style={{ gridTemplateColumns: "1fr 1.2fr" }}
+        >
+          <div>Alias (как в листе)</div>
+          <div>Оператор</div>
+        </div>
+        {items.length === 0 ? (
+          <div className="text-center text-muted py-12 text-[13px]">
+            Alias'ов ещё нет — создаются автоматически при sync
+          </div>
+        ) : (
+          <div>
+            {items.map((a, i) => (
+              <div
+                key={a.id}
+                className="nf-row animate-nfFadeUp"
+                style={{
+                  gridTemplateColumns: "1fr 1.2fr",
+                  animationDelay: `${0.02 + i * 0.035}s`,
+                  cursor: "default",
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{a.alias_name}</span>
                   {!a.operator && (
-                    <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300 ml-2">
-                      Не привязан
-                    </span>
+                    <StatusBadge tone="hot">не привязан</StatusBadge>
                   )}
-                </td>
-                <td className="px-3 py-2">
+                </div>
+                <div>
                   <select
-                    className="input max-w-xs"
+                    className="nf-input py-1.5 px-3 text-[13px]"
                     value={a.operator || ""}
-                    onChange={(e) => bind(a, e.target.value ? Number(e.target.value) : null)}
+                    onChange={(e) =>
+                      bind(a, e.target.value ? Number(e.target.value) : null)
+                    }
                   >
                     <option value="">— не привязан —</option>
                     {(ops.data || []).map((o) => (
@@ -374,19 +405,12 @@ function AliasesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                       </option>
                     ))}
                   </select>
-                </td>
-              </tr>
+                </div>
+              </div>
             ))}
-            {!items.length && (
-              <tr>
-                <td colSpan={2} className="text-center text-gray-500 py-6">
-                  Alias'ов ещё нет — они создаются автоматически при sync'е из листов
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        )}
+      </section>
 
       {creating && (
         <NewAliasModal
@@ -394,14 +418,21 @@ function AliasesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           onDone={() => {
             setCreating(false);
             qc.invalidateQueries({ queryKey: ["operator-sheet-aliases"] });
+            toast.success("Alias создан");
           }}
         />
       )}
-    </div>
+    </>
   );
 }
 
-function NewAliasModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function NewAliasModal({
+  onClose,
+  onDone,
+}: {
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
 
@@ -410,34 +441,54 @@ function NewAliasModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
       await api.post("/operator-sheet-aliases/", { alias_name: name });
     },
     onSuccess: onDone,
-    onError: (err: any) => setError(err?.response?.data?.detail || err?.message || "Ошибка"),
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { detail?: string } }; message?: string };
+      setError(e?.response?.data?.detail || e?.message || "Ошибка");
+    },
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md card p-5">
-        <div className="flex items-center justify-between mb-3">
-          <div className="font-semibold">Новый alias</div>
-          <button className="btn-ghost text-xs" onClick={onClose}>
-            Закрыть
-          </button>
+    <Modal open onClose={onClose} width={440}>
+      <div className="p-7">
+        <div className="text-[18px] font-semibold tracking-tight">Новый alias</div>
+        <div className="mt-5">
+          <div className="nf-col mb-1.5">Как оператор написан в листе</div>
+          <input
+            className="nf-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+          />
         </div>
-        <label className="label">Как оператор написан в листе</label>
-        <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
-        {error && <div className="text-sm text-rose-600 mt-2">{error}</div>}
-        <div className="mt-4 flex gap-2 justify-end">
-          <button className="btn-ghost" onClick={onClose}>
+        {error && (
+          <div
+            className="mt-3 text-[13px] rounded-xl px-3.5 py-2.5"
+            style={{ background: "rgba(220,60,40,.08)", color: "var(--danger)" }}
+          >
+            {error}
+          </div>
+        )}
+        <div className="mt-6 flex gap-2 justify-end">
+          <Button variant="ghost" onClick={onClose}>
             Отмена
-          </button>
-          <button
-            className="btn-primary"
+          </Button>
+          <Button
             onClick={() => mut.mutate()}
             disabled={mut.isPending || !name.trim()}
           >
             {mut.isPending ? "Сохраняем…" : "Сохранить"}
-          </button>
+          </Button>
         </div>
       </div>
+    </Modal>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="nf-col mb-1.5">{label}</div>
+      {children}
     </div>
   );
 }

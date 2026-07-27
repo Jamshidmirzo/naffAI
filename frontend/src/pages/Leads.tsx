@@ -1,72 +1,84 @@
-/**
- * Admin lead list. Team lead / manager only.
- *
- * Highlights rows with `needs_review` or `phone_invalid`. Allows
- * reassigning a lead to a different operator inline.
- */
-
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Users } from "lucide-react";
-import { Modal } from "../components/Modal";
+import { AlertTriangle, Search, Users, X } from "lucide-react";
 import { apiErrorMessage } from "../lib/api-types";
 import { api } from "../lib/api";
-import {
-  LEAD_STATUS_BADGE,
-  LEAD_STATUS_LABEL,
-  type Lead,
-  type LeadStatus,
-} from "../lib/leads";
+import { LEAD_STATUS_LABEL, type Lead, type LeadStatus } from "../lib/leads";
 import { Paginator } from "../components/Paginator";
 import { formatDate } from "../lib/format";
+import { Button, Checkbox, Chip, Modal, StatusBadge, toast } from "../components/ui";
+import { usePageHeader } from "../store/page";
+import { useT } from "../lib/i18n";
 
 type PagedLeads = { results: Lead[]; count?: number } | Lead[];
-
 type Operator = { id: number; full_name: string; status: string };
-
 type SheetSource = { id: number; name: string; gid: number; active: boolean };
+type QuickFilter = "all" | "review" | "unassigned";
 
 const PAGE_SIZE = 50;
 
-const STATUSES: Array<{ value: LeadStatus | ""; label: string }> = [
-  { value: "", label: "Все" },
-  { value: "new", label: "Новые" },
-  { value: "assigned", label: "Назначены" },
-  { value: "in_progress", label: "В работе" },
-  { value: "callback_scheduled", label: "Callback" },
-  { value: "no_answer", label: "Не берут" },
-  { value: "won", label: "Продажи" },
-  { value: "lost", label: "Потеряны" },
-  { value: "needs_review", label: "Требуют проверки" },
-  { value: "archived", label: "Архив" },
+const QUICK_FILTERS: { key: QuickFilter; label: string }[] = [
+  { key: "all", label: "Все лиды" },
+  { key: "review", label: "Нужна проверка" },
+  { key: "unassigned", label: "Без оператора" },
 ];
+
+function isCallbackOverdue(iso: string | null | undefined) {
+  if (!iso) return false;
+  try {
+    return new Date(iso).getTime() < Date.now();
+  } catch {
+    return false;
+  }
+}
+
+function fmtCallback(iso: string | null | undefined) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "—";
+  }
+}
 
 export default function Leads() {
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const status = (searchParams.get("status") as LeadStatus) || "";
-  const needsReview = searchParams.get("needs_review") === "1";
-  const phoneInvalid = searchParams.get("phone_invalid") === "1";
+  const t = useT();
+  usePageHeader({ title: t("leads.title"), subtitle: t("leads.subtitle") }, [t("leads.title")]);
+
+  const quick: QuickFilter = searchParams.get("needs_review") === "1"
+    ? "review"
+    : searchParams.get("unassigned") === "1"
+      ? "unassigned"
+      : "all";
   const search = searchParams.get("search") || "";
-  const sheetSourceId = searchParams.get("sheet_source") ? Number(searchParams.get("sheet_source")) : null;
+  const sheetSourceId = searchParams.get("sheet_source")
+    ? Number(searchParams.get("sheet_source"))
+    : null;
   const page = Number(searchParams.get("page")) || 1;
 
-  const [reassignFor, setReassignFor] = useState<Lead | null>(null);
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const [assignOpen, setAssignOpen] = useState(false);
 
-  const setFilter = (key: string, value: string | boolean | number | null) => {
+  const setQuick = (q: QuickFilter) => {
     const next = new URLSearchParams(searchParams);
-    if (value === null || value === "" || value === false) {
-      next.delete(key);
-    } else if (typeof value === "boolean") {
-      next.set(key, "1");
-    } else {
-      next.set(key, String(value));
-    }
-    if (key !== "page") {
-      next.delete("page");
-    }
+    next.delete("needs_review");
+    next.delete("unassigned");
+    if (q === "review") next.set("needs_review", "1");
+    if (q === "unassigned") next.set("unassigned", "1");
+    next.delete("page");
+    setSearchParams(next);
+  };
+
+  const setFilter = (key: string, value: string | number | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (value === null || value === "") next.delete(key);
+    else next.set(key, String(value));
+    if (key !== "page") next.delete("page");
     setSearchParams(next);
   };
 
@@ -74,27 +86,24 @@ export default function Leads() {
     queryKey: ["sheet-sources"],
     queryFn: async (): Promise<SheetSource[]> => {
       const { data } = await api.get<{ results?: SheetSource[] } | SheetSource[]>(
-        "/sheet-sources/"
+        "/sheet-sources/",
       );
       return Array.isArray(data) ? data : data.results || [];
     },
   });
 
   const leads = useQuery({
-    queryKey: ["leads", status, needsReview, phoneInvalid, search, sheetSourceId, page],
+    queryKey: ["leads", quick, search, sheetSourceId, page],
     queryFn: async (): Promise<{ results: Lead[]; count: number }> => {
       const qp = new URLSearchParams();
-      if (status) qp.set("status", status);
-      if (needsReview) qp.set("needs_review", "1");
-      if (phoneInvalid) qp.set("phone_invalid", "1");
+      if (quick === "review") qp.set("needs_review", "1");
+      if (quick === "unassigned") qp.set("unassigned", "1");
       if (search) qp.set("search", search);
       if (sheetSourceId) qp.set("sheet_source", String(sheetSourceId));
       qp.set("page", String(page));
       qp.set("page_size", String(PAGE_SIZE));
       const { data } = await api.get<PagedLeads>(`/leads/?${qp.toString()}`);
-      if (Array.isArray(data)) {
-        return { results: data, count: data.length };
-      }
+      if (Array.isArray(data)) return { results: data, count: data.length };
       return { results: data.results || [], count: data.count || (data.results || []).length };
     },
     refetchInterval: 60_000,
@@ -104,7 +113,7 @@ export default function Leads() {
     queryKey: ["operators-active"],
     queryFn: async (): Promise<Operator[]> => {
       const { data } = await api.get<{ results?: Operator[] } | Operator[]>(
-        "/operators/?include_inactive=0"
+        "/operators/?include_inactive=0",
       );
       return Array.isArray(data) ? data : data.results || [];
     },
@@ -112,251 +121,310 @@ export default function Leads() {
 
   const rows = leads.data?.results || [];
   const totalCount = leads.data?.count || 0;
-  const summary = useMemo(
-    () => ({
-      total: totalCount,
-      review: rows.filter((r) => r.needs_review).length,
-      invalid: rows.filter((r) => r.phone_invalid).length,
-    }),
-    [rows, totalCount]
-  );
+
+  useEffect(() => {
+    setPicked(new Set());
+  }, [page, quick, search, sheetSourceId]);
+
+  const togglePick = (id: number) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (picked.size === rows.length) setPicked(new Set());
+    else setPicked(new Set(rows.map((r) => r.id)));
+  };
+
+  const summary = useMemo(() => {
+    const overdue = rows.filter((r) => isCallbackOverdue((r as unknown as { callback_at?: string }).callback_at))
+      .length;
+    return { overdue };
+  }, [rows]);
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Лиды</h1>
-          <div className="text-sm text-gray-500 dark:text-slate-400">
-            Всего: {totalCount} · требуют проверки: {summary.review} · с плохим телефоном:{" "}
-            {summary.invalid}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-slate-800">
-        <button
-          className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            sheetSourceId === null
-              ? "border-emerald-500 text-emerald-600 dark:text-emerald-400"
-              : "border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200"
-          }`}
-          onClick={() => setFilter("sheet_source", null)}
-        >
-          Все ({summary.total})
-        </button>
-        {(sheetSources.data || []).map((s) => (
-          <button
-            key={s.id}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              sheetSourceId === s.id
-                ? "border-emerald-500 text-emerald-600 dark:text-emerald-400"
-                : "border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200"
-            }`}
-            onClick={() => setFilter("sheet_source", s.id)}
-          >
-            {s.name}
-          </button>
-        ))}
-      </div>
-
-      <div className="card p-4 flex flex-wrap gap-3">
-        <input
-          className="input max-w-xs"
-          placeholder="Поиск: имя / телефон / модель"
-          value={search}
-          onChange={(e) => setFilter("search", e.target.value)}
-        />
-        <select
-          className="input max-w-xs"
-          value={status}
-          onChange={(e) => setFilter("status", e.target.value)}
-        >
-          {STATUSES.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
+    <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
+      {/* Sheet-source tabs */}
+      {(sheetSources.data?.length ?? 0) > 0 && (
+        <section className="flex flex-wrap gap-2 animate-nfFadeUp">
+          <Chip active={sheetSourceId === null} onClick={() => setFilter("sheet_source", null)}>
+            Все источники
+          </Chip>
+          {(sheetSources.data || []).map((s) => (
+            <Chip
+              key={s.id}
+              active={sheetSourceId === s.id}
+              onClick={() => setFilter("sheet_source", s.id)}
+            >
+              {s.name}
+            </Chip>
           ))}
-        </select>
-        <label className="inline-flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={needsReview}
-            onChange={(e) => setFilter("needs_review", e.target.checked)}
-          />
-          Только требующие проверки
-        </label>
-        <label className="inline-flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={phoneInvalid}
-            onChange={(e) => setFilter("phone_invalid", e.target.checked)}
-          />
-          Только с невалидным телефоном
-        </label>
-      </div>
-
-      <div className="card overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-50 dark:bg-slate-800/40 text-xs uppercase text-gray-500 dark:text-slate-400">
-            <tr>
-              <th className="text-left px-3 py-2">Клиент</th>
-              <th className="text-left px-3 py-2">Телефон</th>
-              <th className="text-left px-3 py-2">Товар</th>
-              <th className="text-left px-3 py-2">Оператор</th>
-              <th className="text-left px-3 py-2">Статус</th>
-              <th className="text-left px-3 py-2">Создан</th>
-              <th className="text-right px-3 py-2">Действия</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
-            {rows.map((lead) => (
-              <tr
-                key={lead.id}
-                className={`hover:bg-gray-50/70 dark:hover:bg-slate-800/40 ${
-                  lead.needs_review || lead.phone_invalid
-                    ? "bg-amber-50/40 dark:bg-amber-500/5"
-                    : ""
-                }`}
-              >
-                <td className="px-3 py-2 font-medium">
-                  <div className="flex items-center gap-1.5">
-                    {lead.needs_review && (
-                      <AlertTriangle
-                        className="w-3.5 h-3.5 text-amber-500"
-                        aria-label="Требует проверки"
-                      />
-                    )}
-                    {lead.full_name || <span className="text-gray-400">—</span>}
-                  </div>
-                </td>
-                <td className="px-3 py-2">
-                  {lead.phone || (
-                    <span className="text-rose-500 text-xs">{lead.phone_raw || "—"}</span>
-                  )}
-                </td>
-                <td className="px-3 py-2 text-gray-600 dark:text-slate-400">
-                  {lead.product_hint || "—"}
-                </td>
-                <td className="px-3 py-2">
-                  {lead.operator_name || <span className="text-gray-400">не назначен</span>}
-                </td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`px-2 py-0.5 rounded text-xs ${LEAD_STATUS_BADGE[lead.status]}`}
-                  >
-                    {LEAD_STATUS_LABEL[lead.status]}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-gray-500 dark:text-slate-400">
-                  {formatDate(lead.created_at)}
-                </td>
-                <td className="px-3 py-2 text-right">
-                  <button
-                    className="btn-ghost text-xs"
-                    onClick={() => setReassignFor(lead)}
-                  >
-                    <Users className="w-3.5 h-3.5" /> Переназначить
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {!rows.length && (
-              <tr>
-                <td colSpan={7} className="text-center text-gray-500 py-6">
-                  Лидов пока нет
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <Paginator
-        page={page}
-        total={totalCount}
-        pageSize={PAGE_SIZE}
-        onChange={(p) => setFilter("page", p > 1 ? p : null)}
-      />
-
-      {reassignFor && (
-        <ReassignModal
-          lead={reassignFor}
-          operators={operators.data || []}
-          onClose={() => setReassignFor(null)}
-          onDone={() => {
-            setReassignFor(null);
-            qc.invalidateQueries({ queryKey: ["leads"] });
-          }}
-        />
+        </section>
       )}
+
+      {/* Toolbar */}
+      <section className="flex flex-wrap items-center gap-3 animate-nfFadeUp">
+        <div className="relative flex-1 min-w-[240px] max-w-md">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+          <input
+            className="nf-input pl-11"
+            placeholder="Поиск: имя, телефон, товар…"
+            value={search}
+            onChange={(e) => setFilter("search", e.target.value)}
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {QUICK_FILTERS.map((f) => (
+            <Chip key={f.key} active={quick === f.key} onClick={() => setQuick(f.key)}>
+              {f.label}
+            </Chip>
+          ))}
+        </div>
+        <div className="ml-auto flex items-center gap-3">
+          <div className="text-[13px] text-muted">
+            {picked.size > 0 ? (
+              <span className="tabular-nums">Выбрано: {picked.size}</span>
+            ) : (
+              <span>
+                Всего: <span className="text-text tabular-nums">{totalCount}</span>
+                {summary.overdue > 0 && (
+                  <>
+                    {" · "}
+                    <span style={{ color: "var(--accent)" }} className="tabular-nums">
+                      {summary.overdue} просрочено
+                    </span>
+                  </>
+                )}
+              </span>
+            )}
+          </div>
+          <Button
+            disabled={picked.size === 0}
+            onClick={() => setAssignOpen(true)}
+          >
+            <Users className="w-3.5 h-3.5" /> Назначить оператора
+          </Button>
+          {picked.size > 0 && (
+            <button
+              className="nf-btn nf-btn--ghost"
+              style={{ padding: "9px 14px" }}
+              onClick={() => setPicked(new Set())}
+            >
+              <X className="w-3.5 h-3.5" /> Снять выбор
+            </button>
+          )}
+        </div>
+      </section>
+
+      {/* Table */}
+      <section className="nf-card overflow-hidden">
+        <div
+          className="grid gap-2 px-6 pt-5 pb-3 nf-col items-center"
+          style={{ gridTemplateColumns: "38px 1.2fr 1fr 1fr .9fr .8fr .9fr" }}
+        >
+          <div>
+            <Checkbox
+              checked={rows.length > 0 && picked.size === rows.length}
+              onChange={toggleAll}
+              aria-label="Выделить все"
+            />
+          </div>
+          <div>Лид</div>
+          <div>Источник</div>
+          <div>Оператор</div>
+          <div>Статус</div>
+          <div className="text-right">Звонки</div>
+          <div className="text-right">Колбэк</div>
+        </div>
+
+        {leads.isLoading ? (
+          <div className="text-center text-muted py-16 text-[13px]">Загрузка…</div>
+        ) : rows.length === 0 ? (
+          <div className="text-center text-muted py-16 text-[13px]">Лидов пока нет</div>
+        ) : (
+          <div>
+            {rows.map((lead, i) => {
+              const isPicked = picked.has(lead.id);
+              const cbAt = (lead as unknown as { callback_at?: string }).callback_at;
+              const overdue = isCallbackOverdue(cbAt);
+              const calls = (lead as unknown as { calls_count?: number }).calls_count ?? 0;
+              const source = (lead as unknown as { source_name?: string }).source_name ?? "—";
+              return (
+                <div
+                  key={lead.id}
+                  onClick={() => togglePick(lead.id)}
+                  className="nf-row animate-nfFadeUp"
+                  style={{
+                    gridTemplateColumns: "38px 1.2fr 1fr 1fr .9fr .8fr .9fr",
+                    animationDelay: `${0.02 + i * 0.035}s`,
+                    background: isPicked ? "var(--faint)" : undefined,
+                  }}
+                >
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <Checkbox checked={isPicked} onChange={() => togglePick(lead.id)} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 font-medium truncate">
+                      {lead.needs_review && (
+                        <AlertTriangle
+                          className="w-3.5 h-3.5 shrink-0"
+                          style={{ color: "var(--accent)" }}
+                        />
+                      )}
+                      {lead.full_name || <span className="text-muted">—</span>}
+                    </div>
+                    <div className="text-[12px] text-muted truncate">
+                      {lead.phone || (
+                        <span style={{ color: "var(--danger)" }}>{lead.phone_raw || "нет телефона"}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-muted truncate">{source}</div>
+                  <div className="truncate">
+                    {lead.operator_name || (
+                      <span className="text-muted">не назначен</span>
+                    )}
+                  </div>
+                  <div>
+                    <StatusBadge tone={lead.status === "needs_review" ? "hot" : "neutral"}>
+                      {LEAD_STATUS_LABEL[lead.status as LeadStatus] ?? lead.status}
+                    </StatusBadge>
+                  </div>
+                  <div className="text-right text-muted tabular-nums">{calls}</div>
+                  <div
+                    className="text-right tabular-nums text-[12.5px]"
+                    style={overdue ? { color: "var(--accent)", fontWeight: 600 } : undefined}
+                  >
+                    {cbAt ? fmtCallback(cbAt) : <span className="text-muted">—</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <div className="flex justify-center">
+        <Paginator
+          page={page}
+          total={totalCount}
+          pageSize={PAGE_SIZE}
+          onChange={(p) => setFilter("page", p > 1 ? p : null)}
+        />
+      </div>
+
+      <AssignModal
+        open={assignOpen}
+        onClose={() => setAssignOpen(false)}
+        pickedIds={Array.from(picked)}
+        operators={operators.data || []}
+        onDone={() => {
+          setAssignOpen(false);
+          setPicked(new Set());
+          qc.invalidateQueries({ queryKey: ["leads"] });
+          toast.success("Оператор назначен");
+        }}
+      />
     </div>
   );
 }
 
-function ReassignModal({
-  lead,
-  operators,
+function AssignModal({
+  open,
   onClose,
+  pickedIds,
+  operators,
   onDone,
 }: {
-  lead: Lead;
-  operators: Operator[];
+  open: boolean;
   onClose: () => void;
+  pickedIds: number[];
+  operators: Operator[];
   onDone: () => void;
 }) {
-  const [opId, setOpId] = useState<string>(String(lead.operator || operators[0]?.id || ""));
+  const [opId, setOpId] = useState<string>("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setOpId(operators[0]?.id ? String(operators[0].id) : "");
+      setReason("");
+      setError("");
+    }
+  }, [open, operators]);
 
   const mut = useMutation({
     mutationFn: async () => {
       if (!opId) throw new Error("Выберите оператора");
-      await api.post(`/leads/${lead.id}/reassign/`, {
-        operator_id: Number(opId),
-        reason,
-      });
+      const opNum = Number(opId);
+      // Sequential — matches existing single-lead reassign endpoint.
+      for (const id of pickedIds) {
+        await api.post(`/leads/${id}/reassign/`, { operator_id: opNum, reason });
+      }
     },
     onSuccess: onDone,
-    onError: (err: unknown) => setError(apiErrorMessage(err)),
+    onError: (err) => setError(apiErrorMessage(err)),
   });
 
   return (
-    <Modal
-      open={true}
-      title={`Переназначить: ${lead.full_name || lead.phone}`}
-      onClose={onClose}
-    >
-      <label className="label">Оператор</label>
-      <select
-        className="input"
-        value={opId}
-        onChange={(e) => setOpId(e.target.value)}
-      >
-        {operators.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.full_name}
-          </option>
-        ))}
-      </select>
-      <label className="label mt-3">Причина</label>
-      <input
-        className="input"
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        placeholder="Например: alias «Sevara» → Sevara Karimova"
-      />
-      {error && <div className="text-sm text-rose-600 mt-2">{error}</div>}
-      <div className="mt-4 flex gap-2 justify-end">
-        <button className="btn-ghost" onClick={onClose}>
-          Отмена
-        </button>
-        <button
-          className="btn-primary"
-          onClick={() => mut.mutate()}
-          disabled={mut.isPending}
-        >
-          {mut.isPending ? "Сохраняем…" : "Переназначить"}
-        </button>
+    <Modal open={open} onClose={onClose} width={480}>
+      <div className="p-7">
+        <div className="text-[18px] font-semibold tracking-tight">
+          Назначить оператора · {pickedIds.length}
+        </div>
+        <p className="text-[13px] text-muted mt-1">
+          {pickedIds.length === 1
+            ? "Один лид будет переназначен"
+            : `${pickedIds.length} лидов будут переназначены`}
+        </p>
+
+        <div className="mt-6 flex flex-col gap-4">
+          <div>
+            <div className="nf-col mb-1.5">Оператор</div>
+            <select
+              className="nf-input"
+              value={opId}
+              onChange={(e) => setOpId(e.target.value)}
+            >
+              {operators.map((o) => (
+                <option key={o.id} value={o.id}>{o.full_name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <div className="nf-col mb-1.5">Причина (необязательно)</div>
+            <input
+              className="nf-input"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Например: alias «Sevara» → Sevara Karimova"
+            />
+          </div>
+          {error && (
+            <div
+              className="text-[13px] rounded-xl px-3.5 py-2.5"
+              style={{
+                background: "rgba(220,60,40,.08)",
+                color: "var(--danger)",
+                border: "1px solid rgba(220,60,40,.2)",
+              }}
+            >
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-7 flex gap-2 justify-end">
+          <Button variant="ghost" onClick={onClose}>Отмена</Button>
+          <Button onClick={() => mut.mutate()} disabled={mut.isPending || !opId}>
+            {mut.isPending ? "Сохраняем…" : "Назначить"}
+          </Button>
+        </div>
       </div>
     </Modal>
   );

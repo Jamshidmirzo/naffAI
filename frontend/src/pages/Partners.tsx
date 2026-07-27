@@ -2,11 +2,21 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { api } from "../lib/api";
+import { Button, Modal, StatusBadge, toast } from "../components/ui";
+import { usePageHeader } from "../store/page";
+
+interface Partner {
+  id: number;
+  name: string;
+  is_active: boolean;
+}
 
 export default function Partners() {
   const qc = useQueryClient();
   const [show, setShow] = useState(false);
   const [name, setName] = useState("");
+
+  usePageHeader({ title: "Партнёры", subtitle: "Каналы продаж" });
 
   const list = useQuery({
     queryKey: ["partners"],
@@ -14,12 +24,14 @@ export default function Partners() {
   });
 
   const create = useMutation({
-    mutationFn: (body: { name: string; is_active: boolean }) => api.post("/channels/", body),
+    mutationFn: (body: { name: string; is_active: boolean }) =>
+      api.post("/channels/", body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["partners"] });
       qc.invalidateQueries({ queryKey: ["partners-list"] });
       setShow(false);
       setName("");
+      toast.success("Партнёр добавлен");
     },
   });
 
@@ -32,82 +44,96 @@ export default function Partners() {
     },
   });
 
+  const rows: Partner[] = list.data?.results || [];
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Партнёры</h1>
-        <button className="btn-primary" onClick={() => setShow(true)}>
-          <Plus className="w-4 h-4" /> Добавить
-        </button>
+    <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
+      <div className="flex items-center justify-between animate-nfFadeUp">
+        <div className="text-[13px] text-muted">Всего: {rows.length}</div>
+        <Button onClick={() => setShow(true)}>
+          <Plus className="w-3.5 h-3.5" /> Добавить
+        </Button>
       </div>
 
-      <div className="card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 dark:bg-slate-900 text-xs uppercase text-gray-600 dark:text-slate-400">
-            <tr>
-              <th className="px-4 py-2 text-left">Название</th>
-              <th className="px-4 py-2 text-left">Статус</th>
-              <th className="px-4 py-2 text-right">Действие</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(list.data?.results || []).map((p: any) => (
-              <tr key={p.id} className="border-t border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/40">
-                <td className="px-4 py-2">{p.name}</td>
-                <td className="px-4 py-2">
-                  <span
-                    className={`badge ${
-                      p.is_active ? "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300" : "bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400"
-                    }`}
-                  >
+      <section className="nf-card overflow-hidden">
+        <div
+          className="grid gap-2 px-6 pt-5 pb-3 nf-col"
+          style={{ gridTemplateColumns: "1.4fr .6fr .6fr" }}
+        >
+          <div>Название</div>
+          <div>Статус</div>
+          <div className="text-right">Действие</div>
+        </div>
+        {rows.length === 0 ? (
+          <div className="text-center text-muted py-12 text-[13px]">
+            Партнёров пока нет
+          </div>
+        ) : (
+          <div>
+            {rows.map((p, i) => (
+              <div
+                key={p.id}
+                className="nf-row animate-nfFadeUp"
+                style={{
+                  gridTemplateColumns: "1.4fr .6fr .6fr",
+                  animationDelay: `${0.02 + i * 0.035}s`,
+                  cursor: "default",
+                }}
+              >
+                <div className="font-medium">{p.name}</div>
+                <div>
+                  <StatusBadge tone={p.is_active ? "hot" : "neutral"}>
                     {p.is_active ? "активен" : "выключен"}
-                  </span>
-                </td>
-                <td className="px-4 py-2 text-right">
+                  </StatusBadge>
+                </div>
+                <div className="text-right">
                   <button
-                    className="btn-ghost text-xs"
-                    onClick={() => toggle.mutate({ id: p.id, is_active: !p.is_active })}
+                    className="nf-btn nf-btn--ghost"
+                    style={{ padding: "7px 14px", fontSize: 12.5 }}
+                    onClick={() =>
+                      toggle.mutate({ id: p.id, is_active: !p.is_active })
+                    }
                   >
                     {p.is_active ? "Выключить" : "Включить"}
                   </button>
-                </td>
-              </tr>
+                </div>
+              </div>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        )}
+      </section>
 
-      {show && (
-        <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!name.trim()) return;
-              create.mutate({ name: name.trim(), is_active: true });
-            }}
-            className="card p-6 w-full max-w-md space-y-4"
-          >
-            <h2 className="text-lg font-semibold">Новый партнёр</h2>
-            <div>
-              <label className="label">Название</label>
-              <input
-                className="input"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Alif / Uzum / Hamroh / TBC / Cash …"
-                autoFocus
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <button type="button" className="btn-ghost" onClick={() => setShow(false)}>
-                Отмена
-              </button>
-              <button className="btn-primary">Сохранить</button>
-            </div>
-          </form>
-        </div>
-      )}
+      <Modal open={show} onClose={() => setShow(false)} width={440}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!name.trim()) return;
+            create.mutate({ name: name.trim(), is_active: true });
+          }}
+          className="p-7"
+        >
+          <div className="text-[18px] font-semibold tracking-tight">Новый партнёр</div>
+          <div className="mt-5">
+            <div className="nf-col mb-1.5">Название</div>
+            <input
+              className="nf-input"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Alif / Uzum / Hamroh / TBC / Cash…"
+              autoFocus
+            />
+          </div>
+          <div className="mt-6 flex gap-2 justify-end">
+            <Button variant="ghost" type="button" onClick={() => setShow(false)}>
+              Отмена
+            </Button>
+            <Button type="submit" disabled={create.isPending || !name.trim()}>
+              {create.isPending ? "Сохраняем…" : "Сохранить"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

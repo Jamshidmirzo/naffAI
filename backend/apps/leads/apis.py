@@ -16,6 +16,7 @@ from rest_framework.views import APIView
 
 from apps.common.exceptions import ApplicationError
 from apps.common.validators import normalize_uz_phone
+from apps.operators.selectors import operator_get
 from apps.users.permissions import (
     IsAuthenticatedAnyRole,
     IsOperator,
@@ -39,7 +40,9 @@ from .selectors import (
 from .services import (
     lead_convert_to_sale,
     lead_create,
+    lead_postpone,
     lead_reassign,
+    lead_unpostpone,
     lead_update_status,
     operator_alias_upsert,
     sheet_source_upsert,
@@ -53,6 +56,9 @@ class LeadSerializer(serializers.ModelSerializer):
     operator_name = serializers.CharField(source="operator.full_name", read_only=True)
     sheet_source_name = serializers.CharField(
         source="sheet_source.name", read_only=True, default=None
+    )
+    postponed_by_name = serializers.CharField(
+        source="postponed_by.full_name", read_only=True, default=None
     )
 
     class Meta:
@@ -74,6 +80,10 @@ class LeadSerializer(serializers.ModelSerializer):
             "sheet_source_name",
             "sheet_row_index",
             "metadata",
+            "postponed_at",
+            "postponed_by",
+            "postponed_by_name",
+            "postpone_reason",
             "created_at",
             "updated_at",
         ]
@@ -82,6 +92,10 @@ class LeadSerializer(serializers.ModelSerializer):
             "phone_invalid",
             "operator_name",
             "sheet_source_name",
+            "postponed_at",
+            "postponed_by",
+            "postponed_by_name",
+            "postpone_reason",
             "created_at",
             "updated_at",
         ]
@@ -240,7 +254,22 @@ class LeadMyListApi(APIView):
             return Response({"detail": "Оператор не найден"}, status=404)
 
         include_archived = request.query_params.get("include_archived") in ("1", "true")
-        qs = leads_for_operator(operator, include_archived=include_archived)
+        view = request.query_params.get("view", "active")
+        if view not in ("active", "postponed", "all"):
+            return Response(
+                {"detail": "view must be one of: active, postponed, all"}, status=400
+            )
+
+        qs = leads_for_operator(
+            operator, include_archived=include_archived, view=view
+        )
+        active_count = leads_for_operator(
+            operator, include_archived=include_archived, view="active"
+        ).count()
+        postponed_count = leads_for_operator(
+            operator, include_archived=include_archived, view="postponed"
+        ).count()
+
         return Response(
             {
                 "operator": {
@@ -249,9 +278,76 @@ class LeadMyListApi(APIView):
                     "status": operator.status,
                     "blocked": operator_is_blocked_by_overdue_callbacks(operator),
                 },
+                "counts": {"active": active_count, "postponed": postponed_count},
                 "results": LeadSerializer(qs, many=True).data,
             }
         )
+
+
+class LeadPostponeInputSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=280, required=False, allow_blank=True, default="")
+
+
+class LeadPostponeApi(APIView):
+    """Operator postpones one of their own leads to the 'later' bucket."""
+
+    permission_classes = [IsOperator]
+
+    def post(self, request, pk: int):
+        op_id = _operator_for_request(request)
+        if not op_id:
+            return Response({"detail": "У пользователя не привязан оператор"}, status=400)
+        operator = operator_get(op_id)
+        if not operator:
+            return Response({"detail": "Оператор не найден"}, status=404)
+
+        lead = lead_get(pk)
+        if not lead:
+            return Response({"detail": "Лид не найден"}, status=404)
+        if lead.operator_id != operator.id:
+            return Response({"detail": "Можно откладывать только свои лиды"}, status=403)
+
+        ser = LeadPostponeInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        try:
+            lead = lead_postpone(
+                lead=lead,
+                operator=operator,
+                reason=ser.validated_data.get("reason", ""),
+                user=request.user,
+            )
+        except ApplicationError as exc:
+            return Response({"detail": str(exc)}, status=400)
+
+        return Response(LeadSerializer(lead).data)
+
+
+class LeadUnpostponeApi(APIView):
+    """Operator returns a postponed lead back to the active queue."""
+
+    permission_classes = [IsOperator]
+
+    def post(self, request, pk: int):
+        op_id = _operator_for_request(request)
+        if not op_id:
+            return Response({"detail": "У пользователя не привязан оператор"}, status=400)
+        operator = operator_get(op_id)
+        if not operator:
+            return Response({"detail": "Оператор не найден"}, status=404)
+
+        lead = lead_get(pk)
+        if not lead:
+            return Response({"detail": "Лид не найден"}, status=404)
+        if lead.operator_id != operator.id:
+            return Response({"detail": "Можно возвращать только свои лиды"}, status=403)
+
+        try:
+            lead = lead_unpostpone(lead=lead, operator=operator, user=request.user)
+        except ApplicationError as exc:
+            return Response({"detail": str(exc)}, status=400)
+
+        return Response(LeadSerializer(lead).data)
 
 
 class LeadReassignApi(APIView):

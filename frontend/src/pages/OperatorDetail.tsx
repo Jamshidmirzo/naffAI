@@ -1,12 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, BookOpen, Eye, EyeOff, ChevronRight, Target, History, AlertTriangle } from "lucide-react";
+import { AlertTriangle, ChevronRight, Copy, Download, Eye, EyeOff, History, KeyRound, MessageCircle, QrCode, RefreshCw, ShieldOff, ShieldCheck, Target, Trash2, UserPlus } from "lucide-react";
 import { api } from "../lib/api";
-import { Modal } from "../components/Modal";
 import { useAuth } from "../store/auth";
 import AttendanceStatsCard from "../components/AttendanceStatsCard";
-import { toast } from "sonner";
 import { formatNumber, formatUZS } from "../lib/format";
 import {
   buildPeriodParams,
@@ -14,10 +12,10 @@ import {
   type MonthChoice,
   type Period,
 } from "../lib/period";
-import KpiCard from "../components/KpiCard";
 import MonthPicker from "../components/MonthPicker";
 import NumericInput from "../components/NumericInput";
 import ProgressBar from "../components/ProgressBar";
+import TgDialogsPanel from "../components/TgDialogsPanel";
 import {
   Bar,
   BarChart,
@@ -27,9 +25,21 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import TgDialogsPanel from "../components/TgDialogsPanel";
+import {
+  Button,
+  Chip,
+  Eyebrow,
+  Modal,
+  PhoneInput,
+  StatusBadge,
+  TabPill,
+  normalizeUzPhone,
+  toast,
+  type TabItem,
+} from "../components/ui";
+import { usePageHeader } from "../store/page";
 
-const PERIOD_OPTIONS: { value: Period; label: string }[] = [
+const PERIOD_TABS: TabItem<Period>[] = [
   { value: "day", label: "День" },
   { value: "week", label: "Неделя" },
   { value: "month", label: "Месяц" },
@@ -41,50 +51,91 @@ const STATUS_LABEL: Record<string, string> = {
   inactive: "Неактивен",
 };
 
-const STATUS_BADGE: Record<string, string> = {
-  active:
-    "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300",
-  trainee: "bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300",
-  inactive: "bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400",
-};
+function initials(name: string) {
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0])
+      .join("")
+      .toUpperCase() || "?"
+  );
+}
+
+function toneForStatus(s: string): "hot" | "neutral" {
+  return s === "active" ? "hot" : "neutral";
+}
+
+interface AttendanceLog {
+  id: number;
+  checked_in_at: string;
+  checked_out_at: string | null;
+  duration_min: number | null;
+  was_late: boolean;
+  source: "qr" | "tg" | "manual";
+  auto_closed: boolean;
+  manually_closed?: boolean;
+  manually_closed_by_name?: string;
+  manual_close_note?: string;
+}
+
+interface AccountState {
+  has_account: boolean;
+  is_active: boolean;
+  deleted: boolean;
+  username: string | null;
+}
+
+interface OperatorDetail {
+  id: number;
+  full_name: string;
+  phone: string;
+  personal_phone: string;
+  status: string;
+  hired_at: string | null;
+  account: AccountState;
+}
+
+interface Lesson {
+  id: number;
+  lesson_date: string;
+  micro_lesson: string;
+  summary: string;
+  opened_at: string | null;
+}
 
 export default function OperatorDetail() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const role = useAuth((s) => s.role);
-  const isTeamLead = role === "team_lead";
+  const isManager = role === "manager";
+
   const [period, setPeriod] = useState<Period>("month");
   const [choice, setChoice] = useState<MonthChoice>({ kind: "all" });
   const [editPlan, setEditPlan] = useState(false);
   const [planInput, setPlanInput] = useState("");
   const [selectedLessonDate, setSelectedLessonDate] = useState<string | null>(null);
+  const [closingLog, setClosingLog] = useState<{ id: number; name: string } | null>(null);
+  const [closeNote, setCloseNote] = useState("");
+  const [credsModal, setCredsModal] = useState<{
+    kind: "created" | "reset" | "view";
+    username: string;
+    password: string;
+  } | null>(null);
+  const [confirmDeleteAcc, setConfirmDeleteAcc] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [qrVer, setQrVer] = useState(0); // cache-buster on rotate
+  const [editPhones, setEditPhones] = useState(false);
+  const [phoneWork, setPhoneWork] = useState("");
+  const [phonePersonal, setPhonePersonal] = useState("");
 
-  const lessonsQ = useQuery({
-    queryKey: ["operator-lessons", id],
-    queryFn: () =>
-      api.get<any[]>(`/lessons/history/?operator=${id}&limit=7`).then((r) => r.data),
-    enabled: role === "team_lead" || role === "manager",
-  });
-
-  const lessonDetailQ = useQuery({
-    queryKey: ["operator-lesson-detail", id, selectedLessonDate],
-    queryFn: () =>
-      api
-        .get<any>(`/lessons/?operator=${id}&date=${selectedLessonDate}`)
-        .then((r) => r.data),
-    enabled: !!selectedLessonDate,
-  });
-
-  // Hide the day/week/month tabs whenever the choice is not "current" — the
-  // tabs only steer the ?period= param, and any of the other three variants
-  // (all / specific month / arbitrary range) already sends a full window.
   const isSpecific = choice.kind !== "current";
   const params = buildPeriodParams(period, choice);
   const paramKey = JSON.stringify(params);
   const title = periodTitle(period, choice);
   const titleLower = title.toLowerCase();
 
-  // Derive which year/month the plan should reflect based on the selected period
   const today = new Date();
   const planYear = choice.kind === "specific" ? choice.year : today.getFullYear();
   const planMonth = choice.kind === "specific" ? choice.month : today.getMonth() + 1;
@@ -92,742 +143,1387 @@ export default function OperatorDetail() {
   const stats = useQuery({
     queryKey: ["operator-stats", id, paramKey],
     queryFn: () =>
-      api
-        .get(`/operators/${id}/stats/`, { params })
-        .then((r) => r.data),
+      api.get(`/operators/${id}/stats/`, { params }).then((r) => r.data),
     enabled: !!id,
+  });
+
+  const detail = useQuery<OperatorDetail>({
+    queryKey: ["operator-detail", id],
+    queryFn: () =>
+      api.get<OperatorDetail>(`/operators/${id}/`).then((r) => r.data),
+    enabled: !!id,
+  });
+  const account: AccountState = detail.data?.account ?? {
+    has_account: false,
+    is_active: false,
+    deleted: false,
+    username: null,
+  };
+
+  const invalidateAccount = () =>
+    qc.invalidateQueries({ queryKey: ["operator-detail", id] });
+
+  type CredsResponse = { username: string; password: string };
+
+  const createAccountMut = useMutation({
+    mutationFn: () =>
+      api
+        .post<CredsResponse>(`/operators/${id}/account/`, {})
+        .then((r) => r.data),
+    onSuccess: (data) => {
+      invalidateAccount();
+      setCredsModal({
+        kind: "created",
+        username: data.username,
+        password: data.password,
+      });
+      toast.success("Учётка создана");
+    },
+    onError: () => toast.error("Не удалось создать учётку"),
+  });
+
+  const resetPasswordMut = useMutation({
+    mutationFn: () =>
+      api
+        .post<CredsResponse>(`/operators/${id}/account/reset-password/`, {})
+        .then((r) => r.data),
+    onSuccess: (data) => {
+      invalidateAccount();
+      setCredsModal({
+        kind: "reset",
+        username: data.username,
+        password: data.password,
+      });
+      toast.success("Пароль сгенерирован заново");
+    },
+    onError: () => toast.error("Не удалось сбросить пароль"),
+  });
+
+  const viewPasswordMut = useMutation({
+    mutationFn: () =>
+      api
+        .get<CredsResponse>(`/operators/${id}/account/password/`)
+        .then((r) => r.data),
+    onSuccess: (data) => {
+      setCredsModal({
+        kind: "view",
+        username: data.username,
+        password: data.password,
+      });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(msg || "Не удалось получить пароль");
+    },
+  });
+
+  const toggleActiveMut = useMutation({
+    mutationFn: () => {
+      const url = account.is_active
+        ? `/operators/${id}/account/deactivate/`
+        : `/operators/${id}/account/activate/`;
+      return api.post(url);
+    },
+    onSuccess: () => {
+      invalidateAccount();
+      toast.success(account.is_active ? "Учётка деактивирована" : "Учётка активирована");
+    },
+    onError: () => toast.error("Не удалось изменить статус"),
+  });
+
+  const deleteAccountMut = useMutation({
+    mutationFn: () => api.post(`/operators/${id}/account/delete/`),
+    onSuccess: () => {
+      invalidateAccount();
+      setConfirmDeleteAcc(false);
+      toast.success("Учётка удалена");
+    },
+    onError: () => toast.error("Не удалось удалить учётку"),
+  });
+
+  const savePhonesMut = useMutation({
+    mutationFn: (payload: { phone: string; personal_phone: string }) =>
+      api.patch(`/operators/${id}/`, payload),
+    onSuccess: () => {
+      invalidateAccount();
+      qc.invalidateQueries({ queryKey: ["operator-stats", id] });
+      setEditPhones(false);
+      toast.success("Телефоны обновлены");
+    },
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { detail?: string; phone?: string[] } } })
+          ?.response?.data?.detail ||
+        (err as { response?: { data?: { phone?: string[] } } })
+          ?.response?.data?.phone?.[0] ||
+        "Не удалось сохранить";
+      toast.error(msg);
+    },
+  });
+
+  const openEditPhones = () => {
+    setPhoneWork(detail.data?.phone ?? "");
+    setPhonePersonal(detail.data?.personal_phone ?? "");
+    setEditPhones(true);
+  };
+
+  const rotateQrMut = useMutation({
+    mutationFn: () => api.post(`/attendance/operators/${id}/qr/rotate/`),
+    onSuccess: () => {
+      setQrVer((v) => v + 1);
+      qrPngQ.refetch();
+      toast.success("QR обновлён — старый больше не работает");
+    },
+    onError: () => toast.error("Не удалось обновить QR"),
+  });
+
+  const qrPngQ = useQuery({
+    queryKey: ["operator-qr-png", id, qrVer],
+    queryFn: async () => {
+      const r = await api.get<Blob>(`/attendance/operators/${id}/qr.png`, {
+        responseType: "blob",
+      });
+      return URL.createObjectURL(r.data);
+    },
+    enabled: !!id && qrOpen,
+    staleTime: Infinity,
   });
 
   const planQuery = useQuery({
     queryKey: ["operator-plan", id, planYear, planMonth],
     queryFn: () =>
-      api.get(`/operators/${id}/plan/`, { params: { year: planYear, month: planMonth } }).then((r) => r.data),
+      api
+        .get(`/operators/${id}/plan/`, { params: { year: planYear, month: planMonth } })
+        .then((r) => r.data),
     enabled: !!id,
   });
-  const dateFrom30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+  const dateFrom30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split("T")[0];
   const dateToToday = new Date().toISOString().split("T")[0];
 
   const attendanceReportQ = useQuery({
     queryKey: ["operator-attendance-report", id],
     queryFn: () =>
       api
-        .get(`/attendance/report/?date_from=${dateFrom30}&date_to=${dateToToday}&operator=${id}`)
+        .get(
+          `/attendance/report/?date_from=${dateFrom30}&date_to=${dateToToday}&operator=${id}`,
+        )
         .then((r) => r.data),
-    enabled: !!id && (role === "team_lead" || role === "manager"),
+    enabled: !!id && isManager,
   });
 
-  const attendanceLogsQ = useQuery({
+  const attendanceLogsQ = useQuery<AttendanceLog[]>({
     queryKey: ["operator-attendance-logs", id],
     queryFn: () =>
-      api
-        .get(`/attendance/operators/${id}/logs/`)
-        .then((r) => r.data),
-    enabled: !!id && (role === "team_lead" || role === "manager"),
+      api.get(`/attendance/operators/${id}/logs/`).then((r) => r.data),
+    enabled: !!id && isManager,
   });
 
-  const [closingLog, setClosingLog] = useState<{ id: number; name: string } | null>(null);
-  const [closeNote, setCloseNote] = useState("");
+  const lessonsQ = useQuery<Lesson[]>({
+    queryKey: ["operator-lessons", id],
+    queryFn: () =>
+      api
+        .get<Lesson[]>(`/lessons/history/?operator=${id}&limit=7`)
+        .then((r) => r.data),
+    enabled: isManager,
+  });
+
+  const lessonDetailQ = useQuery({
+    queryKey: ["operator-lesson-detail", id, selectedLessonDate],
+    queryFn: () =>
+      api
+        .get(`/lessons/?operator=${id}&date=${selectedLessonDate}`)
+        .then((r) => r.data),
+    enabled: !!selectedLessonDate,
+  });
+
+  const setPlanMut = useMutation({
+    mutationFn: (target_amount: string) =>
+      api.put(`/operators/${id}/plan/`, {
+        target_amount,
+        year: planYear,
+        month: planMonth,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["operator-plan", id, planYear, planMonth] });
+      setEditPlan(false);
+      toast.success("План обновлён");
+    },
+    onError: () => toast.error("Не удалось сохранить план"),
+  });
 
   const handleCloseSubmit = async () => {
     if (!closingLog) return;
     try {
       await api.post(`/attendance/logs/${closingLog.id}/close/`, { note: closeNote });
-      toast.success("Смена успешно закрыта");
+      toast.success("Смена закрыта");
       setClosingLog(null);
       setCloseNote("");
       attendanceLogsQ.refetch();
       attendanceReportQ.refetch();
-    } catch (err) {
+    } catch {
       toast.error("Не удалось закрыть смену");
     }
   };
-  const setPlanMut = useMutation({
-    mutationFn: (target_amount: string) =>
-      api.put(`/operators/${id}/plan/`, { target_amount, year: planYear, month: planMonth }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["operator-plan", id, planYear, planMonth] });
-      setEditPlan(false);
-    },
-  });
-
-  if (!id) return null;
 
   const s = stats.data;
 
+  const headerTitle = s?.operator?.full_name || "Оператор";
+  const headerSubtitle = [s?.operator?.phone, s?.operator?.hired_at ? `с ${new Date(s.operator.hired_at).toLocaleDateString("ru-RU")}` : null]
+    .filter(Boolean)
+    .join(" · ");
+
+  usePageHeader(
+    { title: headerTitle, subtitle: headerSubtitle, back: "/operators" },
+    [headerTitle, headerSubtitle],
+  );
+
+  const avg = useMemo(() => {
+    const total = Number(s?.totals?.total || 0);
+    const count = Number(s?.totals?.count || 0);
+    return count > 0 ? total / count : 0;
+  }, [s?.totals?.total, s?.totals?.count]);
+
+  if (!id) return null;
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Link
-            to="/operators"
-            className="text-gray-500 hover:text-gray-800 dark:text-slate-400 dark:hover:text-slate-100"
-            aria-label="Назад к списку операторов"
+    <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
+      {/* --- HERO --- */}
+      <section
+        className="nf-card animate-nfFadeUp"
+        style={{ padding: "24px 28px" }}
+      >
+        <div className="flex flex-wrap items-start gap-5">
+          <div
+            className="grid place-items-center text-white font-semibold text-[18px] shrink-0"
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 16,
+              background: "var(--accent-grad)",
+            }}
           >
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {s?.operator?.full_name || "Оператор"}
-            </h1>
-            <div className="flex items-center gap-2 mt-1">
+            {initials(s?.operator?.full_name || "?")}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div
+                className="font-semibold tracking-tight"
+                style={{ fontSize: 19, letterSpacing: "-0.02em" }}
+              >
+                {s?.operator?.full_name || "Оператор"}
+              </div>
               {s?.operator?.status && (
-                <span
-                  className={`badge ${STATUS_BADGE[s.operator.status] || ""}`}
-                >
+                <StatusBadge tone={toneForStatus(s.operator.status)}>
                   {STATUS_LABEL[s.operator.status] || s.operator.status}
+                </StatusBadge>
+              )}
+            </div>
+            <div className="text-[13px] mt-1 flex items-center gap-2 flex-wrap">
+              {detail.data?.phone ? (
+                <span className="text-muted">
+                  <span className="text-[11px] uppercase font-semibold mr-1" style={{ letterSpacing: ".05em" }}>
+                    рабочий:
+                  </span>
+                  <span className="font-mono text-text">{detail.data.phone}</span>
+                </span>
+              ) : (
+                <button
+                  onClick={openEditPhones}
+                  className="nf-btn"
+                  style={{
+                    padding: "4px 12px",
+                    fontSize: 12,
+                    background: "rgba(242,86,11,.12)",
+                    color: "var(--accent)",
+                  }}
+                >
+                  + добавить рабочий телефон
+                </button>
+              )}
+              {detail.data?.personal_phone && (
+                <span className="text-muted">
+                  ·{" "}
+                  <span className="text-[11px] uppercase font-semibold mr-1" style={{ letterSpacing: ".05em" }}>
+                    личный:
+                  </span>
+                  <span className="font-mono text-text">{detail.data.personal_phone}</span>
                 </span>
               )}
-              {s?.operator?.phone && (
-                <span className="text-sm text-gray-600 dark:text-slate-400">
-                  {s.operator.phone}
-                </span>
+              {isManager && detail.data?.phone && (
+                <button
+                  onClick={openEditPhones}
+                  className="text-[12px] text-muted hover:text-text transition underline underline-offset-2"
+                >
+                  редактировать
+                </button>
               )}
               {s?.operator?.hired_at && (
-                <span className="text-sm text-gray-500 dark:text-slate-500">
+                <span className="text-muted">
                   · с {new Date(s.operator.hired_at).toLocaleDateString("ru-RU")}
                 </span>
               )}
             </div>
             {(planQuery.data?.achievements?.length ?? 0) > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {planQuery.data.achievements.map((b: any) => (
-                  <span
-                    key={b.slug}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30"
-                  >
-                    {b.emoji} {b.label}
-                  </span>
-                ))}
+              <div className="flex flex-wrap gap-1.5 mt-3">
+                {planQuery.data.achievements.map(
+                  (b: { slug: string; emoji: string; label: string }) => (
+                    <span
+                      key={b.slug}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11.5px] font-semibold"
+                      style={{
+                        background: "rgba(242,86,11,.12)",
+                        color: "var(--accent)",
+                      }}
+                    >
+                      {b.emoji} {b.label}
+                    </span>
+                  ),
+                )}
               </div>
             )}
           </div>
+          <div className="flex gap-2 flex-wrap">
+            {isManager && (
+              <>
+                <Button>Назначить стикер</Button>
+                <Button variant="secondary" onClick={() => setQrOpen(true)}>
+                  <QrCode className="w-3.5 h-3.5" /> QR для входа
+                </Button>
+              </>
+            )}
+            <Button variant="ghost">
+              <MessageCircle className="w-3.5 h-3.5" /> Telegram
+            </Button>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {!isSpecific && (
+        {/* 3 stat tiles */}
+        <div
+          className="mt-5 grid gap-[13px]"
+          style={{ gridTemplateColumns: "repeat(3, 1fr)" }}
+        >
+          <div className="nf-tile" style={{ padding: "16px 18px" }}>
+            <div className="text-[12px] text-muted">Сумма · {titleLower}</div>
             <div
-              role="tablist"
-              aria-label="Период"
-              className="inline-flex rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1"
+              className="mt-1 font-semibold tabular-nums"
+              style={{ fontSize: 24, letterSpacing: "-0.025em" }}
             >
-              {PERIOD_OPTIONS.map((opt) => {
-                const active = period === opt.value;
-                return (
-                  <button
-                    key={opt.value}
-                    role="tab"
-                    aria-selected={active}
-                    onClick={() => setPeriod(opt.value)}
-                    className={
-                      "px-3 py-1.5 text-sm rounded-md transition-colors " +
-                      (active
-                        ? "bg-blue-600 text-white shadow-sm"
-                        : "text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800")
-                    }
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
+              {formatUZS(s?.totals?.total || 0)}
             </div>
-          )}
-          <MonthPicker value={choice} onChange={setChoice} />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <KpiCard
-          label={`Сумма · ${titleLower}`}
-          value={formatUZS(s?.totals?.total || 0)}
-          sub={`${formatNumber(s?.totals?.count || 0)} продаж`}
-        />
-        <KpiCard
-          label="Средний чек"
-          value={
-            s && s.totals?.count > 0
-              ? formatUZS(Number(s.totals.total) / s.totals.count)
-              : formatUZS(0)
-          }
-          sub="Кредитованная сумма ÷ кол-во"
-        />
-        <div className="card p-5 flex flex-col gap-4">
-          {/* Зарплата */}
-          {s?.payroll ? (
-            <div>
-              <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">
-                Зарплата · этот месяц
-              </div>
-              <div className="mt-2 text-2xl font-semibold text-gray-900 dark:text-slate-100">
-                {formatUZS(s.payroll.payout)}
-              </div>
-              <div className="mt-3">
-                <div className="flex justify-between text-xs text-gray-600 dark:text-slate-400 mb-1">
-                  <span>
-                    {formatUZS(s.payroll.total_sales)} / {formatUZS(s.payroll.threshold)}
-                  </span>
-                  <span>{s.payroll.progress_percent}%</span>
-                </div>
-                <ProgressBar value={s.payroll.progress_percent} />
-              </div>
-              {s.payroll.threshold_reached && (
-                <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
-                  Порог достигнут — формула: {s.payroll.payout_type} · {s.payroll.payout_value}
-                </div>
-              )}
+            <div className="text-[11.5px] text-muted mt-1 tabular-nums">
+              {formatNumber(s?.totals?.count || 0)} продаж
             </div>
-          ) : (
-            <div>
-              <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Зарплата · этот месяц</div>
-              <div className="mt-2 text-2xl font-semibold text-gray-400 dark:text-slate-500">—</div>
-              <div className="text-xs text-gray-400 dark:text-slate-500 mt-1">Правило не настроено</div>
+          </div>
+          <div className="nf-tile" style={{ padding: "16px 18px" }}>
+            <div className="text-[12px] text-muted">Средний чек</div>
+            <div
+              className="mt-1 font-semibold tabular-nums"
+              style={{ fontSize: 24, letterSpacing: "-0.025em" }}
+            >
+              {formatUZS(avg)}
             </div>
-          )}
-
-          {/* Разделитель */}
-          <div className="border-t border-gray-100 dark:border-slate-800" />
-
-          {/* План на месяц */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">
-                План · {new Date(planYear, planMonth - 1).toLocaleString("ru-RU", { month: "long", year: "numeric" })}
-              </div>
-              {isTeamLead && !editPlan && (
-                <button
-                  className="btn-ghost text-xs py-0.5 px-2"
-                  onClick={() => {
-                    setEditPlan(true);
-                    setPlanInput(
-                      planQuery.data?.target
-                        ? String(Math.round(Number(planQuery.data.target)))
-                        : ""
-                    );
-                  }}
-                >
-                  {planQuery.data?.target ? "Изменить" : "Установить"}
-                </button>
-              )}
+            <div className="text-[11.5px] text-muted mt-1">
+              Сумма ÷ кол-во
             </div>
-
+          </div>
+          <div className="nf-tile" style={{ padding: "16px 18px" }}>
+            <div className="text-[12px] text-muted">
+              План · {new Date(planYear, planMonth - 1).toLocaleString("ru-RU", { month: "long" })}
+            </div>
             {editPlan ? (
-              <div className="flex items-center gap-2">
+              <div className="mt-1 flex items-center gap-2">
                 <NumericInput
-                  className="input flex-1 text-sm py-1"
+                  className="nf-input flex-1 !py-2 !text-[13px]"
                   value={planInput}
                   onChange={setPlanInput}
                   placeholder="Цель в сумах"
                   autoFocus
                 />
                 <button
-                  className="btn-primary text-xs py-1 px-3"
+                  className="text-[12px] font-semibold px-3 py-1.5 rounded-full text-white"
+                  style={{ background: "var(--accent-grad)" }}
                   disabled={!planInput || setPlanMut.isPending}
                   onClick={() => setPlanMut.mutate(planInput)}
                 >
                   {setPlanMut.isPending ? "…" : "OK"}
                 </button>
-                <button className="btn-ghost text-xs py-1" onClick={() => setEditPlan(false)}>
+                <button
+                  className="text-[12px] px-2 py-1.5 rounded-full text-muted hover:text-text"
+                  onClick={() => setEditPlan(false)}
+                >
                   ✕
                 </button>
               </div>
             ) : planQuery.data?.target ? (
-              <div>
-                <div className="flex justify-between text-xs text-gray-600 dark:text-slate-400 mb-1">
-                  <span>{formatUZS(Number(planQuery.data.actual))}</span>
-                  <span className="font-semibold">{planQuery.data.percent}%</span>
+              <>
+                <div
+                  className="mt-1 font-semibold tabular-nums"
+                  style={{ fontSize: 24, letterSpacing: "-0.025em" }}
+                >
+                  {planQuery.data.percent}%
                 </div>
-                <ProgressBar value={planQuery.data.percent} />
-                <div className="text-xs text-gray-400 dark:text-slate-500 mt-1">
-                  из {formatUZS(Number(planQuery.data.target))}
+                <div className="mt-1.5">
+                  <ProgressBar value={planQuery.data.percent} />
                 </div>
-              </div>
+                <div className="text-[11.5px] text-muted mt-1.5 tabular-nums">
+                  {formatUZS(Number(planQuery.data.actual))} из{" "}
+                  {formatUZS(Number(planQuery.data.target))}
+                  {isManager && (
+                    <button
+                      className="ml-2 text-[11.5px]"
+                      style={{ color: "var(--accent)" }}
+                      onClick={() => {
+                        setEditPlan(true);
+                        setPlanInput(String(Math.round(Number(planQuery.data.target))));
+                      }}
+                    >
+                      изменить
+                    </button>
+                  )}
+                </div>
+              </>
             ) : (
-              <div className="text-xs text-gray-400 dark:text-slate-500">
-                {planQuery.isLoading ? "Загрузка…" : "Не установлен"}
-                {isTeamLead && !planQuery.isLoading && (
-                  <span className="ml-1 text-blue-500 cursor-pointer hover:underline"
-                    onClick={() => { setEditPlan(true); setPlanInput(""); }}>
-                    — задать
-                  </span>
+              <div className="mt-1 text-muted text-[13px]">
+                Не установлен
+                {isManager && (
+                  <button
+                    className="ml-2 text-[13px]"
+                    style={{ color: "var(--accent)" }}
+                    onClick={() => {
+                      setEditPlan(true);
+                      setPlanInput("");
+                    }}
+                  >
+                    задать
+                  </button>
                 )}
               </div>
             )}
           </div>
         </div>
-      </div>
 
-      <div className="card p-5">
-        <div className="text-sm font-medium mb-4">
+        {/* Salary block if available */}
+        {s?.payroll && (
+          <div
+            className="mt-4 nf-tile flex items-center flex-wrap gap-4"
+            style={{ padding: "14px 18px" }}
+          >
+            <div className="flex-1 min-w-[220px]">
+              <div className="text-[11.5px] text-muted uppercase tracking-wide">
+                Зарплата · этот месяц
+              </div>
+              <div className="mt-1 flex items-baseline gap-3">
+                <div
+                  className="font-semibold tabular-nums"
+                  style={{ fontSize: 22, letterSpacing: "-0.025em" }}
+                >
+                  {formatUZS(s.payroll.payout)}
+                </div>
+                {s.payroll.threshold_reached && (
+                  <span
+                    className="text-[11.5px] font-semibold"
+                    style={{ color: "var(--accent)" }}
+                  >
+                    порог достигнут
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex-1 min-w-[220px]">
+              <div className="flex justify-between text-[11.5px] text-muted mb-1">
+                <span className="tabular-nums">
+                  {formatUZS(s.payroll.total_sales)} / {formatUZS(s.payroll.threshold)}
+                </span>
+                <span className="tabular-nums">{s.payroll.progress_percent}%</span>
+              </div>
+              <ProgressBar value={s.payroll.progress_percent} />
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* --- ACCOUNT / LOGIN --- */}
+      {isManager && (
+        <section
+          className="nf-card p-6 animate-nfFadeUp"
+          style={{ animationDelay: "0.04s" }}
+        >
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <div className="text-[15px] font-semibold tracking-tight flex items-center gap-2">
+                <KeyRound className="w-4 h-4" style={{ color: "var(--accent)" }} />
+                Учётная запись оператора
+              </div>
+              <div className="text-[13px] text-muted mt-1">
+                {account.has_account
+                  ? "Оператор может входить в веб-панель по этим креденшелам."
+                  : "У оператора пока нет логина. Создайте — сгенерируется пароль."}
+              </div>
+            </div>
+            {account.has_account && (
+              <StatusBadge tone={account.is_active ? "hot" : "neutral"}>
+                {account.deleted
+                  ? "удалена"
+                  : account.is_active
+                    ? "активна"
+                    : "деактивирована"}
+              </StatusBadge>
+            )}
+          </div>
+
+          {!account.has_account ? (
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              {!detail.data?.phone && (
+                <div
+                  className="text-[12.5px] rounded-xl px-3.5 py-2.5 w-full"
+                  style={{
+                    background: "rgba(242,86,11,.1)",
+                    color: "var(--accent)",
+                    border: "1px solid rgba(242,86,11,.25)",
+                  }}
+                >
+                  Сначала укажите рабочий телефон — он нужен для логина и подключения Telegram.
+                </div>
+              )}
+              <Button
+                onClick={() =>
+                  detail.data?.phone ? createAccountMut.mutate() : openEditPhones()
+                }
+                disabled={createAccountMut.isPending}
+              >
+                <UserPlus className="w-4 h-4" />
+                {createAccountMut.isPending
+                  ? "Создаём…"
+                  : detail.data?.phone
+                    ? "Создать учётку"
+                    : "Указать телефон"}
+              </Button>
+              <span className="text-[12px] text-muted">
+                Пароль будет сгенерирован автоматически, покажем один раз.
+              </span>
+            </div>
+          ) : (
+            <div className="mt-5 flex flex-col gap-4">
+              <div
+                className="nf-tile flex items-center justify-between flex-wrap gap-3"
+                style={{ padding: "14px 18px" }}
+              >
+                <div>
+                  <div className="text-[11px] text-muted uppercase tracking-wide font-semibold">
+                    Логин
+                  </div>
+                  <div className="mt-1 text-[15px] font-semibold font-mono tabular-nums">
+                    {account.username}
+                  </div>
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => viewPasswordMut.mutate()}
+                  disabled={viewPasswordMut.isPending || account.deleted}
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  {viewPasswordMut.isPending ? "…" : "Показать пароль"}
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => resetPasswordMut.mutate()}
+                  disabled={resetPasswordMut.isPending || account.deleted}
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  {resetPasswordMut.isPending ? "…" : "Сгенерировать новый пароль"}
+                </Button>
+                {!account.deleted && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => toggleActiveMut.mutate()}
+                    disabled={toggleActiveMut.isPending}
+                  >
+                    {account.is_active ? (
+                      <>
+                        <ShieldOff className="w-3.5 h-3.5" /> Деактивировать
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="w-3.5 h-3.5" /> Активировать
+                      </>
+                    )}
+                  </Button>
+                )}
+                {!account.deleted && (
+                  <Button
+                    variant="danger"
+                    onClick={() => setConfirmDeleteAcc(true)}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Удалить учётку
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* --- PERIOD FILTER --- */}
+      <section className="flex flex-wrap items-center gap-3">
+        {!isSpecific && (
+          <TabPill value={period} onChange={setPeriod} items={PERIOD_TABS} />
+        )}
+        <MonthPicker value={choice} onChange={setChoice} />
+      </section>
+
+      {/* --- SALES CHART --- */}
+      <section className="nf-card p-6">
+        <div className="text-[15px] font-semibold tracking-tight mb-4">
           Продажи по дням · {titleLower}
         </div>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart
-            data={(s?.by_day || []).map((r: any) => ({
+            data={(s?.by_day || []).map((r: { day: string; total: string | number; count: number }) => ({
               day: r.day,
               total: Number(r.total),
               count: r.count,
             }))}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
-            <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--faint)" />
+            <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--muted)" }} />
+            <YAxis tick={{ fontSize: 11, fill: "var(--muted)" }} />
             <Tooltip
-              formatter={(v: any, name: any) =>
+              formatter={(v: number, name: string) =>
                 name === "total" ? formatUZS(v) : formatNumber(v)
               }
               labelFormatter={(l) => `Дата: ${l}`}
+              contentStyle={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 12,
+                fontSize: 12,
+              }}
             />
-            <Bar dataKey="total" fill="#2563EB" radius={[6, 6, 0, 0]} />
+            <Bar dataKey="total" fill="var(--accent)" radius={[6, 6, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
         {(s?.by_day || []).length === 0 && !stats.isLoading && (
-          <div className="text-center text-sm text-gray-500 dark:text-slate-400 py-4">
+          <div className="text-center text-[13px] text-muted py-4">
             Нет продаж за период
           </div>
         )}
-      </div>
+      </section>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="card overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-200 dark:border-slate-800 text-sm font-medium">
+      {/* --- BY MODEL + BY PARTNER --- */}
+      <section className="grid gap-[13px] md:grid-cols-2">
+        <div className="nf-card overflow-hidden">
+          <div className="px-6 pt-5 pb-3 text-[15px] font-semibold tracking-tight">
             По моделям
           </div>
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-slate-900 text-xs uppercase text-gray-600 dark:text-slate-400">
-              <tr>
-                <th className="px-4 py-2 text-left">Модель</th>
-                <th className="px-4 py-2 text-right">Кол-во</th>
-                <th className="px-4 py-2 text-right">Сумма</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(s?.by_model || []).length === 0 && (
-                <tr>
-                  <td
-                    colSpan={3}
-                    className="px-4 py-6 text-center text-gray-500 dark:text-slate-400"
-                  >
-                    Нет данных за период
-                  </td>
-                </tr>
-              )}
-              {(s?.by_model || []).map((r: any, i: number) => (
-                <tr
+          <div
+            className="grid gap-2 px-6 pb-3 nf-col"
+            style={{ gridTemplateColumns: "1.4fr .5fr .8fr" }}
+          >
+            <div>Модель</div>
+            <div className="text-right">Кол-во</div>
+            <div className="text-right">Сумма</div>
+          </div>
+          {(s?.by_model || []).length === 0 ? (
+            <div className="text-center text-muted py-8 text-[13px]">
+              Нет данных
+            </div>
+          ) : (
+            (s?.by_model || []).map(
+              (r: { phone_model: string; count: number; total: number | string }, i: number) => (
+                <div
                   key={i}
-                  className="border-t border-gray-100 dark:border-slate-800"
+                  className="nf-row"
+                  style={{
+                    gridTemplateColumns: "1.4fr .5fr .8fr",
+                    cursor: "default",
+                  }}
                 >
-                  <td className="px-4 py-2">{r.phone_model}</td>
-                  <td className="px-4 py-2 text-right">{formatNumber(r.count)}</td>
-                  <td className="px-4 py-2 text-right">{formatUZS(r.total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  <div className="truncate">{r.phone_model}</div>
+                  <div className="text-right tabular-nums text-muted">
+                    {formatNumber(r.count)}
+                  </div>
+                  <div className="text-right tabular-nums font-medium">
+                    {formatUZS(r.total)}
+                  </div>
+                </div>
+              ),
+            )
+          )}
         </div>
 
-        <div className="card overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-200 dark:border-slate-800 text-sm font-medium">
+        <div className="nf-card overflow-hidden">
+          <div className="px-6 pt-5 pb-3 text-[15px] font-semibold tracking-tight">
             По партнёрам
           </div>
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-slate-900 text-xs uppercase text-gray-600 dark:text-slate-400">
-              <tr>
-                <th className="px-4 py-2 text-left">Партнёр</th>
-                <th className="px-4 py-2 text-right">Кол-во</th>
-                <th className="px-4 py-2 text-right">Сумма</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(s?.by_partner || []).length === 0 && (
-                <tr>
-                  <td
-                    colSpan={3}
-                    className="px-4 py-6 text-center text-gray-500 dark:text-slate-400"
-                  >
-                    Нет данных за период
-                  </td>
-                </tr>
-              )}
-              {(s?.by_partner || []).map((r: any) => (
-                <tr
+          <div
+            className="grid gap-2 px-6 pb-3 nf-col"
+            style={{ gridTemplateColumns: "1.4fr .5fr .8fr" }}
+          >
+            <div>Партнёр</div>
+            <div className="text-right">Кол-во</div>
+            <div className="text-right">Сумма</div>
+          </div>
+          {(s?.by_partner || []).length === 0 ? (
+            <div className="text-center text-muted py-8 text-[13px]">
+              Нет данных
+            </div>
+          ) : (
+            (s?.by_partner || []).map(
+              (r: {
+                partner_id: number;
+                partner_name: string;
+                count: number;
+                total: number | string;
+              }) => (
+                <div
                   key={r.partner_id}
-                  className="border-t border-gray-100 dark:border-slate-800"
+                  className="nf-row"
+                  style={{
+                    gridTemplateColumns: "1.4fr .5fr .8fr",
+                    cursor: "default",
+                  }}
                 >
-                  <td className="px-4 py-2">{r.partner_name}</td>
-                  <td className="px-4 py-2 text-right">{formatNumber(r.count)}</td>
-                  <td className="px-4 py-2 text-right">{formatUZS(r.total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  <div className="truncate">{r.partner_name}</div>
+                  <div className="text-right tabular-nums text-muted">
+                    {formatNumber(r.count)}
+                  </div>
+                  <div className="text-right tabular-nums font-medium">
+                    {formatUZS(r.total)}
+                  </div>
+                </div>
+              ),
+            )
+          )}
         </div>
-      </div>
+      </section>
 
-      {/* Посещаемость (Сводка + Логи) */}
-      {(role === "team_lead" || role === "manager") && (
-        <div className="space-y-6 mt-6">
-          <div className="card p-5">
-            <h3 className="text-base font-semibold mb-4 text-gray-900 dark:text-slate-100 flex items-center gap-2">
-              <History className="w-5 h-5 text-gray-500" />
-              Посещаемость за последние 30 дней
-            </h3>
-            {attendanceReportQ.isLoading && <div className="text-center py-6 text-gray-500">Загрузка сводки...</div>}
+      {/* --- ATTENDANCE (manager) --- */}
+      {isManager && (
+        <>
+          <section className="nf-card p-6">
+            <div className="text-[15px] font-semibold tracking-tight mb-4 flex items-center gap-2">
+              <History className="w-4 h-4 text-muted" />
+              Посещаемость · 30 дней
+            </div>
+            {attendanceReportQ.isLoading && (
+              <div className="text-center py-6 text-muted text-[13px]">Загрузка…</div>
+            )}
             {!attendanceReportQ.isLoading && attendanceReportQ.data?.rows?.[0] && (
               <AttendanceStatsCard stats={attendanceReportQ.data.rows[0]} />
             )}
-          </div>
+          </section>
 
-          <div className="card overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-200 dark:border-slate-800 text-sm font-medium flex items-center justify-between">
-              <span>История смен</span>
+          <section className="nf-card overflow-hidden">
+            <div className="px-6 pt-5 pb-3 text-[15px] font-semibold tracking-tight">
+              История смен
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 dark:bg-slate-900 text-xs uppercase text-gray-600 dark:text-slate-400">
-                  <tr>
-                    <th className="px-5 py-3 text-left">Дата</th>
-                    <th className="px-5 py-3 text-left">Пришёл</th>
-                    <th className="px-5 py-3 text-left">Ушёл</th>
-                    <th className="px-5 py-3 text-left">Длительность</th>
-                    <th className="px-5 py-3 text-center">Опоздание</th>
-                    <th className="px-5 py-3 text-center">Канал</th>
-                    <th className="px-5 py-3 text-center">Статус</th>
-                    <th className="px-5 py-3 text-center">Действия</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-150 dark:divide-slate-800">
-                  {attendanceLogsQ.isLoading && (
-                    <tr>
-                      <td colSpan={8} className="px-5 py-6 text-center text-gray-500">
-                        Загрузка истории смен...
-                      </td>
-                    </tr>
-                  )}
-                  {!attendanceLogsQ.isLoading && (!attendanceLogsQ.data || attendanceLogsQ.data.length === 0) && (
-                    <tr>
-                      <td colSpan={8} className="px-5 py-6 text-center text-gray-500">
-                        Нет записей о сменах
-                      </td>
-                    </tr>
-                  )}
-                  {attendanceLogsQ.data?.map((l: any) => (
-                    <tr key={l.id} className="hover:bg-gray-50 dark:hover:bg-slate-800/40">
-                      <td className="px-5 py-3.5 font-medium whitespace-nowrap">
-                        {new Date(l.checked_in_at).toLocaleDateString("ru-RU")}
-                      </td>
-                      <td className="px-5 py-3.5 whitespace-nowrap">
-                        {new Date(l.checked_in_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
-                      </td>
-                      <td className="px-5 py-3.5 whitespace-nowrap">
-                        {l.checked_out_at
-                          ? new Date(l.checked_out_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
-                          : "-"}
-                      </td>
-                      <td className="px-5 py-3.5 whitespace-nowrap">
-                        {l.duration_min !== null ? `${l.duration_min} мин` : "-"}
-                      </td>
-                      <td className="px-5 py-3.5 text-center">
-                        {l.was_late ? (
-                          <span className="text-red-600 dark:text-red-400 font-semibold inline-flex items-center gap-0.5">
-                            <AlertTriangle className="w-3.5 h-3.5" /> Да
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </td>
-                      <td className="px-5 py-3.5 text-center">
-                        {l.source === "tg" ? (
-                          <span className="px-2 py-0.5 text-xs font-semibold bg-cyan-50 text-cyan-600 dark:bg-cyan-950/20 dark:text-cyan-400 rounded-full">
-                            TG
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 text-xs font-semibold bg-gray-50 text-gray-500 rounded-full">
-                            QR
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-5 py-3.5 text-center">
-                        {l.checked_out_at ? (
-                          l.manually_closed ? (
-                            <span
-                              className="px-2 py-0.5 text-xs font-semibold bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400 rounded-full cursor-help"
-                              title={l.manual_close_note ? `Примечание: ${l.manual_close_note}` : `Закрыл: ${l.manually_closed_by_name}`}
-                            >
-                              TL: {l.manually_closed_by_name}
-                            </span>
-                          ) : l.auto_closed ? (
-                            <span className="px-2 py-0.5 text-xs font-semibold bg-amber-50 text-amber-600 dark:bg-amber-950/20 dark:text-amber-400 rounded-full">
-                              Авто-закрыто в 23:00
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 text-xs font-semibold bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 rounded-full">
-                              Успешно
-                            </span>
-                          )
-                        ) : (
-                          <span className="px-2 py-0.5 text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 rounded-full">
-                            на смене
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-5 py-3.5 text-center">
-                        {!l.checked_out_at && !l.auto_closed && (
-                          <button
-                            onClick={() => setClosingLog({ id: l.id, name: stats.data?.full_name || "Оператор" })}
-                            className="px-2.5 py-1 text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 rounded transition"
-                          >
-                            Закрыть смену
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div
+              className="grid gap-2 px-6 pb-3 nf-col"
+              style={{ gridTemplateColumns: "1fr .8fr .8fr .8fr .6fr .5fr 1fr .7fr" }}
+            >
+              <div>Дата</div>
+              <div>Пришёл</div>
+              <div>Ушёл</div>
+              <div>Длит.</div>
+              <div className="text-center">Опозд.</div>
+              <div className="text-center">Канал</div>
+              <div className="text-center">Статус</div>
+              <div className="text-right">Действия</div>
             </div>
-          </div>
-        </div>
+
+            {attendanceLogsQ.isLoading && (
+              <div className="text-center text-muted py-8 text-[13px]">
+                Загрузка…
+              </div>
+            )}
+            {!attendanceLogsQ.isLoading && !attendanceLogsQ.data?.length && (
+              <div className="text-center text-muted py-8 text-[13px]">
+                Нет записей о сменах
+              </div>
+            )}
+            {attendanceLogsQ.data?.map((l, i) => (
+              <div
+                key={l.id}
+                className="nf-row"
+                style={{
+                  gridTemplateColumns: "1fr .8fr .8fr .8fr .6fr .5fr 1fr .7fr",
+                  cursor: "default",
+                  animationDelay: `${0.02 + i * 0.03}s`,
+                }}
+              >
+                <div className="font-medium tabular-nums">
+                  {new Date(l.checked_in_at).toLocaleDateString("ru-RU")}
+                </div>
+                <div className="text-muted tabular-nums">
+                  {new Date(l.checked_in_at).toLocaleTimeString("ru-RU", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </div>
+                <div className="text-muted tabular-nums">
+                  {l.checked_out_at
+                    ? new Date(l.checked_out_at).toLocaleTimeString("ru-RU", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "—"}
+                </div>
+                <div className="text-muted tabular-nums">
+                  {l.duration_min !== null ? `${l.duration_min} мин` : "—"}
+                </div>
+                <div className="text-center">
+                  {l.was_late ? (
+                    <span
+                      style={{ color: "var(--accent)" }}
+                      className="inline-flex items-center gap-0.5 text-[12px] font-semibold"
+                    >
+                      <AlertTriangle className="w-3 h-3" /> да
+                    </span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
+                </div>
+                <div className="text-center text-[11px] uppercase text-muted tracking-wide">
+                  {l.source}
+                </div>
+                <div className="text-center">
+                  {l.checked_out_at ? (
+                    l.manually_closed ? (
+                      <StatusBadge>TL: {l.manually_closed_by_name}</StatusBadge>
+                    ) : l.auto_closed ? (
+                      <StatusBadge tone="hot">Авто 23:00</StatusBadge>
+                    ) : (
+                      <StatusBadge>успешно</StatusBadge>
+                    )
+                  ) : (
+                    <StatusBadge tone="hot">на смене</StatusBadge>
+                  )}
+                </div>
+                <div className="text-right">
+                  {!l.checked_out_at && !l.auto_closed && (
+                    <button
+                      onClick={() =>
+                        setClosingLog({
+                          id: l.id,
+                          name: s?.operator?.full_name || "Оператор",
+                        })
+                      }
+                      className="text-[12px] font-semibold px-2.5 py-1.5 rounded-full"
+                      style={{
+                        background: "rgba(220,60,40,.1)",
+                        color: "var(--danger)",
+                      }}
+                    >
+                      Закрыть
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </section>
+        </>
       )}
 
-      {/* TG Dialogs */}
-      {(role === 'team_lead' || role === 'manager') && (
-        <div className="card overflow-hidden mt-6">
-          <div className="px-5 py-4 border-b border-gray-200 dark:border-slate-800 text-sm font-medium">
+      {/* --- TG DIALOGS --- */}
+      {isManager && (
+        <section className="nf-card overflow-hidden">
+          <div className="px-6 pt-5 pb-3 text-[15px] font-semibold tracking-tight">
             TG-диалоги с клиентами
           </div>
           <TgDialogsPanel operatorId={Number(id)} />
-        </div>
+        </section>
       )}
 
-      {/* Обучение (последние 7 разборов) */}
-      {(role === "team_lead" || role === "manager") && (
-        <div className="card overflow-hidden mt-6">
-          <div className="px-5 py-4 border-b border-gray-200 dark:border-slate-800 text-sm font-medium flex items-center justify-between">
-            <span>Обучение (последние 7 разборов)</span>
+      {/* --- LESSONS --- */}
+      {isManager && (
+        <section className="nf-card overflow-hidden">
+          <div className="px-6 pt-5 pb-3 flex items-center justify-between">
+            <div className="text-[15px] font-semibold tracking-tight">
+              Обучение · последние 7 разборов
+            </div>
             <Link
               to={`/lessons/history?operator=${id}`}
-              className="text-xs text-blue-600 hover:underline font-semibold"
+              className="text-[12.5px] font-semibold"
+              style={{ color: "var(--accent)" }}
             >
               Вся история
             </Link>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-slate-900 text-xs uppercase text-gray-600 dark:text-slate-400">
-                <tr>
-                  <th className="px-5 py-3 text-left">Дата</th>
-                  <th className="px-5 py-3 text-left">Фокус дня</th>
-                  <th className="px-5 py-3 text-left">Резюме разбора</th>
-                  <th className="px-5 py-3 text-center">Просмотрен</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-150 dark:divide-slate-800">
-                {lessonsQ.isLoading && (
-                  <tr>
-                    <td colSpan={4} className="px-5 py-6 text-center text-gray-500">
-                      Загрузка разборов...
-                    </td>
-                  </tr>
-                )}
-                {!lessonsQ.isLoading && (!lessonsQ.data || lessonsQ.data.length === 0) && (
-                  <tr>
-                    <td colSpan={4} className="px-5 py-6 text-center text-gray-500">
-                      Разборов пока нет
-                    </td>
-                  </tr>
-                )}
-                {lessonsQ.data?.map((lesson: any) => (
-                  <tr
-                    key={lesson.id}
-                    onClick={() => setSelectedLessonDate(lesson.lesson_date)}
-                    className="cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/40 transition"
-                  >
-                    <td className="px-5 py-3 whitespace-nowrap font-medium">
-                      {new Date(lesson.lesson_date).toLocaleDateString("ru-RU", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </td>
-                    <td className="px-5 py-3 font-semibold text-gray-900 dark:text-slate-200">
-                      {lesson.micro_lesson}
-                    </td>
-                    <td className="px-5 py-3 text-gray-500 dark:text-slate-400 max-w-sm truncate">
-                      {lesson.summary}
-                    </td>
-                    <td className="px-5 py-3 text-center">
-                      <span className="inline-flex justify-center">
-                        {lesson.opened_at ? (
-                          <span title={`Открыт: ${new Date(lesson.opened_at).toLocaleDateString()}`}><Eye className="w-4 h-4 text-emerald-600" /></span>
-                        ) : (
-                          <span title="Не открыт оператором"><EyeOff className="w-4 h-4 text-gray-400" /></span>
-                        )}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div
+            className="grid gap-2 px-6 pb-3 nf-col"
+            style={{ gridTemplateColumns: "160px 1fr 1.4fr 80px" }}
+          >
+            <div>Дата</div>
+            <div>Фокус дня</div>
+            <div>Резюме</div>
+            <div className="text-center">Прочит.</div>
           </div>
-        </div>
+          {lessonsQ.isLoading && (
+            <div className="text-center text-muted py-8 text-[13px]">
+              Загрузка…
+            </div>
+          )}
+          {!lessonsQ.isLoading && !lessonsQ.data?.length && (
+            <div className="text-center text-muted py-8 text-[13px]">
+              Разборов пока нет
+            </div>
+          )}
+          {lessonsQ.data?.map((l, i) => (
+            <div
+              key={l.id}
+              onClick={() => setSelectedLessonDate(l.lesson_date)}
+              className="nf-row"
+              style={{
+                gridTemplateColumns: "160px 1fr 1.4fr 80px",
+                animationDelay: `${0.02 + i * 0.03}s`,
+              }}
+            >
+              <div className="font-medium tabular-nums">
+                {new Date(l.lesson_date).toLocaleDateString("ru-RU", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })}
+              </div>
+              <div className="truncate font-medium">{l.micro_lesson}</div>
+              <div className="text-muted truncate">{l.summary}</div>
+              <div className="text-center">
+                {l.opened_at ? (
+                  <Eye className="w-4 h-4 inline" style={{ color: "var(--accent)" }} />
+                ) : (
+                  <EyeOff className="w-4 h-4 inline text-muted" />
+                )}
+              </div>
+            </div>
+          ))}
+        </section>
       )}
 
-      {/* Lesson Detail Modal */}
+      {/* --- Lesson detail modal --- */}
       <Modal
         open={!!selectedLessonDate}
         onClose={() => setSelectedLessonDate(null)}
-        title={
-          selectedLessonDate
-            ? `ИИ-разбор за ${new Date(selectedLessonDate).toLocaleDateString("ru-RU", {
+        width={780}
+      >
+        <div className="p-7">
+          <Eyebrow>ИИ-разбор</Eyebrow>
+          <div
+            className="mt-2 font-semibold"
+            style={{ fontSize: 24, letterSpacing: "-0.025em" }}
+          >
+            {selectedLessonDate &&
+              new Date(selectedLessonDate).toLocaleDateString("ru-RU", {
                 day: "numeric",
                 month: "long",
                 year: "numeric",
-              })}`
-            : ""
-        }
-        widthClass="max-w-4xl"
-      >
-        {lessonDetailQ.isLoading && <div className="text-center py-8 text-gray-500">Загрузка деталей...</div>}
-        {!lessonDetailQ.isLoading && lessonDetailQ.data && (
-          <div className="space-y-6 max-h-[80vh] overflow-y-auto pr-2">
-            <div className="flex items-start gap-3 bg-blue-50 dark:bg-slate-800/50 rounded-xl p-4 border border-blue-100 dark:border-slate-800">
-              <Target className="w-6 h-6 text-blue-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <div className="text-xs uppercase tracking-wider text-blue-800 dark:text-blue-400 font-semibold font-mono">
-                  Фокус на этот день:
-                </div>
-                <div className="text-sm font-semibold text-gray-900 dark:text-slate-100 mt-0.5">
-                  {lessonDetailQ.data.micro_lesson}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="bg-gray-50 dark:bg-slate-800/30 p-3 rounded-lg text-center">
-                <div className="text-[10px] uppercase text-gray-500">Продажи</div>
-                <div className="text-lg font-semibold mt-1">
-                  {lessonDetailQ.data.stats_snapshot?.sales_count || 0} шт
-                </div>
-              </div>
-              <div className="bg-gray-50 dark:bg-slate-800/30 p-3 rounded-lg text-center">
-                <div className="text-[10px] uppercase text-gray-500">Сумма</div>
-                <div className="text-lg font-semibold mt-1">
-                  {formatUZS(lessonDetailQ.data.stats_snapshot?.revenue_uzs || 0)}
-                </div>
-              </div>
-              <div className="bg-gray-50 dark:bg-slate-800/30 p-3 rounded-lg text-center">
-                <div className="text-[10px] uppercase text-gray-500">Диалоги</div>
-                <div className="text-lg font-semibold mt-1">
-                  {lessonDetailQ.data.stats_snapshot?.dialogs_count || 0}
-                </div>
-              </div>
-              <div className="bg-gray-50 dark:bg-slate-800/30 p-3 rounded-lg text-center">
-                <div className="text-[10px] uppercase text-gray-500">Качество</div>
-                <div className="text-lg font-semibold mt-1">
-                  {lessonDetailQ.data.stats_snapshot?.avg_quality ? Math.round(lessonDetailQ.data.stats_snapshot.avg_quality) : 0}/100
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500">Итог дня</h3>
-              <p className="text-sm text-gray-800 dark:text-slate-200 leading-relaxed font-medium">
-                {lessonDetailQ.data.summary}
-              </p>
-            </div>
-
-            {lessonDetailQ.data.highlights && lessonDetailQ.data.highlights.length > 0 && (
-              <div className="space-y-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-emerald-800 dark:text-emerald-400">
-                  Что было сильно
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {lessonDetailQ.data.highlights.map((hl: any, i: number) => (
-                    <div
-                      key={i}
-                      className="bg-emerald-50/20 dark:bg-emerald-950/5 border border-emerald-100 dark:border-emerald-900/10 rounded-lg p-3 space-y-1"
-                    >
-                      <div className="font-semibold text-xs text-emerald-950 dark:text-emerald-300">
-                        {hl.title}
-                      </div>
-                      <div className="text-xs text-emerald-900/80 dark:text-emerald-400/80">
-                        {hl.evidence}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {lessonDetailQ.data.tips && lessonDetailQ.data.tips.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-400">
-                  Рекомендации
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {lessonDetailQ.data.tips.map((tip: any, i: number) => (
-                    <div
-                      key={i}
-                      className="bg-white dark:bg-slate-900 border border-gray-150 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between space-y-3"
-                    >
-                      <div className="space-y-2">
-                        <h4 className="font-semibold text-gray-900 dark:text-slate-100 text-xs">
-                          {tip.title}
-                        </h4>
-                        <div className="text-[11px] text-gray-500">
-                          <span className="font-semibold text-amber-800 dark:text-amber-400">Важно:</span>{" "}
-                          {tip.why}
-                        </div>
-                        <div className="bg-gray-50 dark:bg-slate-800/40 border-l-2 border-amber-300 p-2 text-[10px] italic text-gray-600 dark:text-slate-300 leading-normal font-mono">
-                          "{tip.example}"
-                        </div>
-                      </div>
-                      <div className="pt-2 border-t border-gray-100 dark:border-slate-800 text-[10px] font-semibold text-amber-900 dark:text-amber-400 flex items-center gap-1">
-                        <ChevronRight className="w-3 h-3" />
-                        Действие: {tip.action}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+              })}
           </div>
-        )}
+          {lessonDetailQ.isLoading && (
+            <div className="text-center py-8 text-muted text-[13px]">Загрузка…</div>
+          )}
+          {!lessonDetailQ.isLoading && lessonDetailQ.data && (
+            <div className="mt-6 flex flex-col gap-5">
+              <div
+                className="flex items-start gap-3 rounded-2xl p-4"
+                style={{
+                  background: "rgba(242,86,11,.08)",
+                  border: "1px solid rgba(242,86,11,.2)",
+                }}
+              >
+                <Target
+                  className="w-5 h-5 mt-0.5 flex-shrink-0"
+                  style={{ color: "var(--accent)" }}
+                />
+                <div>
+                  <div
+                    className="text-[10.5px] uppercase tracking-wide font-semibold"
+                    style={{ color: "var(--accent)" }}
+                  >
+                    Фокус
+                  </div>
+                  <div className="text-[14px] font-semibold mt-0.5">
+                    {lessonDetailQ.data.micro_lesson}
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className="grid gap-[13px]"
+                style={{ gridTemplateColumns: "repeat(4, 1fr)" }}
+              >
+                {[
+                  { label: "Продажи", value: `${lessonDetailQ.data.stats_snapshot?.sales_count || 0} шт` },
+                  { label: "Сумма", value: formatUZS(lessonDetailQ.data.stats_snapshot?.revenue_uzs || 0) },
+                  { label: "Диалоги", value: lessonDetailQ.data.stats_snapshot?.dialogs_count || 0 },
+                  {
+                    label: "Качество",
+                    value: `${lessonDetailQ.data.stats_snapshot?.avg_quality ? Math.round(lessonDetailQ.data.stats_snapshot.avg_quality) : 0}/100`,
+                  },
+                ].map((tile) => (
+                  <div
+                    key={tile.label}
+                    className="nf-tile text-center"
+                    style={{ padding: "12px 14px" }}
+                  >
+                    <div className="text-[10.5px] uppercase text-muted tracking-wide">
+                      {tile.label}
+                    </div>
+                    <div className="mt-1 font-semibold text-[16px] tabular-nums">
+                      {tile.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <Eyebrow className="mb-1.5">Итог дня</Eyebrow>
+                <p className="text-[14px] leading-relaxed">
+                  {lessonDetailQ.data.summary}
+                </p>
+              </div>
+
+              {lessonDetailQ.data.highlights?.length > 0 && (
+                <div>
+                  <Eyebrow className="mb-2">Что было сильно</Eyebrow>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {lessonDetailQ.data.highlights.map(
+                      (hl: { title: string; evidence: string }, i: number) => (
+                        <div key={i} className="nf-tile" style={{ padding: "12px 14px" }}>
+                          <div className="font-semibold text-[13px]">{hl.title}</div>
+                          <div className="text-[12px] text-muted mt-1">{hl.evidence}</div>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {lessonDetailQ.data.tips?.length > 0 && (
+                <div>
+                  <Eyebrow className="mb-2">Рекомендации</Eyebrow>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {lessonDetailQ.data.tips.map(
+                      (
+                        tip: { title: string; why: string; example: string; action: string },
+                        i: number,
+                      ) => (
+                        <div key={i} className="nf-card" style={{ padding: "14px 16px" }}>
+                          <div className="font-semibold text-[13px]">{tip.title}</div>
+                          <div className="text-[11.5px] text-muted mt-1">
+                            <span
+                              className="font-semibold"
+                              style={{ color: "var(--accent)" }}
+                            >
+                              Почему:
+                            </span>{" "}
+                            {tip.why}
+                          </div>
+                          <div
+                            className="mt-2 text-[11px] italic rounded-lg p-2"
+                            style={{ background: "var(--faint)" }}
+                          >
+                            «{tip.example}»
+                          </div>
+                          <div
+                            className="mt-2 text-[11px] font-semibold flex items-center gap-1"
+                            style={{ color: "var(--accent)" }}
+                          >
+                            <ChevronRight className="w-3 h-3" />
+                            {tip.action}
+                          </div>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </Modal>
 
-      {/* Manual close confirmation modal */}
-      {closingLog && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 max-w-md w-full rounded-2xl p-6 shadow-2xl space-y-4">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-              Закрыть смену оператора {closingLog.name}?
-            </h3>
-            <p className="text-sm text-gray-500">
-              Вы принудительно завершаете текущую открытую смену. Будет зафиксировано время ухода.
-            </p>
-            <div>
-              <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">
-                Комментарий (необязательно)
-              </label>
+      {/* --- Manual close modal --- */}
+      <Modal open={!!closingLog} onClose={() => setClosingLog(null)} width={440}>
+        {closingLog && (
+          <div className="p-7">
+            <div className="text-[18px] font-semibold tracking-tight">
+              Закрыть смену
+            </div>
+            <div className="text-[13px] text-muted mt-1">
+              {closingLog.name} — время ухода будет зафиксировано сейчас
+            </div>
+            <div className="mt-5">
+              <div className="nf-col mb-1.5">Комментарий (необязательно)</div>
               <textarea
                 value={closeNote}
                 onChange={(e) => setCloseNote(e.target.value)}
-                className="w-full border border-gray-250 dark:border-slate-800 rounded-lg p-2.5 text-sm bg-white dark:bg-slate-950"
-                placeholder="Комментарий к закрытию смены (макс. 280 символов)"
+                className="nf-input min-h-[80px]"
+                placeholder="Комментарий к закрытию смены"
                 maxLength={280}
                 rows={3}
               />
             </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <button onClick={() => setClosingLog(null)} className="btn-secondary py-2 px-4">
+            <div className="mt-6 flex gap-2 justify-end">
+              <Button variant="ghost" onClick={() => setClosingLog(null)}>
                 Отмена
-              </button>
-              <button onClick={handleCloseSubmit} className="btn-primary bg-red-600 hover:bg-red-500 py-2 px-4">
-                Закрыть
-              </button>
+              </Button>
+              <Button variant="danger" onClick={handleCloseSubmit}>
+                Закрыть смену
+              </Button>
             </div>
           </div>
+        )}
+      </Modal>
+
+      {/* --- Credentials modal (created / reset / view) --- */}
+      <Modal
+        open={!!credsModal}
+        onClose={() => setCredsModal(null)}
+        width={460}
+      >
+        {credsModal && (
+          <div className="p-7">
+            <div className="text-[18px] font-semibold tracking-tight">
+              {credsModal.kind === "created"
+                ? "Учётка создана"
+                : credsModal.kind === "reset"
+                  ? "Новый пароль"
+                  : "Данные для входа"}
+            </div>
+            {credsModal.kind !== "view" && (
+              <div
+                className="mt-3 rounded-xl px-3.5 py-2.5 text-[12.5px]"
+                style={{
+                  background: "rgba(242,86,11,.1)",
+                  color: "var(--accent)",
+                  border: "1px solid rgba(242,86,11,.25)",
+                }}
+              >
+                Сохраните пароль сейчас — больше мы его в открытом виде показывать не будем.
+              </div>
+            )}
+            <div className="mt-5 flex flex-col gap-3">
+              <div className="nf-tile flex items-center justify-between gap-3" style={{ padding: "12px 14px" }}>
+                <div className="min-w-0">
+                  <div className="text-[11px] text-muted uppercase tracking-wide font-semibold">Логин</div>
+                  <div className="mt-1 font-mono text-[14px] font-semibold tabular-nums truncate">
+                    {credsModal.username}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="nf-btn nf-btn--ghost"
+                  style={{ padding: "8px 10px" }}
+                  onClick={() => {
+                    navigator.clipboard?.writeText(credsModal.username);
+                    toast.success("Логин скопирован");
+                  }}
+                  aria-label="Копировать логин"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="nf-tile flex items-center justify-between gap-3" style={{ padding: "12px 14px" }}>
+                <div className="min-w-0">
+                  <div className="text-[11px] text-muted uppercase tracking-wide font-semibold">Пароль</div>
+                  <div className="mt-1 font-mono text-[14px] font-semibold tabular-nums truncate">
+                    {credsModal.password}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="nf-btn nf-btn--ghost"
+                  style={{ padding: "8px 10px" }}
+                  onClick={() => {
+                    navigator.clipboard?.writeText(credsModal.password);
+                    toast.success("Пароль скопирован");
+                  }}
+                  aria-label="Копировать пароль"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <Button onClick={() => setCredsModal(null)}>Готово</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* --- Phones edit modal --- */}
+      <Modal
+        open={editPhones}
+        onClose={() => setEditPhones(false)}
+        width={460}
+      >
+        <div className="p-7">
+          <div className="text-[18px] font-semibold tracking-tight">
+            Телефоны оператора
+          </div>
+          <div className="text-[13px] text-muted mt-1">
+            {s?.operator?.full_name || "Оператор"}
+          </div>
+          <div className="mt-5 flex flex-col gap-4">
+            <div>
+              <div className="nf-col mb-1.5">
+                Рабочий · для входа и Telegram
+              </div>
+              <PhoneInput
+                value={phoneWork}
+                onChange={setPhoneWork}
+                autoFocus
+                invalid={phoneWork.length > 0 && !normalizeUzPhone(phoneWork).valid}
+              />
+              <div className="text-[11.5px] text-muted mt-1">
+                Формат: 9 цифр после +998
+              </div>
+            </div>
+            <div>
+              <div className="nf-col mb-1.5">Личный · опционально</div>
+              <PhoneInput
+                value={phonePersonal}
+                onChange={setPhonePersonal}
+                invalid={
+                  phonePersonal.length > 0 && !normalizeUzPhone(phonePersonal).valid
+                }
+              />
+            </div>
+          </div>
+          <div className="mt-7 flex gap-2 justify-end">
+            <Button
+              variant="ghost"
+              onClick={() => setEditPhones(false)}
+              disabled={savePhonesMut.isPending}
+            >
+              Отмена
+            </Button>
+            <Button
+              onClick={() =>
+                savePhonesMut.mutate({
+                  phone: normalizeUzPhone(phoneWork).canonical,
+                  personal_phone: phonePersonal
+                    ? normalizeUzPhone(phonePersonal).canonical
+                    : "",
+                })
+              }
+              disabled={
+                savePhonesMut.isPending || !normalizeUzPhone(phoneWork).valid
+              }
+            >
+              {savePhonesMut.isPending ? "Сохраняем…" : "Сохранить"}
+            </Button>
+          </div>
         </div>
-      )}
+      </Modal>
+
+      {/* --- QR-code modal --- */}
+      <Modal
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+        width={420}
+      >
+        <div className="p-7 text-center">
+          <div className="text-[18px] font-semibold tracking-tight">
+            QR-код для check-in
+          </div>
+          <div className="text-[13px] text-muted mt-1">
+            {s?.operator?.full_name || "Оператор"} · сканируйте камерой телефона
+          </div>
+
+          <div className="mt-6 grid place-items-center">
+            <div
+              style={{
+                width: 260,
+                height: 260,
+                borderRadius: 24,
+                background: "#fff",
+                border: "1px solid var(--border)",
+                display: "grid",
+                placeItems: "center",
+                padding: 14,
+              }}
+            >
+              {qrPngQ.isLoading || !qrPngQ.data ? (
+                <div className="text-[12px] text-muted">Генерируем…</div>
+              ) : (
+                <img
+                  src={qrPngQ.data}
+                  alt="QR"
+                  style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                />
+              )}
+            </div>
+          </div>
+
+          <div
+            className="mt-4 text-[11.5px] text-muted rounded-xl px-3 py-2"
+            style={{ background: "var(--faint)" }}
+          >
+            Личный QR оператора. При «Сгенерировать новый» старый перестаёт работать.
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-2 justify-center">
+            <a
+              href={qrPngQ.data ?? "#"}
+              download={`naff-qr-${s?.operator?.full_name || id}.png`}
+              className={`nf-btn nf-btn--secondary ${!qrPngQ.data ? "pointer-events-none opacity-50" : ""}`}
+            >
+              <Download className="w-3.5 h-3.5" /> Скачать PNG
+            </a>
+            <Button
+              variant="ghost"
+              onClick={() => rotateQrMut.mutate()}
+              disabled={rotateQrMut.isPending}
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              {rotateQrMut.isPending ? "…" : "Сгенерировать новый"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* --- Delete-account confirm --- */}
+      <Modal
+        open={confirmDeleteAcc}
+        onClose={() => setConfirmDeleteAcc(false)}
+        width={420}
+      >
+        <div className="p-7">
+          <div className="text-[18px] font-semibold tracking-tight">
+            Удалить учётку?
+          </div>
+          <div className="text-[13px] text-muted mt-2">
+            Оператор потеряет доступ к веб-панели. Продажи, лиды и история —
+            остаются. Позже можно создать заново.
+          </div>
+          <div className="mt-6 flex gap-2 justify-end">
+            <Button
+              variant="ghost"
+              onClick={() => setConfirmDeleteAcc(false)}
+              disabled={deleteAccountMut.isPending}
+            >
+              Отмена
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => deleteAccountMut.mutate()}
+              disabled={deleteAccountMut.isPending}
+            >
+              {deleteAccountMut.isPending ? "Удаляем…" : "Удалить"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
+
+// Keep Chip import used somewhere to avoid unused warnings (used by future filters)
+void Chip;

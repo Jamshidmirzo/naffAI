@@ -331,7 +331,21 @@ def lead_reassign(
     lead.needs_review = False
     if lead.status in (LeadStatus.NEW, LeadStatus.NEEDS_REVIEW):
         lead.status = LeadStatus.ASSIGNED
-    lead.save(update_fields=["operator", "needs_review", "status", "updated_at"])
+    # New operator gets a fresh queue — clear the previous operator's postpone flag.
+    lead.postponed_at = None
+    lead.postponed_by = None
+    lead.postpone_reason = ""
+    lead.save(
+        update_fields=[
+            "operator",
+            "needs_review",
+            "status",
+            "postponed_at",
+            "postponed_by",
+            "postpone_reason",
+            "updated_at",
+        ]
+    )
     audit_log_create(
         user=user,
         action=AuditAction.UPDATE,
@@ -553,3 +567,50 @@ def sheet_source_bump_watermark(
     sheet_source.last_synced_row = last_row
     sheet_source.last_synced_at = synced_at or timezone.now()
     sheet_source.save(update_fields=["last_synced_row", "last_synced_at", "updated_at"])
+
+
+@transaction.atomic
+def lead_postpone(*, lead: Lead, operator: Operator, reason: str = "", user=None) -> Lead:
+    if lead.operator_id != operator.id:
+        raise ApplicationError("Можно откладывать только свои лиды")
+    if lead.postponed_at is not None:
+        raise ApplicationError("Лид уже отложен")
+    lead.postponed_at = timezone.now()
+    lead.postponed_by = operator
+    lead.postpone_reason = (reason or "").strip()[:280]
+    lead.save(update_fields=["postponed_at", "postponed_by", "postpone_reason", "updated_at"])
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="leads.Lead",
+        entity_id=lead.id,
+        changes={
+            "postponed_at": str(lead.postponed_at),
+            "operator_id": operator.id,
+            "reason": lead.postpone_reason,
+        },
+        comment="postponed by operator",
+    )
+    return lead
+
+
+@transaction.atomic
+def lead_unpostpone(*, lead: Lead, operator: Operator, user=None) -> Lead:
+    if lead.operator_id != operator.id:
+        raise ApplicationError("Можно возвращать только свои лиды")
+    if lead.postponed_at is None:
+        raise ApplicationError("Лид не отложен")
+    old = {"postponed_at": str(lead.postponed_at), "postponed_by_id": lead.postponed_by_id}
+    lead.postponed_at = None
+    lead.postponed_by = None
+    lead.postpone_reason = ""
+    lead.save(update_fields=["postponed_at", "postponed_by", "postpone_reason", "updated_at"])
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="leads.Lead",
+        entity_id=lead.id,
+        changes={"unpostponed": old},
+        comment="unpostponed by operator",
+    )
+    return lead

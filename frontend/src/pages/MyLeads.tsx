@@ -1,55 +1,111 @@
-/**
- * Operator workstation — /my
- *
- * Shows the operator's currently-assigned leads plus a blocked-state banner
- * when they have overdue callbacks. Each lead card exposes the primary
- * call-outcome actions in one click:
- *   [ +7 назв ] [ Позвонил ] [ TG ] [ Callback ]
- *
- * Uses `useCallbackWatcher` to raise a modal + audio cue when a reminder
- * comes due; the caller can either "Позвонить сейчас" (mark done) or
- * "+15 минут" (snooze).
- */
-
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Phone, MessageCircle, AlarmClock, CheckCircle2, Clock, PhoneMissed, XCircle } from "lucide-react";
-import { Modal } from "../components/Modal";
+import { useNavigate } from "react-router-dom";
+import {
+  Phone,
+  MessageCircle,
+  AlarmClock,
+  CheckCircle2,
+  PauseCircle,
+  PlayCircle,
+  PhoneMissed,
+  XCircle,
+  Plus,
+} from "lucide-react";
 import { Paginator } from "../components/Paginator";
 import { apiErrorMessage } from "../lib/api-types";
 import { api } from "../lib/api";
 import {
   type CallOutcome,
   type CallbackReminder,
-  LEAD_STATUS_BADGE,
   LEAD_STATUS_LABEL,
   type Lead,
+  type LeadStatus,
   TG_LINK_FALLBACK,
 } from "../lib/leads";
 import { useCallbackWatcher } from "../hooks/useCallbackWatcher";
-import { formatDate } from "../lib/format";
+import {
+  Button,
+  Eyebrow,
+  Modal,
+  StatusBadge,
+  TabPill,
+  toast,
+  type TabItem,
+} from "../components/ui";
+import { usePageHeader } from "../store/page";
+import { useT } from "../lib/i18n";
+import { GaugeScene } from "../components/three/GaugeScene";
+
+type MyLeadsView = "active" | "postponed" | "all";
 
 type MyResponse = {
   operator: { id: number; full_name: string; status: string; blocked: boolean };
+  counts: { active: number; postponed: number };
   results: Lead[];
   count?: number;
 };
 
+function fmtCallback(iso: string | null | undefined) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString("ru-RU", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
+function isOverdue(iso: string | null | undefined) {
+  if (!iso) return false;
+  try {
+    return new Date(iso).getTime() < Date.now();
+  } catch {
+    return false;
+  }
+}
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join("")
+    .toUpperCase() || "?";
+}
+
 export default function MyLeads() {
   const qc = useQueryClient();
+  const nav = useNavigate();
   const [page, setPage] = useState(1);
+  const [view, setView] = useState<MyLeadsView>("active");
+  const [postponeFor, setPostponeFor] = useState<Lead | null>(null);
+  const [scheduleFor, setScheduleFor] = useState<Lead | null>(null);
+
+  const t = useT();
+  usePageHeader({ title: t("my.title"), subtitle: t("my.subtitle") }, [t("my.title")]);
+
   const my = useQuery({
-    queryKey: ["leads-my", page],
-    queryFn: () => api.get<MyResponse>(`/leads/my/?page=${page}`).then((r) => r.data),
+    queryKey: ["leads-my", page, view],
+    queryFn: () =>
+      api.get<MyResponse>(`/leads/my/?page=${page}&view=${view}`).then((r) => r.data),
     refetchInterval: 60_000,
   });
 
-  const [callFor, setCallFor] = useState<Lead | null>(null);
-  const [scheduleFor, setScheduleFor] = useState<Lead | null>(null);
+  const unpostpone = useMutation({
+    mutationFn: (lead: Lead) => api.post(`/leads/${lead.id}/unpostpone/`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["leads-my"] }),
+  });
 
   const quickCall = useMutation({
-    mutationFn: ({ lead, outcome }: { lead: Lead; outcome: CallOutcome }) =>
-      api.post(`/leads/${lead.id}/call-attempts/`, { outcome }),
+    mutationFn: ({ lead, outcome, comment }: { lead: Lead; outcome: CallOutcome; comment?: string }) =>
+      api.post(`/leads/${lead.id}/call-attempts/`, { outcome, comment }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["leads-my"] }),
   });
 
@@ -58,257 +114,425 @@ export default function MyLeads() {
   const openTg = async (lead: Lead) => {
     if (!lead.phone) return;
     try {
-      const { data } = await api.get(`/telegram/lookup/?phone=${encodeURIComponent(lead.phone)}`);
+      const { data } = await api.get(
+        `/telegram/lookup/?phone=${encodeURIComponent(lead.phone)}`,
+      );
       if (data?.username) {
         window.open(`https://t.me/${data.username}`, "_blank", "noopener");
         return;
       }
     } catch {
-      /* 404 → fall through to phone-based deep-link */
+      /* fallthrough */
     }
     window.location.href = TG_LINK_FALLBACK(lead.phone);
   };
 
-  const refetch = () => {
-    qc.invalidateQueries({ queryKey: ["leads-my"] });
-  };
+  const refetch = () => qc.invalidateQueries({ queryKey: ["leads-my"] });
+
+  const operator = my.data?.operator;
+  const results = my.data?.results ?? [];
+  const counts = my.data?.counts ?? { active: 0, postponed: 0 };
+
+  const tabs: TabItem<MyLeadsView>[] = [
+    { value: "active", label: "Активные", count: counts.active },
+    { value: "postponed", label: "Отложенные", count: counts.postponed },
+    { value: "all", label: "Все" },
+  ];
+
+  const overdueCount = useMemo(
+    () => results.filter((l) => isOverdue((l as unknown as { callback_at?: string }).callback_at)).length,
+    [results],
+  );
+
+  const dailyPlan = 20;
+  const donePlan = counts.active + counts.postponed;
+  const planPct = Math.min(100, Math.round((donePlan / dailyPlan) * 100));
 
   if (my.isLoading) {
-    return <div className="text-gray-500">Загружаем лиды…</div>;
+    return (
+      <div className="mx-auto max-w-[960px] py-16 text-center text-muted text-[14px]">
+        Загружаем лиды…
+      </div>
+    );
   }
   if (my.isError || !my.data) {
-    return <div className="text-rose-600">Не удалось загрузить лиды</div>;
+    return (
+      <div
+        className="mx-auto max-w-[960px] text-[14px] rounded-2xl px-5 py-4"
+        style={{
+          background: "rgba(220,60,40,.08)",
+          color: "var(--danger)",
+          border: "1px solid rgba(220,60,40,.2)",
+        }}
+      >
+        Не удалось загрузить лиды
+      </div>
+    );
   }
 
-  const { operator, results } = my.data;
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Мои лиды</h1>
-          <div className="text-sm text-gray-500 dark:text-slate-400">
-            {operator.full_name} · {results.length} активных
-          </div>
-        </div>
-      </div>
-
-      {operator.blocked && (
-        <div className="rounded-lg border border-rose-300 bg-rose-50 text-rose-800 p-4 flex items-start gap-3 dark:bg-rose-500/10 dark:border-rose-500/40 dark:text-rose-200">
-          <AlarmClock className="w-5 h-5 mt-0.5 flex-shrink-0" />
-          <div>
-            <div className="font-medium">Есть просроченные callback'и</div>
-            <div className="text-sm mt-1">
-              Пока хотя бы один callback просрочен больше чем на 30 минут, новые лиды тебе не назначаются.
-              Закрой их или отложи, и распределение возобновится.
+    <div className="mx-auto max-w-[960px] flex flex-col gap-5">
+      {/* --- Overdue banner --- */}
+      {operator?.blocked && (
+        <div
+          className="rounded-[20px] px-6 py-5 flex items-center gap-4 text-white animate-nfPop"
+          style={{
+            background: "linear-gradient(100deg, var(--accent), var(--accent2))",
+            boxShadow: "0 18px 40px -20px var(--accent)",
+          }}
+        >
+          <span className="relative flex w-3 h-3 shrink-0">
+            <span className="animate-nfPulse absolute inline-flex h-full w-full rounded-full bg-white/60" />
+            <span className="relative inline-flex w-3 h-3 rounded-full bg-white" />
+          </span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[15px] font-semibold">
+              {overdueCount > 0
+                ? `${overdueCount} просроченных колбэка`
+                : "Есть просроченные колбэки"}
+            </div>
+            <div className="text-[13px] opacity-90">
+              Разберите их, чтобы продолжить работу — новые лиды пока не назначаются.
             </div>
           </div>
-        </div>
-      )}
-
-      {results.length === 0 && (
-        <div className="rounded-lg border border-gray-200 dark:border-slate-800 p-8 text-center text-gray-500 dark:text-slate-400">
-          Активных лидов пока нет. Как только сюда прилетит новый — он появится в этом списке.
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {results.map((lead) => (
-          <div
-            key={lead.id}
-            className="card p-4 flex flex-col gap-3"
+          <button
+            className="rounded-full px-5 py-2.5 text-[13px] font-semibold text-[color:var(--accent)]"
+            style={{ background: "#fff" }}
+            onClick={() => setView("active")}
           >
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="font-medium">{lead.full_name || "Без имени"}</div>
-                <div className="text-sm text-gray-500 dark:text-slate-400">
-                  {lead.phone || <span className="text-rose-500">телефон не разобран</span>}
-                </div>
-                <div className="text-xs text-gray-400 mt-1">
-                  {lead.product_hint || "Модель не указана"}
-                </div>
-              </div>
-              <span className={`px-2 py-0.5 rounded text-xs ${LEAD_STATUS_BADGE[lead.status]}`}>
-                {LEAD_STATUS_LABEL[lead.status]}
-              </span>
-            </div>
+            Разобрать
+          </button>
+        </div>
+      )}
 
-            <div className="flex flex-wrap gap-2">
-              <a
-                href={`tel:${lead.phone}`}
-                className="btn-primary text-sm"
-                aria-disabled={!lead.phone}
-                title="Позвонить (тел.)"
-                aria-label="Позвонить (тел.)"
-              >
-                <Phone className="w-4 h-4" /> Набрать
-              </a>
-              <button
-                className="btn-ghost text-sm"
-                onClick={() => setCallFor(lead)}
-                disabled={!lead.phone}
-                title="Поговорил — добавить комментарий"
-                aria-label="Поговорил — добавить комментарий"
-              >
-                <CheckCircle2 className="w-4 h-4" /> Разговор
-              </button>
-              <button
-                className="btn-ghost text-sm"
-                onClick={() => setScheduleFor(lead)}
-                title="Просят перезвонить — назначить время"
-                aria-label="Просят перезвонить — назначить время"
-              >
-                <AlarmClock className="w-4 h-4" /> Перезвонить
-              </button>
-              <button
-                className="btn-ghost text-sm"
-                disabled={quickCall.isPending}
-                onClick={() => quickCall.mutate({ lead, outcome: "no_answer" })}
-                title="Не берёт трубку"
-                aria-label="Не берёт трубку"
-              >
-                <PhoneMissed className="w-4 h-4" /> Не взял
-              </button>
-              <button
-                className="btn-ghost text-sm"
-                disabled={!lead.phone}
-                onClick={async () => {
-                  await quickCall.mutateAsync({ lead, outcome: "tg_only" });
-                  openTg(lead);
-                }}
-                title="Написать в Telegram"
-                aria-label="Написать в Telegram"
-              >
-                <MessageCircle className="w-4 h-4" /> TG
-              </button>
-              <button
-                className="btn-ghost text-sm text-rose-600 dark:text-rose-400"
-                disabled={quickCall.isPending}
-                onClick={() => quickCall.mutate({ lead, outcome: "rejected" })}
-                title="Отказ"
-                aria-label="Отказ"
-              >
-                <XCircle className="w-4 h-4" /> Отказ
-              </button>
+      {/* --- Hero --- */}
+      <section
+        className="nf-hero animate-nfFadeUp"
+        style={{ borderRadius: 28, padding: "34px 36px", border: "1px solid var(--border)" }}
+      >
+        <div className="grid gap-6 md:grid-cols-[1.4fr,1fr] items-center">
+          <div>
+            <Eyebrow>Доброе утро</Eyebrow>
+            <h1
+              className="font-semibold mt-3"
+              style={{ fontSize: 33, letterSpacing: "-0.03em", lineHeight: 1.1 }}
+            >
+              {counts.active > 0 ? (
+                <>
+                  У вас <span style={{ color: "var(--accent)" }}>{counts.active}</span>{" "}
+                  {counts.active === 1 ? "активный лид" : "активных лидов"}
+                </>
+              ) : (
+                <>Активные лиды разобраны</>
+              )}
+            </h1>
+            <p className="text-[14px] text-muted mt-2.5 max-w-md">
+              {operator?.full_name} · план на сегодня — {dailyPlan} звонков.
+              {counts.postponed > 0 && <> {counts.postponed} лидов отложены.</>}
+            </p>
+          </div>
+          <div
+            className="hidden md:block rounded-2xl relative overflow-hidden"
+            style={{ height: 200, background: "var(--surface)", border: "1px solid var(--border)" }}
+          >
+            <GaugeScene
+              percent={planPct}
+              className="absolute inset-0"
+              style={{ pointerEvents: "none" }}
+            />
+            <div className="absolute inset-x-0 bottom-3 text-center">
+              <div className="text-[12.5px] font-medium">
+                План на день · {planPct}%
+              </div>
+              <div className="text-[11.5px] text-muted">
+                {donePlan} из {dailyPlan} лидов в работе
+              </div>
             </div>
           </div>
-        ))}
+        </div>
+      </section>
+
+      {/* --- Tabs + summary --- */}
+      <section className="flex flex-wrap items-center justify-between gap-3 animate-nfFadeUp">
+        <TabPill value={view} onChange={(v) => { setView(v); setPage(1); }} items={tabs} />
+        <div className="text-[13px] text-muted">
+          {results.length} лидов
+          {overdueCount > 0 && (
+            <>
+              {" · "}
+              <span style={{ color: "var(--accent)" }} className="font-semibold">
+                {overdueCount} просрочено
+              </span>
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* --- Lead cards --- */}
+      {results.length === 0 ? (
+        <div
+          className="rounded-2xl py-12 text-center text-[13.5px] text-muted"
+          style={{ border: "1.5px dashed var(--border)" }}
+        >
+          Здесь пока пусто
+        </div>
+      ) : (
+        <section className="flex flex-col gap-[9px]">
+          {results.map((lead, i) => (
+            <LeadCard
+              key={lead.id}
+              lead={lead}
+              index={i}
+              onCall={() => quickCall.mutate({ lead, outcome: "talked_interested" })}
+              onMiss={() => quickCall.mutate({ lead, outcome: "no_answer" })}
+              onReject={() => quickCall.mutate({ lead, outcome: "rejected" })}
+              onTg={() => openTg(lead)}
+              onSchedule={() => setScheduleFor(lead)}
+              onPostpone={() => setPostponeFor(lead)}
+              onUnpostpone={() => unpostpone.mutate(lead)}
+              onConvert={() => nav("/sales/new")}
+            />
+          ))}
+        </section>
+      )}
+
+      <div className="flex justify-center">
+        <Paginator
+          page={page}
+          total={my.data?.count || results.length}
+          pageSize={50}
+          onChange={setPage}
+        />
       </div>
 
-      <Paginator
-        page={page}
-        total={my.data?.count || results.length}
-        pageSize={50}
-        onChange={setPage}
+      {/* --- Modals --- */}
+      <ScheduleCallbackModal
+        lead={scheduleFor}
+        onClose={() => setScheduleFor(null)}
+        onDone={() => {
+          setScheduleFor(null);
+          refetch();
+        }}
       />
 
-      {callFor && (
-        <CallModal
-          lead={callFor}
-          onClose={() => setCallFor(null)}
-          onDone={() => {
-            setCallFor(null);
-            refetch();
-          }}
-        />
-      )}
+      <PostponeModal
+        lead={postponeFor}
+        onClose={() => setPostponeFor(null)}
+        onDone={() => {
+          setPostponeFor(null);
+          refetch();
+        }}
+      />
 
-      {scheduleFor && (
-        <ScheduleCallbackModal
-          lead={scheduleFor}
-          onClose={() => setScheduleFor(null)}
-          onDone={() => {
-            setScheduleFor(null);
-            refetch();
-          }}
-        />
-      )}
-
-      {watcher.due.length > 0 && (
-        <CallbackDueModal
-          reminders={watcher.due}
-          onDismiss={watcher.dismiss}
-          onDone={refetch}
-        />
-      )}
+      <CallbackDueModal
+        reminders={watcher.due}
+        onDismiss={watcher.dismiss}
+        onDone={refetch}
+      />
     </div>
   );
 }
 
 // -------------------------------------------------------------------------
 
-function CallModal({
-  lead,
-  onClose,
-  onDone,
-}: {
+interface LeadCardProps {
   lead: Lead;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const [comment, setComment] = useState("");
-  const [error, setError] = useState("");
+  index: number;
+  onCall: () => void;
+  onMiss: () => void;
+  onReject: () => void;
+  onTg: () => void;
+  onSchedule: () => void;
+  onPostpone: () => void;
+  onUnpostpone: () => void;
+  onConvert: () => void;
+}
 
-  const mut = useMutation({
-    mutationFn: async () => {
-      await api.post(`/leads/${lead.id}/call-attempts/`, {
-        outcome: "talked_interested",
-        comment,
-      });
-    },
-    onSuccess: onDone,
-    onError: (err: unknown) => {
-      setError(apiErrorMessage(err));
-    },
-  });
+function LeadCard({
+  lead,
+  index,
+  onCall,
+  onMiss,
+  onReject,
+  onTg,
+  onSchedule,
+  onPostpone,
+  onUnpostpone,
+  onConvert,
+}: LeadCardProps) {
+  const [called, setCalled] = useState(false);
+  const isPostponed = !!lead.postponed_at;
+  const overdue = isOverdue((lead as unknown as { callback_at?: string }).callback_at);
+  const source = (lead as unknown as { source_name?: string }).source_name ?? "";
+  const calls = (lead as unknown as { calls_count?: number }).calls_count ?? 0;
+
+  const handleCall = () => {
+    onCall();
+    setCalled(true);
+    toast.success("Звонок отмечен");
+  };
 
   return (
-    <Modal open={true} title={`Разговор: ${lead.full_name || lead.phone}`} onClose={onClose}>
-      <div className="text-sm text-gray-500 dark:text-slate-400 mb-2">
-        Клиент проявил интерес — оставь короткий комментарий (о чём поговорили).
+    <div
+      className="animate-nfFadeUp flex items-start gap-4"
+      style={{
+        borderRadius: 18,
+        padding: "14px 18px",
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        boxShadow: "var(--shadow)",
+        animationDelay: `${0.04 + index * 0.055}s`,
+      }}
+    >
+      {/* avatar */}
+      <div
+        className="grid place-items-center text-white text-[13px] font-semibold shrink-0"
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 12,
+          background: isPostponed
+            ? "linear-gradient(145deg, #ffcfae, #ffa15c)"
+            : "var(--accent-grad)",
+        }}
+      >
+        {initials(lead.full_name || lead.phone || "?")}
       </div>
-      <label className="label">Комментарий</label>
-      <textarea
-        className="input min-h-[80px]"
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        placeholder="Что сказал клиент?"
-      />
 
-      {error && <div className="text-sm text-rose-600 mt-2">{error}</div>}
-
-      <div className="mt-4 flex gap-2 justify-end">
-        <button className="btn-ghost" onClick={onClose}>
-          Отмена
-        </button>
-        <button
-          className="btn-primary"
-          onClick={() => mut.mutate()}
-          disabled={mut.isPending}
-        >
-          {mut.isPending ? "Сохраняем…" : "Сохранить"}
-        </button>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="text-[14.5px] font-medium truncate">
+            {lead.full_name || "Без имени"}
+          </div>
+          <StatusBadge tone={overdue || lead.status === "needs_review" ? "hot" : "neutral"}>
+            {LEAD_STATUS_LABEL[lead.status as LeadStatus] ?? lead.status}
+          </StatusBadge>
+          {isPostponed && (
+            <StatusBadge tone="hot">
+              <PauseCircle className="w-3 h-3 inline mr-0.5" /> отложен
+            </StatusBadge>
+          )}
+        </div>
+        <div className="text-[12.5px] text-muted mt-1 flex flex-wrap gap-x-3 gap-y-1">
+          <span>{lead.phone || "нет телефона"}</span>
+          {source && <span>· {source}</span>}
+          {calls > 0 && <span>· {calls} звонк.</span>}
+          {(lead as unknown as { callback_at?: string }).callback_at && (
+            <span
+              style={overdue ? { color: "var(--accent)", fontWeight: 600 } : undefined}
+            >
+              · {overdue ? "просрочен " : ""}
+              {fmtCallback((lead as unknown as { callback_at?: string }).callback_at)}
+            </span>
+          )}
+        </div>
       </div>
-    </Modal>
+
+      <div className="flex flex-wrap gap-2 justify-end">
+        {called ? (
+          <div className="text-[12.5px] text-muted flex items-center gap-1.5 px-3 py-2">
+            <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
+            звонок отмечен
+          </div>
+        ) : (
+          <>
+            {lead.phone && (
+              <a
+                href={`tel:${lead.phone}`}
+                className="nf-btn nf-btn--primary"
+                style={{ padding: "9px 14px", fontSize: 13 }}
+                onClick={handleCall}
+              >
+                <Phone className="w-3.5 h-3.5" /> Позвонил
+              </a>
+            )}
+            <button
+              className="nf-btn nf-btn--ghost"
+              style={{ padding: "9px 12px", fontSize: 13 }}
+              onClick={onTg}
+              disabled={!lead.phone}
+              aria-label="Telegram"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+            </button>
+            <button
+              className="nf-btn nf-btn--ghost"
+              style={{ padding: "9px 12px", fontSize: 13 }}
+              onClick={onMiss}
+              aria-label="Не берёт"
+            >
+              <PhoneMissed className="w-3.5 h-3.5" />
+            </button>
+            {isPostponed ? (
+              <button
+                className="nf-btn nf-btn--ghost"
+                style={{ padding: "9px 14px", fontSize: 13, color: "var(--accent)" }}
+                onClick={onUnpostpone}
+              >
+                <PlayCircle className="w-3.5 h-3.5" /> Вернуть
+              </button>
+            ) : (
+              <button
+                className="nf-btn nf-btn--ghost"
+                style={{ padding: "9px 14px", fontSize: 13 }}
+                onClick={onPostpone}
+              >
+                <PauseCircle className="w-3.5 h-3.5" /> Отложить
+              </button>
+            )}
+            <button
+              className="nf-btn nf-btn--ghost"
+              style={{ padding: "9px 14px", fontSize: 13 }}
+              onClick={onSchedule}
+            >
+              <AlarmClock className="w-3.5 h-3.5" /> Callback
+            </button>
+            <button
+              className="nf-btn"
+              style={{
+                padding: "9px 14px",
+                fontSize: 13,
+                background: "rgba(242,86,11,.12)",
+                color: "var(--accent)",
+              }}
+              onClick={onConvert}
+            >
+              <Plus className="w-3.5 h-3.5" /> В продажу
+            </button>
+            <button
+              className="nf-btn nf-btn--ghost"
+              style={{ padding: "9px 12px", fontSize: 13, color: "var(--danger)" }}
+              onClick={onReject}
+              aria-label="Отказ"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+            </button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
+
+// -------------------------------------------------------------------------
 
 function ScheduleCallbackModal({
   lead,
   onClose,
   onDone,
 }: {
-  lead: Lead;
+  lead: Lead | null;
   onClose: () => void;
   onDone: () => void;
 }) {
   const [remindAt, setRemindAt] = useState("");
   const [comment, setComment] = useState("");
   const [error, setError] = useState("");
-
   const qc = useQueryClient();
+
   const mut = useMutation({
     mutationFn: async () => {
+      if (!lead) return;
       if (!remindAt) throw new Error("Укажите время");
       await api.post(`/leads/${lead.id}/callbacks/`, {
         remind_at: new Date(remindAt).toISOString(),
@@ -318,43 +542,122 @@ function ScheduleCallbackModal({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["leads-my"] });
       qc.invalidateQueries({ queryKey: ["callbacks-mine-due"] });
+      toast.success("Callback назначен");
       onDone();
     },
-    onError: (err: unknown) => setError(apiErrorMessage(err)),
+    onError: (err) => setError(apiErrorMessage(err)),
   });
 
   return (
-    <Modal open={true} title={`Callback: ${lead.full_name || lead.phone}`} onClose={onClose}>
-      <label className="label">Когда перезвонить</label>
-      <input
-        type="datetime-local"
-        className="input"
-        value={remindAt}
-        onChange={(e) => setRemindAt(e.target.value)}
-      />
-      <label className="label mt-3">Комментарий</label>
-      <textarea
-        className="input min-h-[80px]"
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        placeholder="Что обсудили?"
-      />
-      {error && <div className="text-sm text-rose-600 mt-2">{error}</div>}
-      <div className="mt-4 flex gap-2 justify-end">
-        <button className="btn-ghost" onClick={onClose}>
-          Отмена
-        </button>
-        <button
-          className="btn-primary"
-          onClick={() => mut.mutate()}
-          disabled={mut.isPending}
-        >
-          {mut.isPending ? "Сохраняем…" : "Назначить"}
-        </button>
+    <Modal open={!!lead} onClose={onClose} width={440}>
+      <div className="p-7">
+        <div className="text-[18px] font-semibold tracking-tight">
+          Callback · {lead?.full_name || lead?.phone || ""}
+        </div>
+        <div className="mt-5 flex flex-col gap-4">
+          <div>
+            <div className="nf-col mb-1.5">Когда перезвонить</div>
+            <input
+              type="datetime-local"
+              className="nf-input"
+              value={remindAt}
+              onChange={(e) => setRemindAt(e.target.value)}
+            />
+          </div>
+          <div>
+            <div className="nf-col mb-1.5">Комментарий</div>
+            <textarea
+              className="nf-input min-h-[80px]"
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Что обсудили?"
+            />
+          </div>
+          {error && (
+            <div
+              className="text-[13px] rounded-xl px-3.5 py-2.5"
+              style={{ background: "rgba(220,60,40,.08)", color: "var(--danger)" }}
+            >
+              {error}
+            </div>
+          )}
+        </div>
+        <div className="mt-7 flex gap-2 justify-end">
+          <Button variant="ghost" onClick={onClose}>Отмена</Button>
+          <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
+            {mut.isPending ? "Сохраняем…" : "Назначить"}
+          </Button>
+        </div>
       </div>
     </Modal>
   );
 }
+
+function PostponeModal({
+  lead,
+  onClose,
+  onDone,
+}: {
+  lead: Lead | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const mut = useMutation({
+    mutationFn: async () => {
+      if (!lead) return;
+      await api.post(`/leads/${lead.id}/postpone/`, {
+        reason: reason.trim().slice(0, 280),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Лид отложен");
+      onDone();
+    },
+    onError: (err) => setError(apiErrorMessage(err)),
+  });
+
+  return (
+    <Modal open={!!lead} onClose={onClose} width={440}>
+      <div className="p-7">
+        <div className="text-[18px] font-semibold tracking-tight">
+          Отложить на потом
+        </div>
+        <div className="text-[13px] text-muted mt-1">
+          {lead?.full_name || "Без имени"} · {lead?.phone || "без телефона"}
+        </div>
+        <div className="mt-5">
+          <div className="nf-col mb-1.5">Причина (не обязательно)</div>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value.slice(0, 280))}
+            rows={3}
+            placeholder="Например: «после обеда», «ждёт зарплату»"
+            className="nf-input min-h-[80px]"
+          />
+          <div className="text-[11px] text-muted text-right mt-1">{reason.length}/280</div>
+        </div>
+        {error && (
+          <div
+            className="mt-3 text-[13px] rounded-xl px-3.5 py-2.5"
+            style={{ background: "rgba(220,60,40,.08)", color: "var(--danger)" }}
+          >
+            {error}
+          </div>
+        )}
+        <div className="mt-6 flex gap-2 justify-end">
+          <Button variant="ghost" onClick={onClose} disabled={mut.isPending}>Отмена</Button>
+          <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
+            {mut.isPending ? "Сохраняем…" : "Отложить"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// -------------------------------------------------------------------------
 
 function CallbackDueModal({
   reminders,
@@ -367,59 +670,85 @@ function CallbackDueModal({
 }) {
   const qc = useQueryClient();
   const cur = reminders[0];
-  if (!cur) return null;
 
   const complete = async () => {
+    if (!cur) return;
     try {
       await api.post(`/callbacks/${cur.id}/done/`);
       qc.invalidateQueries({ queryKey: ["leads-my"] });
       qc.invalidateQueries({ queryKey: ["callbacks-mine-due"] });
       onDismiss(cur.id);
       onDone();
+      toast.success("Отмечено сделанным");
     } catch {
-      /* toast is enough */
+      /* silent */
     }
   };
 
   const snooze = async (minutes: number) => {
+    if (!cur) return;
     try {
       await api.post(`/callbacks/${cur.id}/snooze/`, { minutes });
       qc.invalidateQueries({ queryKey: ["leads-my"] });
       qc.invalidateQueries({ queryKey: ["callbacks-mine-due"] });
       onDismiss(cur.id);
       onDone();
+      toast.success(`Отложено на ${minutes} мин`);
     } catch {
       /* silent */
     }
   };
 
   return (
-    <Modal open={true} title="Время callback'а!" onClose={() => onDismiss(cur.id)}>
-      <div className="space-y-3">
-        <div className="font-semibold text-lg">{cur.lead_name || "(без имени)"}</div>
-        <div className="text-sm text-slate-600 dark:text-slate-300">
-          Телефон: <span className="font-mono">{cur.lead_phone || "—"}</span>
-        </div>
-        <div className="text-sm text-gray-500 dark:text-slate-400 flex items-center gap-2">
-          <Clock className="w-4 h-4" /> Назначено на {formatDate(cur.remind_at)}
-        </div>
-        {cur.comment && (
-          <div className="text-xs bg-slate-100 dark:bg-slate-800 p-2 rounded border border-slate-200 dark:border-slate-700">
-            Заметка: {cur.comment}
+    <Modal
+      open={!!cur}
+      onClose={() => cur && onDismiss(cur.id)}
+      width={410}
+      closeOnBackdrop={false}
+    >
+      {cur && (
+        <div className="p-8 text-center">
+          <div className="relative mx-auto grid place-items-center" style={{ width: 62, height: 62 }}>
+            <span
+              className="absolute inset-0 rounded-full animate-nfPulse"
+              style={{ background: "var(--accent)" }}
+            />
+            <div
+              className="relative grid place-items-center rounded-full text-white"
+              style={{ width: 62, height: 62, background: "var(--accent-grad)" }}
+            >
+              <AlarmClock className="w-6 h-6" />
+            </div>
           </div>
-        )}
-      </div>
-      <div className="mt-5 flex flex-wrap gap-2 justify-end">
-        <button className="btn-ghost" onClick={() => snooze(15)}>
-          +15 мин
-        </button>
-        <button className="btn-ghost" onClick={() => snooze(60)}>
-          +1 час
-        </button>
-        <button className="btn-primary" onClick={complete}>
-          <CheckCircle2 className="w-4 h-4" /> Сделано
-        </button>
-      </div>
+          <Eyebrow className="mt-5">Время колбэка</Eyebrow>
+          <div
+            className="mt-3 font-semibold"
+            style={{ fontSize: 25, letterSpacing: "-0.02em", lineHeight: 1.15 }}
+          >
+            {cur.lead_name || "Без имени"}
+          </div>
+          <div className="mt-2 text-[13px] text-muted">
+            {cur.lead_phone || "нет телефона"}
+            {cur.remind_at && <> · обещал перезвон в {fmtCallback(cur.remind_at)}</>}
+          </div>
+          {cur.comment && (
+            <div
+              className="mt-4 text-[12.5px] text-left rounded-xl px-4 py-3"
+              style={{ background: "var(--faint)" }}
+            >
+              {cur.comment}
+            </div>
+          )}
+          <div className="mt-6 flex flex-col gap-2">
+            <Button block onClick={complete}>
+              Позвонить сейчас
+            </Button>
+            <Button variant="ghost" block onClick={() => snooze(15)}>
+              +15 мин
+            </Button>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }

@@ -364,3 +364,262 @@ class TgRetryBackfillApi(APIView):
             status=status.HTTP_200_OK,
         )
 
+
+
+class TgQueueApi(APIView):
+    """
+    Manager-facing dashboard: per-operator TG session + latest backfill
+    status in a single roll-up so the UI can show a queue overview
+    without N round-trips.
+    """
+
+    permission_classes = [IsManagerOrTeamLead]
+
+    def get(self, request):
+        from apps.operators.models import Operator, OperatorStatus
+        from django.db.models import Count, Prefetch
+
+        sessions = (
+            TgSession.objects
+            .select_related("operator")
+            .prefetch_related(
+                Prefetch(
+                    "backfill_jobs",
+                    queryset=TgBackfillJob.objects.order_by("-created_at"),
+                    to_attr="_recent_jobs",
+                ),
+            )
+        )
+        chat_counts = dict(
+            TgChat.objects.values_list("session_id")
+            .annotate(c=Count("id"))
+            .values_list("session_id", "c")
+        )
+        msg_counts = dict(
+            TgMessage.objects.values("chat__session_id")
+            .annotate(c=Count("id"))
+            .values_list("chat__session_id", "c")
+        )
+        insight_counts = dict(
+            TgAiInsight.objects.values_list("session_id")
+            .annotate(c=Count("id"))
+            .values_list("session_id", "c")
+        )
+
+        rows = []
+        for s in sessions:
+            latest = s._recent_jobs[0] if s._recent_jobs else None
+            rows.append({
+                "operator_id": s.operator_id,
+                "operator_name": s.operator.full_name,
+                "session_id": s.id,
+                "session_status": s.status,
+                "tg_username": s.tg_username,
+                "last_connected_at": s.last_connected_at.isoformat() if s.last_connected_at else None,
+                "last_error": s.last_error,
+                "chats_count": chat_counts.get(s.id, 0),
+                "messages_count": msg_counts.get(s.id, 0),
+                "insights_count": insight_counts.get(s.id, 0),
+                "latest_job": (
+                    {
+                        "id": latest.id,
+                        "status": latest.status,
+                        "since": latest.since.isoformat() if latest.since else None,
+                        "started_at": latest.started_at.isoformat() if latest.started_at else None,
+                        "finished_at": latest.finished_at.isoformat() if latest.finished_at else None,
+                        "chats_scanned": latest.chats_scanned,
+                        "messages_saved": latest.messages_saved,
+                        "last_error": latest.last_error,
+                    }
+                    if latest
+                    else None
+                ),
+            })
+
+        # Also include active operators with NO session (so manager sees
+        # who still needs onboarding).
+        connected_op_ids = {r["operator_id"] for r in rows}
+        for op in Operator.objects.filter(status=OperatorStatus.ACTIVE).exclude(id__in=connected_op_ids):
+            rows.append({
+                "operator_id": op.id,
+                "operator_name": op.full_name,
+                "session_id": None,
+                "session_status": "none",
+                "tg_username": "",
+                "last_connected_at": None,
+                "last_error": "",
+                "chats_count": 0,
+                "messages_count": 0,
+                "insights_count": 0,
+                "latest_job": None,
+            })
+
+        # Sort: active/running first, then errors, then none.
+        def _sort_key(r):
+            order = {"running": 0, "pending": 1, "active": 2, "error": 3, "pending_code": 4, "pending_2fa": 4, "none": 5}
+            job_status = (r["latest_job"] or {}).get("status", "")
+            return (order.get(job_status or r["session_status"], 9), r["operator_name"])
+
+        rows.sort(key=_sort_key)
+        return Response({"queue": rows, "total": len(rows)})
+
+
+class TgCoachingApi(APIView):
+    """
+    POST /tg-userclient/coaching/  {chat_id, message_ids: [1,2,3]}
+
+    Given a set of *outgoing* messages the operator sent in a chat,
+    build a compact conversation window (selected + a few neighbours
+    for context) and ask the configured LLM to:
+      - flag rude / unprofessional / missed-opportunity phrases,
+      - suggest a better phrasing per issue,
+      - mark voice notes as "transcript unavailable" so managers
+        know why we can't judge them.
+
+    The response is meant to be a coaching card, not a mass mailer.
+    """
+
+    permission_classes = [IsManagerOrTeamLead]
+
+    def post(self, request):
+        import json
+        from rest_framework.exceptions import ValidationError
+        from django.utils.timezone import now
+        from apps.tg_userclient.ai.provider import get_llm_provider
+
+        chat_id = request.data.get("chat_id")
+        raw_ids = request.data.get("message_ids") or []
+        language = (request.data.get("language") or "ru").lower()
+        if language not in {"ru", "uz"}:
+            language = "ru"
+        if not chat_id:
+            raise ValidationError({"chat_id": "required"})
+        try:
+            message_ids = [int(x) for x in raw_ids]
+        except (TypeError, ValueError):
+            raise ValidationError({"message_ids": "must be integers"})
+        if not message_ids or len(message_ids) > 30:
+            raise ValidationError({"message_ids": "1..30 IDs required"})
+
+        try:
+            chat = TgChat.objects.select_related("session__operator").get(pk=chat_id)
+        except TgChat.DoesNotExist:
+            raise NotFound("Chat not found")
+
+        selected = list(
+            TgMessage.objects.filter(chat=chat, id__in=message_ids).order_by("sent_at")
+        )
+        if not selected:
+            raise ValidationError({"message_ids": "no messages found in this chat"})
+
+        # Build a context window: 4 messages before the earliest and
+        # 4 after the latest selected — enough to see what the operator
+        # was responding to.
+        first_at = selected[0].sent_at
+        last_at = selected[-1].sent_at
+        before = list(
+            TgMessage.objects.filter(chat=chat, sent_at__lt=first_at)
+            .order_by("-sent_at")[:4]
+        )
+        after = list(
+            TgMessage.objects.filter(chat=chat, sent_at__gt=last_at)
+            .order_by("sent_at")[:4]
+        )
+        window = sorted(
+            {m.id: m for m in [*before, *selected, *after]}.values(),
+            key=lambda m: m.sent_at,
+        )
+        selected_ids_set = {m.id for m in selected}
+
+        # Build a compact LLM-friendly transcript.
+        def _fmt(m: TgMessage) -> str:
+            who = "OPERATOR" if m.direction == "out" else "CLIENT"
+            marker = " ►" if m.id in selected_ids_set else ""
+            when = m.sent_at.strftime("%d.%m %H:%M")
+            if m.kind == "voice":
+                body = f"[voice {m.voice_duration_sec or 0}s — TRANSCRIPT UNAVAILABLE]"
+            elif not m.text:
+                body = f"[{m.kind}]"
+            else:
+                body = m.text.strip().replace("\n", " ")[:400]
+            return f"[{when}] {who}{marker}: {body} (id={m.id})"
+
+        transcript = "\n".join(_fmt(m) for m in window)
+        has_voice_selected = any(m.kind == "voice" for m in selected)
+
+        lang_rules_map = {
+            "ru": (
+                "- Отвечай на русском, коротко и по делу.\n"
+                "- Если сообщение отмечено [voice ... TRANSCRIPT UNAVAILABLE] — "
+                "укажи в problem: 'нужен транскрипт голосового' и severity: 'low'.\n"
+                "- Если ошибок нет — верни пустой issues и напиши positive summary."
+            ),
+            "uz": (
+                "- Javob faqat o'zbek tilida (lotin yozuvida), qisqa va aniq.\n"
+                "- Agar xabar [voice ... TRANSCRIPT UNAVAILABLE] deb belgilangan bo'lsa — "
+                "problem: 'ovozli xabar transkripsiyasi kerak' va severity: 'low'.\n"
+                "- Xatolik topilmasa — bo'sh issues qaytar va ijobiy summary yoz.\n"
+                "- Suggestion — operator nomidan tayyor javob, o'zbekcha."
+            ),
+        }
+        prompt = (
+            "Ты — коуч операторов колл-центра в Ташкенте. Твоя задача — "
+            "проанализировать конкретные сообщения оператора (помечены ►) "
+            "в переписке с клиентом и указать грубые ошибки, упущенные "
+            "возможности продажи или проблемы с тоном.\n\n"
+            "Правила:\n"
+            f"{lang_rules_map[language]}\n"
+            "- Для каждого проблемного сообщения дай: severity (high/mid/low), "
+            "problem (что не так, 1 фраза), suggestion (как лучше сказать, "
+            "готовая реплика от лица оператора).\n"
+            "- Возвращай ТОЛЬКО JSON, без markdown-обёртки:\n"
+            "{\n"
+            '  "summary": "1-2 фразы о качестве переписки в этом фрагменте",\n'
+            '  "issues": [\n'
+            '    {"message_id": 42, "severity": "high", "problem": "...", "suggestion": "..."}\n'
+            "  ]\n"
+            "}\n\n"
+            f"Переписка (► = проанализировать):\n{transcript}"
+        )
+
+        provider = get_llm_provider()
+        try:
+            response = provider.chat_with_tools(
+                history=[{"role": "user", "content": prompt, "tool_name": ""}],
+                tool_specs={},
+                system_prompt=(
+                    "Ты — коуч операторов продаж. Отвечай ТОЛЬКО валидным "
+                    "JSON, никакого markdown-обёртывания."
+                ),
+            )
+            text = (response.text or "").strip()
+            # Some providers wrap JSON in ```json ... ``` — strip it.
+            if text.startswith("```"):
+                text = text.strip("`")
+                if text.startswith("json"):
+                    text = text[4:]
+                text = text.strip()
+            parsed = json.loads(text)
+        except Exception as exc:  # noqa: BLE001
+            return Response(
+                {
+                    "summary": (
+                        "AI-анализ временно недоступен — сохраните выбранные "
+                        "сообщения и попробуйте позже."
+                    ),
+                    "issues": [],
+                    "has_voice_selected": has_voice_selected,
+                    "provider": "none",
+                    "error": str(exc)[:200],
+                },
+                status=200,
+            )
+
+        return Response({
+            "summary": parsed.get("summary", ""),
+            "issues": parsed.get("issues", []),
+            "has_voice_selected": has_voice_selected,
+            "provider": getattr(response, "provider_used", "") or "",
+            "model": getattr(response, "model_version", "") or "",
+            "created_at": now().isoformat(),
+        })

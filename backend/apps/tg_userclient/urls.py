@@ -5,6 +5,8 @@ from .apis import (
     TgChatsApi,
     TgInsightsApi,
     TgMessagesApi,
+    TgCoachingApi,
+    TgQueueApi,
     TgRetryBackfillApi,
     TgRevokeApi,
     TgSessionStartApi,
@@ -26,4 +28,6 @@ urlpatterns = [
     path("insights/", TgInsightsApi.as_view(), name="tg_userclient_insights"),
     path("backfill-jobs/", TgBackfillJobsApi.as_view(), name="tg_userclient_backfill_jobs"),
     path("backfill-jobs/retry/", TgRetryBackfillApi.as_view(), name="tg_userclient_backfill_jobs_retry"),
+    path("queue/", TgQueueApi.as_view(), name="tg_userclient_queue"),
+    path("coaching/", TgCoachingApi.as_view(), name="tg_userclient_coaching"),
 ]
