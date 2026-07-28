@@ -282,6 +282,15 @@ export default function Leads() {
                         <span style={{ color: "var(--danger)" }}>{lead.phone_raw || t("leads.no_phone")}</span>
                       )}
                     </div>
+                    {lead.product_hint && (
+                      <div
+                        className="mt-0.5 text-[11.5px] font-medium truncate"
+                        style={{ color: "var(--accent)" }}
+                        title={lead.product_hint}
+                      >
+                        📱 {lead.product_hint}
+                      </div>
+                    )}
                   </div>
                   <div className="text-muted truncate">{source}</div>
                   <div className="truncate">

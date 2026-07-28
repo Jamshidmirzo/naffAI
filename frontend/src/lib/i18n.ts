@@ -1099,6 +1099,7 @@ const STRINGS: Lookup = {
     "my.toast_tg": "✓ Отмечено: TG'га боғланди",
     "my.toast_phone_on": "✓ Отмечено: Telfoni ochiq",
     "my.toast_debt": "✓ Отмечено: Qarzi bor",
+    "my.card_label": "карта",
 
     // ------ attendance.today (extra) ------
     "attendance.today.qr_title": "QR-код для отметки на входе",
@@ -2295,6 +2296,7 @@ const STRINGS: Lookup = {
     "my.toast_tg": "✓ Belgilandi: TGga bog'landi",
     "my.toast_phone_on": "✓ Belgilandi: Telfoni ochiq",
     "my.toast_debt": "✓ Belgilandi: Qarzi bor",
+    "my.card_label": "karta",
 
     // ------ attendance.today (extra) ------
     "attendance.today.qr_title": "Kirishda belgilash uchun QR-kod",

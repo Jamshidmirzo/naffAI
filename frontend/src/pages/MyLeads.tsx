@@ -649,9 +649,26 @@ function LeadCard({
             </StatusBadge>
           )}
         </div>
+        {lead.product_hint && (
+          <div
+            className="mt-1 inline-flex items-center gap-1.5 rounded-full text-[12px]"
+            style={{
+              padding: "3px 10px",
+              background: "rgba(242,86,11,.10)",
+              color: "var(--accent)",
+              fontWeight: 600,
+              maxWidth: "100%",
+            }}
+            title={lead.product_hint}
+          >
+            <span aria-hidden>📱</span>
+            <span className="truncate">{lead.product_hint}</span>
+          </div>
+        )}
         <div className="text-[12.5px] text-muted mt-1 flex flex-wrap gap-x-3 gap-y-1">
           <span>{lead.phone || t("leads.no_phone")}</span>
           {source && <span>· {source}</span>}
+          {lead.has_card && <span>· {t("my.card_label")}: {lead.has_card}</span>}
           {calls > 0 && <span>· {t("my.calls_short", { n: calls })}</span>}
           {(lead as unknown as { callback_at?: string }).callback_at && (
             <span
