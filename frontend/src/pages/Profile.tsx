@@ -35,6 +35,7 @@ type Preferences = {
 
 const ROLE_LABEL: Record<string, string> = {
   manager: "Менеджер",
+  team_lead: "Менеджер",
   operator: "Оператор",
 };
 

@@ -11,6 +11,7 @@ import {
 } from "../components/ui";
 import { usePageHeader } from "../store/page";
 import { useAuth } from "../store/auth";
+import { normaliseRole } from "../components/RoleGate";
 import { useT } from "../lib/i18n";
 import { apiErrorMessage } from "../lib/api-types";
 
@@ -179,7 +180,9 @@ export default function Users() {
                     </div>
                   </div>
                   <div>
-                    <StatusBadge tone={u.role === "manager" ? "hot" : "neutral"}>
+                    <StatusBadge
+                      tone={normaliseRole(u.role) === "manager" ? "hot" : "neutral"}
+                    >
                       {ROLE_LABEL[u.role] ?? u.role}
                     </StatusBadge>
                     {u.is_superuser && (

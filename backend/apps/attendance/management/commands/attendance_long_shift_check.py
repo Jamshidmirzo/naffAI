@@ -63,7 +63,8 @@ class Command(BaseCommand):
                 op_tg_id = op_profile.telegram_user_id if op_profile else None
 
                 tl_profiles = Profile.objects.filter(
-                    role=Role.TEAM_LEAD, telegram_user_id__isnull=False
+                    role__in=[Role.TEAM_LEAD, Role.MANAGER],
+                    telegram_user_id__isnull=False,
                 )
                 tl_tg_ids = [p.telegram_user_id for p in tl_profiles]
 

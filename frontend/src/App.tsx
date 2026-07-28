@@ -30,7 +30,7 @@ import Reports from "./pages/Reports";
 import TgQueue from "./pages/TgQueue";
 import Users from "./pages/Users";
 import { useAuth } from "./store/auth";
-import { RoleGate } from "./components/RoleGate";
+import { RoleGate, normaliseRole } from "./components/RoleGate";
 import { ToastHost } from "./components/ui";
 
 function Protected({ children }: { children: React.ReactNode }) {
@@ -40,7 +40,7 @@ function Protected({ children }: { children: React.ReactNode }) {
 }
 
 function RoleAwareHome() {
-  const role = useAuth((s) => s.role);
+  const role = normaliseRole(useAuth((s) => s.role));
   if (role === "operator") return <Navigate to="/my" replace />;
   return <Dashboard />;
 }

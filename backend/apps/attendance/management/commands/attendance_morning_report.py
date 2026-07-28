@@ -44,11 +44,14 @@ class Command(BaseCommand):
             f"❌ Не пришли: {absent_count} ({absent_names})\n"
         )
 
-        tls = Profile.objects.filter(role=Role.TEAM_LEAD, telegram_user_id__isnull=False)
-        chat_ids = [tl.telegram_user_id for tl in tls]
+        seniors = Profile.objects.filter(
+            role__in=[Role.TEAM_LEAD, Role.MANAGER],
+            telegram_user_id__isnull=False,
+        )
+        chat_ids = [s.telegram_user_id for s in seniors]
 
         if not chat_ids:
-            self.stdout.write("No Team Leads with telegram_user_id configured.")
+            self.stdout.write("No senior users with telegram_user_id configured.")
             return
 
         asyncio.run(self.send_report(chat_ids, text))
