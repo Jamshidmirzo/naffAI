@@ -5,11 +5,14 @@ import { Plus, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
 import { SingleSelectCombobox } from "../components/SingleSelectCombobox";
 import NumericInput from "../components/NumericInput";
+import { useT } from "../lib/i18n";
+import { formatNumber } from "../lib/format";
 
 type OpLine = { operator_id?: number; operator_name?: string; amount: string };
 type PLine = { partner_id?: number; partner_name?: string; amount: string };
 
 export default function SaleCreate() {
+  const t = useT();
   const { id } = useParams<{ id: string }>();
   const isEdit = !!id;
   const nav = useNavigate();
@@ -126,44 +129,46 @@ export default function SaleCreate() {
     e.preventDefault();
     setError("");
     if (imei.length < 6 || imei.length > 15 || !/^\d+$/.test(imei)) {
-      setError("IMEI: только цифры, от 6 до 15");
+      setError(t("sale_create.imei_digits_only"));
       return;
     }
     const okOps = operators.filter((o) => (o.operator_id || o.operator_name?.trim()) && Number(o.amount) > 0);
     const okPartners = partners.filter((p) => (p.partner_id || p.partner_name?.trim()) && Number(p.amount) > 0);
     if (okOps.length === 0) {
-      setError("Добавьте минимум одного оператора с суммой > 0");
+      setError(t("sale_create.min_operator"));
       return;
     }
     if (okPartners.length === 0) {
-      setError("Добавьте минимум одного партнёра с суммой > 0");
+      setError(t("sale_create.min_partner"));
       return;
     }
     if (operators.some((o) => (o.operator_id || o.operator_name?.trim()) && !(Number(o.amount) > 0))) {
-      setError("У всех операторов должна быть положительная сумма");
+      setError(t("sale_create.all_operators_positive"));
       return;
     }
     if (partners.some((p) => (p.partner_id || p.partner_name?.trim()) && !(Number(p.amount) > 0))) {
-      setError("У всех партнёров должна быть положительная сумма");
+      setError(t("sale_create.all_partners_positive"));
       return;
     }
     if ([...operators, ...partners].some((l) => Number(l.amount) > 0 && Number(l.amount) < 1000)) {
-      setError("Минимальная сумма по строке — 1 000 сум");
+      setError(t("sale_create.min_amount_line"));
       return;
     }
     if (mismatch) {
       setError(
-        `Сумма по операторам (${opTotal.toLocaleString("ru-RU")}) ≠ ` +
-          `сумма по партнёрам (${partnerTotal.toLocaleString("ru-RU")})`,
+        t("sale_create.sum_mismatch_error", {
+          op: formatNumber(opTotal),
+          partner: formatNumber(partnerTotal),
+        }),
       );
       return;
     }
     if (discountNum < 0) {
-      setError("Скидка не может быть отрицательной");
+      setError(t("sale_create.discount_negative"));
       return;
     }
     if (discountTooBig) {
-      setError("Скидка не может быть равна или превышать сумму продажи");
+      setError(t("sale_create.discount_too_big"));
       return;
     }
 
@@ -202,8 +207,9 @@ export default function SaleCreate() {
       }
     } catch (err: any) {
       const d = err.response?.data || {};
-      const msg = d.detail || d.imei?.[0] || d.amount?.[0] || "Ошибка сохранения";
-      setError(typeof msg === "string" ? msg : "Ошибка сохранения");
+      const fallback = t("sale_create.save_error");
+      const msg = d.detail || d.imei?.[0] || d.amount?.[0] || fallback;
+      setError(typeof msg === "string" ? msg : fallback);
       if (d.duplicate_count) setAllowDup(true);
     }
   };
@@ -214,7 +220,7 @@ export default function SaleCreate() {
   if (isEdit && saleQ.isLoading) {
     return (
       <div className="flex items-center justify-center py-20 text-gray-500 dark:text-slate-400">
-        Загрузка…
+        {t("common.loading")}
       </div>
     );
   }
@@ -222,40 +228,40 @@ export default function SaleCreate() {
   return (
     <div className="max-w-3xl">
       <h1 className="text-2xl font-semibold mb-6">
-        {isEdit ? "Редактировать продажу" : "Новая продажа"}
+        {isEdit ? t("sale_create.title_edit") : t("sale_create.title_new")}
       </h1>
       <form onSubmit={onSubmit} className="card p-6 space-y-5">
         <div>
-          <label className="label">IMEI (6–15 цифр)</label>
+          <label className="label">{t("sale_create.imei_label")}</label>
           <input
             className="input font-mono"
             value={imei}
             onChange={(e) => setImei(e.target.value.replace(/\D/g, ""))}
             minLength={6}
             maxLength={15}
-            placeholder="490154203237518"
+            placeholder={t("sale_create.imei_ph_full")}
             required
           />
           {imei.length >= 6 && (
             <div className="text-xs text-gray-500 dark:text-slate-400 mt-1">
               {imei.length === 15 && model
-                ? `→ ${model}`
+                ? t("sale_create.imei_arrow", { model })
                 : imei.length === 15
-                ? "модель не определена, заполни вручную"
-                : `${imei.length} цифр (минимум 6)`}
+                ? t("sale_create.imei_not_recognised")
+                : t("sale_create.imei_digits_min", { n: imei.length })}
             </div>
           )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-[1fr_8rem] gap-4">
           <div>
-            <label className="label">Модель</label>
+            <label className="label">{t("sale_create.phone_model")}</label>
             <input
               className="input"
               list="phone-models-list"
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              placeholder="Начни вводить — выпадет список. Нет в списке? Впиши свой"
+              placeholder={t("sale_create.model_ph")}
               autoComplete="off"
             />
             <datalist id="phone-models-list">
@@ -265,7 +271,7 @@ export default function SaleCreate() {
             </datalist>
           </div>
           <div>
-            <label className="label">Кол-во, шт</label>
+            <label className="label">{t("sale_create.quantity_label")}</label>
             <input
               className="input"
               inputMode="numeric"
@@ -278,34 +284,34 @@ export default function SaleCreate() {
               placeholder="1"
             />
             <div className="text-[11px] text-gray-500 dark:text-slate-500 mt-1">
-              Сумма ниже — за всю продажу, не за штуку.
+              {t("sale_create.quantity_hint")}
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="label">Имя клиента</label>
+            <label className="label">{t("sale_create.client_name")}</label>
             <input
               className="input"
               value={clientName}
               onChange={(e) => setClientName(e.target.value)}
-              placeholder="Иванов Иван"
+              placeholder={t("sale_create.client_name_ph")}
             />
           </div>
           <div>
-            <label className="label">Телефон клиента</label>
+            <label className="label">{t("sale_create.client_phone")}</label>
             <input
               className="input"
               value={clientPhone}
               onChange={(e) => setClientPhone(e.target.value)}
-              placeholder="+998 90 123 45 67"
+              placeholder={t("sale_create.client_phone_ph")}
             />
           </div>
         </div>
 
         <LineEditor
-          title="Операторы"
+          title={t("sale_create.section_operators")}
           lines={operators}
           setLines={setOperators}
           options={opOptions.map((o) => ({
@@ -322,7 +328,7 @@ export default function SaleCreate() {
         />
 
         <LineEditor
-          title="Партнёры"
+          title={t("sale_create.section_partners")}
           lines={partners}
           setLines={setPartners}
           options={partnerOptions.map((p) => ({
@@ -346,46 +352,45 @@ export default function SaleCreate() {
           }`}
         >
           <div className="flex justify-between">
-            <span className="text-gray-600 dark:text-slate-400">Сумма по операторам:</span>
-            <span className="font-medium">{opTotal.toLocaleString("ru-RU")} сум</span>
+            <span className="text-gray-600 dark:text-slate-400">{t("sale_create.sum_by_operators")}</span>
+            <span className="font-medium">{formatNumber(opTotal)} сум</span>
           </div>
           <div className="flex justify-between mt-1">
-            <span className="text-gray-600 dark:text-slate-400">Сумма по партнёрам:</span>
-            <span className="font-medium">{partnerTotal.toLocaleString("ru-RU")} сум</span>
+            <span className="text-gray-600 dark:text-slate-400">{t("sale_create.sum_by_partners")}</span>
+            <span className="font-medium">{formatNumber(partnerTotal)} сум</span>
           </div>
           {mismatch && (
             <div className="mt-2 text-xs text-amber-800 dark:text-amber-300">
-              Суммы не совпадают на {Math.abs(opTotal - partnerTotal).toLocaleString("ru-RU")} сум.
-              Проверьте строки.
+              {t("sale_create.sums_mismatch", { n: formatNumber(Math.abs(opTotal - partnerTotal)) })}
             </div>
           )}
           <div className="border-t border-gray-200 dark:border-slate-700 mt-2 pt-2 flex justify-between">
-            <span className="text-gray-700 dark:text-slate-300 font-medium">Итого продажи:</span>
-            <span className="text-lg font-semibold">{total.toLocaleString("ru-RU")} сум</span>
+            <span className="text-gray-700 dark:text-slate-300 font-medium">{t("sale_create.grand_total")}</span>
+            <span className="text-lg font-semibold">{formatNumber(total)} сум</span>
           </div>
           {discountNum > 0 && (
             <>
               <div className="flex justify-between mt-1 text-red-600 dark:text-red-400">
-                <span>Скидка:</span>
-                <span>− {discountNum.toLocaleString("ru-RU")} сум</span>
+                <span>{t("sale_create.discount_line")}</span>
+                <span>{t("sale_create.discount_neg_line", { n: formatNumber(discountNum) })}</span>
               </div>
               <div className="flex justify-between mt-1">
                 <span className="text-gray-700 dark:text-slate-300 font-medium">
-                  Итог (с учётом скидки):
+                  {t("sale_create.net_total")}
                 </span>
                 <span className="text-lg font-semibold text-emerald-700 dark:text-emerald-400">
-                  {netTotal.toLocaleString("ru-RU")} сум
+                  {formatNumber(netTotal)} сум
                 </span>
               </div>
               <div className="text-[11px] text-gray-500 dark:text-slate-500 mt-1">
-                Кредит операторов будет уменьшен пропорционально на сумму скидки.
+                {t("sale_create.discount_operators_hint")}
               </div>
             </>
           )}
         </div>
 
         <div>
-          <label className="label">Скидка (необязательно)</label>
+          <label className="label">{t("sale_create.discount_optional")}</label>
           <NumericInput
             className={`input ${discountTooBig ? "is-invalid" : ""}`}
             placeholder="0"
@@ -393,24 +398,23 @@ export default function SaleCreate() {
             onChange={setDiscount}
           />
           <div className="text-[11px] text-gray-500 dark:text-slate-500 mt-1">
-            Скидка пропорционально уменьшает кредит каждого оператора.
-            Партнёры (способы оплаты) сохраняют свои суммы.
+            {t("sale_create.discount_hint")}
           </div>
         </div>
 
         <div>
-          <label className="label">Комментарий</label>
+          <label className="label">{t("sale_create.comment_label")}</label>
           <textarea className="input" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
         </div>
 
         {allowDup && (
           <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 p-3 space-y-2">
             <div className="text-sm text-amber-800 dark:text-amber-300">
-              IMEI уже встречался. Подтвердите дубликат с комментарием:
+              {t("sale_create.dup_hint")}
             </div>
             <input
               className="input"
-              placeholder="Причина (замена, обмен, ошибка ранее…)"
+              placeholder={t("sale_create.dup_reason_ph")}
               value={dupComment}
               onChange={(e) => setDupComment(e.target.value)}
             />
@@ -420,10 +424,10 @@ export default function SaleCreate() {
         {error && <div className="text-sm text-red-600 dark:text-red-400">{error}</div>}
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" className="btn-ghost" onClick={() => nav(-1)}>
-            Отмена
+            {t("common.cancel")}
           </button>
           <button className="btn-primary" type="submit">
-            {isEdit ? "Сохранить изменения" : "Сохранить"}
+            {isEdit ? t("sale_create.save_changes") : t("common.save")}
           </button>
         </div>
       </form>

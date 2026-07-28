@@ -36,18 +36,6 @@ interface OperatorRow {
   month_count?: number | null;
 }
 
-const STATUS_TABS: { key: StatusFilter; label: string }[] = [
-  { key: "all", label: "Все" },
-  { key: "active", label: "Активные" },
-  { key: "inactive", label: "Уволенные" },
-];
-
-const STATUS_LABEL: Record<OperatorStatus, string> = {
-  active: "активен",
-  trainee: "стажёр",
-  inactive: "неактивен",
-};
-
 function initials(name: string) {
   return (
     name
@@ -78,8 +66,21 @@ export default function Operators() {
   const nav = useNavigate();
   const role = useAuth((s) => s.role);
   const isManager = normaliseRole(role) === "manager";
+  const t = useT();
 
-  usePageHeader({ title: (useT())("operators.title"), subtitle: "Управление командой" });
+  usePageHeader({ title: t("operators.title"), subtitle: t("operators.subtitle") });
+
+  const STATUS_TABS: { key: StatusFilter; label: string }[] = [
+    { key: "all", label: t("common.all") },
+    { key: "active", label: t("operators.tab_active") },
+    { key: "inactive", label: t("operators.tab_fired") },
+  ];
+
+  const STATUS_LABEL: Record<OperatorStatus, string> = {
+    active: t("op_detail.status_active_lower"),
+    trainee: t("op_detail.status_trainee").toLowerCase(),
+    inactive: t("operators.status_inactive_lower"),
+  };
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
@@ -117,9 +118,9 @@ export default function Operators() {
       qc.invalidateQueries({ queryKey: ["operators"] });
       setShowCreate(false);
       setForm({ full_name: "", phone: "", status: "active", note: "" });
-      toast.success("Оператор добавлен");
+      toast.success(t("operators.op_added"));
     },
-    onError: () => toast.error("Не удалось добавить оператора"),
+    onError: () => toast.error(t("operators.op_add_failed")),
   });
 
   const toggle = useMutation({
@@ -127,7 +128,7 @@ export default function Operators() {
       api.post(`/operators/${id}/${active ? "reactivate" : "deactivate"}/`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["operators"] });
-      toast.success("Статус обновлён");
+      toast.success(t("operators.status_updated"));
     },
   });
 
@@ -138,11 +139,11 @@ export default function Operators() {
       qc.invalidateQueries({ queryKey: ["operators-list-all"] });
       setConfirmDelete(null);
       setDeleteError("");
-      toast.success("Оператор удалён");
+      toast.success(t("op_detail.delete_done"));
     },
     onError: (err: unknown) => {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      const msg = typeof detail === "string" ? detail : "Не удалось удалить оператора";
+      const msg = typeof detail === "string" ? detail : t("operators.op_delete_failed");
       setDeleteError(msg);
     },
   });
@@ -154,7 +155,7 @@ export default function Operators() {
       qc.invalidateQueries({ queryKey: ["operators"] });
       setPlanModal(null);
       setPlanInput("");
-      toast.success("План сохранён");
+      toast.success(t("op_detail.plan_updated"));
     },
   });
 
@@ -193,26 +194,26 @@ export default function Operators() {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
           <input
             className="nf-input pl-11"
-            placeholder="Поиск: имя или телефон…"
+            placeholder={t("operators.search_ph")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
         <div className="flex flex-wrap gap-2">
-          {STATUS_TABS.map((t) => (
+          {STATUS_TABS.map((tab) => (
             <Chip
-              key={t.key}
-              active={statusFilter === t.key}
-              onClick={() => setStatusFilter(t.key)}
+              key={tab.key}
+              active={statusFilter === tab.key}
+              onClick={() => setStatusFilter(tab.key)}
             >
-              {t.label}
+              {tab.label}
             </Chip>
           ))}
         </div>
         {isManager && (
           <div className="ml-auto">
             <Button onClick={() => setShowCreate(true)}>
-              <Plus className="w-3.5 h-3.5" /> Добавить оператора
+              <Plus className="w-3.5 h-3.5" /> {t("operators.add_op")}
             </Button>
           </div>
         )}
@@ -223,10 +224,10 @@ export default function Operators() {
         {/* Left: list */}
         <div className="nf-card overflow-hidden">
           {ops.isLoading ? (
-            <div className="text-center text-muted py-14 text-[13px]">Загрузка…</div>
+            <div className="text-center text-muted py-14 text-[13px]">{t("common.loading")}</div>
           ) : filtered.length === 0 ? (
             <div className="text-center text-muted py-14 text-[13px]">
-              {rows.length === 0 ? "Операторов пока нет" : "Ничего не найдено"}
+              {rows.length === 0 ? t("operators.empty") : t("operators.no_matches")}
             </div>
           ) : (
             <ul className="flex flex-col">
@@ -274,8 +275,8 @@ export default function Operators() {
                         )}
                       </div>
                       <div className="text-[12px] text-muted truncate">
-                        {o.phone || "нет телефона"}
-                        {o.hired_at && <> · с {fmtDate(o.hired_at)}</>}
+                        {o.phone || t("leads.no_phone")}
+                        {o.hired_at && <> · {t("op_detail.since", { date: fmtDate(o.hired_at) })}</>}
                       </div>
                     </div>
                     <div className="text-right">
@@ -283,7 +284,7 @@ export default function Operators() {
                         {formatUZS(monthTotal)}
                       </div>
                       <div className="text-[11.5px] text-muted tabular-nums">
-                        {monthCount} продаж
+                        {t("op_detail.sales_count", { n: monthCount })}
                       </div>
                     </div>
                   </li>
@@ -314,7 +315,7 @@ export default function Operators() {
                     {selected.full_name}
                   </div>
                   <div className="text-[13px] text-muted mt-0.5 truncate">
-                    {selected.phone || "нет телефона"}
+                    {selected.phone || t("leads.no_phone")}
                   </div>
                   <div className="mt-2">
                     <StatusBadge tone={selected.status === "active" ? "hot" : "neutral"}>
@@ -329,13 +330,13 @@ export default function Operators() {
                 style={{ gridTemplateColumns: "repeat(3, 1fr)" }}
               >
                 <div className="nf-tile" style={{ padding: "14px 16px" }}>
-                  <div className="text-[11px] text-muted uppercase tracking-wide">План</div>
+                  <div className="text-[11px] text-muted uppercase tracking-wide">{t("operators.tile_plan")}</div>
                   <div className="text-[18px] font-semibold tabular-nums mt-1">
                     {selected.plan_target ? formatUZS(Number(selected.plan_target)) : "—"}
                   </div>
                 </div>
                 <div className="nf-tile" style={{ padding: "14px 16px" }}>
-                  <div className="text-[11px] text-muted uppercase tracking-wide">Сделал</div>
+                  <div className="text-[11px] text-muted uppercase tracking-wide">{t("operators.tile_done")}</div>
                   <div className="text-[18px] font-semibold tabular-nums mt-1">
                     {formatUZS(Number(selected.plan_actual || 0))}
                   </div>
@@ -354,7 +355,7 @@ export default function Operators() {
 
               <div className="mt-5 flex flex-wrap gap-2">
                 <Button onClick={() => nav(`/operators/${selected.id}`)}>
-                  Открыть карточку
+                  {t("operators.open_card")}
                 </Button>
                 {isManager && (
                   <>
@@ -368,7 +369,7 @@ export default function Operators() {
                         })
                       }
                     >
-                      Стикер
+                      {t("op_detail.sticker")}
                     </Button>
                     <Button
                       variant="secondary"
@@ -385,7 +386,7 @@ export default function Operators() {
                         );
                       }}
                     >
-                      План
+                      {t("operators.tile_plan")}
                     </Button>
                     <Button
                       variant="ghost"
@@ -393,7 +394,7 @@ export default function Operators() {
                         toggle.mutate({ id: selected.id, active: selected.status === "inactive" })
                       }
                     >
-                      {selected.status === "inactive" ? "Активировать" : "Деактивировать"}
+                      {selected.status === "inactive" ? t("op_detail.activate") : t("op_detail.deactivate")}
                     </Button>
                     <Button
                       variant="danger"
@@ -402,7 +403,7 @@ export default function Operators() {
                         setConfirmDelete({ id: selected.id, name: selected.full_name });
                       }}
                     >
-                      Удалить
+                      {t("common.delete")}
                     </Button>
                   </>
                 )}
@@ -411,9 +412,9 @@ export default function Operators() {
           ) : (
             <Card padded className="animate-nfFadeUp">
               <div className="text-center py-6">
-                <div className="text-[14px] font-medium">Выберите оператора</div>
+                <div className="text-[14px] font-medium">{t("operators.pick_op")}</div>
                 <div className="text-[12.5px] text-muted mt-1.5">
-                  {totalCount} {totalCount === 1 ? "оператор" : "операторов"} в команде
+                  {totalCount === 1 ? t("operators.team_count_one", { n: totalCount }) : t("operators.team_count_many", { n: totalCount })}
                 </div>
               </div>
             </Card>
@@ -425,25 +426,25 @@ export default function Operators() {
       <Modal open={!!planModal} onClose={() => setPlanModal(null)} width={420}>
         {planModal && (
           <div className="p-7">
-            <div className="text-[18px] font-semibold tracking-tight">План на месяц</div>
+            <div className="text-[18px] font-semibold tracking-tight">{t("operators.plan_month_title")}</div>
             <div className="text-[13px] text-muted mt-1">{planModal.name}</div>
             <div className="mt-5">
-              <div className="nf-col mb-1.5">Цель (сум)</div>
+              <div className="nf-col mb-1.5">{t("operators.plan_goal")}</div>
               <NumericInput
                 className="nf-input"
                 value={planInput}
                 onChange={setPlanInput}
-                placeholder="например 100 000 000"
+                placeholder={t("operators.plan_goal_ph")}
                 autoFocus
               />
             </div>
             <div className="mt-6 flex gap-2 justify-end">
-              <Button variant="ghost" onClick={() => setPlanModal(null)}>Отмена</Button>
+              <Button variant="ghost" onClick={() => setPlanModal(null)}>{t("common.cancel")}</Button>
               <Button
                 onClick={() => setPlan.mutate({ id: planModal.id, target_amount: planInput })}
                 disabled={!planInput || setPlan.isPending}
               >
-                {setPlan.isPending ? "Сохранение…" : "Сохранить"}
+                {setPlan.isPending ? t("common.saving") : t("common.save")}
               </Button>
             </div>
           </div>
@@ -454,11 +455,9 @@ export default function Operators() {
       <Modal open={!!confirmDelete} onClose={() => { setConfirmDelete(null); setDeleteError(""); }} width={460}>
         {confirmDelete && (
           <div className="p-7">
-            <div className="text-[18px] font-semibold tracking-tight">Удалить оператора</div>
+            <div className="text-[18px] font-semibold tracking-tight">{t("op_detail.delete")}</div>
             <div className="text-[13px] text-muted mt-2">
-              Удалить оператора <span className="text-text font-medium">{confirmDelete.name}</span>?
-              Действие необратимо. Удаление возможно только для операторов без продаж — иначе
-              используйте деактивацию.
+              {t("operators.delete_hint_prefix")} <span className="text-text font-medium">{confirmDelete.name}</span>{t("operators.delete_hint_suffix")}
             </div>
             {deleteError && (
               <div
@@ -478,14 +477,14 @@ export default function Operators() {
                 onClick={() => { setConfirmDelete(null); setDeleteError(""); }}
                 disabled={remove.isPending}
               >
-                Отмена
+                {t("common.cancel")}
               </Button>
               <Button
                 variant="danger"
                 onClick={() => remove.mutate(confirmDelete.id)}
                 disabled={remove.isPending}
               >
-                {remove.isPending ? "Удаление…" : "Удалить"}
+                {remove.isPending ? t("common.deleting") : t("common.delete")}
               </Button>
             </div>
           </div>
@@ -513,10 +512,10 @@ export default function Operators() {
           }}
           className="p-7"
         >
-          <div className="text-[18px] font-semibold tracking-tight">Новый оператор</div>
+          <div className="text-[18px] font-semibold tracking-tight">{t("operators.new_op")}</div>
           <div className="mt-5 flex flex-col gap-4">
             <div>
-              <div className="nf-col mb-1.5">ФИО</div>
+              <div className="nf-col mb-1.5">{t("operators.full_name")}</div>
               <input
                 className="nf-input"
                 required
@@ -525,7 +524,7 @@ export default function Operators() {
               />
             </div>
             <div>
-              <div className="nf-col mb-1.5">Телефон</div>
+              <div className="nf-col mb-1.5">{t("common.phone")}</div>
               <input
                 className="nf-input"
                 value={form.phone}
@@ -533,24 +532,24 @@ export default function Operators() {
               />
             </div>
             <div>
-              <div className="nf-col mb-1.5">Статус</div>
+              <div className="nf-col mb-1.5">{t("common.status")}</div>
               <select
                 className="nf-input"
                 value={form.status}
                 onChange={(e) => setForm({ ...form, status: e.target.value as OperatorStatus })}
               >
-                <option value="active">Активный</option>
-                <option value="trainee">Стажёр</option>
-                <option value="inactive">Неактивный</option>
+                <option value="active">{t("op_detail.status_active")}</option>
+                <option value="trainee">{t("op_detail.status_trainee")}</option>
+                <option value="inactive">{t("op_detail.status_inactive")}</option>
               </select>
             </div>
           </div>
           <div className="mt-6 flex gap-2 justify-end">
             <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>
-              Отмена
+              {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "…" : "Сохранить"}
+              {create.isPending ? "…" : t("common.save")}
             </Button>
           </div>
         </form>

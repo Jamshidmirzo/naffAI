@@ -16,13 +16,6 @@ import { api } from "../lib/api";
 
 type Period = "today" | "week" | "month" | "custom";
 
-const PERIODS: TabItem<Period>[] = [
-  { value: "today", label: "Сегодня" },
-  { value: "week", label: "Неделя" },
-  { value: "month", label: "Месяц" },
-  { value: "custom", label: "Свой период" },
-];
-
 interface ReportCard {
   key: string;
   title: string;
@@ -32,52 +25,6 @@ interface ReportCard {
   xlsxUrl?: string;
 }
 
-const CARDS: ReportCard[] = [
-  {
-    key: "sales",
-    title: "Продажи",
-    description: "Все продажи за период — с фильтрами по каналу, партнёру, оператору.",
-    meta: "~34 строки за сегодня",
-    icon: BarChart3,
-    xlsxUrl: "/sales/export.xlsx",
-  },
-  {
-    key: "attendance",
-    title: "Посещаемость",
-    description: "Кто был на смене, кто опоздал, длительность смен.",
-    meta: "12/15 явок сегодня",
-    icon: Clock,
-  },
-  {
-    key: "payroll",
-    title: "Зарплата",
-    description: "Расчёт по операторам за месяц с прогрессом к порогу.",
-    meta: "актуально за текущий месяц",
-    icon: Wallet,
-  },
-  {
-    key: "leads",
-    title: "Лиды",
-    description: "Полный список лидов с источником, статусом и назначением.",
-    meta: "1240 лидов в системе",
-    icon: Users2,
-  },
-  {
-    key: "calls",
-    title: "Звонки",
-    description: "Все попытки звонков с исходами и колбэками.",
-    meta: "861 звонок за месяц",
-    icon: Phone,
-  },
-  {
-    key: "channels",
-    title: "Аналитика по каналам",
-    description: "Разрез продаж по каналам и партнёрам с конверсией.",
-    meta: "4 канала, 2 партнёра",
-    icon: MessageSquare,
-  },
-];
-
 interface RecentExport {
   id: number;
   file: string;
@@ -85,16 +32,70 @@ interface RecentExport {
   when: string;
 }
 
-const RECENT: RecentExport[] = [
-  { id: 1, file: "naffcrm-savdo-2025-07-27.xlsx", size: "82 КБ", when: "сегодня, 14:12" },
-  { id: 2, file: "attendance-2025-07.xlsx", size: "24 КБ", when: "вчера" },
-  { id: 3, file: "payroll-2025-07.xlsx", size: "18 КБ", when: "3 дня назад" },
-];
-
 export default function Reports() {
   const [period, setPeriod] = useState<Period>("today");
+  const t = useT();
 
-  usePageHeader({ title: (useT())("reports.title"), subtitle: "Готовые выгрузки по разделам" });
+  const PERIODS: TabItem<Period>[] = [
+    { value: "today", label: t("common.today") },
+    { value: "week", label: t("common.week") },
+    { value: "month", label: t("common.month") },
+    { value: "custom", label: t("reports.period_custom") },
+  ];
+
+  const CARDS: ReportCard[] = [
+    {
+      key: "sales",
+      title: t("reports.card_sales_title"),
+      description: t("reports.card_sales_desc"),
+      meta: t("reports.card_sales_meta"),
+      icon: BarChart3,
+      xlsxUrl: "/sales/export.xlsx",
+    },
+    {
+      key: "attendance",
+      title: t("reports.card_attendance_title"),
+      description: t("reports.card_attendance_desc"),
+      meta: t("reports.card_attendance_meta"),
+      icon: Clock,
+    },
+    {
+      key: "payroll",
+      title: t("reports.card_payroll_title"),
+      description: t("reports.card_payroll_desc"),
+      meta: t("reports.card_payroll_meta"),
+      icon: Wallet,
+    },
+    {
+      key: "leads",
+      title: t("reports.card_leads_title"),
+      description: t("reports.card_leads_desc"),
+      meta: t("reports.card_leads_meta"),
+      icon: Users2,
+    },
+    {
+      key: "calls",
+      title: t("reports.card_calls_title"),
+      description: t("reports.card_calls_desc"),
+      meta: t("reports.card_calls_meta"),
+      icon: Phone,
+    },
+    {
+      key: "channels",
+      title: t("reports.card_channels_title"),
+      description: t("reports.card_channels_desc"),
+      meta: t("reports.card_channels_meta"),
+      icon: MessageSquare,
+    },
+  ];
+
+  const RECENT: RecentExport[] = [
+    { id: 1, file: "naffcrm-savdo-2025-07-27.xlsx", size: `82 ${t("reports.unit_kb")}`, when: t("reports.when_today_time") },
+    { id: 2, file: "attendance-2025-07.xlsx", size: `24 ${t("reports.unit_kb")}`, when: t("reports.when_yesterday") },
+    { id: 3, file: "payroll-2025-07.xlsx", size: `18 ${t("reports.unit_kb")}`, when: t("reports.when_days_ago", { n: 3 }) },
+  ];
+
+  usePageHeader({ title: t("reports.title"), subtitle: t("reports.subtitle") });
 
   const download = async (card: ReportCard, format: "xlsx" | "pdf") => {
     if (format === "xlsx" && card.xlsxUrl) {
@@ -111,20 +112,20 @@ export default function Reports() {
         a.click();
         a.remove();
         window.URL.revokeObjectURL(url);
-        toast.success("Скачано");
+        toast.success(t("reports.downloaded"));
       } catch {
-        toast.error("Не удалось скачать");
+        toast.error(t("reports.download_failed"));
       }
       return;
     }
-    toast.success(`Отчёт «${card.title}» готовится…`);
+    toast.success(t("reports.preparing", { name: card.title }));
   };
 
   return (
     <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
       {/* Period bar */}
       <section className="flex items-center gap-3 flex-wrap animate-nfFadeUp">
-        <div className="nf-col">Период:</div>
+        <div className="nf-col">{t("common.period")}:</div>
         <div className="flex flex-wrap gap-2">
           {PERIODS.map((p) => (
             <Chip
@@ -188,15 +189,15 @@ export default function Reports() {
       {/* Recent exports */}
       <section className="nf-card overflow-hidden animate-nfFadeUp">
         <div className="px-6 pt-5 pb-3 text-[15px] font-semibold tracking-tight">
-          Последние выгрузки
+          {t("reports.recent_title")}
         </div>
         <div
           className="grid gap-2 px-6 pb-3 nf-col"
           style={{ gridTemplateColumns: "2fr .6fr .8fr .8fr" }}
         >
-          <div>Файл</div>
-          <div className="text-right">Размер</div>
-          <div>Когда</div>
+          <div>{t("reports.col_file")}</div>
+          <div className="text-right">{t("reports.col_size")}</div>
+          <div>{t("reports.col_when")}</div>
           <div className="text-right"></div>
         </div>
         <div>
@@ -219,9 +220,9 @@ export default function Reports() {
                 <button
                   className="nf-btn nf-btn--ghost"
                   style={{ padding: "7px 12px", fontSize: 12.5 }}
-                  onClick={() => toast.success("Скачано")}
+                  onClick={() => toast.success(t("reports.downloaded"))}
                 >
-                  <Download className="w-3 h-3" /> Скачать
+                  <Download className="w-3 h-3" /> {t("reports.download")}
                 </button>
               </div>
             </div>

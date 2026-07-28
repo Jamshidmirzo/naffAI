@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { api } from "../lib/api";
 import { Button, Modal, StatusBadge, toast } from "../components/ui";
 import { usePageHeader } from "../store/page";
+import { useT } from "../lib/i18n";
 
 interface Partner {
   id: number;
@@ -13,10 +14,11 @@ interface Partner {
 
 export default function Partners() {
   const qc = useQueryClient();
+  const t = useT();
   const [show, setShow] = useState(false);
   const [name, setName] = useState("");
 
-  usePageHeader({ title: "Партнёры", subtitle: "Каналы продаж" });
+  usePageHeader({ title: t("partners.title"), subtitle: t("partners.subtitle_channels") });
 
   const list = useQuery({
     queryKey: ["partners"],
@@ -31,7 +33,7 @@ export default function Partners() {
       qc.invalidateQueries({ queryKey: ["partners-list"] });
       setShow(false);
       setName("");
-      toast.success("Партнёр добавлен");
+      toast.success(t("partners.added"));
     },
   });
 
@@ -49,9 +51,9 @@ export default function Partners() {
   return (
     <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
       <div className="flex items-center justify-between animate-nfFadeUp">
-        <div className="text-[13px] text-muted">Всего: {rows.length}</div>
+        <div className="text-[13px] text-muted">{t("partners.total", { n: rows.length })}</div>
         <Button onClick={() => setShow(true)}>
-          <Plus className="w-3.5 h-3.5" /> Добавить
+          <Plus className="w-3.5 h-3.5" /> {t("partners.add")}
         </Button>
       </div>
 
@@ -60,13 +62,13 @@ export default function Partners() {
           className="grid gap-2 px-6 pt-5 pb-3 nf-col"
           style={{ gridTemplateColumns: "1.4fr .6fr .6fr" }}
         >
-          <div>Название</div>
-          <div>Статус</div>
-          <div className="text-right">Действие</div>
+          <div>{t("common.name")}</div>
+          <div>{t("common.status")}</div>
+          <div className="text-right">{t("partners.col_action")}</div>
         </div>
         {rows.length === 0 ? (
           <div className="text-center text-muted py-12 text-[13px]">
-            Партнёров пока нет
+            {t("partners.empty_soft")}
           </div>
         ) : (
           <div>
@@ -83,7 +85,7 @@ export default function Partners() {
                 <div className="font-medium">{p.name}</div>
                 <div>
                   <StatusBadge tone={p.is_active ? "hot" : "neutral"}>
-                    {p.is_active ? "активен" : "выключен"}
+                    {p.is_active ? t("partners.active") : t("partners.inactive")}
                   </StatusBadge>
                 </div>
                 <div className="text-right">
@@ -94,7 +96,7 @@ export default function Partners() {
                       toggle.mutate({ id: p.id, is_active: !p.is_active })
                     }
                   >
-                    {p.is_active ? "Выключить" : "Включить"}
+                    {p.is_active ? t("partners.disable") : t("partners.enable")}
                   </button>
                 </div>
               </div>
@@ -112,24 +114,24 @@ export default function Partners() {
           }}
           className="p-7"
         >
-          <div className="text-[18px] font-semibold tracking-tight">Новый партнёр</div>
+          <div className="text-[18px] font-semibold tracking-tight">{t("partners.new_title")}</div>
           <div className="mt-5">
-            <div className="nf-col mb-1.5">Название</div>
+            <div className="nf-col mb-1.5">{t("common.name")}</div>
             <input
               className="nf-input"
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Alif / Uzum / Hamroh / TBC / Cash…"
+              placeholder={t("partners.name_ph")}
               autoFocus
             />
           </div>
           <div className="mt-6 flex gap-2 justify-end">
             <Button variant="ghost" type="button" onClick={() => setShow(false)}>
-              Отмена
+              {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={create.isPending || !name.trim()}>
-              {create.isPending ? "Сохраняем…" : "Сохранить"}
+              {create.isPending ? t("common.saving") : t("common.save")}
             </Button>
           </div>
         </form>

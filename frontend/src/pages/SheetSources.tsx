@@ -16,6 +16,7 @@ import {
   type TabItem,
 } from "../components/ui";
 import { usePageHeader } from "../store/page";
+import { useT } from "../lib/i18n";
 
 type DistributionMode =
   | "alias_only"
@@ -39,11 +40,11 @@ type SheetSource = {
   distribution_mode: DistributionMode;
 };
 
-const DISTRIBUTION_LABEL: Record<DistributionMode, string> = {
-  alias_only: "Только alias",
-  alias_or_default: "Alias → дефолт",
-  default_only: "Только дефолт",
-  alias_or_rr: "Alias → round-robin",
+const DISTRIBUTION_KEY: Record<DistributionMode, string> = {
+  alias_only: "sheet_src.mode_alias_only",
+  alias_or_default: "sheet_src.mode_alias_or_default",
+  default_only: "sheet_src.mode_default_only",
+  alias_or_rr: "sheet_src.mode_alias_or_rr",
 };
 
 type Alias = {
@@ -56,18 +57,19 @@ type Alias = {
 type Operator = { id: number; full_name: string; status: string };
 type TabKey = "sources" | "aliases";
 
-const TABS: TabItem<TabKey>[] = [
-  { value: "sources", label: "Листы" },
-  { value: "aliases", label: "Alias'ы операторов" },
-];
-
 export default function SheetSources() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<TabKey>("sources");
+  const t = useT();
+
+  const TABS: TabItem<TabKey>[] = [
+    { value: "sources", label: t("sheet_src.tab_sources") },
+    { value: "aliases", label: t("sheet_src.tab_aliases") },
+  ];
 
   usePageHeader({
-    title: "Google-Sheets",
-    subtitle: "Источники лидов и alias'ы операторов",
+    title: t("sheet_src.title"),
+    subtitle: t("sheet_src.subtitle"),
   });
 
   return (
@@ -83,6 +85,7 @@ export default function SheetSources() {
 // -------- Sheet sources -----------------------------------------------------
 
 function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const t = useT();
   const q = useQuery({
     queryKey: ["sheet-sources"],
     queryFn: () =>
@@ -108,9 +111,9 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   return (
     <>
       <div className="flex items-center justify-between animate-nfFadeUp">
-        <div className="text-[13px] text-muted">Всего листов: {items.length}</div>
+        <div className="text-[13px] text-muted">{t("sheet_src.total", { n: items.length })}</div>
         <Button onClick={() => setShowCreate(true)}>
-          <Plus className="w-3.5 h-3.5" /> Добавить лист
+          <Plus className="w-3.5 h-3.5" /> {t("sheet_src.add")}
         </Button>
       </div>
       <section className="nf-card overflow-hidden">
@@ -118,17 +121,17 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           className="grid gap-2 px-6 pt-5 pb-3 nf-col"
           style={{ gridTemplateColumns: gridCols }}
         >
-          <div>Название</div>
-          <div>Spreadsheet</div>
-          <div>gid</div>
-          <div>Default op</div>
-          <div>Mode</div>
-          <div>Последняя строка</div>
-          <div className="text-right">Действия</div>
+          <div>{t("sheet_src.col_name")}</div>
+          <div>{t("sheet_src.col_spreadsheet")}</div>
+          <div>{t("sheet_src.col_gid")}</div>
+          <div>{t("sheet_src.col_default_op")}</div>
+          <div>{t("sheet_src.col_mode_short")}</div>
+          <div>{t("sheet_src.col_last_row")}</div>
+          <div className="text-right">{t("sheet_src.col_actions")}</div>
         </div>
         {items.length === 0 ? (
           <div className="text-center text-muted py-12 text-[13px]">
-            Пока не настроены
+            {t("sheet_src.empty")}
           </div>
         ) : (
           <div>
@@ -145,7 +148,7 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="font-medium truncate">{src.name}</span>
                   {!src.active && (
-                    <StatusBadge tone="neutral">off</StatusBadge>
+                    <StatusBadge tone="neutral">{t("sheet_src.off")}</StatusBadge>
                   )}
                 </div>
                 <div className="font-mono text-[12px] text-muted truncate">
@@ -161,8 +164,9 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 </div>
                 <div className="text-[12px]">
                   <StatusBadge tone="neutral">
-                    {DISTRIBUTION_LABEL[src.distribution_mode] ||
-                      src.distribution_mode}
+                    {DISTRIBUTION_KEY[src.distribution_mode]
+                      ? t(DISTRIBUTION_KEY[src.distribution_mode])
+                      : src.distribution_mode}
                   </StatusBadge>
                 </div>
                 <div>
@@ -179,7 +183,7 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                     style={{ padding: "7px 12px", fontSize: 12 }}
                     onClick={() => setEdit(src)}
                   >
-                    Редактировать
+                    {t("common.edit")}
                   </button>
                 </div>
               </div>
@@ -200,7 +204,7 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
             setEdit(null);
             setShowCreate(false);
             qc.invalidateQueries({ queryKey: ["sheet-sources"] });
-            toast.success("Сохранено");
+            toast.success(t("toast.saved"));
           }}
         />
       )}
@@ -219,6 +223,7 @@ function SheetSourceForm({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const t = useT();
   const isEdit = !!value;
   const [name, setName] = useState(value?.name || "");
   const [ss, setSs] = useState(value?.spreadsheet_id || "");
@@ -250,7 +255,7 @@ function SheetSourceForm({
       try {
         columnMap = JSON.parse(mapJson);
       } catch {
-        throw new Error("column_map — некорректный JSON");
+        throw new Error(t("sheet_src.map_invalid"));
       }
       const body = {
         name,
@@ -269,7 +274,7 @@ function SheetSourceForm({
     onSuccess: onDone,
     onError: (err: unknown) => {
       const e = err as { response?: { data?: { detail?: string } }; message?: string };
-      setError(e?.response?.data?.detail || e?.message || "Ошибка");
+      setError(e?.response?.data?.detail || e?.message || t("common.error"));
     },
   });
 
@@ -278,7 +283,7 @@ function SheetSourceForm({
       <div className="p-7">
         <div className="flex items-start justify-between mb-4">
           <div className="text-[18px] font-semibold tracking-tight">
-            {isEdit ? "Редактировать лист" : "Новый лист"}
+            {isEdit ? t("sheet_src.form_edit") : t("sheet_src.form_new")}
           </div>
           <button
             onClick={onClose}
@@ -289,14 +294,14 @@ function SheetSourceForm({
           </button>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Название">
+          <Field label={t("sheet_src.field_name")}>
             <input
               className="nf-input"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
           </Field>
-          <Field label="Дефолтный статус">
+          <Field label={t("sheet_src.field_default_status")}>
             <select
               className="nf-input"
               value={defaultStatus}
@@ -308,7 +313,7 @@ function SheetSourceForm({
             </select>
           </Field>
           <div className="col-span-2">
-            <Field label="Spreadsheet ID">
+            <Field label={t("sheet_src.field_spreadsheet_id")}>
               <input
                 className="nf-input font-mono"
                 value={ss}
@@ -316,14 +321,14 @@ function SheetSourceForm({
               />
             </Field>
           </div>
-          <Field label="gid">
+          <Field label={t("sheet_src.field_gid")}>
             <input
               className="nf-input font-mono"
               value={gid}
               onChange={(e) => setGid(e.target.value)}
             />
           </Field>
-          <Field label="Название листа (опц.)">
+          <Field label={t("sheet_src.field_ws")}>
             <input
               className="nf-input"
               value={ws}
@@ -331,7 +336,7 @@ function SheetSourceForm({
             />
           </Field>
           <div className="col-span-2">
-            <Field label="Column map (JSON)">
+            <Field label={t("sheet_src.field_map")}>
               <textarea
                 className="nf-input font-mono text-[12px] min-h-[220px]"
                 value={mapJson}
@@ -340,13 +345,13 @@ function SheetSourceForm({
               />
             </Field>
           </div>
-          <Field label="Default оператор">
+          <Field label={t("sheet_src.field_default_op")}>
             <select
               className="nf-input"
               value={defaultOperator}
               onChange={(e) => setDefaultOperator(e.target.value)}
             >
-              <option value="">— нет —</option>
+              <option value="">{t("sheet_src.option_none")}</option>
               {operators.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.full_name}
@@ -354,7 +359,7 @@ function SheetSourceForm({
               ))}
             </select>
           </Field>
-          <Field label="Distribution mode">
+          <Field label={t("sheet_src.field_mode")}>
             <select
               className="nf-input"
               value={distributionMode}
@@ -364,20 +369,20 @@ function SheetSourceForm({
             >
               {modes.map((m) => (
                 <option key={m} value={m}>
-                  {DISTRIBUTION_LABEL[m]}
+                  {t(DISTRIBUTION_KEY[m])}
                 </option>
               ))}
             </select>
           </Field>
           <div className="col-span-2 text-[12px] text-muted">
             {distributionMode === "alias_only" &&
-              "Лид назначается только если alias найден и привязан. Иначе — needs_review."}
+              t("sheet_src.mode_hint_alias_only")}
             {distributionMode === "alias_or_default" &&
-              "Если alias не разрезолвился — назначаем default оператору."}
+              t("sheet_src.mode_hint_alias_or_default")}
             {distributionMode === "default_only" &&
-              "Alias игнорируется, все лиды падают на default оператора."}
+              t("sheet_src.mode_hint_default_only")}
             {distributionMode === "alias_or_rr" &&
-              "Если alias не разрезолвился — round-robin по активным операторам."}
+              t("sheet_src.mode_hint_alias_or_rr")}
           </div>
           <div className="col-span-2 flex items-center gap-2 text-[13.5px]">
             <input
@@ -386,7 +391,7 @@ function SheetSourceForm({
               onChange={(e) => setActive(e.target.checked)}
               id="active"
             />
-            <label htmlFor="active">Активен (участвует в sync)</label>
+            <label htmlFor="active">{t("sheet_src.active_hint")}</label>
           </div>
         </div>
         {error && (
@@ -399,10 +404,10 @@ function SheetSourceForm({
         )}
         <div className="mt-6 flex gap-2 justify-end">
           <Button variant="ghost" onClick={onClose}>
-            Отмена
+            {t("common.cancel")}
           </Button>
           <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
-            {mut.isPending ? "Сохраняем…" : "Сохранить"}
+            {mut.isPending ? t("common.saving") : t("common.save")}
           </Button>
         </div>
       </div>
@@ -413,6 +418,7 @@ function SheetSourceForm({
 // -------- Aliases ----------------------------------------------------------
 
 function AliasesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const t = useT();
   const q = useQuery({
     queryKey: ["operator-sheet-aliases"],
     queryFn: () =>
@@ -434,7 +440,7 @@ function AliasesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const bind = async (alias: Alias, operatorId: number | null) => {
     await api.patch(`/operator-sheet-aliases/${alias.id}/`, { operator: operatorId });
     qc.invalidateQueries({ queryKey: ["operator-sheet-aliases"] });
-    toast.success("Привязано");
+    toast.success(t("sheet_src.bound"));
   };
 
   return (
@@ -443,14 +449,14 @@ function AliasesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
         <div className="text-[13px]">
           {unboundCount > 0 ? (
             <span style={{ color: "var(--accent)" }} className="font-semibold">
-              Непривязанных: {unboundCount}
+              {t("sheet_src.aliases_unbound", { n: unboundCount })}
             </span>
           ) : (
-            <span className="text-muted">Всего alias'ов: {items.length}</span>
+            <span className="text-muted">{t("sheet_src.aliases_total", { n: items.length })}</span>
           )}
         </div>
         <Button onClick={() => setCreating(true)}>
-          <Plus className="w-3.5 h-3.5" /> Alias
+          <Plus className="w-3.5 h-3.5" /> {t("sheet_src.aliases_add")}
         </Button>
       </div>
       <section className="nf-card overflow-hidden">
@@ -458,12 +464,12 @@ function AliasesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           className="grid gap-2 px-6 pt-5 pb-3 nf-col"
           style={{ gridTemplateColumns: "1fr 1.2fr" }}
         >
-          <div>Alias (как в листе)</div>
-          <div>Оператор</div>
+          <div>{t("sheet_src.aliases_col_alias")}</div>
+          <div>{t("sheet_src.aliases_col_op")}</div>
         </div>
         {items.length === 0 ? (
           <div className="text-center text-muted py-12 text-[13px]">
-            Alias'ов ещё нет — создаются автоматически при sync
+            {t("sheet_src.aliases_empty")}
           </div>
         ) : (
           <div>
@@ -480,7 +486,7 @@ function AliasesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{a.alias_name}</span>
                   {!a.operator && (
-                    <StatusBadge tone="hot">не привязан</StatusBadge>
+                    <StatusBadge tone="hot">{t("sheet_src.aliases_unbound_badge")}</StatusBadge>
                   )}
                 </div>
                 <div>
@@ -491,7 +497,7 @@ function AliasesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                       bind(a, e.target.value ? Number(e.target.value) : null)
                     }
                   >
-                    <option value="">— не привязан —</option>
+                    <option value="">{t("sheet_src.aliases_none")}</option>
                     {(ops.data || []).map((o) => (
                       <option key={o.id} value={o.id}>
                         {o.full_name}
@@ -511,7 +517,7 @@ function AliasesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           onDone={() => {
             setCreating(false);
             qc.invalidateQueries({ queryKey: ["operator-sheet-aliases"] });
-            toast.success("Alias создан");
+            toast.success(t("sheet_src.alias_created"));
           }}
         />
       )}
@@ -526,6 +532,7 @@ function NewAliasModal({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const t = useT();
   const [name, setName] = useState("");
   const [error, setError] = useState("");
 
@@ -536,16 +543,16 @@ function NewAliasModal({
     onSuccess: onDone,
     onError: (err: unknown) => {
       const e = err as { response?: { data?: { detail?: string } }; message?: string };
-      setError(e?.response?.data?.detail || e?.message || "Ошибка");
+      setError(e?.response?.data?.detail || e?.message || t("common.error"));
     },
   });
 
   return (
     <Modal open onClose={onClose} width={440}>
       <div className="p-7">
-        <div className="text-[18px] font-semibold tracking-tight">Новый alias</div>
+        <div className="text-[18px] font-semibold tracking-tight">{t("sheet_src.alias_new_title")}</div>
         <div className="mt-5">
-          <div className="nf-col mb-1.5">Как оператор написан в листе</div>
+          <div className="nf-col mb-1.5">{t("sheet_src.alias_new_field")}</div>
           <input
             className="nf-input"
             value={name}
@@ -563,13 +570,13 @@ function NewAliasModal({
         )}
         <div className="mt-6 flex gap-2 justify-end">
           <Button variant="ghost" onClick={onClose}>
-            Отмена
+            {t("common.cancel")}
           </Button>
           <Button
             onClick={() => mut.mutate()}
             disabled={mut.isPending || !name.trim()}
           >
-            {mut.isPending ? "Сохраняем…" : "Сохранить"}
+            {mut.isPending ? t("common.saving") : t("common.save")}
           </Button>
         </div>
       </div>

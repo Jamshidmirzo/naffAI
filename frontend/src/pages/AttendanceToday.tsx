@@ -67,12 +67,12 @@ export default function AttendanceToday() {
     if (!closingLog) return;
     try {
       await api.post(`/attendance/logs/${closingLog.id}/close/`, { note: closeNote });
-      toast.success("Смена закрыта");
+      toast.success(t("op_detail.shift_closed"));
       setClosingLog(null);
       setCloseNote("");
       refetch();
     } catch {
-      toast.error("Не удалось закрыть смену");
+      toast.error(t("op_detail.shift_close_failed"));
     }
   };
 
@@ -124,18 +124,18 @@ export default function AttendanceToday() {
               className="font-semibold mt-2"
               style={{ fontSize: 24, letterSpacing: "-0.025em" }}
             >
-              QR-код для отметки на входе
+              {t("attendance.today.qr_title")}
             </div>
             <div className="text-[13px] text-muted mt-1.5 max-w-md">
-              Распечатайте и повесьте у входа. Операторы отмечаются камерой телефона.
+              {t("attendance.today.qr_hint")}
             </div>
           </div>
           <div className="flex flex-col gap-2 items-end">
             <Link to="/scan" target="_blank">
-              <Button>Открыть экран /scan</Button>
+              <Button>{t("attendance.today.open_scan")}</Button>
             </Link>
-            <Button variant="ghost" onClick={() => toast("Скоро — генерация PNG")}>
-              Скачать PNG
+            <Button variant="ghost" onClick={() => toast(t("attendance.today.png_soon"))}>
+              {t("op_detail.download_png")}
             </Button>
           </div>
         </div>
@@ -146,24 +146,24 @@ export default function AttendanceToday() {
         <section className="grid gap-[13px] grid-cols-1 md:grid-cols-3">
           <DashKpiCard
             index={0}
-            label="На смене сейчас"
+            label={t("attendance.today.kpi_present")}
             value={report.counts.present}
             format={(n) => `${Math.round(n)} / ${report.total_active_operators}`}
-            hint="Операторов сегодня"
+            hint={t("attendance.today.kpi_present_hint")}
           />
           <DashKpiCard
             index={1}
-            label="Опоздали"
+            label={t("attendance.today.kpi_late")}
             value={report.counts.late}
             format={(n) => `${Math.round(n)}`}
-            hint="Более чем на 15 мин"
+            hint={t("attendance.today.kpi_late_hint")}
           />
           <DashKpiCard
             index={2}
-            label="Не пришли"
+            label={t("attendance.today.kpi_absent")}
             value={report.counts.absent}
             format={(n) => `${Math.round(n)}`}
-            hint="Не отметились"
+            hint={t("attendance.today.kpi_absent_hint")}
           />
         </section>
       )}
@@ -171,7 +171,7 @@ export default function AttendanceToday() {
       {/* Date filter */}
       <section className="flex items-center gap-3">
         <span className="nf-col flex items-center gap-1.5">
-          <Calendar className="w-3.5 h-3.5" /> Дата:
+          <Calendar className="w-3.5 h-3.5" /> {t("common.date")}:
         </span>
         <input
           type="date"
@@ -184,25 +184,25 @@ export default function AttendanceToday() {
       {/* Present operators table */}
       <section className="nf-card overflow-hidden">
         <div className="px-6 pt-5 pb-3 text-[15px] font-semibold tracking-tight">
-          На смене
+          {t("attendance.today.on_shift_title")}
         </div>
         <div
           className="grid gap-2 px-6 pb-3 nf-col"
           style={{ gridTemplateColumns: "1.3fr .8fr .8fr .7fr .6fr .5fr .8fr" }}
         >
-          <div>Оператор</div>
-          <div>Пришёл</div>
-          <div>Ушёл</div>
-          <div>Длит.</div>
-          <div className="text-center">Опозд.</div>
-          <div className="text-center">Канал</div>
-          <div className="text-right">Действия</div>
+          <div>{t("common.operator")}</div>
+          <div>{t("op_detail.att_arrived")}</div>
+          <div>{t("op_detail.att_left")}</div>
+          <div>{t("op_detail.att_duration")}</div>
+          <div className="text-center">{t("op_detail.att_late")}</div>
+          <div className="text-center">{t("op_detail.att_channel")}</div>
+          <div className="text-right">{t("common.actions")}</div>
         </div>
         {isLoading ? (
-          <div className="text-center text-muted py-12 text-[13px]">Загрузка…</div>
+          <div className="text-center text-muted py-12 text-[13px]">{t("common.loading")}</div>
         ) : (report?.present.length ?? 0) === 0 ? (
           <div className="text-center text-muted py-12 text-[13px]">
-            Ни один оператор сегодня ещё не пришёл
+            {t("attendance.today.none_yet")}
           </div>
         ) : (
           <div>
@@ -233,14 +233,14 @@ export default function AttendanceToday() {
                     </span>
                   ) : e.auto_closed ? (
                     <span className="text-muted text-[12px] inline-flex items-center gap-1">
-                      <Moon className="w-3 h-3" /> 23:00 авто
+                      <Moon className="w-3 h-3" /> {t("attendance.today.auto_2300")}
                     </span>
                   ) : (
-                    <StatusBadge tone="hot">на смене</StatusBadge>
+                    <StatusBadge tone="hot">{t("op_detail.on_shift")}</StatusBadge>
                   )}
                 </div>
                 <div className="text-muted tabular-nums">
-                  {e.duration_min !== null ? `${e.duration_min} мин` : "—"}
+                  {e.duration_min !== null ? t("op_detail.minutes_short", { n: e.duration_min }) : "—"}
                 </div>
                 <div className="text-center">
                   {e.was_late ? (
@@ -248,7 +248,7 @@ export default function AttendanceToday() {
                       style={{ color: "var(--accent)" }}
                       className="inline-flex items-center gap-0.5 text-[12px] font-semibold"
                     >
-                      <AlertTriangle className="w-3 h-3" /> да
+                      <AlertTriangle className="w-3 h-3" /> {t("common.yes").toLowerCase()}
                     </span>
                   ) : (
                     <span className="text-muted">—</span>
@@ -269,7 +269,7 @@ export default function AttendanceToday() {
                         color: "var(--danger)",
                       }}
                     >
-                      Закрыть
+                      {t("op_detail.close_shift_btn")}
                     </button>
                   )}
                 </div>
@@ -283,7 +283,7 @@ export default function AttendanceToday() {
       {report?.absent && report.absent.length > 0 && (
         <section className="nf-card overflow-hidden">
           <div className="px-6 pt-5 pb-3 text-[15px] font-semibold tracking-tight">
-            Не пришли ({report.absent.length})
+            {t("attendance.today.absent_title", { n: report.absent.length })}
           </div>
           <div>
             {report.absent.map((op, i) => (
@@ -317,10 +317,10 @@ export default function AttendanceToday() {
           <div className="flex items-start justify-between gap-3 mb-4">
             <div>
               <div className="text-[18px] font-semibold tracking-tight">
-                Закрыть смену
+                {t("op_detail.close_shift_title")}
               </div>
               <div className="text-[13px] text-muted mt-1">
-                {closingLog?.name} — время ухода будет зафиксировано сейчас
+                {closingLog?.name} {t("attendance.today.close_now_hint")}
               </div>
             </div>
             <button
@@ -332,22 +332,22 @@ export default function AttendanceToday() {
             </button>
           </div>
           <div>
-            <div className="nf-col mb-1.5">Комментарий (необязательно)</div>
+            <div className="nf-col mb-1.5">{t("op_detail.comment_optional")}</div>
             <textarea
               value={closeNote}
               onChange={(e) => setCloseNote(e.target.value)}
               className="nf-input min-h-[80px]"
-              placeholder="Например: клиент задержал"
+              placeholder={t("attendance.today.close_note_ph")}
               maxLength={280}
               rows={3}
             />
           </div>
           <div className="mt-6 flex gap-2 justify-end">
             <Button variant="ghost" onClick={() => setClosingLog(null)}>
-              Отмена
+              {t("common.cancel")}
             </Button>
             <Button variant="danger" onClick={handleCloseSubmit}>
-              Закрыть смену
+              {t("op_detail.close_shift_title")}
             </Button>
           </div>
         </div>

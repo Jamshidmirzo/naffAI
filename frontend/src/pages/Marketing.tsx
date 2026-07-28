@@ -49,8 +49,9 @@ function providerLabel(insight: Insight): string {
 export default function Marketing() {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const t = useT();
 
-  usePageHeader({ title: (useT())("marketing.title"), subtitle: "AI-инсайты по источникам" });
+  usePageHeader({ title: t("marketing.title"), subtitle: t("marketing.subtitle") });
 
   const listQ = useQuery<Insight[]>({
     queryKey: ["marketing", "insights"],
@@ -69,7 +70,7 @@ export default function Marketing() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["marketing", "insights"] });
       setError(null);
-      toast.success("Инсайт сгенерирован");
+      toast.success(t("marketing.generated"));
     },
     onError: (err) => setError(apiErrorMessage(err)),
   });
@@ -82,11 +83,11 @@ export default function Marketing() {
     <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3 animate-nfFadeUp">
         <div className="text-[13px] text-muted">
-          {insights.length > 0 ? `Всего инсайтов: ${insights.length}` : "Инсайтов ещё нет"}
+          {insights.length > 0 ? t("marketing.total", { n: insights.length }) : t("marketing.none_yet")}
         </div>
         <Button onClick={() => generateMut.mutate()} disabled={generateMut.isPending}>
           <RefreshCcw className="w-3.5 h-3.5" />
-          {generateMut.isPending ? "Считаем…" : "Сгенерировать (7 дней)"}
+          {generateMut.isPending ? t("marketing.calculating") : t("marketing.generate_7d")}
         </Button>
       </div>
 
@@ -107,7 +108,7 @@ export default function Marketing() {
         <div
           className="nf-card p-8 text-center text-[13.5px] text-muted animate-nfFadeUp"
         >
-          Ещё нет ни одного отчёта. Нажмите «Сгенерировать», чтобы построить первый.
+          {t("marketing.empty_hint")}
         </div>
       )}
 
@@ -118,12 +119,12 @@ export default function Marketing() {
               className="nf-card p-6 animate-nfFadeUp"
               style={{ animationDelay: "0.05s" }}
             >
-              <Eyebrow>Конверсия по источникам</Eyebrow>
+              <Eyebrow>{t("marketing.conversion_by_source")}</Eyebrow>
               <div className="mt-1 text-[15px] font-semibold tracking-tight">
                 {latest.period_start} — {latest.period_end}
               </div>
               <div className="text-[12.5px] text-muted mb-4">
-                Лиды и конверсия в продажу
+                {t("marketing.leads_and_conv")}
               </div>
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={sourceBars}>
@@ -132,9 +133,9 @@ export default function Marketing() {
                   <YAxis yAxisId="l" tick={{ fontSize: 11 }} />
                   <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Bar yAxisId="l" dataKey="leads" fill="rgba(0,0,0,.25)" name="Лиды" />
-                  <Bar yAxisId="l" dataKey="converted" fill="#ff9d47" name="Продажи" />
-                  <Bar yAxisId="r" dataKey="conversion_rate" fill="#f2560b" name="Конверсия, %" />
+                  <Bar yAxisId="l" dataKey="leads" fill="rgba(0,0,0,.25)" name={t("nav.leads")} />
+                  <Bar yAxisId="l" dataKey="converted" fill="#ff9d47" name={t("nav.sales")} />
+                  <Bar yAxisId="r" dataKey="conversion_rate" fill="#f2560b" name={t("marketing.conversion_pct")} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -144,7 +145,7 @@ export default function Marketing() {
               style={{ animationDelay: "0.1s" }}
             >
               <div className="text-[15px] font-semibold tracking-tight mb-3">
-                Топ товаров
+                {t("marketing.top_products")}
               </div>
               <ul className="flex flex-col gap-2 text-[13.5px]">
                 {latest.top_products.slice(0, 10).map((p) => (
@@ -158,7 +159,7 @@ export default function Marketing() {
                   </li>
                 ))}
                 {latest.top_products.length === 0 && (
-                  <li className="text-muted py-4 text-center">Нет данных</li>
+                  <li className="text-muted py-4 text-center">{t("common.no_data")}</li>
                 )}
               </ul>
             </div>
@@ -168,7 +169,7 @@ export default function Marketing() {
             className="nf-card p-6 animate-nfFadeUp"
             style={{ animationDelay: "0.15s" }}
           >
-            <Eyebrow>Рекомендации от AI</Eyebrow>
+            <Eyebrow>{t("marketing.ai_recommendations")}</Eyebrow>
             <div className="text-[14px] text-muted italic mt-3 mb-4">
               {latest.summary}
             </div>
@@ -193,15 +194,15 @@ export default function Marketing() {
       {insights.length > 1 && (
         <section className="nf-card overflow-hidden">
           <div className="px-6 pt-5 pb-3 text-[15px] font-semibold tracking-tight">
-            История
+            {t("marketing.history_title")}
           </div>
           <div
             className="grid gap-2 px-6 pb-3 nf-col"
             style={{ gridTemplateColumns: ".8fr 2fr .6fr" }}
           >
-            <div>Период</div>
-            <div>Резюме</div>
-            <div className="text-right">Модель</div>
+            <div>{t("common.period")}</div>
+            <div>{t("marketing.col_summary")}</div>
+            <div className="text-right">{t("common.model")}</div>
           </div>
           <div>
             {insights.slice(1).map((i, idx) => (

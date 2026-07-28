@@ -39,18 +39,22 @@ import {
   type TabItem,
 } from "../components/ui";
 import { usePageHeader } from "../store/page";
+import { useT } from "../lib/i18n";
 
-const PERIOD_TABS: TabItem<Period>[] = [
-  { value: "day", label: "День" },
-  { value: "week", label: "Неделя" },
-  { value: "month", label: "Месяц" },
-];
+function usePeriodTabs(t: (k: string) => string): TabItem<Period>[] {
+  return [
+    { value: "day", label: t("op_detail.period_day") },
+    { value: "week", label: t("op_detail.period_week") },
+    { value: "month", label: t("op_detail.period_month") },
+  ];
+}
 
-const STATUS_LABEL: Record<string, string> = {
-  active: "Активен",
-  trainee: "Стажёр",
-  inactive: "Неактивен",
-};
+function statusLabel(t: (k: string) => string, status: string): string {
+  if (status === "active") return t("op_detail.status_active");
+  if (status === "trainee") return t("op_detail.status_trainee");
+  if (status === "inactive") return t("op_detail.status_inactive");
+  return status;
+}
 
 function initials(name: string) {
   return (
@@ -107,10 +111,12 @@ interface Lesson {
 }
 
 export default function OperatorDetail() {
+  const t = useT();
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const role = useAuth((s) => s.role);
   const isManager = normaliseRole(role) === "manager";
+  const PERIOD_TABS = usePeriodTabs(t);
 
   const [period, setPeriod] = useState<Period>("month");
   const [choice, setChoice] = useState<MonthChoice>({ kind: "all" });
@@ -178,9 +184,9 @@ export default function OperatorDetail() {
         username: data.username,
         password: data.password,
       });
-      toast.success("Учётка создана");
+      toast.success(t("op_detail.account_created"));
     },
-    onError: () => toast.error("Не удалось создать учётку"),
+    onError: () => toast.error(t("op_detail.account_create_failed")),
   });
 
   const resetPasswordMut = useMutation({
@@ -195,9 +201,9 @@ export default function OperatorDetail() {
         username: data.username,
         password: data.password,
       });
-      toast.success("Пароль сгенерирован заново");
+      toast.success(t("op_detail.password_regenerated"));
     },
-    onError: () => toast.error("Не удалось сбросить пароль"),
+    onError: () => toast.error(t("op_detail.password_reset_failed")),
   });
 
   const viewPasswordMut = useMutation({
@@ -215,7 +221,7 @@ export default function OperatorDetail() {
     onError: (err: unknown) => {
       const msg =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      toast.error(msg || "Не удалось получить пароль");
+      toast.error(msg || t("op_detail.password_fetch_failed"));
     },
   });
 
@@ -228,9 +234,9 @@ export default function OperatorDetail() {
     },
     onSuccess: () => {
       invalidateAccount();
-      toast.success(account.is_active ? "Учётка деактивирована" : "Учётка активирована");
+      toast.success(account.is_active ? t("op_detail.account_deactivated") : t("op_detail.account_activated"));
     },
-    onError: () => toast.error("Не удалось изменить статус"),
+    onError: () => toast.error(t("op_detail.account_status_failed")),
   });
 
   const deleteAccountMut = useMutation({
@@ -238,9 +244,9 @@ export default function OperatorDetail() {
     onSuccess: () => {
       invalidateAccount();
       setConfirmDeleteAcc(false);
-      toast.success("Учётка удалена");
+      toast.success(t("op_detail.account_deleted"));
     },
-    onError: () => toast.error("Не удалось удалить учётку"),
+    onError: () => toast.error(t("op_detail.account_delete_failed")),
   });
 
   const savePhonesMut = useMutation({
@@ -250,7 +256,7 @@ export default function OperatorDetail() {
       invalidateAccount();
       qc.invalidateQueries({ queryKey: ["operator-stats", id] });
       setEditPhones(false);
-      toast.success("Телефоны обновлены");
+      toast.success(t("op_detail.phones_updated"));
     },
     onError: (err: unknown) => {
       const msg =
@@ -258,7 +264,7 @@ export default function OperatorDetail() {
           ?.response?.data?.detail ||
         (err as { response?: { data?: { phone?: string[] } } })
           ?.response?.data?.phone?.[0] ||
-        "Не удалось сохранить";
+        t("common.save_failed");
       toast.error(msg);
     },
   });
@@ -274,9 +280,9 @@ export default function OperatorDetail() {
     onSuccess: () => {
       setQrVer((v) => v + 1);
       qrPngQ.refetch();
-      toast.success("QR обновлён — старый больше не работает");
+      toast.success(t("op_detail.qr_rotated_msg"));
     },
-    onError: () => toast.error("Не удалось обновить QR"),
+    onError: () => toast.error(t("op_detail.qr_rotate_failed")),
   });
 
   const qrPngQ = useQuery({
@@ -351,29 +357,34 @@ export default function OperatorDetail() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["operator-plan", id, planYear, planMonth] });
       setEditPlan(false);
-      toast.success("План обновлён");
+      toast.success(t("op_detail.plan_updated"));
     },
-    onError: () => toast.error("Не удалось сохранить план"),
+    onError: () => toast.error(t("op_detail.plan_save_failed")),
   });
 
   const handleCloseSubmit = async () => {
     if (!closingLog) return;
     try {
       await api.post(`/attendance/logs/${closingLog.id}/close/`, { note: closeNote });
-      toast.success("Смена закрыта");
+      toast.success(t("op_detail.shift_closed"));
       setClosingLog(null);
       setCloseNote("");
       attendanceLogsQ.refetch();
       attendanceReportQ.refetch();
     } catch {
-      toast.error("Не удалось закрыть смену");
+      toast.error(t("op_detail.shift_close_failed"));
     }
   };
 
   const s = stats.data;
 
-  const headerTitle = s?.operator?.full_name || "Оператор";
-  const headerSubtitle = [s?.operator?.phone, s?.operator?.hired_at ? `с ${new Date(s.operator.hired_at).toLocaleDateString("ru-RU")}` : null]
+  const headerTitle = s?.operator?.full_name || t("op_detail.default_name");
+  const headerSubtitle = [
+    s?.operator?.phone,
+    s?.operator?.hired_at
+      ? `${t("profile.joined")} ${new Date(s.operator.hired_at).toLocaleDateString()}`
+      : null,
+  ]
     .filter(Boolean)
     .join(" · ");
 
@@ -415,11 +426,11 @@ export default function OperatorDetail() {
                 className="font-semibold tracking-tight"
                 style={{ fontSize: 19, letterSpacing: "-0.02em" }}
               >
-                {s?.operator?.full_name || "Оператор"}
+                {s?.operator?.full_name || t("op_detail.default_name")}
               </div>
               {s?.operator?.status && (
                 <StatusBadge tone={toneForStatus(s.operator.status)}>
-                  {STATUS_LABEL[s.operator.status] || s.operator.status}
+                  {statusLabel(t, s.operator.status)}
                 </StatusBadge>
               )}
             </div>
@@ -427,7 +438,7 @@ export default function OperatorDetail() {
               {detail.data?.phone ? (
                 <span className="text-muted">
                   <span className="text-[11px] uppercase font-semibold mr-1" style={{ letterSpacing: ".05em" }}>
-                    рабочий:
+                    {t("op_detail.phone_work")}:
                   </span>
                   <span className="font-mono text-text">{detail.data.phone}</span>
                 </span>
@@ -442,14 +453,14 @@ export default function OperatorDetail() {
                     color: "var(--accent)",
                   }}
                 >
-                  + добавить рабочий телефон
+                  {t("op_detail.add_work_phone")}
                 </button>
               )}
               {detail.data?.personal_phone && (
                 <span className="text-muted">
                   ·{" "}
                   <span className="text-[11px] uppercase font-semibold mr-1" style={{ letterSpacing: ".05em" }}>
-                    личный:
+                    {t("op_detail.phone_personal")}:
                   </span>
                   <span className="font-mono text-text">{detail.data.personal_phone}</span>
                 </span>
@@ -459,12 +470,12 @@ export default function OperatorDetail() {
                   onClick={openEditPhones}
                   className="text-[12px] text-muted hover:text-text transition underline underline-offset-2"
                 >
-                  редактировать
+                  {t("op_detail.edit_lower")}
                 </button>
               )}
               {s?.operator?.hired_at && (
                 <span className="text-muted">
-                  · с {new Date(s.operator.hired_at).toLocaleDateString("ru-RU")}
+                  · {t("op_detail.since", { date: new Date(s.operator.hired_at).toLocaleDateString() })}
                 </span>
               )}
             </div>
@@ -490,14 +501,14 @@ export default function OperatorDetail() {
           <div className="flex gap-2 flex-wrap">
             {isManager && (
               <>
-                <Button>Назначить стикер</Button>
+                <Button>{t("op_detail.assign_sticker")}</Button>
                 <Button variant="secondary" onClick={() => setQrOpen(true)}>
-                  <QrCode className="w-3.5 h-3.5" /> QR для входа
+                  <QrCode className="w-3.5 h-3.5" /> {t("op_detail.login_qr")}
                 </Button>
               </>
             )}
             <Button variant="ghost">
-              <MessageCircle className="w-3.5 h-3.5" /> Telegram
+              <MessageCircle className="w-3.5 h-3.5" /> {t("op_detail.telegram")}
             </Button>
           </div>
         </div>
@@ -508,7 +519,7 @@ export default function OperatorDetail() {
           style={{ gridTemplateColumns: "repeat(3, 1fr)" }}
         >
           <div className="nf-tile" style={{ padding: "16px 18px" }}>
-            <div className="text-[12px] text-muted">Сумма · {titleLower}</div>
+            <div className="text-[12px] text-muted">{t("op_detail.sum_period", { period: titleLower })}</div>
             <div
               className="mt-1 font-semibold tabular-nums"
               style={{ fontSize: 24, letterSpacing: "-0.025em" }}
@@ -516,11 +527,11 @@ export default function OperatorDetail() {
               {formatUZS(s?.totals?.total || 0)}
             </div>
             <div className="text-[11.5px] text-muted mt-1 tabular-nums">
-              {formatNumber(s?.totals?.count || 0)} продаж
+              {t("op_detail.sales_count", { n: formatNumber(s?.totals?.count || 0) })}
             </div>
           </div>
           <div className="nf-tile" style={{ padding: "16px 18px" }}>
-            <div className="text-[12px] text-muted">Средний чек</div>
+            <div className="text-[12px] text-muted">{t("op_detail.kpi_avg")}</div>
             <div
               className="mt-1 font-semibold tabular-nums"
               style={{ fontSize: 24, letterSpacing: "-0.025em" }}
@@ -528,12 +539,12 @@ export default function OperatorDetail() {
               {formatUZS(avg)}
             </div>
             <div className="text-[11.5px] text-muted mt-1">
-              Сумма ÷ кол-во
+              {t("op_detail.avg_check_hint")}
             </div>
           </div>
           <div className="nf-tile" style={{ padding: "16px 18px" }}>
             <div className="text-[12px] text-muted">
-              План · {new Date(planYear, planMonth - 1).toLocaleString("ru-RU", { month: "long" })}
+              {t("op_detail.plan_month", { month: new Date(planYear, planMonth - 1).toLocaleString(undefined, { month: "long" }) })}
             </div>
             {editPlan ? (
               <div className="mt-1 flex items-center gap-2">
@@ -541,7 +552,7 @@ export default function OperatorDetail() {
                   className="nf-input flex-1 !py-2 !text-[13px]"
                   value={planInput}
                   onChange={setPlanInput}
-                  placeholder="Цель в сумах"
+                  placeholder={t("op_detail.plan_placeholder")}
                   autoFocus
                 />
                 <button
@@ -571,8 +582,10 @@ export default function OperatorDetail() {
                   <ProgressBar value={planQuery.data.percent} />
                 </div>
                 <div className="text-[11.5px] text-muted mt-1.5 tabular-nums">
-                  {formatUZS(Number(planQuery.data.actual))} из{" "}
-                  {formatUZS(Number(planQuery.data.target))}
+                  {t("op_detail.plan_of", {
+                    actual: formatUZS(Number(planQuery.data.actual)),
+                    target: formatUZS(Number(planQuery.data.target)),
+                  })}
                   {isManager && (
                     <button
                       className="ml-2 text-[11.5px]"
@@ -582,14 +595,14 @@ export default function OperatorDetail() {
                         setPlanInput(String(Math.round(Number(planQuery.data.target))));
                       }}
                     >
-                      изменить
+                      {t("op_detail.plan_change")}
                     </button>
                   )}
                 </div>
               </>
             ) : (
               <div className="mt-1 text-muted text-[13px]">
-                Не установлен
+                {t("op_detail.plan_none")}
                 {isManager && (
                   <button
                     className="ml-2 text-[13px]"
@@ -599,7 +612,7 @@ export default function OperatorDetail() {
                       setPlanInput("");
                     }}
                   >
-                    задать
+                    {t("op_detail.plan_set")}
                   </button>
                 )}
               </div>
@@ -615,7 +628,7 @@ export default function OperatorDetail() {
           >
             <div className="flex-1 min-w-[220px]">
               <div className="text-[11.5px] text-muted uppercase tracking-wide">
-                Зарплата · этот месяц
+                {t("op_detail.payroll_month")}
               </div>
               <div className="mt-1 flex items-baseline gap-3">
                 <div
@@ -629,7 +642,7 @@ export default function OperatorDetail() {
                     className="text-[11.5px] font-semibold"
                     style={{ color: "var(--accent)" }}
                   >
-                    порог достигнут
+                    {t("op_detail.threshold_reached")}
                   </span>
                 )}
               </div>
@@ -657,21 +670,21 @@ export default function OperatorDetail() {
             <div>
               <div className="text-[15px] font-semibold tracking-tight flex items-center gap-2">
                 <KeyRound className="w-4 h-4" style={{ color: "var(--accent)" }} />
-                Учётная запись оператора
+                {t("op_detail.account_section_title")}
               </div>
               <div className="text-[13px] text-muted mt-1">
                 {account.has_account
-                  ? "Оператор может входить в веб-панель по этим креденшелам."
-                  : "У оператора пока нет логина. Создайте — сгенерируется пароль."}
+                  ? t("op_detail.account_hint_active")
+                  : t("op_detail.account_hint_none")}
               </div>
             </div>
             {account.has_account && (
               <StatusBadge tone={account.is_active ? "hot" : "neutral"}>
                 {account.deleted
-                  ? "удалена"
+                  ? t("op_detail.status_deleted_lower")
                   : account.is_active
-                    ? "активна"
-                    : "деактивирована"}
+                    ? t("op_detail.status_active_lower")
+                    : t("op_detail.status_deactivated_lower")}
               </StatusBadge>
             )}
           </div>
@@ -687,7 +700,7 @@ export default function OperatorDetail() {
                     border: "1px solid rgba(242,86,11,.25)",
                   }}
                 >
-                  Сначала укажите рабочий телефон — он нужен для логина и подключения Telegram.
+                  {t("op_detail.phone_needed_first")}
                 </div>
               )}
               <Button
@@ -698,13 +711,13 @@ export default function OperatorDetail() {
               >
                 <UserPlus className="w-4 h-4" />
                 {createAccountMut.isPending
-                  ? "Создаём…"
+                  ? t("op_detail.creating")
                   : detail.data?.phone
-                    ? "Создать учётку"
-                    : "Указать телефон"}
+                    ? t("op_detail.create_account")
+                    : t("op_detail.enter_phone")}
               </Button>
               <span className="text-[12px] text-muted">
-                Пароль будет сгенерирован автоматически, покажем один раз.
+                {t("op_detail.password_one_time_hint")}
               </span>
             </div>
           ) : (
@@ -715,7 +728,7 @@ export default function OperatorDetail() {
               >
                 <div>
                   <div className="text-[11px] text-muted uppercase tracking-wide font-semibold">
-                    Логин
+                    {t("common.login")}
                   </div>
                   <div className="mt-1 text-[15px] font-semibold font-mono tabular-nums">
                     {account.username}
@@ -727,7 +740,7 @@ export default function OperatorDetail() {
                   disabled={viewPasswordMut.isPending || account.deleted}
                 >
                   <Eye className="w-3.5 h-3.5" />
-                  {viewPasswordMut.isPending ? "…" : "Показать пароль"}
+                  {viewPasswordMut.isPending ? "…" : t("account.show_password")}
                 </Button>
               </div>
 
@@ -737,7 +750,7 @@ export default function OperatorDetail() {
                   disabled={resetPasswordMut.isPending || account.deleted}
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  {resetPasswordMut.isPending ? "…" : "Сгенерировать новый пароль"}
+                  {resetPasswordMut.isPending ? "…" : t("op_detail.regenerate_password")}
                 </Button>
                 {!account.deleted && (
                   <Button
@@ -747,11 +760,11 @@ export default function OperatorDetail() {
                   >
                     {account.is_active ? (
                       <>
-                        <ShieldOff className="w-3.5 h-3.5" /> Деактивировать
+                        <ShieldOff className="w-3.5 h-3.5" /> {t("op_detail.deactivate")}
                       </>
                     ) : (
                       <>
-                        <ShieldCheck className="w-3.5 h-3.5" /> Активировать
+                        <ShieldCheck className="w-3.5 h-3.5" /> {t("op_detail.activate")}
                       </>
                     )}
                   </Button>
@@ -761,7 +774,7 @@ export default function OperatorDetail() {
                     variant="danger"
                     onClick={() => setConfirmDeleteAcc(true)}
                   >
-                    <Trash2 className="w-3.5 h-3.5" /> Удалить учётку
+                    <Trash2 className="w-3.5 h-3.5" /> {t("op_detail.delete_account")}
                   </Button>
                 )}
               </div>
@@ -781,7 +794,7 @@ export default function OperatorDetail() {
       {/* --- SALES CHART --- */}
       <section className="nf-card p-6">
         <div className="text-[15px] font-semibold tracking-tight mb-4">
-          Продажи по дням · {titleLower}
+          {t("op_detail.sales_by_day", { period: titleLower })}
         </div>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart
@@ -798,7 +811,7 @@ export default function OperatorDetail() {
               formatter={(v: number, name: string) =>
                 name === "total" ? formatUZS(v) : formatNumber(v)
               }
-              labelFormatter={(l) => `Дата: ${l}`}
+              labelFormatter={(l) => t("op_detail.date_label", { v: String(l) })}
               contentStyle={{
                 background: "var(--surface)",
                 border: "1px solid var(--border)",
@@ -811,7 +824,7 @@ export default function OperatorDetail() {
         </ResponsiveContainer>
         {(s?.by_day || []).length === 0 && !stats.isLoading && (
           <div className="text-center text-[13px] text-muted py-4">
-            Нет продаж за период
+            {t("op_detail.no_sales_period")}
           </div>
         )}
       </section>
@@ -820,19 +833,19 @@ export default function OperatorDetail() {
       <section className="grid gap-[13px] md:grid-cols-2">
         <div className="nf-card overflow-hidden">
           <div className="px-6 pt-5 pb-3 text-[15px] font-semibold tracking-tight">
-            По моделям
+            {t("op_detail.by_model")}
           </div>
           <div
             className="grid gap-2 px-6 pb-3 nf-col"
             style={{ gridTemplateColumns: "1.4fr .5fr .8fr" }}
           >
-            <div>Модель</div>
-            <div className="text-right">Кол-во</div>
-            <div className="text-right">Сумма</div>
+            <div>{t("common.model")}</div>
+            <div className="text-right">{t("op_detail.qty")}</div>
+            <div className="text-right">{t("common.amount")}</div>
           </div>
           {(s?.by_model || []).length === 0 ? (
             <div className="text-center text-muted py-8 text-[13px]">
-              Нет данных
+              {t("common.no_data")}
             </div>
           ) : (
             (s?.by_model || []).map(
@@ -860,19 +873,19 @@ export default function OperatorDetail() {
 
         <div className="nf-card overflow-hidden">
           <div className="px-6 pt-5 pb-3 text-[15px] font-semibold tracking-tight">
-            По партнёрам
+            {t("op_detail.by_partner")}
           </div>
           <div
             className="grid gap-2 px-6 pb-3 nf-col"
             style={{ gridTemplateColumns: "1.4fr .5fr .8fr" }}
           >
-            <div>Партнёр</div>
-            <div className="text-right">Кол-во</div>
-            <div className="text-right">Сумма</div>
+            <div>{t("common.partner")}</div>
+            <div className="text-right">{t("op_detail.qty")}</div>
+            <div className="text-right">{t("common.amount")}</div>
           </div>
           {(s?.by_partner || []).length === 0 ? (
             <div className="text-center text-muted py-8 text-[13px]">
-              Нет данных
+              {t("common.no_data")}
             </div>
           ) : (
             (s?.by_partner || []).map(
@@ -910,10 +923,10 @@ export default function OperatorDetail() {
           <section className="nf-card p-6">
             <div className="text-[15px] font-semibold tracking-tight mb-4 flex items-center gap-2">
               <History className="w-4 h-4 text-muted" />
-              Посещаемость · 30 дней
+              {t("op_detail.attendance_30d")}
             </div>
             {attendanceReportQ.isLoading && (
-              <div className="text-center py-6 text-muted text-[13px]">Загрузка…</div>
+              <div className="text-center py-6 text-muted text-[13px]">{t("common.loading")}</div>
             )}
             {!attendanceReportQ.isLoading && attendanceReportQ.data?.rows?.[0] && (
               <AttendanceStatsCard stats={attendanceReportQ.data.rows[0]} />
@@ -922,30 +935,30 @@ export default function OperatorDetail() {
 
           <section className="nf-card overflow-hidden">
             <div className="px-6 pt-5 pb-3 text-[15px] font-semibold tracking-tight">
-              История смен
+              {t("op_detail.shifts_history")}
             </div>
             <div
               className="grid gap-2 px-6 pb-3 nf-col"
               style={{ gridTemplateColumns: "1fr .8fr .8fr .8fr .6fr .5fr 1fr .7fr" }}
             >
-              <div>Дата</div>
-              <div>Пришёл</div>
-              <div>Ушёл</div>
-              <div>Длит.</div>
-              <div className="text-center">Опозд.</div>
-              <div className="text-center">Канал</div>
-              <div className="text-center">Статус</div>
-              <div className="text-right">Действия</div>
+              <div>{t("op_detail.att_date")}</div>
+              <div>{t("op_detail.att_arrived")}</div>
+              <div>{t("op_detail.att_left")}</div>
+              <div>{t("op_detail.att_duration")}</div>
+              <div className="text-center">{t("op_detail.att_late")}</div>
+              <div className="text-center">{t("op_detail.att_channel")}</div>
+              <div className="text-center">{t("op_detail.att_status")}</div>
+              <div className="text-right">{t("op_detail.att_actions")}</div>
             </div>
 
             {attendanceLogsQ.isLoading && (
               <div className="text-center text-muted py-8 text-[13px]">
-                Загрузка…
+                {t("common.loading")}
               </div>
             )}
             {!attendanceLogsQ.isLoading && !attendanceLogsQ.data?.length && (
               <div className="text-center text-muted py-8 text-[13px]">
-                Нет записей о сменах
+                {t("op_detail.no_shifts")}
               </div>
             )}
             {attendanceLogsQ.data?.map((l, i) => (
@@ -959,24 +972,24 @@ export default function OperatorDetail() {
                 }}
               >
                 <div className="font-medium tabular-nums">
-                  {new Date(l.checked_in_at).toLocaleDateString("ru-RU")}
+                  {new Date(l.checked_in_at).toLocaleDateString()}
                 </div>
                 <div className="text-muted tabular-nums">
-                  {new Date(l.checked_in_at).toLocaleTimeString("ru-RU", {
+                  {new Date(l.checked_in_at).toLocaleTimeString(undefined, {
                     hour: "2-digit",
                     minute: "2-digit",
                   })}
                 </div>
                 <div className="text-muted tabular-nums">
                   {l.checked_out_at
-                    ? new Date(l.checked_out_at).toLocaleTimeString("ru-RU", {
+                    ? new Date(l.checked_out_at).toLocaleTimeString(undefined, {
                         hour: "2-digit",
                         minute: "2-digit",
                       })
                     : "—"}
                 </div>
                 <div className="text-muted tabular-nums">
-                  {l.duration_min !== null ? `${l.duration_min} мин` : "—"}
+                  {l.duration_min !== null ? t("op_detail.minutes_short", { n: l.duration_min }) : "—"}
                 </div>
                 <div className="text-center">
                   {l.was_late ? (
@@ -984,7 +997,7 @@ export default function OperatorDetail() {
                       style={{ color: "var(--accent)" }}
                       className="inline-flex items-center gap-0.5 text-[12px] font-semibold"
                     >
-                      <AlertTriangle className="w-3 h-3" /> да
+                      <AlertTriangle className="w-3 h-3" /> {t("common.yes")}
                     </span>
                   ) : (
                     <span className="text-muted">—</span>
@@ -998,12 +1011,12 @@ export default function OperatorDetail() {
                     l.manually_closed ? (
                       <StatusBadge>TL: {l.manually_closed_by_name}</StatusBadge>
                     ) : l.auto_closed ? (
-                      <StatusBadge tone="hot">Авто 23:00</StatusBadge>
+                      <StatusBadge tone="hot">{t("op_detail.auto_2300")}</StatusBadge>
                     ) : (
-                      <StatusBadge>успешно</StatusBadge>
+                      <StatusBadge>{t("op_detail.success_lower")}</StatusBadge>
                     )
                   ) : (
-                    <StatusBadge tone="hot">на смене</StatusBadge>
+                    <StatusBadge tone="hot">{t("op_detail.on_shift")}</StatusBadge>
                   )}
                 </div>
                 <div className="text-right">
@@ -1012,7 +1025,7 @@ export default function OperatorDetail() {
                       onClick={() =>
                         setClosingLog({
                           id: l.id,
-                          name: s?.operator?.full_name || "Оператор",
+                          name: s?.operator?.full_name || t("op_detail.default_name"),
                         })
                       }
                       className="text-[12px] font-semibold px-2.5 py-1.5 rounded-full"
@@ -1021,7 +1034,7 @@ export default function OperatorDetail() {
                         color: "var(--danger)",
                       }}
                     >
-                      Закрыть
+                      {t("op_detail.close_shift_btn")}
                     </button>
                   )}
                 </div>
@@ -1035,7 +1048,7 @@ export default function OperatorDetail() {
       {isManager && (
         <section className="nf-card overflow-hidden">
           <div className="px-6 pt-5 pb-3 text-[15px] font-semibold tracking-tight">
-            TG-диалоги с клиентами
+            {t("op_detail.tg_dialogs_title")}
           </div>
           <TgDialogsPanel operatorId={Number(id)} />
         </section>
@@ -1046,33 +1059,33 @@ export default function OperatorDetail() {
         <section className="nf-card overflow-hidden">
           <div className="px-6 pt-5 pb-3 flex items-center justify-between">
             <div className="text-[15px] font-semibold tracking-tight">
-              Обучение · последние 7 разборов
+              {t("op_detail.lessons_7d")}
             </div>
             <Link
               to={`/lessons/history?operator=${id}`}
               className="text-[12.5px] font-semibold"
               style={{ color: "var(--accent)" }}
             >
-              Вся история
+              {t("op_detail.lessons_all")}
             </Link>
           </div>
           <div
             className="grid gap-2 px-6 pb-3 nf-col"
             style={{ gridTemplateColumns: "160px 1fr 1.4fr 80px" }}
           >
-            <div>Дата</div>
-            <div>Фокус дня</div>
-            <div>Резюме</div>
-            <div className="text-center">Прочит.</div>
+            <div>{t("op_detail.lesson_date")}</div>
+            <div>{t("op_detail.lesson_focus")}</div>
+            <div>{t("op_detail.lesson_summary")}</div>
+            <div className="text-center">{t("op_detail.lesson_read")}</div>
           </div>
           {lessonsQ.isLoading && (
             <div className="text-center text-muted py-8 text-[13px]">
-              Загрузка…
+              {t("common.loading")}
             </div>
           )}
           {!lessonsQ.isLoading && !lessonsQ.data?.length && (
             <div className="text-center text-muted py-8 text-[13px]">
-              Разборов пока нет
+              {t("op_detail.no_lessons")}
             </div>
           )}
           {lessonsQ.data?.map((l, i) => (
@@ -1086,7 +1099,7 @@ export default function OperatorDetail() {
               }}
             >
               <div className="font-medium tabular-nums">
-                {new Date(l.lesson_date).toLocaleDateString("ru-RU", {
+                {new Date(l.lesson_date).toLocaleDateString(undefined, {
                   day: "numeric",
                   month: "short",
                   year: "numeric",
@@ -1113,20 +1126,20 @@ export default function OperatorDetail() {
         width={780}
       >
         <div className="p-7">
-          <Eyebrow>ИИ-разбор</Eyebrow>
+          <Eyebrow>{t("op_detail.ai_analysis")}</Eyebrow>
           <div
             className="mt-2 font-semibold"
             style={{ fontSize: 24, letterSpacing: "-0.025em" }}
           >
             {selectedLessonDate &&
-              new Date(selectedLessonDate).toLocaleDateString("ru-RU", {
+              new Date(selectedLessonDate).toLocaleDateString(undefined, {
                 day: "numeric",
                 month: "long",
                 year: "numeric",
               })}
           </div>
           {lessonDetailQ.isLoading && (
-            <div className="text-center py-8 text-muted text-[13px]">Загрузка…</div>
+            <div className="text-center py-8 text-muted text-[13px]">{t("common.loading")}</div>
           )}
           {!lessonDetailQ.isLoading && lessonDetailQ.data && (
             <div className="mt-6 flex flex-col gap-5">
@@ -1146,7 +1159,7 @@ export default function OperatorDetail() {
                     className="text-[10.5px] uppercase tracking-wide font-semibold"
                     style={{ color: "var(--accent)" }}
                   >
-                    Фокус
+                    {t("op_detail.lesson_focus_label")}
                   </div>
                   <div className="text-[14px] font-semibold mt-0.5">
                     {lessonDetailQ.data.micro_lesson}
@@ -1159,12 +1172,12 @@ export default function OperatorDetail() {
                 style={{ gridTemplateColumns: "repeat(4, 1fr)" }}
               >
                 {[
-                  { label: "Продажи", value: `${lessonDetailQ.data.stats_snapshot?.sales_count || 0} шт` },
-                  { label: "Сумма", value: formatUZS(lessonDetailQ.data.stats_snapshot?.revenue_uzs || 0) },
-                  { label: "Диалоги", value: lessonDetailQ.data.stats_snapshot?.dialogs_count || 0 },
+                  { label: t("op_detail.stat_sales"), value: t("op_detail.lesson_stat_sales", { n: lessonDetailQ.data.stats_snapshot?.sales_count || 0 }) },
+                  { label: t("op_detail.stat_sum"), value: formatUZS(lessonDetailQ.data.stats_snapshot?.revenue_uzs || 0) },
+                  { label: t("op_detail.stat_dialogs"), value: lessonDetailQ.data.stats_snapshot?.dialogs_count || 0 },
                   {
-                    label: "Качество",
-                    value: `${lessonDetailQ.data.stats_snapshot?.avg_quality ? Math.round(lessonDetailQ.data.stats_snapshot.avg_quality) : 0}/100`,
+                    label: t("op_detail.stat_quality"),
+                    value: t("op_detail.lesson_quality", { v: lessonDetailQ.data.stats_snapshot?.avg_quality ? Math.round(lessonDetailQ.data.stats_snapshot.avg_quality) : 0 }),
                   },
                 ].map((tile) => (
                   <div
@@ -1183,7 +1196,7 @@ export default function OperatorDetail() {
               </div>
 
               <div>
-                <Eyebrow className="mb-1.5">Итог дня</Eyebrow>
+                <Eyebrow className="mb-1.5">{t("op_detail.day_summary")}</Eyebrow>
                 <p className="text-[14px] leading-relaxed">
                   {lessonDetailQ.data.summary}
                 </p>
@@ -1191,7 +1204,7 @@ export default function OperatorDetail() {
 
               {lessonDetailQ.data.highlights?.length > 0 && (
                 <div>
-                  <Eyebrow className="mb-2">Что было сильно</Eyebrow>
+                  <Eyebrow className="mb-2">{t("op_detail.strong_points")}</Eyebrow>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {lessonDetailQ.data.highlights.map(
                       (hl: { title: string; evidence: string }, i: number) => (
@@ -1207,7 +1220,7 @@ export default function OperatorDetail() {
 
               {lessonDetailQ.data.tips?.length > 0 && (
                 <div>
-                  <Eyebrow className="mb-2">Рекомендации</Eyebrow>
+                  <Eyebrow className="mb-2">{t("op_detail.recommendations")}</Eyebrow>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {lessonDetailQ.data.tips.map(
                       (
@@ -1221,7 +1234,7 @@ export default function OperatorDetail() {
                               className="font-semibold"
                               style={{ color: "var(--accent)" }}
                             >
-                              Почему:
+                              {t("op_detail.tip_why")}
                             </span>{" "}
                             {tip.why}
                           </div>
@@ -1254,28 +1267,28 @@ export default function OperatorDetail() {
         {closingLog && (
           <div className="p-7">
             <div className="text-[18px] font-semibold tracking-tight">
-              Закрыть смену
+              {t("op_detail.close_shift_title")}
             </div>
             <div className="text-[13px] text-muted mt-1">
-              {closingLog.name} — время ухода будет зафиксировано сейчас
+              {t("op_detail.close_shift_hint2", { name: closingLog.name })}
             </div>
             <div className="mt-5">
-              <div className="nf-col mb-1.5">Комментарий (необязательно)</div>
+              <div className="nf-col mb-1.5">{t("op_detail.comment_optional")}</div>
               <textarea
                 value={closeNote}
                 onChange={(e) => setCloseNote(e.target.value)}
                 className="nf-input min-h-[80px]"
-                placeholder="Комментарий к закрытию смены"
+                placeholder={t("op_detail.close_shift_comment")}
                 maxLength={280}
                 rows={3}
               />
             </div>
             <div className="mt-6 flex gap-2 justify-end">
               <Button variant="ghost" onClick={() => setClosingLog(null)}>
-                Отмена
+                {t("common.cancel")}
               </Button>
               <Button variant="danger" onClick={handleCloseSubmit}>
-                Закрыть смену
+                {t("op_detail.close_shift_title")}
               </Button>
             </div>
           </div>
@@ -1292,10 +1305,10 @@ export default function OperatorDetail() {
           <div className="p-7">
             <div className="text-[18px] font-semibold tracking-tight">
               {credsModal.kind === "created"
-                ? "Учётка создана"
+                ? t("op_detail.creds_created")
                 : credsModal.kind === "reset"
-                  ? "Новый пароль"
-                  : "Данные для входа"}
+                  ? t("op_detail.creds_reset")
+                  : t("op_detail.creds_view")}
             </div>
             {credsModal.kind !== "view" && (
               <div
@@ -1306,13 +1319,13 @@ export default function OperatorDetail() {
                   border: "1px solid rgba(242,86,11,.25)",
                 }}
               >
-                Сохраните пароль сейчас — больше мы его в открытом виде показывать не будем.
+                {t("op_detail.creds_warning")}
               </div>
             )}
             <div className="mt-5 flex flex-col gap-3">
               <div className="nf-tile flex items-center justify-between gap-3" style={{ padding: "12px 14px" }}>
                 <div className="min-w-0">
-                  <div className="text-[11px] text-muted uppercase tracking-wide font-semibold">Логин</div>
+                  <div className="text-[11px] text-muted uppercase tracking-wide font-semibold">{t("common.login")}</div>
                   <div className="mt-1 font-mono text-[14px] font-semibold tabular-nums truncate">
                     {credsModal.username}
                   </div>
@@ -1323,16 +1336,16 @@ export default function OperatorDetail() {
                   style={{ padding: "8px 10px" }}
                   onClick={() => {
                     navigator.clipboard?.writeText(credsModal.username);
-                    toast.success("Логин скопирован");
+                    toast.success(t("toast.copied_login"));
                   }}
-                  aria-label="Копировать логин"
+                  aria-label={t("op_detail.copy_login")}
                 >
                   <Copy className="w-3.5 h-3.5" />
                 </button>
               </div>
               <div className="nf-tile flex items-center justify-between gap-3" style={{ padding: "12px 14px" }}>
                 <div className="min-w-0">
-                  <div className="text-[11px] text-muted uppercase tracking-wide font-semibold">Пароль</div>
+                  <div className="text-[11px] text-muted uppercase tracking-wide font-semibold">{t("common.password")}</div>
                   <div className="mt-1 font-mono text-[14px] font-semibold tabular-nums truncate">
                     {credsModal.password}
                   </div>
@@ -1343,16 +1356,16 @@ export default function OperatorDetail() {
                   style={{ padding: "8px 10px" }}
                   onClick={() => {
                     navigator.clipboard?.writeText(credsModal.password);
-                    toast.success("Пароль скопирован");
+                    toast.success(t("toast.copied_password"));
                   }}
-                  aria-label="Копировать пароль"
+                  aria-label={t("op_detail.copy_password")}
                 >
                   <Copy className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
             <div className="mt-6 flex justify-end">
-              <Button onClick={() => setCredsModal(null)}>Готово</Button>
+              <Button onClick={() => setCredsModal(null)}>{t("common.done")}</Button>
             </div>
           </div>
         )}
@@ -1366,15 +1379,15 @@ export default function OperatorDetail() {
       >
         <div className="p-7">
           <div className="text-[18px] font-semibold tracking-tight">
-            Телефоны оператора
+            {t("op_detail.phones_modal_title")}
           </div>
           <div className="text-[13px] text-muted mt-1">
-            {s?.operator?.full_name || "Оператор"}
+            {s?.operator?.full_name || t("op_detail.default_name")}
           </div>
           <div className="mt-5 flex flex-col gap-4">
             <div>
               <div className="nf-col mb-1.5">
-                Рабочий · для входа и Telegram
+                {t("op_detail.phone_work_full")}
               </div>
               <PhoneInput
                 value={phoneWork}
@@ -1383,11 +1396,11 @@ export default function OperatorDetail() {
                 invalid={phoneWork.length > 0 && !normalizeUzPhone(phoneWork).valid}
               />
               <div className="text-[11.5px] text-muted mt-1">
-                Формат: 9 цифр после +998
+                {t("op_detail.phone_format_hint")}
               </div>
             </div>
             <div>
-              <div className="nf-col mb-1.5">Личный · опционально</div>
+              <div className="nf-col mb-1.5">{t("op_detail.personal_optional")}</div>
               <PhoneInput
                 value={phonePersonal}
                 onChange={setPhonePersonal}
@@ -1403,7 +1416,7 @@ export default function OperatorDetail() {
               onClick={() => setEditPhones(false)}
               disabled={savePhonesMut.isPending}
             >
-              Отмена
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={() =>
@@ -1418,7 +1431,7 @@ export default function OperatorDetail() {
                 savePhonesMut.isPending || !normalizeUzPhone(phoneWork).valid
               }
             >
-              {savePhonesMut.isPending ? "Сохраняем…" : "Сохранить"}
+              {savePhonesMut.isPending ? t("common.saving") : t("common.save")}
             </Button>
           </div>
         </div>
@@ -1432,10 +1445,10 @@ export default function OperatorDetail() {
       >
         <div className="p-7 text-center">
           <div className="text-[18px] font-semibold tracking-tight">
-            QR-код для check-in
+            {t("op_detail.qr_modal_title")}
           </div>
           <div className="text-[13px] text-muted mt-1">
-            {s?.operator?.full_name || "Оператор"} · сканируйте камерой телефона
+            {t("op_detail.qr_scan_by_camera", { name: s?.operator?.full_name || t("op_detail.default_name") })}
           </div>
 
           <div className="mt-6 grid place-items-center">
@@ -1452,7 +1465,7 @@ export default function OperatorDetail() {
               }}
             >
               {qrPngQ.isLoading || !qrPngQ.data ? (
-                <div className="text-[12px] text-muted">Генерируем…</div>
+                <div className="text-[12px] text-muted">{t("op_detail.generating")}</div>
               ) : (
                 <img
                   src={qrPngQ.data}
@@ -1467,7 +1480,7 @@ export default function OperatorDetail() {
             className="mt-4 text-[11.5px] text-muted rounded-xl px-3 py-2"
             style={{ background: "var(--faint)" }}
           >
-            Личный QR оператора. При «Сгенерировать новый» старый перестаёт работать.
+            {t("op_detail.qr_personal_hint")}
           </div>
 
           <div className="mt-5 flex flex-wrap gap-2 justify-center">
@@ -1476,7 +1489,7 @@ export default function OperatorDetail() {
               download={`naff-qr-${s?.operator?.full_name || id}.png`}
               className={`nf-btn nf-btn--secondary ${!qrPngQ.data ? "pointer-events-none opacity-50" : ""}`}
             >
-              <Download className="w-3.5 h-3.5" /> Скачать PNG
+              <Download className="w-3.5 h-3.5" /> {t("op_detail.download_png")}
             </a>
             <Button
               variant="ghost"
@@ -1484,7 +1497,7 @@ export default function OperatorDetail() {
               disabled={rotateQrMut.isPending}
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              {rotateQrMut.isPending ? "…" : "Сгенерировать новый"}
+              {rotateQrMut.isPending ? "…" : t("op_detail.regenerate")}
             </Button>
           </div>
         </div>
@@ -1498,11 +1511,10 @@ export default function OperatorDetail() {
       >
         <div className="p-7">
           <div className="text-[18px] font-semibold tracking-tight">
-            Удалить учётку?
+            {t("op_detail.delete_acc_confirm_title")}
           </div>
           <div className="text-[13px] text-muted mt-2">
-            Оператор потеряет доступ к веб-панели. Продажи, лиды и история —
-            остаются. Позже можно создать заново.
+            {t("op_detail.delete_acc_confirm_body")}
           </div>
           <div className="mt-6 flex gap-2 justify-end">
             <Button
@@ -1510,14 +1522,14 @@ export default function OperatorDetail() {
               onClick={() => setConfirmDeleteAcc(false)}
               disabled={deleteAccountMut.isPending}
             >
-              Отмена
+              {t("common.cancel")}
             </Button>
             <Button
               variant="danger"
               onClick={() => deleteAccountMut.mutate()}
               disabled={deleteAccountMut.isPending}
             >
-              {deleteAccountMut.isPending ? "Удаляем…" : "Удалить"}
+              {deleteAccountMut.isPending ? t("op_detail.deleting") : t("common.delete")}
             </Button>
           </div>
         </div>

@@ -53,33 +53,16 @@ interface QueueResponse {
   total: number;
 }
 
-const SESSION_LABELS: Record<string, string> = {
-  active: "активна",
-  pending_code: "ждёт код",
-  pending_2fa: "ждёт 2FA",
-  expired: "истёкла",
-  revoked: "отозвана",
-  error: "ошибка",
-  none: "не подключён",
-};
-
-const JOB_LABELS: Record<string, string> = {
-  pending: "в очереди",
-  running: "загружаем",
-  done: "готово",
-  error: "ошибка",
-};
-
-function fmtRelative(iso: string | null) {
+function fmtRelative(iso: string | null, t: (k: string, p?: Record<string, string | number>) => string) {
   if (!iso) return "—";
   const diff = Date.now() - new Date(iso).getTime();
   const min = Math.round(diff / 60000);
-  if (min < 1) return "только что";
-  if (min < 60) return `${min} мин назад`;
+  if (min < 1) return t("tg_queue.just_now");
+  if (min < 60) return t("tg_queue.min_ago", { n: min });
   const h = Math.round(min / 60);
-  if (h < 24) return `${h} ч назад`;
+  if (h < 24) return t("tg_queue.hour_ago", { n: h });
   const d = Math.round(h / 24);
-  return `${d} дн назад`;
+  return t("tg_queue.day_ago", { n: d });
 }
 
 function sessionTone(s: QueueRow["session_status"]): "hot" | "danger" | "neutral" {
@@ -98,11 +81,29 @@ function jobTone(j: JobInfo | null): "hot" | "danger" | "neutral" {
 export default function TgQueue() {
   const nav = useNavigate();
   const qc = useQueryClient();
+  const t = useT();
 
   usePageHeader({
-    title: (useT())("tg_queue.title"),
-    subtitle: (useT())("tg_queue.subtitle"),
+    title: t("tg_queue.title"),
+    subtitle: t("tg_queue.subtitle"),
   });
+
+  const SESSION_LABELS: Record<string, string> = {
+    active: t("tg_queue.session_active"),
+    pending_code: t("tg_queue.session_pending_code"),
+    pending_2fa: t("tg_queue.session_pending_2fa"),
+    expired: t("tg_queue.session_expired"),
+    revoked: t("tg_queue.session_revoked"),
+    error: t("tg_queue.session_error"),
+    none: t("tg_queue.session_none"),
+  };
+
+  const JOB_LABELS: Record<string, string> = {
+    pending: t("tg_queue.job_pending"),
+    running: t("tg_queue.job_running"),
+    done: t("tg_queue.job_done"),
+    error: t("tg_queue.job_error"),
+  };
 
   const q = useQuery<QueueResponse>({
     queryKey: ["tg-queue"],
@@ -116,9 +117,9 @@ export default function TgQueue() {
       api.post("/tg-userclient/backfill-jobs/retry/", { operator_id }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["tg-queue"] });
-      toast.success("Задача перезапущена");
+      toast.success(t("tg_queue.retry_ok"));
     },
-    onError: () => toast.error("Не удалось перезапустить"),
+    onError: () => toast.error(t("tg_queue.retry_fail")),
   });
 
   const rows = q.data?.queue ?? [];
@@ -141,23 +142,23 @@ export default function TgQueue() {
     <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
       {/* Aggregate KPIs */}
       <section className="grid gap-[13px] grid-cols-2 md:grid-cols-6 animate-nfFadeUp">
-        <TotalTile label="Активны" value={totals.active} accent />
-        <TotalTile label="Подключаются" value={totals.connecting} />
-        <TotalTile label="Загружаем" value={totals.running} />
-        <TotalTile label="Не подключены" value={totals.none} />
+        <TotalTile label={t("tg_queue.tile_active")} value={totals.active} accent />
+        <TotalTile label={t("tg_queue.tile_connecting")} value={totals.connecting} />
+        <TotalTile label={t("tg_queue.tile_running")} value={totals.running} />
+        <TotalTile label={t("tg_queue.tile_none")} value={totals.none} />
         <TotalTile
-          label="Ошибок"
+          label={t("tg_queue.tile_errors")}
           value={totals.error}
           danger={totals.error > 0}
         />
-        <TotalTile label="Всего сообщений" value={totals.msgs} />
+        <TotalTile label={t("tg_queue.tile_total_msgs")} value={totals.msgs} />
       </section>
 
       {/* Legend / hint */}
       <div className="flex items-center gap-3 text-[12.5px] text-muted animate-nfFadeUp">
-        <span>Автообновление каждые 5 сек</span>
+        <span>{t("tg_queue.auto_refresh")}</span>
         <span>·</span>
-        <span>{q.data?.total ?? 0} операторов</span>
+        <span>{t("tg_queue.operators_count", { n: q.data?.total ?? 0 })}</span>
       </div>
 
       {/* Queue table */}
@@ -166,19 +167,19 @@ export default function TgQueue() {
           className="grid gap-2 px-6 pt-5 pb-3 nf-col"
           style={{ gridTemplateColumns: "1.2fr .9fr 1.1fr .7fr .7fr .6fr .8fr" }}
         >
-          <div>Оператор</div>
-          <div>TG-сессия</div>
-          <div>Backfill</div>
-          <div className="text-right">Чаты</div>
-          <div className="text-right">Сообщ.</div>
-          <div className="text-right">AI</div>
-          <div className="text-right">Действия</div>
+          <div>{t("common.operator")}</div>
+          <div>{t("tg_queue.col_session")}</div>
+          <div>{t("tg_queue.col_backfill")}</div>
+          <div className="text-right">{t("tg_queue.col_chats")}</div>
+          <div className="text-right">{t("tg_queue.col_msgs")}</div>
+          <div className="text-right">{t("tg_queue.col_ai")}</div>
+          <div className="text-right">{t("common.actions")}</div>
         </div>
 
         {q.isLoading ? (
-          <div className="text-center text-muted py-14 text-[13px]">Загрузка…</div>
+          <div className="text-center text-muted py-14 text-[13px]">{t("common.loading")}</div>
         ) : rows.length === 0 ? (
-          <div className="text-center text-muted py-14 text-[13px]">Пусто</div>
+          <div className="text-center text-muted py-14 text-[13px]">{t("common.empty")}</div>
         ) : (
           <div>
             {rows.map((r, i) => {
@@ -209,7 +210,7 @@ export default function TgQueue() {
                     </StatusBadge>
                     {r.last_connected_at && (
                       <div className="text-[11.5px] text-muted mt-0.5">
-                        {fmtRelative(r.last_connected_at)}
+                        {fmtRelative(r.last_connected_at, t)}
                       </div>
                     )}
                     {r.last_error && (
@@ -240,12 +241,12 @@ export default function TgQueue() {
                         </div>
                         {running && (
                           <div className="text-[11.5px] text-muted mt-0.5 tabular-nums">
-                            {j.chats_scanned} чатов · {j.messages_saved} сообщ.
+                            {t("tg_queue.chats_short", { n: j.chats_scanned })} · {t("tg_queue.msgs_short", { n: j.messages_saved })}
                           </div>
                         )}
                         {j.status === "done" && j.finished_at && (
                           <div className="text-[11.5px] text-muted mt-0.5">
-                            {fmtRelative(j.finished_at)}
+                            {fmtRelative(j.finished_at, t)}
                           </div>
                         )}
                         {j.status === "error" && j.last_error && (
@@ -282,9 +283,9 @@ export default function TgQueue() {
                         onClick={() => retryMut.mutate(r.operator_id)}
                         className="nf-btn nf-btn--ghost"
                         style={{ padding: "6px 10px", fontSize: 12 }}
-                        title="Retry backfill"
+                        title={t("tg_queue.retry_backfill")}
                       >
-                        <RefreshCw className="w-3 h-3" /> Retry
+                        <RefreshCw className="w-3 h-3" /> {t("tg_queue.retry")}
                       </button>
                     )}
                     {r.session_status === "none" && (
@@ -297,9 +298,9 @@ export default function TgQueue() {
                           background: "rgba(242,86,11,.12)",
                           color: "var(--accent)",
                         }}
-                        title="Подключить TG"
+                        title={t("tg_queue.connect_tg")}
                       >
-                        <Play className="w-3 h-3" /> Подключить
+                        <Play className="w-3 h-3" /> {t("tg_queue.connect")}
                       </button>
                     )}
                   </div>
@@ -312,15 +313,15 @@ export default function TgQueue() {
 
       {/* Chips at bottom for quick jumps */}
       <div className="flex items-center gap-2 flex-wrap animate-nfFadeUp">
-        <span className="nf-col">Всего:</span>
+        <span className="nf-col">{t("common.total")}:</span>
         <Chip>
-          <MessageCircle className="w-3 h-3" /> {totals.chats} чатов
+          <MessageCircle className="w-3 h-3" /> {t("tg_queue.chats_long", { n: totals.chats })}
         </Chip>
         <Chip>
-          <MessageCircle className="w-3 h-3" /> {totals.msgs.toLocaleString("ru-RU")} сообщений
+          <MessageCircle className="w-3 h-3" /> {t("tg_queue.msgs_long", { n: totals.msgs.toLocaleString("ru-RU") })}
         </Chip>
         <Chip>
-          <Sparkles className="w-3 h-3" /> {totals.ai} AI-инсайтов
+          <Sparkles className="w-3 h-3" /> {t("tg_queue.ai_insights", { n: totals.ai })}
         </Chip>
       </div>
     </div>

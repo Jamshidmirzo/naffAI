@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Copy, Eye, EyeOff, KeyRound, Lock, RefreshCcw, Trash2, Unlock, UserPlus } from "lucide-react";
 import { api } from "../lib/api";
 import { apiErrorMessage } from "../lib/api-types";
+import { useT } from "../lib/i18n";
 
 /**
  * Account state as rendered next to each Operator row.
@@ -46,6 +47,7 @@ function PasswordField({
   placeholder?: string;
   autoFocus?: boolean;
 }) {
+  const t = useT();
   const [show, setShow] = useState(false);
   return (
     <div className="relative">
@@ -63,7 +65,7 @@ function PasswordField({
           type="button"
           className="text-gray-400 hover:text-gray-700 dark:text-slate-500 dark:hover:text-slate-200"
           onClick={() => setShow((v) => !v)}
-          aria-label={show ? "Скрыть" : "Показать"}
+          aria-label={show ? t("common.hide") : t("common.show")}
           tabIndex={-1}
         >
           {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -74,7 +76,7 @@ function PasswordField({
           onClick={() => onChange(generatePassword())}
           tabIndex={-1}
         >
-          Generate
+          {t("account.generate")}
         </button>
       </div>
     </div>
@@ -82,6 +84,7 @@ function PasswordField({
 }
 
 function BigPasswordCard({ password }: { password: string }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const onCopy = async () => {
     try {
@@ -95,7 +98,7 @@ function BigPasswordCard({ password }: { password: string }) {
   return (
     <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 p-4">
       <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-1">
-        Пароль
+        {t("account.password_label")}
       </div>
       <div className="flex items-center justify-between gap-2">
         <code className="font-mono text-lg select-all break-all">{password}</code>
@@ -104,7 +107,7 @@ function BigPasswordCard({ password }: { password: string }) {
           className="btn-ghost text-xs flex items-center gap-1"
           onClick={onCopy}
         >
-          <Copy className="w-4 h-4" /> {copied ? "Скопировано" : "Копировать"}
+          <Copy className="w-4 h-4" /> {copied ? t("common.copied") : t("common.copy")}
         </button>
       </div>
     </div>
@@ -118,6 +121,7 @@ export default function AccountControls({
   account,
   canManage,
 }: Props) {
+  const t = useT();
   const qc = useQueryClient();
 
   const [modal, setModal] = useState<
@@ -161,7 +165,7 @@ export default function AccountControls({
     },
     onError: (err: unknown) => {
       if ((err as Error)?.message === "phone_required") {
-        setError("Введите телефон оператора — логин будет = номеру");
+        setError(t("account.phone_required"));
         return;
       }
       setError(apiErrorMessage(err));
@@ -227,7 +231,11 @@ export default function AccountControls({
             : "bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300"
         }`}
       >
-        {account.deleted ? "Удалён" : account.is_active ? "Активен" : "Заблокирован"}
+        {account.deleted
+          ? t("account.deleted")
+          : account.is_active
+          ? t("account.active")
+          : t("account.blocked")}
       </span>
     );
   }
@@ -242,7 +250,7 @@ export default function AccountControls({
           className="btn-ghost text-xs flex items-center gap-1"
           onClick={() => setModal("create")}
         >
-          <UserPlus className="w-4 h-4" /> Создать логин
+          <UserPlus className="w-4 h-4" /> {t("account.create_login")}
         </button>
       ) : (
         <div className="inline-flex flex-wrap items-center gap-1">
@@ -253,12 +261,12 @@ export default function AccountControls({
                 : "bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300"
             }`}
           >
-            {isActive ? "Активен" : "Заблокирован"}
+            {isActive ? t("account.active") : t("account.blocked")}
           </span>
           <button
             className="btn-ghost text-xs"
-            title="Показать пароль"
-            aria-label="Показать пароль"
+            title={t("account.show_password")}
+            aria-label={t("account.show_password")}
             onClick={() => {
               setModal("view");
               viewMut.mutate();
@@ -268,8 +276,8 @@ export default function AccountControls({
           </button>
           <button
             className="btn-ghost text-xs"
-            title="Сбросить пароль"
-            aria-label="Сбросить пароль"
+            title={t("account.reset_password")}
+            aria-label={t("account.reset_password")}
             onClick={() => setModal("reset")}
           >
             <RefreshCcw className="w-4 h-4" />
@@ -277,8 +285,8 @@ export default function AccountControls({
           {isActive ? (
             <button
               className="btn-ghost text-xs"
-              title="Заблокировать"
-              aria-label="Заблокировать"
+              title={t("account.block")}
+              aria-label={t("account.block")}
               onClick={() => setModal("confirm-deactivate")}
             >
               <Lock className="w-4 h-4" />
@@ -286,8 +294,8 @@ export default function AccountControls({
           ) : (
             <button
               className="btn-ghost text-xs"
-              title="Разблокировать"
-              aria-label="Разблокировать"
+              title={t("account.unblock")}
+              aria-label={t("account.unblock")}
               onClick={() => activateMut.mutate()}
             >
               <Unlock className="w-4 h-4" />
@@ -295,8 +303,8 @@ export default function AccountControls({
           )}
           <button
             className="btn-ghost text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10"
-            title="Удалить аккаунт"
-            aria-label="Удалить аккаунт"
+            title={t("account.delete_account")}
+            aria-label={t("account.delete_account")}
             onClick={() => setModal("confirm-delete")}
           >
             <Trash2 className="w-4 h-4" />
@@ -308,20 +316,19 @@ export default function AccountControls({
       {modal === "create" && (
         <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
           <div className="card p-6 w-full max-w-md space-y-4">
-            <h2 className="text-lg font-semibold">Создать логин для {operatorName}</h2>
+            <h2 className="text-lg font-semibold">{t("account.create_login_for", { name: operatorName })}</h2>
             {issued ? (
               <>
                 <div className="text-sm text-gray-600 dark:text-slate-400">
-                  Логин: <code className="font-mono">{operatorPhone}</code>
+                  {t("common.login")}: <code className="font-mono">{operatorPhone}</code>
                 </div>
                 <BigPasswordCard password={issued} />
                 <p className="text-xs text-amber-700 dark:text-amber-400">
-                  Пароль виден только сейчас. Позже можно посмотреть его снова через
-                  кнопку с ключом — все просмотры логируются в аудит.
+                  {t("account.pw_visible_hint")}
                 </p>
                 <div className="flex justify-end">
                   <button className="btn-primary" onClick={() => setModal(null)}>
-                    Готово
+                    {t("common.done")}
                   </button>
                 </div>
               </>
@@ -329,13 +336,13 @@ export default function AccountControls({
               <>
                 {operatorPhone ? (
                   <div className="text-sm text-gray-600 dark:text-slate-400">
-                    Логин будет установлен равным номеру телефона:{" "}
+                    {t("account.login_will_be_phone")}{" "}
                     <code className="font-mono">{operatorPhone}</code>
                   </div>
                 ) : (
                   <div>
                     <label className="label">
-                      Телефон <span className="text-red-500">*</span>
+                      {t("common.phone")} <span className="text-red-500">*</span>
                     </label>
                     <input
                       className="input"
@@ -345,26 +352,26 @@ export default function AccountControls({
                       autoFocus
                     />
                     <div className="text-xs text-amber-700 dark:text-amber-400 mt-1">
-                      У оператора не указан телефон. Введите его — он станет логином и сохранится в карточке оператора.
+                      {t("account.no_phone_hint")}
                     </div>
                   </div>
                 )}
                 <div>
-                  <label className="label">Пароль</label>
+                  <label className="label">{t("common.password")}</label>
                   <PasswordField
                     value={password}
                     onChange={setPassword}
-                    placeholder="Пусто → сгенерирую сам"
+                    placeholder={t("account.password_ph")}
                     autoFocus={!!operatorPhone}
                   />
                   <div className="text-xs text-gray-400 mt-1">
-                    Оставьте поле пустым и нажмите Generate — или введите свой (мин. 8 символов).
+                    {t("account.password_generate_hint")}
                   </div>
                 </div>
                 {error && <div className="text-sm text-red-600 dark:text-red-400">{error}</div>}
                 <div className="flex justify-end gap-2">
                   <button className="btn-ghost" onClick={() => setModal(null)}>
-                    Отмена
+                    {t("common.cancel")}
                   </button>
                   <button
                     className="btn-primary"
@@ -374,7 +381,7 @@ export default function AccountControls({
                     }}
                     disabled={createMut.isPending}
                   >
-                    {createMut.isPending ? "Создание…" : "Создать"}
+                    {createMut.isPending ? t("common.creating") : t("common.create")}
                   </button>
                 </div>
               </>
@@ -387,18 +394,18 @@ export default function AccountControls({
       {modal === "view" && (
         <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
           <div className="card p-6 w-full max-w-md space-y-4">
-            <h2 className="text-lg font-semibold">Пароль оператора {operatorName}</h2>
+            <h2 className="text-lg font-semibold">{t("account.password_of", { name: operatorName })}</h2>
             {viewMut.isPending && (
-              <div className="text-sm text-gray-500 dark:text-slate-400">Загрузка…</div>
+              <div className="text-sm text-gray-500 dark:text-slate-400">{t("common.loading")}</div>
             )}
             {issued && <BigPasswordCard password={issued} />}
             {error && <div className="text-sm text-red-600 dark:text-red-400">{error}</div>}
             <p className="text-xs text-gray-500 dark:text-slate-400">
-              Просмотр залогирован в аудит.
+              {t("account.view_audited")}
             </p>
             <div className="flex justify-end">
               <button className="btn-primary" onClick={() => setModal(null)}>
-                Закрыть
+                {t("common.close")}
               </button>
             </div>
           </div>
@@ -409,34 +416,34 @@ export default function AccountControls({
       {modal === "reset" && (
         <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
           <div className="card p-6 w-full max-w-md space-y-4">
-            <h2 className="text-lg font-semibold">Сбросить пароль {operatorName}</h2>
+            <h2 className="text-lg font-semibold">{t("account.reset_password_of", { name: operatorName })}</h2>
             {issued ? (
               <>
                 <BigPasswordCard password={issued} />
                 <p className="text-xs text-amber-700 dark:text-amber-400">
-                  Пароль изменён. Передайте новый пароль оператору.
+                  {t("account.pw_changed_hint")}
                 </p>
                 <div className="flex justify-end">
                   <button className="btn-primary" onClick={() => setModal(null)}>
-                    Готово
+                    {t("common.done")}
                   </button>
                 </div>
               </>
             ) : (
               <>
                 <div>
-                  <label className="label">Новый пароль</label>
+                  <label className="label">{t("account.new_password")}</label>
                   <PasswordField
                     value={password}
                     onChange={setPassword}
-                    placeholder="Пусто → сгенерирую сам"
+                    placeholder={t("account.password_ph")}
                     autoFocus
                   />
                 </div>
                 {error && <div className="text-sm text-red-600 dark:text-red-400">{error}</div>}
                 <div className="flex justify-end gap-2">
                   <button className="btn-ghost" onClick={() => setModal(null)}>
-                    Отмена
+                    {t("common.cancel")}
                   </button>
                   <button
                     className="btn-primary"
@@ -446,7 +453,7 @@ export default function AccountControls({
                     }}
                     disabled={resetMut.isPending}
                   >
-                    {resetMut.isPending ? "Сохранение…" : "Сбросить"}
+                    {resetMut.isPending ? t("common.saving") : t("common.reset")}
                   </button>
                 </div>
               </>
@@ -459,21 +466,20 @@ export default function AccountControls({
       {modal === "confirm-deactivate" && (
         <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
           <div className="card p-6 w-full max-w-sm space-y-4">
-            <h2 className="text-lg font-semibold">Заблокировать вход</h2>
+            <h2 className="text-lg font-semibold">{t("account.block_login")}</h2>
             <p className="text-sm text-gray-600 dark:text-slate-400">
-              Оператор <span className="font-medium">{operatorName}</span> не сможет войти в систему до разблокировки.
-              История продаж и лидов сохраняется.
+              {t("account.block_confirm", { name: operatorName })}
             </p>
             <div className="flex justify-end gap-2">
               <button className="btn-ghost" onClick={() => setModal(null)}>
-                Отмена
+                {t("common.cancel")}
               </button>
               <button
                 className="btn-primary bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700"
                 onClick={() => deactivateMut.mutate()}
                 disabled={deactivateMut.isPending}
               >
-                {deactivateMut.isPending ? "…" : "Заблокировать"}
+                {deactivateMut.isPending ? "…" : t("account.block")}
               </button>
             </div>
           </div>
@@ -484,21 +490,20 @@ export default function AccountControls({
       {modal === "confirm-delete" && (
         <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
           <div className="card p-6 w-full max-w-sm space-y-4">
-            <h2 className="text-lg font-semibold">Удалить аккаунт</h2>
+            <h2 className="text-lg font-semibold">{t("account.delete_account")}</h2>
             <p className="text-sm text-gray-600 dark:text-slate-400">
-              Аккаунт будет заблокирован, сохранённый пароль стёрт. История действий
-              в аудите останется. Оператор <span className="font-medium">{operatorName}</span> потеряет доступ к системе.
+              {t("account.delete_confirm", { name: operatorName })}
             </p>
             <div className="flex justify-end gap-2">
               <button className="btn-ghost" onClick={() => setModal(null)}>
-                Отмена
+                {t("common.cancel")}
               </button>
               <button
                 className="btn-primary bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700"
                 onClick={() => deleteMut.mutate()}
                 disabled={deleteMut.isPending}
               >
-                {deleteMut.isPending ? "…" : "Удалить"}
+                {deleteMut.isPending ? "…" : t("common.delete")}
               </button>
             </div>
           </div>

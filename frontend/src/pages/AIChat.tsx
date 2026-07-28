@@ -36,13 +36,6 @@ interface ProviderInfo {
   model: string;
 }
 
-const QUICK_PROMPTS = [
-  "Продажи за неделю",
-  "Топ-3 оператора",
-  "Разрез по каналам",
-  "Просроченные колбэки",
-];
-
 function isSessionArray(data: unknown): data is ChatSession[] {
   return Array.isArray(data);
 }
@@ -63,6 +56,13 @@ export default function AIChat() {
 
   const t = useT();
   usePageHeader({ title: t("ai_chat.title"), subtitle: t("ai_chat.subtitle") }, [t("ai_chat.title")]);
+
+  const QUICK_PROMPTS = [
+    t("ai_chat.qp_sales_week"),
+    t("ai_chat.qp_top3"),
+    t("ai_chat.qp_by_channel"),
+    t("ai_chat.qp_overdue"),
+  ];
 
   const providersQ = useQuery<ProviderInfo[]>({
     queryKey: ["ai-chat", "providers"],
@@ -110,7 +110,7 @@ export default function AIChat() {
   }, [messages]);
 
   const createSession = useMutation({
-    mutationFn: () => api.post<ChatSession>("/ai-chat/sessions/", { title: "Новая сессия" }),
+    mutationFn: () => api.post<ChatSession>("/ai-chat/sessions/", { title: t("ai_chat.new_session") }),
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ["ai-chat", "sessions"] });
       setActiveId(r.data.id);
@@ -120,7 +120,7 @@ export default function AIChat() {
 
   const sendMessage = useMutation({
     mutationFn: async (payload: { content: string }) => {
-      if (activeId == null) throw new Error("Нет активной сессии");
+      if (activeId == null) throw new Error(t("ai_chat.no_active_session"));
       const r = await api.post<MessagesResponse>(
         `/ai-chat/sessions/${activeId}/messages/`,
         { ...payload, provider_key: providerKey || undefined, language: lang },
@@ -164,14 +164,14 @@ export default function AIChat() {
       {/* Model selector */}
       {providers.length > 0 && (
         <div className="flex items-center gap-3 flex-wrap mb-3 animate-nfFadeUp">
-          <span className="nf-col">Модель</span>
+          <span className="nf-col">{t("common.model")}</span>
           <div className="flex flex-wrap gap-1.5">
             <Chip
               active={!providerKey}
               onClick={() => persistProviderKey("")}
-              title="Автоматически: chain c fallback по 429"
+              title={t("ai_chat.auto_chain_hint")}
             >
-              Авто (chain)
+              {t("ai_chat.auto_chain")}
             </Chip>
             {providers.map((p) => (
               <Chip
@@ -198,9 +198,9 @@ export default function AIChat() {
           onClick={() => createSession.mutate()}
           disabled={createSession.isPending}
           className="nf-chip"
-          title="Новая сессия"
+          title={t("ai_chat.new_session")}
         >
-          <Plus className="w-3.5 h-3.5" /> Новая
+          <Plus className="w-3.5 h-3.5" /> {t("common.new")}
         </button>
         {sessions.slice(0, 6).map((s) => (
           <Chip
@@ -209,7 +209,7 @@ export default function AIChat() {
             onClick={() => setActiveId(s.id)}
             className="max-w-[180px] truncate"
           >
-            {s.title || `Сессия #${s.id}`}
+            {s.title || t("ai_chat.session_num", { id: s.id })}
           </Chip>
         ))}
       </div>
@@ -231,15 +231,15 @@ export default function AIChat() {
               >
                 <Sparkles className="w-6 h-6" />
               </div>
-              <Eyebrow className="mt-5">Ассистент готов</Eyebrow>
+              <Eyebrow className="mt-5">{t("ai_chat.ready_eyebrow")}</Eyebrow>
               <div
                 className="mt-2 font-semibold"
                 style={{ fontSize: 22, letterSpacing: "-0.025em" }}
               >
-                О чём хотите узнать?
+                {t("ai_chat.what_to_ask")}
               </div>
               <p className="text-[13px] text-muted mt-2 max-w-xs mx-auto">
-                Задайте вопрос про продажи, операторов или лидов — или выберите ниже.
+                {t("ai_chat.ask_hint")}
               </p>
             </div>
           </div>
@@ -260,7 +260,7 @@ export default function AIChat() {
                 <span className="animate-nfPulse inline-block w-1 h-1 rounded-full bg-current" style={{ animationDelay: "0.2s" }} />
                 <span className="animate-nfPulse inline-block w-1 h-1 rounded-full bg-current" style={{ animationDelay: "0.4s" }} />
               </span>
-              <span className="ml-2">печатает…</span>
+              <span className="ml-2">{t("ai_chat.typing")}</span>
             </div>
           </div>
         )}
@@ -300,7 +300,7 @@ export default function AIChat() {
         <input
           ref={inputRef}
           className="nf-input flex-1"
-          placeholder={activeId ? "Спросить у ассистента…" : "Начните разговор — Enter"}
+          placeholder={activeId ? t("ai_chat.ph_ask") : t("ai_chat.ph_start")}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={sendMessage.isPending}
@@ -327,6 +327,7 @@ export default function AIChat() {
 
 function MessageBubble({ m, index }: { m: ChatMessageRow; index: number }) {
   const delay = `${0.03 + index * 0.04}s`;
+  const t = useT();
 
   if (m.role === "tool") {
     return (
@@ -351,7 +352,7 @@ function MessageBubble({ m, index }: { m: ChatMessageRow; index: number }) {
         style={{ animationDelay: delay }}
       >
         <Wrench className="w-3 h-3 inline mr-1" />
-        вызывает: {m.tool_calls.map((tc) => tc.name).join(", ")}
+        {t("ai_chat.calling")}: {m.tool_calls.map((tc) => tc.name).join(", ")}
       </div>
     );
   }

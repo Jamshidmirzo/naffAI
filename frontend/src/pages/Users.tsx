@@ -33,11 +33,6 @@ interface Creds {
   password: string;
 }
 
-const ROLE_LABEL: Record<string, string> = {
-  manager: "Менеджер",
-  team_lead: "Тим-лид",
-};
-
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
   try {
@@ -57,6 +52,11 @@ export default function Users() {
   const meUsername = useAuth((s) => s.username);
 
   usePageHeader({ title: t("nav.users") }, [t("nav.users")]);
+
+  const ROLE_LABEL: Record<string, string> = {
+    manager: t("role.manager"),
+    team_lead: t("users.role_team_lead"),
+  };
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newUsername, setNewUsername] = useState("");
@@ -88,7 +88,7 @@ export default function Users() {
         username: data.username,
         password: data.password,
       });
-      toast.success("Аккаунт создан");
+      toast.success(t("users.account_created"));
     },
     onError: (err: unknown) => setCreateError(apiErrorMessage(err)),
   });
@@ -99,9 +99,9 @@ export default function Users() {
     onSuccess: (data) => {
       setConfirmReset(null);
       setCredsModal(data);
-      toast.success("Пароль сброшен");
+      toast.success(t("users.password_reset"));
     },
-    onError: () => toast.error("Не удалось сбросить пароль"),
+    onError: () => toast.error(t("op_detail.password_reset_failed")),
   });
 
   const deleteMut = useMutation({
@@ -109,7 +109,7 @@ export default function Users() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["users"] });
       setConfirmDelete(null);
-      toast.success("Пользователь деактивирован");
+      toast.success(t("users.user_deactivated"));
     },
     onError: (err: unknown) => toast.error(apiErrorMessage(err)),
   });
@@ -121,11 +121,10 @@ export default function Users() {
       {/* Toolbar */}
       <section className="flex items-center justify-between animate-nfFadeUp">
         <div className="text-[13px] text-muted">
-          Управление веб-аккаунтами (менеджеры и тим-лиды). Учётки операторов —
-          в карточке оператора.
+          {t("users.subtitle")}
         </div>
         <Button onClick={() => { setCreateOpen(true); setCreateError(""); }}>
-          <Plus className="w-3.5 h-3.5" /> Добавить менеджера
+          <Plus className="w-3.5 h-3.5" /> {t("users.add_manager")}
         </Button>
       </section>
 
@@ -135,17 +134,17 @@ export default function Users() {
           className="grid gap-2 px-6 pt-5 pb-3 nf-col"
           style={{ gridTemplateColumns: "1.4fr .8fr .8fr .8fr auto" }}
         >
-          <div>Логин</div>
-          <div>Роль</div>
-          <div>Создан</div>
-          <div>Последний вход</div>
-          <div className="text-right">Действия</div>
+          <div>{t("common.login")}</div>
+          <div>{t("common.role")}</div>
+          <div>{t("users.col_created")}</div>
+          <div>{t("profile.last_login")}</div>
+          <div className="text-right">{t("common.actions")}</div>
         </div>
 
         {usersQ.isLoading ? (
-          <div className="text-center text-muted py-12 text-[13px]">Загрузка…</div>
+          <div className="text-center text-muted py-12 text-[13px]">{t("common.loading")}</div>
         ) : rows.length === 0 ? (
-          <div className="text-center text-muted py-12 text-[13px]">Пусто</div>
+          <div className="text-center text-muted py-12 text-[13px]">{t("common.empty")}</div>
         ) : (
           <div>
             {rows.map((u, i) => {
@@ -175,7 +174,7 @@ export default function Users() {
                     <div>
                       <div className="font-medium">{u.username}</div>
                       {isMe && (
-                        <div className="text-[10.5px] text-muted">это вы</div>
+                        <div className="text-[10.5px] text-muted">{t("users.this_is_you")}</div>
                       )}
                     </div>
                   </div>
@@ -202,9 +201,9 @@ export default function Users() {
                       onClick={() => setConfirmReset(u)}
                       className="nf-btn nf-btn--ghost"
                       style={{ padding: "6px 10px", fontSize: 12 }}
-                      title="Сгенерировать новый пароль"
+                      title={t("op_detail.regenerate_password")}
                     >
-                      <KeyRound className="w-3.5 h-3.5" /> Пароль
+                      <KeyRound className="w-3.5 h-3.5" /> {t("common.password")}
                     </button>
                     {!isMe && (
                       <button
@@ -216,7 +215,7 @@ export default function Users() {
                           background: "rgba(220,60,40,.1)",
                           color: "var(--danger)",
                         }}
-                        title="Деактивировать"
+                        title={t("users.deactivate")}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -249,39 +248,39 @@ export default function Users() {
               <UserCog className="w-4 h-4" />
             </div>
             <div className="text-[16px] font-semibold tracking-tight">
-              Новый менеджер
+              {t("users.new_manager")}
             </div>
           </div>
           <p className="text-[13px] text-muted mt-1">
-            Пароль будет сгенерирован автоматически, покажем один раз.
+            {t("op_detail.password_one_time_hint")}
           </p>
 
           <div className="mt-5 flex flex-col gap-4">
             <div>
-              <div className="nf-col mb-1.5">Логин</div>
+              <div className="nf-col mb-1.5">{t("common.login")}</div>
               <input
                 className="nf-input"
                 value={newUsername}
                 onChange={(e) => setNewUsername(e.target.value)}
-                placeholder="например: azizbek"
+                placeholder={t("users.login_ph")}
                 autoFocus
                 autoComplete="off"
               />
             </div>
             <div>
-              <div className="nf-col mb-1.5">Роль</div>
+              <div className="nf-col mb-1.5">{t("common.role")}</div>
               <div className="flex gap-2">
                 <Chip
                   active={newRole === "manager"}
                   onClick={() => setNewRole("manager")}
                 >
-                  Менеджер
+                  {t("role.manager")}
                 </Chip>
                 <Chip
                   active={newRole === "team_lead"}
                   onClick={() => setNewRole("team_lead")}
                 >
-                  Тим-лид
+                  {t("users.role_team_lead")}
                 </Chip>
               </div>
             </div>
@@ -300,13 +299,13 @@ export default function Users() {
           </div>
           <div className="mt-7 flex gap-2 justify-end">
             <Button variant="ghost" onClick={() => setCreateOpen(false)}>
-              Отмена
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={() => createMut.mutate()}
               disabled={createMut.isPending || !newUsername.trim()}
             >
-              {createMut.isPending ? "Создаём…" : "Создать"}
+              {createMut.isPending ? t("common.creating") : t("common.create")}
             </Button>
           </div>
         </div>
@@ -317,7 +316,7 @@ export default function Users() {
         {credsModal && (
           <div className="p-7">
             <div className="text-[18px] font-semibold tracking-tight">
-              Готово · сохраните пароль
+              {t("users.done_save_pw")}
             </div>
             <div
               className="mt-3 rounded-xl px-3.5 py-2.5 text-[12.5px]"
@@ -327,22 +326,22 @@ export default function Users() {
                 border: "1px solid rgba(242,86,11,.25)",
               }}
             >
-              Больше пароль в открытом виде показывать не будем. Сохраните сейчас.
+              {t("users.pw_only_now")}
             </div>
             <div className="mt-5 flex flex-col gap-3">
               <CredRow
-                label="Логин"
+                label={t("common.login")}
                 value={credsModal.username}
-                toastText="Логин скопирован"
+                toastText={t("toast.copied_login")}
               />
               <CredRow
-                label="Пароль"
+                label={t("common.password")}
                 value={credsModal.password}
-                toastText="Пароль скопирован"
+                toastText={t("toast.copied_password")}
               />
             </div>
             <div className="mt-6 flex justify-end">
-              <Button onClick={() => setCredsModal(null)}>Готово</Button>
+              <Button onClick={() => setCredsModal(null)}>{t("common.done")}</Button>
             </div>
           </div>
         )}
@@ -357,21 +356,20 @@ export default function Users() {
         {confirmReset && (
           <div className="p-7">
             <div className="text-[18px] font-semibold tracking-tight">
-              Сгенерировать новый пароль?
+              {t("users.reset_pw_q")}
             </div>
             <div className="text-[13px] text-muted mt-2">
-              Старый пароль <b>{confirmReset.username}</b> перестанет работать
-              сразу же.
+              {t("users.reset_pw_hint", { name: confirmReset.username })}
             </div>
             <div className="mt-6 flex gap-2 justify-end">
               <Button variant="ghost" onClick={() => setConfirmReset(null)}>
-                Отмена
+                {t("common.cancel")}
               </Button>
               <Button
                 onClick={() => resetMut.mutate(confirmReset.id)}
                 disabled={resetMut.isPending}
               >
-                {resetMut.isPending ? "…" : "Сгенерировать"}
+                {resetMut.isPending ? "…" : t("users.generate")}
               </Button>
             </div>
           </div>
@@ -387,23 +385,21 @@ export default function Users() {
         {confirmDelete && (
           <div className="p-7">
             <div className="text-[18px] font-semibold tracking-tight flex items-center gap-2">
-              <ShieldOff className="w-4 h-4" /> Деактивировать?
+              <ShieldOff className="w-4 h-4" /> {t("users.deactivate_q")}
             </div>
             <div className="text-[13px] text-muted mt-2">
-              Пользователь <b>{confirmDelete.username}</b> потеряет доступ.
-              Данные в аудите остаются, юзера можно позже активировать через
-              суперюзера.
+              {t("users.deactivate_hint", { name: confirmDelete.username })}
             </div>
             <div className="mt-6 flex gap-2 justify-end">
               <Button variant="ghost" onClick={() => setConfirmDelete(null)}>
-                Отмена
+                {t("common.cancel")}
               </Button>
               <Button
                 variant="danger"
                 onClick={() => deleteMut.mutate(confirmDelete.id)}
                 disabled={deleteMut.isPending}
               >
-                {deleteMut.isPending ? "…" : "Деактивировать"}
+                {deleteMut.isPending ? "…" : t("users.deactivate")}
               </Button>
             </div>
           </div>
@@ -422,6 +418,7 @@ function CredRow({
   value: string;
   toastText: string;
 }) {
+  const t = useT();
   return (
     <div
       className="nf-tile flex items-center justify-between gap-3"
@@ -443,7 +440,7 @@ function CredRow({
           navigator.clipboard?.writeText(value);
           toast.success(toastText);
         }}
-        aria-label={`Копировать ${label}`}
+        aria-label={`${t("common.copy")} ${label}`}
       >
         <Copy className="w-3.5 h-3.5" />
       </button>

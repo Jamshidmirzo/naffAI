@@ -2,6 +2,7 @@ import { useState } from "react";
 import { tgStart, tgVerifyCode, tgVerifyPassword } from "../lib/tgUserclient";
 import { Button, Eyebrow, Modal, PhoneInput, normalizeUzPhone, toast } from "./ui";
 import { apiErrorMessage } from "../lib/api-types";
+import { useT } from "../lib/i18n";
 
 type Step = 1 | 2 | 3;
 
@@ -12,6 +13,7 @@ export default function TgConnectWizard({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const t = useT();
   const [step, setStep] = useState<Step>(1);
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [phone, setPhone] = useState("");
@@ -24,13 +26,13 @@ export default function TgConnectWizard({
   const done = () => {
     onSuccess();
     onClose();
-    toast.success("Telegram подключён");
+    toast.success(t("tg.connect_success"));
   };
 
   const handleStart = async () => {
     setError("");
     if (!consent) {
-      setError("Необходимо согласие");
+      setError(t("tg.connect_consent_required"));
       return;
     }
     setBusy(true);
@@ -80,14 +82,14 @@ export default function TgConnectWizard({
       <div className="p-7">
         <div className="flex items-center justify-between gap-3 mb-2">
           <div>
-            <Eyebrow>Шаг {step} из 3</Eyebrow>
+            <Eyebrow>{t("tg.connect_step_label", { n: step })}</Eyebrow>
             <div
               className="mt-1 font-semibold tracking-tight"
               style={{ fontSize: 20, letterSpacing: "-0.02em" }}
             >
-              {step === 1 && "Подключение Telegram"}
-              {step === 2 && "Код из Telegram"}
-              {step === 3 && "Облачный пароль"}
+              {step === 1 && t("tg.connect_title")}
+              {step === 2 && t("tg.connect_step_code_title")}
+              {step === 3 && t("tg.connect_step_2fa_title")}
             </div>
           </div>
         </div>
@@ -110,7 +112,7 @@ export default function TgConnectWizard({
         {step === 1 && (
           <div className="flex flex-col gap-4">
             <div>
-              <div className="nf-col mb-1.5">Номер телефона Telegram</div>
+              <div className="nf-col mb-1.5">{t("tg.connect_phone_label")}</div>
               <PhoneInput
                 value={phone}
                 onChange={setPhone}
@@ -125,9 +127,7 @@ export default function TgConnectWizard({
                 checked={consent}
                 onChange={(e) => setConsent(e.target.checked)}
               />
-              <span>
-                Разрешаю подключить мой Telegram-аккаунт в режиме чтения для анализа переписки с клиентами. Обязуюсь предупреждать клиентов о CRM-обработке.
-              </span>
+              <span>{t("tg.connect_consent_text")}</span>
             </label>
             {error && (
               <div
@@ -142,12 +142,12 @@ export default function TgConnectWizard({
               </div>
             )}
             <div className="flex gap-2 justify-end mt-1">
-              <Button variant="ghost" onClick={onClose}>Отмена</Button>
+              <Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button>
               <Button
                 onClick={handleStart}
                 disabled={!normalizeUzPhone(phone).valid || !consent || busy}
               >
-                {busy ? "Отправка…" : "Отправить код"}
+                {busy ? t("tg.connect_sending") : t("tg.connect_send_code")}
               </Button>
             </div>
           </div>
@@ -156,10 +156,10 @@ export default function TgConnectWizard({
         {step === 2 && (
           <div className="flex flex-col gap-4">
             <div className="text-[13px] text-muted">
-              Мы отправили код в приложение Telegram на {phone}. Введите его ниже.
+              {t("tg.connect_code_hint", { phone })}
             </div>
             <div>
-              <div className="nf-col mb-1.5">Код</div>
+              <div className="nf-col mb-1.5">{t("tg.connect_code_label")}</div>
               <input
                 className="nf-input font-mono tabular-nums text-[16px]"
                 value={code}
@@ -182,9 +182,9 @@ export default function TgConnectWizard({
               </div>
             )}
             <div className="flex gap-2 justify-end mt-1">
-              <Button variant="ghost" onClick={() => setStep(1)}>Назад</Button>
+              <Button variant="ghost" onClick={() => setStep(1)}>{t("common.back")}</Button>
               <Button onClick={handleVerifyCode} disabled={!code || busy}>
-                {busy ? "Проверяем…" : "Подтвердить"}
+                {busy ? t("tg.connect_checking") : t("tg.connect_verify")}
               </Button>
             </div>
           </div>
@@ -193,10 +193,10 @@ export default function TgConnectWizard({
         {step === 3 && (
           <div className="flex flex-col gap-4">
             <div className="text-[13px] text-muted">
-              У аккаунта включена двухфакторная защита. Введите облачный пароль.
+              {t("tg.connect_2fa_hint")}
             </div>
             <div>
-              <div className="nf-col mb-1.5">Облачный пароль (2FA)</div>
+              <div className="nf-col mb-1.5">{t("tg.connect_2fa_label")}</div>
               <input
                 className="nf-input"
                 type="password"
@@ -218,9 +218,9 @@ export default function TgConnectWizard({
               </div>
             )}
             <div className="flex gap-2 justify-end mt-1">
-              <Button variant="ghost" onClick={() => setStep(2)}>Назад</Button>
+              <Button variant="ghost" onClick={() => setStep(2)}>{t("common.back")}</Button>
               <Button onClick={handleVerifyPassword} disabled={!password || busy}>
-                {busy ? "Проверяем…" : "Готово"}
+                {busy ? t("tg.connect_checking") : t("tg.connect_finish")}
               </Button>
             </div>
           </div>

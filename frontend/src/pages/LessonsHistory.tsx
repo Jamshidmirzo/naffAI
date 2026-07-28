@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { api } from "../lib/api";
 import { Button, Eyebrow, StatusBadge } from "../components/ui";
 import { usePageHeader } from "../store/page";
+import { useT } from "../lib/i18n";
 
 interface LessonHistoryItem {
   id: number;
@@ -53,10 +54,11 @@ function fmtDate(iso: string) {
 export default function LessonsHistory() {
   const [searchParams] = useSearchParams();
   const operatorId = searchParams.get("operator") || "";
+  const t = useT();
 
   usePageHeader({
-    title: "История разборов",
-    subtitle: "Все утренние AI-разборы",
+    title: t("lessons.history_analyses_title"),
+    subtitle: t("lessons.history_analyses_subtitle"),
   });
 
   const { data: history, isLoading } = useQuery<LessonHistoryItem[]>({
@@ -87,12 +89,12 @@ export default function LessonsHistory() {
       <div className="flex items-center justify-between animate-nfFadeUp">
         <div className="text-[13px] text-muted">
           {isLoading
-            ? "Загрузка…"
-            : `${(history || []).length} разборов`}
+            ? t("common.loading")
+            : t("lessons.history_count", { n: (history || []).length })}
         </div>
         {!operatorId && (
           <Link to="/lessons/today">
-            <Button size="sm">Сегодняшний разбор</Button>
+            <Button size="sm">{t("lessons.today_analysis_btn")}</Button>
           </Link>
         )}
       </div>
@@ -102,7 +104,7 @@ export default function LessonsHistory() {
           className="rounded-2xl py-12 text-center text-[13.5px] text-muted"
           style={{ border: "1.5px dashed var(--border)" }}
         >
-          История пока пуста
+          {t("lessons.history_empty")}
         </div>
       )}
 
@@ -128,7 +130,7 @@ export default function LessonsHistory() {
                     {fmtDate(item.lesson_date)}
                   </div>
                   {!item.opened_at && (
-                    <StatusBadge tone="hot">не прочитан</StatusBadge>
+                    <StatusBadge tone="hot">{t("lessons.not_read")}</StatusBadge>
                   )}
                 </div>
                 {item.micro_lesson && (
@@ -154,14 +156,14 @@ export default function LessonsHistory() {
               >
                 {isLoadingDetail && (
                   <div className="py-8 text-center text-muted text-[13px]">
-                    Загрузка…
+                    {t("common.loading")}
                   </div>
                 )}
                 {detail && (
                   <div className="pt-5 flex flex-col gap-5">
                     {detail.micro_lesson && (
                       <div>
-                        <Eyebrow>Фокус дня</Eyebrow>
+                        <Eyebrow>{t("lessons.focus_day")}</Eyebrow>
                         <div className="text-[14px] font-medium mt-2">
                           {detail.micro_lesson}
                         </div>
@@ -171,7 +173,7 @@ export default function LessonsHistory() {
                     <div className="grid grid-cols-3 gap-2">
                       <div className="nf-tile" style={{ padding: "12px 14px" }}>
                         <div className="text-[10.5px] text-muted uppercase tracking-wider">
-                          Продаж
+                          {t("lessons.stat_sales")}
                         </div>
                         <div className="mt-1 text-[19px] font-semibold tabular-nums">
                           {detail.stats_snapshot?.sales_count || 0}
@@ -179,7 +181,7 @@ export default function LessonsHistory() {
                       </div>
                       <div className="nf-tile" style={{ padding: "12px 14px" }}>
                         <div className="text-[10.5px] text-muted uppercase tracking-wider">
-                          Диалогов
+                          {t("lessons.stat_dialogs")}
                         </div>
                         <div className="mt-1 text-[19px] font-semibold tabular-nums">
                           {detail.stats_snapshot?.dialogs_count || 0}
@@ -187,7 +189,7 @@ export default function LessonsHistory() {
                       </div>
                       <div className="nf-tile" style={{ padding: "12px 14px" }}>
                         <div className="text-[10.5px] text-muted uppercase tracking-wider">
-                          Качество
+                          {t("lessons.stat_quality")}
                         </div>
                         <div className="mt-1 text-[19px] font-semibold tabular-nums">
                           {Math.round(detail.stats_snapshot?.avg_quality || 0)}
@@ -198,7 +200,7 @@ export default function LessonsHistory() {
                     {detail.summary && (
                       <div>
                         <div className="text-[13.5px] font-semibold">
-                          Как прошёл день
+                          {t("lessons.how_day_went")}
                         </div>
                         <p
                           className="mt-1.5 text-[14px]"
@@ -212,7 +214,7 @@ export default function LessonsHistory() {
                     {detail.highlights?.length > 0 && (
                       <div>
                         <div className="text-[13.5px] font-semibold">
-                          Что сработало
+                          {t("lessons.what_worked")}
                         </div>
                         <div className="mt-1.5 flex flex-col gap-2">
                           {detail.highlights.map((hl, k) => (
@@ -234,7 +236,7 @@ export default function LessonsHistory() {
                     {detail.tips?.length > 0 && (
                       <div>
                         <div className="text-[13.5px] font-semibold">
-                          Что подтянуть
+                          {t("lessons.what_improve")}
                         </div>
                         <div className="mt-1.5 flex flex-col gap-3">
                           {detail.tips.map((tip, k) => (

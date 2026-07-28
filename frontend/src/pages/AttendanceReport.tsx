@@ -45,9 +45,10 @@ interface AttendanceReportResponse {
 }
 
 export default function AttendanceReport() {
+  const t = useT();
   usePageHeader({
-    title: (useT())("attendance.report.title"),
-    subtitle: (useT())("attendance.report.title"),
+    title: t("attendance.report.title"),
+    subtitle: t("attendance.report.subtitle"),
   });
 
   const firstDayOfMonth = () => {
@@ -129,13 +130,13 @@ export default function AttendanceReport() {
     setExpandedOpId((cur) => (cur === id ? null : id));
 
   const cols: Array<{ key: keyof PeriodStats | ""; label: string; align?: "center" | "right" | "left" }> = [
-    { key: "operator_name", label: "Оператор", align: "left" },
-    { key: "days_present", label: "Явился / Ожид.", align: "center" },
-    { key: "late_count", label: "Опоздал", align: "center" },
-    { key: "auto_closed_count", label: "Авто-закрыто", align: "center" },
-    { key: "manually_closed_count", label: "Ручное закр.", align: "center" },
-    { key: "avg_shift_minutes", label: "Ср. смена", align: "center" },
-    { key: "total_worked_hours", label: "Итого часов", align: "center" },
+    { key: "operator_name", label: t("common.operator"), align: "left" },
+    { key: "days_present", label: t("attendance.report.col_present"), align: "center" },
+    { key: "late_count", label: t("attendance.report.col_late"), align: "center" },
+    { key: "auto_closed_count", label: t("attendance.report.col_auto_closed"), align: "center" },
+    { key: "manually_closed_count", label: t("attendance.report.col_manual_closed"), align: "center" },
+    { key: "avg_shift_minutes", label: t("attendance.report.col_avg_shift"), align: "center" },
+    { key: "total_worked_hours", label: t("attendance.report.col_total_hours"), align: "center" },
     { key: "", label: "" },
   ];
 
@@ -145,7 +146,7 @@ export default function AttendanceReport() {
     <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
       <div className="flex items-center justify-end animate-nfFadeUp">
         <Button variant="secondary" onClick={handleExportExcel}>
-          <FileText className="w-3.5 h-3.5" /> Экспорт в Excel
+          <FileText className="w-3.5 h-3.5" /> {t("attendance.report.export_excel")}
         </Button>
       </div>
 
@@ -169,7 +170,7 @@ export default function AttendanceReport() {
         <div className="flex items-center gap-2">
           <Users className="w-3.5 h-3.5 text-muted" />
           <MultiSelectPopover
-            label="Операторы"
+            label={t("nav.operators")}
             options={popoverOptions}
             selectedIds={selectedOpIds}
             onChange={setSelectedOpIds}
@@ -204,11 +205,11 @@ export default function AttendanceReport() {
         </div>
         {isLoading ? (
           <div className="text-center text-muted py-12 text-[13px]">
-            Загрузка отчёта…
+            {t("attendance.report.loading")}
           </div>
         ) : sortedRows.length === 0 ? (
           <div className="text-center text-muted py-12 text-[13px]">
-            Нет данных за выбранный диапазон
+            {t("attendance.report.no_data_range")}
           </div>
         ) : (
           <div>
@@ -232,7 +233,7 @@ export default function AttendanceReport() {
                         className="font-semibold tabular-nums"
                         style={{ color: "var(--accent)" }}
                       >
-                        {row.late_count} ({row.avg_late_minutes} мин)
+                        {row.late_count} ({t("op_detail.minutes_short", { n: row.avg_late_minutes })})
                       </span>
                     ) : (
                       <span className="text-muted">0</span>
@@ -245,7 +246,7 @@ export default function AttendanceReport() {
                     {row.manually_closed_count}
                   </div>
                   <div className="text-center tabular-nums">
-                    {row.avg_shift_minutes} мин
+                    {t("op_detail.minutes_short", { n: row.avg_shift_minutes })}
                   </div>
                   <div
                     className="text-center font-semibold tabular-nums"
@@ -253,7 +254,7 @@ export default function AttendanceReport() {
                       color: row.total_worked_hours > 0 ? "var(--accent)" : "var(--muted)",
                     }}
                   >
-                    {row.total_worked_hours} ч
+                    {t("attendance.report.hours_short", { n: row.total_worked_hours })}
                   </div>
                   <div className="text-center text-muted">
                     {expandedOpId === row.operator_id ? (

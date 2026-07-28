@@ -19,6 +19,8 @@ import {
   toast,
 } from "../components/ui";
 import { usePageHeader } from "../store/page";
+import { useT } from "../lib/i18n";
+import { formatDateTime } from "../lib/format";
 
 type Me = {
   username: string;
@@ -33,11 +35,11 @@ type Preferences = {
   daily_lesson_opt_out: boolean;
 };
 
-const ROLE_LABEL: Record<string, string> = {
-  manager: "Менеджер",
-  team_lead: "Менеджер",
-  operator: "Оператор",
-};
+function roleLabel(t: (k: string) => string, role: string): string {
+  if (role === "operator") return t("profile.role_operator");
+  if (role === "manager" || role === "team_lead") return t("profile.role_manager");
+  return role;
+}
 
 function initials(name: string) {
   return (
@@ -52,13 +54,14 @@ function initials(name: string) {
 }
 
 export default function Profile() {
+  const t = useT();
   const auth = useAuth();
   const nav = useNavigate();
   const theme = useTheme();
   const lang = useLang();
   const qc = useQueryClient();
 
-  usePageHeader({ title: "Профиль", subtitle: "Настройки аккаунта" });
+  usePageHeader({ title: t("profile.title"), subtitle: t("profile.subtitle") });
 
   const me = useQuery<Me>({
     queryKey: ["me"],
@@ -93,12 +96,12 @@ export default function Profile() {
       api.patch("/me/preferences/", { daily_lesson_opt_out: !nextEnabled }),
     onMutate: (nextEnabled: boolean) => setDailyLessonEnabled(nextEnabled),
     onSuccess: () => {
-      toast.success("Настройка сохранена");
+      toast.success(t("profile.saved"));
       qc.invalidateQueries({ queryKey: ["me", "preferences"] });
     },
     onError: (_err, nextEnabled) => {
       setDailyLessonEnabled(!nextEnabled);
-      toast.error("Не удалось сохранить настройку");
+      toast.error(t("profile.settings_save_failed"));
     },
   });
 
@@ -112,7 +115,7 @@ export default function Profile() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: TG_STATUS_KEY() });
       tgStatusQ.refetch();
-      toast.success("Telegram отключён");
+      toast.success(t("profile.tg_disconnected"));
     },
   });
 
@@ -154,13 +157,13 @@ export default function Profile() {
               {displayName}
             </div>
             <div className="mt-1 flex items-center gap-2 flex-wrap text-[13px] text-muted">
-              <span>{ROLE_LABEL[role] || role || "—"}</span>
+              <span>{role ? roleLabel(t, role) : "—"}</span>
               {stickerEmoji && (
                 <>
                   <span>·</span>
                   <span
                     className="text-[16px] leading-none"
-                    title={mySticker.data?.sticker?.is_rare ? "Rare-стикер" : "Стикер"}
+                    title={mySticker.data?.sticker?.is_rare ? t("profile.rare_sticker") : t("profile.sticker")}
                   >
                     {stickerEmoji}
                   </span>
@@ -173,7 +176,7 @@ export default function Profile() {
           </div>
           {me.data?.operator_id && (
             <Button variant="secondary" onClick={() => nav("/scan")}>
-              <QrCode className="w-4 h-4" /> QR check-in
+              <QrCode className="w-4 h-4" /> {t("profile.qr_checkin")}
             </Button>
           )}
         </div>
@@ -184,73 +187,73 @@ export default function Profile() {
         className="nf-card animate-nfFadeUp"
         style={{ padding: "8px 4px", animationDelay: "0.05s" }}
       >
-        <div className="px-6 pt-4 pb-2 text-[13.5px] font-semibold">Настройки</div>
+        <div className="px-6 pt-4 pb-2 text-[13.5px] font-semibold">{t("profile.section_settings")}</div>
         <SettingRow
-          label="Тема"
-          hint="Светлая или тёмная"
+          label={t("profile.theme")}
+          hint={t("profile.theme_hint")}
           control={
             <TabPill
               value={theme.theme}
               onChange={(v) => theme.set(v)}
               items={[
-                { value: "light", label: "Светлая" },
-                { value: "dark", label: "Тёмная" },
+                { value: "light", label: t("profile.theme_light") },
+                { value: "dark", label: t("profile.theme_dark") },
               ]}
             />
           }
         />
         <SettingRow
-          label="Язык"
-          hint="Язык интерфейса"
+          label={t("profile.language")}
+          hint={t("profile.language_hint")}
           control={
             <TabPill
               value={lang.lang}
               onChange={(v) => {
                 lang.set(v);
-                toast.success("Язык переключён");
+                toast.success(t("profile.lang_switched"));
               }}
               items={[
-                { value: "ru", label: "Русский" },
-                { value: "uz", label: "O‘zbekcha" },
+                { value: "ru", label: t("profile.lang_ru") },
+                { value: "uz", label: t("profile.lang_uz") },
               ]}
             />
           }
         />
         {me.data?.operator_id && (
           <SettingRow
-            label="Ежедневный разбор"
-            hint="Утреннее сообщение с AI-анализом вчерашнего дня"
+            label={t("profile.daily_analysis")}
+            hint={t("profile.daily_analysis_hint")}
             control={
               <Toggle
                 on={dailyLessonEnabled}
                 onChange={(v) => updatePref.mutate(v)}
                 disabled={prefs.isLoading || updatePref.isPending}
-                aria-label="Ежедневный разбор"
+                aria-label={t("profile.daily_analysis")}
               />
             }
           />
         )}
         {me.data?.operator_id && (
           <SettingRow
-            label="Мой стикер"
+            label={t("profile.my_sticker")}
             hint={
               mySticker.data?.sticker
-                ? "Отображается рядом с именем"
-                : "Стикер ещё не назначен"
+                ? t("profile.sticker_shown_next_to_name")
+                : t("profile.sticker_none")
             }
             control={
               <Button variant="ghost" onClick={() => setStickerOpen(true)}>
-                {stickerEmoji ? `${stickerEmoji}  Изменить` : "Выбрать"}
+                {stickerEmoji ? `${stickerEmoji}  ${t("common.edit")}` : t("common.select")}
               </Button>
             }
           />
         )}
         <SettingRow
-          label="Пароль"
-          hint="Смена пароля от учётной записи"
+          label={t("common.password")}
+          hint={t("profile.password_hint")}
           control={
             <Button variant="ghost" onClick={() => setPwdOpen(true)}>
-              Сбросить
+              {t("common.reset")}
             </Button>
           }
           last
@@ -264,24 +267,23 @@ export default function Profile() {
           style={{ padding: "22px 26px", animationDelay: "0.1s" }}
         >
           <Eyebrow>Telegram</Eyebrow>
-          <div className="text-[15px] font-semibold mt-2">Подключение Telegram</div>
+          <div className="text-[15px] font-semibold mt-2">{t("tg.connect_title")}</div>
           <p className="text-[13px] text-muted mt-1.5 max-w-md">
-            Позволяет системе анализировать переписки с клиентами и вести операторские
-            уведомления.
+            {t("profile.tg_hint")}
           </p>
 
           {tgStatusQ.isLoading ? (
-            <div className="mt-4 text-[13px] text-muted">Проверяем статус…</div>
+            <div className="mt-4 text-[13px] text-muted">{t("profile.tg_checking")}</div>
           ) : tgStatusQ.data?.status === "active" ? (
             <div className="mt-4">
               <div className="flex items-center gap-2 flex-wrap">
-                <StatusBadge tone="hot">подключено</StatusBadge>
+                <StatusBadge tone="hot">{t("profile.tg_connected")}</StatusBadge>
                 <span className="text-[13px]">
                   @{tgStatusQ.data.tg_username}
                 </span>
                 {tgStatusQ.data.last_connected_at && (
                   <span className="text-[12px] text-muted">
-                    · {new Date(tgStatusQ.data.last_connected_at).toLocaleString("ru-RU")}
+                    · {formatDateTime(tgStatusQ.data.last_connected_at)}
                   </span>
                 )}
               </div>
@@ -289,19 +291,23 @@ export default function Profile() {
                 <div className="mt-3 text-[12.5px]">
                   {tgStatusQ.data.latest_backfill_job.status === "running" && (
                     <span style={{ color: "var(--accent)" }}>
-                      ⏳ Загружаем историю: {tgStatusQ.data.latest_backfill_job.chats_scanned}{" "}
-                      чатов, {tgStatusQ.data.latest_backfill_job.messages_saved} сообщений
+                      ⏳ {t("profile.tg_backfill_running", {
+                        chats: tgStatusQ.data.latest_backfill_job.chats_scanned,
+                        msgs: tgStatusQ.data.latest_backfill_job.messages_saved,
+                      })}
                     </span>
                   )}
                   {tgStatusQ.data.latest_backfill_job.status === "pending" && (
                     <span style={{ color: "var(--accent)" }}>
-                      ⏳ В очереди на загрузку истории
+                      ⏳ {t("profile.tg_backfill_pending")}
                     </span>
                   )}
                   {tgStatusQ.data.latest_backfill_job.status === "done" && (
                     <span className="text-muted">
-                      ✓ История загружена ({tgStatusQ.data.latest_backfill_job.chats_scanned}{" "}
-                      чатов, {tgStatusQ.data.latest_backfill_job.messages_saved} сообщений)
+                      ✓ {t("profile.tg_backfill_done", {
+                        chats: tgStatusQ.data.latest_backfill_job.chats_scanned,
+                        msgs: tgStatusQ.data.latest_backfill_job.messages_saved,
+                      })}
                     </span>
                   )}
                   {tgStatusQ.data.latest_backfill_job.status === "error" && (
@@ -320,7 +326,7 @@ export default function Profile() {
                   }
                   disabled={revokeMut.isPending}
                 >
-                  Отключить
+                  {t("profile.tg_disconnect")}
                 </Button>
               </div>
             </div>
@@ -334,15 +340,15 @@ export default function Profile() {
                   border: "1px solid rgba(220,60,40,.2)",
                 }}
               >
-                {tgStatusQ.data.last_error || "Неизвестная ошибка"}
+                {tgStatusQ.data.last_error || t("profile.tg_unknown_error")}
               </div>
               <div className="mt-3">
-                <Button onClick={() => setWizardOpen(true)}>Переподключить</Button>
+                <Button onClick={() => setWizardOpen(true)}>{t("profile.tg_reconnect")}</Button>
               </div>
             </div>
           ) : (
             <div className="mt-4">
-              <Button onClick={() => setWizardOpen(true)}>Подключить Telegram</Button>
+              <Button onClick={() => setWizardOpen(true)}>{t("profile.tg_connect")}</Button>
             </div>
           )}
         </section>
@@ -410,6 +416,7 @@ function PasswordInput({
   autoFocus?: boolean;
   autoComplete?: string;
 }) {
+  const t = useT();
   const [show, setShow] = useState(false);
   return (
     <div className="relative">
@@ -427,7 +434,7 @@ function PasswordInput({
         onClick={() => setShow((v) => !v)}
         className="absolute inset-y-0 right-3 flex items-center text-muted hover:text-text transition"
         tabIndex={-1}
-        aria-label={show ? "Скрыть пароль" : "Показать пароль"}
+        aria-label={show ? t("profile.hide_password") : t("profile.show_password")}
       >
         {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
       </button>
@@ -442,6 +449,7 @@ function PasswordModal({
   open: boolean;
   onClose: () => void;
 }) {
+  const t = useT();
   const [oldPwd, setOldPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
   const [confirmPwd, setConfirmPwd] = useState("");
@@ -463,7 +471,7 @@ function PasswordModal({
         new_password: newPwd,
       }),
     onSuccess: () => {
-      toast.success("Пароль обновлён");
+      toast.success(t("profile.password_updated"));
       onClose();
     },
     onError: (err: unknown) => {
@@ -472,7 +480,7 @@ function PasswordModal({
         (d?.old_password as string[] | undefined)?.[0] ||
         (d?.new_password as string[] | undefined)?.[0] ||
         (d?.detail as string | undefined) ||
-        "Не удалось изменить пароль";
+        t("profile.password_change_failed");
       setError(text);
     },
   });
@@ -481,11 +489,11 @@ function PasswordModal({
     e.preventDefault();
     setError("");
     if (newPwd.length < 8) {
-      setError("Новый пароль должен быть не короче 8 символов");
+      setError(t("profile.password_too_short"));
       return;
     }
     if (newPwd !== confirmPwd) {
-      setError("Пароли не совпадают");
+      setError(t("profile.password_mismatch"));
       return;
     }
     change.mutate();
@@ -494,13 +502,13 @@ function PasswordModal({
   return (
     <Modal open={open} onClose={onClose} width={440}>
       <form onSubmit={submit} className="p-7">
-        <div className="text-[18px] font-semibold tracking-tight">Смена пароля</div>
+        <div className="text-[18px] font-semibold tracking-tight">{t("profile.password_change_title")}</div>
         <p className="text-[13px] text-muted mt-1">
-          Минимум 8 символов
+          {t("profile.password_change_min")}
         </p>
         <div className="mt-5 flex flex-col gap-4">
           <div>
-            <div className="nf-col mb-1.5">Текущий пароль</div>
+            <div className="nf-col mb-1.5">{t("profile.current_password")}</div>
             <PasswordInput
               value={oldPwd}
               onChange={setOldPwd}
@@ -509,7 +517,7 @@ function PasswordModal({
             />
           </div>
           <div>
-            <div className="nf-col mb-1.5">Новый пароль</div>
+            <div className="nf-col mb-1.5">{t("profile.new_password")}</div>
             <PasswordInput
               value={newPwd}
               onChange={setNewPwd}
@@ -517,7 +525,7 @@ function PasswordModal({
             />
           </div>
           <div>
-            <div className="nf-col mb-1.5">Повторите новый пароль</div>
+            <div className="nf-col mb-1.5">{t("profile.password_confirm")}</div>
             <PasswordInput
               value={confirmPwd}
               onChange={setConfirmPwd}
@@ -539,13 +547,13 @@ function PasswordModal({
         </div>
         <div className="mt-6 flex gap-2 justify-end">
           <Button variant="ghost" type="button" onClick={onClose}>
-            Отмена
+            {t("common.cancel")}
           </Button>
           <Button
             type="submit"
             disabled={change.isPending || !oldPwd || !newPwd || !confirmPwd}
           >
-            {change.isPending ? "Сохранение…" : "Сменить"}
+            {change.isPending ? t("common.saving") : t("profile.password_change_submit")}
           </Button>
         </div>
       </form>

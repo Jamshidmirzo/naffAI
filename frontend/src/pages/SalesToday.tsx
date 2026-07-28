@@ -33,10 +33,10 @@ interface ByChannel {
   count: number | string;
 }
 
-function millions(n: number) {
+function millions(n: number, mln: string, ths: string) {
   if (Math.abs(n) >= 1_000_000)
-    return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")} млн`;
-  if (Math.abs(n) >= 1_000) return `${Math.round(n / 1_000)} тыс`;
+    return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")} ${mln}`;
+  if (Math.abs(n) >= 1_000) return `${Math.round(n / 1_000)} ${ths}`;
   return Math.round(n).toString();
 }
 
@@ -49,19 +49,6 @@ function fmtTime(iso: string) {
   }
 }
 
-const AI_INSIGHTS = [
-  [
-    { tag: "Итог", text: "Сегодня команда идёт с превышением плана на +18%, лидируют утренние часы." },
-    { tag: "Драйвер", text: "Модель iPhone 15 Pro тянет средний чек — 4 продажи в топ-ценовом сегменте." },
-    { tag: "Внимание", text: "1 возврат в первой половине дня — есть смысл посмотреть карточку продажи." },
-  ],
-  [
-    { tag: "Итог", text: "Активный день: 34 продажи против 28 вчера — +21% ко вчерашним показателям." },
-    { tag: "Драйвер", text: "Канал «Магазин» приносит 62% выручки — фокусируйте бонусы туда." },
-    { tag: "Внимание", text: "Онлайн-канал просел на 30% относительно среднего — проверьте рекламу." },
-  ],
-];
-
 export default function SalesToday() {
   const nav = useNavigate();
   const [insightIdx, setInsightIdx] = useState(0);
@@ -69,8 +56,23 @@ export default function SalesToday() {
 
   const today = new Date().toISOString().split("T")[0];
 
+  const t = useT();
+
+  const AI_INSIGHTS = [
+    [
+      { tag: t("sales_today.ai_tag_result"), text: t("sales_today.ai_insight_1_1") },
+      { tag: t("sales_today.ai_tag_driver"), text: t("sales_today.ai_insight_1_2") },
+      { tag: t("sales_today.ai_tag_attention"), text: t("sales_today.ai_insight_1_3") },
+    ],
+    [
+      { tag: t("sales_today.ai_tag_result"), text: t("sales_today.ai_insight_2_1") },
+      { tag: t("sales_today.ai_tag_driver"), text: t("sales_today.ai_insight_2_2") },
+      { tag: t("sales_today.ai_tag_attention"), text: t("sales_today.ai_insight_2_3") },
+    ],
+  ];
+
   usePageHeader({
-    title: (useT())("dash.kpi_sales_today"),
+    title: t("dash.kpi_sales_today"),
     subtitle: new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "long", weekday: "long" }),
     back: "/",
   });
@@ -122,7 +124,7 @@ export default function SalesToday() {
     setTimeout(() => {
       setInsightIdx((v) => (v + 1) % AI_INSIGHTS.length);
       setAiBusy(false);
-      toast.success("Анализ обновлён");
+      toast.success(t("sales_today.analysis_updated"));
     }, 900);
   };
 
@@ -143,7 +145,7 @@ export default function SalesToday() {
           <div>
             <Eyebrow>
               {new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "long" }).toUpperCase()}
-              {" · С 09:00"}
+              {" · "}{t("sales_today.since_9")}
             </Eyebrow>
             <div
               className="font-semibold mt-3 tabular-nums"
@@ -152,22 +154,22 @@ export default function SalesToday() {
               {formatUZS(total)}
             </div>
             <div className="mt-2 text-[15px] text-muted">
-              {count} {count === 1 ? "продажа" : "продаж"} · средний чек{" "}
-              <span className="text-text tabular-nums">{millions(avgCheck)}</span>
+              {count === 1 ? t("sales_today.sale_one", { n: count }) : t("sales_today.sale_many", { n: count })} · {t("sales_today.avg_check_lower")}{" "}
+              <span className="text-text tabular-nums">{millions(avgCheck, t("sales_today.unit_mln"), t("sales_today.unit_ths"))}</span>
               {returns > 0 && (
                 <>
                   {" · "}
-                  <span style={{ color: "var(--accent)" }}>{returns} возврат</span>
+                  <span style={{ color: "var(--accent)" }}>{t("sales_today.returns_count", { n: returns })}</span>
                 </>
               )}
             </div>
           </div>
           <div className="grid gap-3 grid-cols-2">
-            <MiniMetric label="Штук" value={count.toString()} />
-            <MiniMetric label="Средний чек" value={millions(avgCheck)} />
-            <MiniMetric label="Операторов" value={uniqOps.toString()} />
+            <MiniMetric label={t("sales_today.mini_units")} value={count.toString()} />
+            <MiniMetric label={t("sales_today.mini_avg_check")} value={millions(avgCheck, t("sales_today.unit_mln"), t("sales_today.unit_ths"))} />
+            <MiniMetric label={t("sales_today.mini_operators")} value={uniqOps.toString()} />
             <MiniMetric
-              label="К плану дня"
+              label={t("sales_today.mini_plan")}
               value={`${Math.min(150, Math.round((count / 20) * 100))}%`}
               accent
             />
@@ -181,26 +183,26 @@ export default function SalesToday() {
         <div className="nf-card overflow-hidden animate-nfFadeUp" style={{ animationDelay: "0.05s" }}>
           <div className="px-6 pt-5 pb-3">
             <div className="text-[15px] font-semibold tracking-tight">
-              Что продали сегодня
+              {t("sales_today.sold_today")}
             </div>
             <div className="text-[12.5px] text-muted mt-0.5">
-              {rows.length} продаж · клик открывает карточку
+              {t("sales_today.rows_hint", { n: rows.length })}
             </div>
           </div>
           <div
             className="grid gap-2 px-6 pb-3 nf-col"
             style={{ gridTemplateColumns: "74px 1.5fr .9fr .8fr" }}
           >
-            <div>Время</div>
-            <div>Модель / оператор</div>
-            <div>Канал</div>
-            <div className="text-right">Сумма</div>
+            <div>{t("sales_today.col_time")}</div>
+            <div>{t("sales_today.col_model_op")}</div>
+            <div>{t("sales_today.col_channel")}</div>
+            <div className="text-right">{t("common.amount")}</div>
           </div>
           {sales.isLoading ? (
-            <div className="text-center text-muted py-10 text-[13px]">Загрузка…</div>
+            <div className="text-center text-muted py-10 text-[13px]">{t("common.loading")}</div>
           ) : rows.length === 0 ? (
             <div className="text-center text-muted py-10 text-[13px]">
-              Сегодня ещё не было продаж
+              {t("sales_today.empty")}
             </div>
           ) : (
             <div>
@@ -242,13 +244,13 @@ export default function SalesToday() {
             style={{ animationDelay: "0.1s" }}
           >
             <div className="text-[15px] font-semibold tracking-tight">
-              Разрез по каналам
+              {t("sales_today.by_channel_title")}
             </div>
             <div className="text-[12.5px] text-muted mt-1 mb-4">
-              Доля в выручке за сегодня
+              {t("sales_today.by_channel_hint")}
             </div>
             {channelBreakdown.length === 0 ? (
-              <div className="text-[13px] text-muted text-center py-4">Пока пусто</div>
+              <div className="text-[13px] text-muted text-center py-4">{t("sales_today.empty_short")}</div>
             ) : (
               <div className="flex flex-col gap-3">
                 {channelBreakdown.map((c, i) => (
@@ -300,7 +302,7 @@ export default function SalesToday() {
                   <Sparkles className="w-3 h-3" />
                 </div>
                 <div className="text-[15px] font-semibold tracking-tight">
-                  AI-анализ дня
+                  {t("sales_today.ai_day_title")}
                 </div>
               </div>
               <Button
@@ -313,12 +315,12 @@ export default function SalesToday() {
                   className="w-3 h-3"
                   style={{ animation: aiBusy ? "spin 900ms linear" : undefined }}
                 />
-                {aiBusy ? "…" : "Заново"}
+                {aiBusy ? "…" : t("sales_today.ai_redo")}
               </Button>
             </div>
             {aiBusy ? (
               <div className="text-[13px] text-muted italic py-2">
-                сравниваю с продажами за месяц…
+                {t("sales_today.ai_thinking")}
               </div>
             ) : (
               <div className="flex flex-col">

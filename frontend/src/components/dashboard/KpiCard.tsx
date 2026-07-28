@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import { cn } from "../ui/cn";
 import { useCountUp } from "../../lib/countUp";
+import { formatNumber } from "../../lib/format";
 
 interface Props {
   label: string;
@@ -15,7 +16,7 @@ interface Props {
 export function DashKpiCard({
   label,
   value,
-  format = (n) => Math.round(n).toLocaleString("ru-RU"),
+  format = (n) => formatNumber(Math.round(n)),
   delta,
   hint,
   onClick,

@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { formatNumber } from "../lib/format";
 
 interface Props {
   value: string;
@@ -15,9 +16,7 @@ interface Props {
 export default function NumericInput({ value, onChange, className, placeholder, autoFocus, disabled, min }: Props) {
   const ref = useRef<HTMLInputElement>(null);
 
-  const formatted = value
-    ? Number(value).toLocaleString("ru-RU").replace(/,/g, " ")
-    : "";
+  const formatted = value ? formatNumber(Number(value)) : "";
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const el = e.target;

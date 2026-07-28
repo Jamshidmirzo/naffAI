@@ -18,12 +18,6 @@ type QuickFilter = "all" | "review" | "unassigned";
 
 const PAGE_SIZE = 50;
 
-const QUICK_FILTERS: { key: QuickFilter; label: string }[] = [
-  { key: "all", label: "Все лиды" },
-  { key: "review", label: "Нужна проверка" },
-  { key: "unassigned", label: "Без оператора" },
-];
-
 function isCallbackOverdue(iso: string | null | undefined) {
   if (!iso) return false;
   try {
@@ -49,6 +43,12 @@ export default function Leads() {
 
   const t = useT();
   usePageHeader({ title: t("leads.title"), subtitle: t("leads.subtitle") }, [t("leads.title")]);
+
+  const QUICK_FILTERS: { key: QuickFilter; label: string }[] = [
+    { key: "all", label: t("leads.tab_all") },
+    { key: "review", label: t("leads.tab_review") },
+    { key: "unassigned", label: t("leads.tab_unassigned") },
+  ];
 
   const quick: QuickFilter = searchParams.get("needs_review") === "1"
     ? "review"
@@ -152,7 +152,7 @@ export default function Leads() {
       {(sheetSources.data?.length ?? 0) > 0 && (
         <section className="flex flex-wrap gap-2 animate-nfFadeUp">
           <Chip active={sheetSourceId === null} onClick={() => setFilter("sheet_source", null)}>
-            Все источники
+            {t("leads.all_sources")}
           </Chip>
           {(sheetSources.data || []).map((s) => (
             <Chip
@@ -172,7 +172,7 @@ export default function Leads() {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
           <input
             className="nf-input pl-11"
-            placeholder="Поиск: имя, телефон, товар…"
+            placeholder={t("leads.search_ph")}
             value={search}
             onChange={(e) => setFilter("search", e.target.value)}
           />
@@ -187,15 +187,15 @@ export default function Leads() {
         <div className="ml-auto flex items-center gap-3">
           <div className="text-[13px] text-muted">
             {picked.size > 0 ? (
-              <span className="tabular-nums">Выбрано: {picked.size}</span>
+              <span className="tabular-nums">{t("leads.picked", { n: picked.size })}</span>
             ) : (
               <span>
-                Всего: <span className="text-text tabular-nums">{totalCount}</span>
+                {t("common.total")}: <span className="text-text tabular-nums">{totalCount}</span>
                 {summary.overdue > 0 && (
                   <>
                     {" · "}
                     <span style={{ color: "var(--accent)" }} className="tabular-nums">
-                      {summary.overdue} просрочено
+                      {t("leads.overdue", { n: summary.overdue })}
                     </span>
                   </>
                 )}
@@ -206,7 +206,7 @@ export default function Leads() {
             disabled={picked.size === 0}
             onClick={() => setAssignOpen(true)}
           >
-            <Users className="w-3.5 h-3.5" /> Назначить оператора
+            <Users className="w-3.5 h-3.5" /> {t("leads.assign")}
           </Button>
           {picked.size > 0 && (
             <button
@@ -214,7 +214,7 @@ export default function Leads() {
               style={{ padding: "9px 14px" }}
               onClick={() => setPicked(new Set())}
             >
-              <X className="w-3.5 h-3.5" /> Снять выбор
+              <X className="w-3.5 h-3.5" /> {t("leads.clear_selection")}
             </button>
           )}
         </div>
@@ -230,21 +230,21 @@ export default function Leads() {
             <Checkbox
               checked={rows.length > 0 && picked.size === rows.length}
               onChange={toggleAll}
-              aria-label="Выделить все"
+              aria-label={t("leads.select_all")}
             />
           </div>
-          <div>Лид</div>
-          <div>Источник</div>
-          <div>Оператор</div>
-          <div>Статус</div>
-          <div className="text-right">Звонки</div>
-          <div className="text-right">Колбэк</div>
+          <div>{t("leads.col_lead")}</div>
+          <div>{t("leads.col_source")}</div>
+          <div>{t("common.operator")}</div>
+          <div>{t("common.status")}</div>
+          <div className="text-right">{t("leads.col_calls")}</div>
+          <div className="text-right">{t("leads.col_callback")}</div>
         </div>
 
         {leads.isLoading ? (
-          <div className="text-center text-muted py-16 text-[13px]">Загрузка…</div>
+          <div className="text-center text-muted py-16 text-[13px]">{t("common.loading")}</div>
         ) : rows.length === 0 ? (
-          <div className="text-center text-muted py-16 text-[13px]">Лидов пока нет</div>
+          <div className="text-center text-muted py-16 text-[13px]">{t("leads.empty")}</div>
         ) : (
           <div>
             {rows.map((lead, i) => {
@@ -279,14 +279,14 @@ export default function Leads() {
                     </div>
                     <div className="text-[12px] text-muted truncate">
                       {lead.phone || (
-                        <span style={{ color: "var(--danger)" }}>{lead.phone_raw || "нет телефона"}</span>
+                        <span style={{ color: "var(--danger)" }}>{lead.phone_raw || t("leads.no_phone")}</span>
                       )}
                     </div>
                   </div>
                   <div className="text-muted truncate">{source}</div>
                   <div className="truncate">
                     {lead.operator_name || (
-                      <span className="text-muted">не назначен</span>
+                      <span className="text-muted">{t("leads.unassigned_lower")}</span>
                     )}
                   </div>
                   <div>
@@ -326,7 +326,7 @@ export default function Leads() {
           setAssignOpen(false);
           setPicked(new Set());
           qc.invalidateQueries({ queryKey: ["leads"] });
-          toast.success("Оператор назначен");
+          toast.success(t("leads.op_assigned"));
         }}
       />
     </div>
@@ -349,6 +349,7 @@ function AssignModal({
   const [opId, setOpId] = useState<string>("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
+  const t = useT();
 
   useEffect(() => {
     if (open) {
@@ -360,7 +361,7 @@ function AssignModal({
 
   const mut = useMutation({
     mutationFn: async () => {
-      if (!opId) throw new Error("Выберите оператора");
+      if (!opId) throw new Error(t("leads.pick_operator"));
       const opNum = Number(opId);
       // Sequential — matches existing single-lead reassign endpoint.
       for (const id of pickedIds) {
@@ -375,17 +376,17 @@ function AssignModal({
     <Modal open={open} onClose={onClose} width={480}>
       <div className="p-7">
         <div className="text-[18px] font-semibold tracking-tight">
-          Назначить оператора · {pickedIds.length}
+          {t("leads.assign")} · {pickedIds.length}
         </div>
         <p className="text-[13px] text-muted mt-1">
           {pickedIds.length === 1
-            ? "Один лид будет переназначен"
-            : `${pickedIds.length} лидов будут переназначены`}
+            ? t("leads.reassign_one")
+            : t("leads.reassign_many", { n: pickedIds.length })}
         </p>
 
         <div className="mt-6 flex flex-col gap-4">
           <div>
-            <div className="nf-col mb-1.5">Оператор</div>
+            <div className="nf-col mb-1.5">{t("common.operator")}</div>
             <select
               className="nf-input"
               value={opId}
@@ -397,12 +398,12 @@ function AssignModal({
             </select>
           </div>
           <div>
-            <div className="nf-col mb-1.5">Причина (необязательно)</div>
+            <div className="nf-col mb-1.5">{t("leads.reason_optional")}</div>
             <input
               className="nf-input"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="Например: alias «Sevara» → Sevara Karimova"
+              placeholder={t("leads.reason_ph")}
             />
           </div>
           {error && (
@@ -420,9 +421,9 @@ function AssignModal({
         </div>
 
         <div className="mt-7 flex gap-2 justify-end">
-          <Button variant="ghost" onClick={onClose}>Отмена</Button>
+          <Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button>
           <Button onClick={() => mut.mutate()} disabled={mut.isPending || !opId}>
-            {mut.isPending ? "Сохраняем…" : "Назначить"}
+            {mut.isPending ? t("common.saving") : t("leads.assign_short")}
           </Button>
         </div>
       </div>

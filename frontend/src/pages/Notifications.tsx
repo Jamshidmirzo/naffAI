@@ -1,64 +1,66 @@
 import { useMemo, useState } from "react";
 import { Button, Toggle, toast } from "../components/ui";
 import { usePageHeader } from "../store/page";
+import { useT } from "../lib/i18n";
 
 interface NotifItem {
   id: number;
-  title: string;
-  body: string;
-  time: string;
+  titleKey: string;
+  bodyKey: string;
+  timeKey: string;
   read: boolean;
 }
 
 const MOCK_INITIAL: NotifItem[] = [
   {
     id: 1,
-    title: "Новый лид назначен",
-    body: "Умид Каримов, +998 90 123-45-67 — конверсия высокая.",
-    time: "5 мин",
+    titleKey: "notif.demo_lead_title",
+    bodyKey: "notif.demo_lead_body",
+    timeKey: "notif.demo_time_5min",
     read: false,
   },
   {
     id: 2,
-    title: "Callback через 15 минут",
-    body: "Малика Умарова просила перезвонить в 14:30.",
-    time: "12 мин",
+    titleKey: "notif.demo_callback_title",
+    bodyKey: "notif.demo_callback_body",
+    timeKey: "notif.demo_time_12min",
     read: false,
   },
   {
     id: 3,
-    title: "Утренний разбор готов",
-    body: "AI-анализ вчерашнего дня — 3 совета, 2 сильных момента.",
-    time: "утро",
+    titleKey: "notif.demo_morning_title",
+    bodyKey: "notif.demo_morning_body",
+    timeKey: "notif.demo_time_morning",
     read: false,
   },
   {
     id: 4,
-    title: "Отчёт за неделю",
-    body: "12 продаж, 84 млн выручка, +8% к прошлой неделе.",
-    time: "вчера",
+    titleKey: "notif.demo_week_title",
+    bodyKey: "notif.demo_week_body",
+    timeKey: "notif.demo_time_yesterday",
     read: true,
   },
 ];
 
 interface SubSetting {
   key: string;
-  label: string;
-  hint: string;
+  labelKey: string;
+  hintKey: string;
   on: boolean;
 }
 
 const SUBS_INITIAL: SubSetting[] = [
-  { key: "new_leads", label: "Новые лиды", hint: "Уведомлять о каждом назначенном лиде", on: true },
-  { key: "callbacks_sound", label: "Колбэки со звуком", hint: "Звуковой сигнал при наступлении времени", on: true },
-  { key: "lessons", label: "Уроки и разборы", hint: "Утренний AI-разбор и рекомендации", on: true },
-  { key: "daily_kpi", label: "Ежедневный отчёт по KPI", hint: "Сводка личных показателей за день", on: false },
+  { key: "new_leads", labelKey: "notif.sub_new_leads", hintKey: "notif.sub_new_leads_hint", on: true },
+  { key: "callbacks_sound", labelKey: "notif.sub_callbacks", hintKey: "notif.sub_callbacks_hint", on: true },
+  { key: "lessons", labelKey: "notif.sub_lessons", hintKey: "notif.sub_lessons_hint", on: true },
+  { key: "daily_kpi", labelKey: "notif.sub_daily_kpi", hintKey: "notif.sub_daily_kpi_hint", on: false },
 ];
 
 export default function Notifications() {
+  const t = useT();
   usePageHeader({
-    title: "Уведомления",
-    subtitle: "Что присылать в интерфейс и в Telegram-бот",
+    title: t("notif.title"),
+    subtitle: t("notif.header_subtitle"),
   });
 
   const [items, setItems] = useState<NotifItem[]>(MOCK_INITIAL);
@@ -74,12 +76,12 @@ export default function Notifications() {
 
   const markAllRead = () => {
     setItems((prev) => prev.map((it) => ({ ...it, read: true })));
-    toast.success("Все уведомления прочитаны");
+    toast.success(t("notif.all_marked"));
   };
 
   const toggleSub = (key: string, on: boolean) => {
     setSubs((prev) => prev.map((s) => (s.key === key ? { ...s, on } : s)));
-    toast.success("Настройка сохранена");
+    toast.success(t("toast.settings_saved"));
   };
 
   return (
@@ -87,18 +89,14 @@ export default function Notifications() {
       <section className="flex items-center justify-between animate-nfFadeUp">
         <div className="text-[13px] text-muted">
           {unread > 0 ? (
-            <>
-              <span className="text-text font-semibold tabular-nums">{unread}</span>{" "}
-              новых · всего{" "}
-              <span className="tabular-nums">{items.length}</span>
-            </>
+            <>{t("notif.unread_of_total", { unread, total: items.length })}</>
           ) : (
-            <>Всего <span className="text-text tabular-nums">{items.length}</span></>
+            <>{t("notif.total_only", { n: items.length })}</>
           )}
         </div>
         {unread > 0 && (
           <Button variant="ghost" size="sm" onClick={markAllRead}>
-            Прочитать всё
+            {t("notif.mark_all_short")}
           </Button>
         )}
       </section>
@@ -109,7 +107,7 @@ export default function Notifications() {
             className="rounded-2xl py-12 text-center text-[13.5px] text-muted"
             style={{ border: "1.5px dashed var(--border)" }}
           >
-            Уведомлений пока нет
+            {t("notif.empty_soft")}
           </div>
         )}
         {items.map((it, i) => (
@@ -139,12 +137,12 @@ export default function Notifications() {
             />
             <div className="flex-1 min-w-0">
               <div className="text-[14px]" style={{ fontWeight: 550 }}>
-                {it.title}
+                {t(it.titleKey)}
               </div>
-              <div className="text-[12.5px] text-muted mt-0.5">{it.body}</div>
+              <div className="text-[12.5px] text-muted mt-0.5">{t(it.bodyKey)}</div>
             </div>
             <div className="text-[12px] text-muted shrink-0 tabular-nums">
-              {it.time}
+              {t(it.timeKey)}
             </div>
           </button>
         ))}
@@ -154,9 +152,9 @@ export default function Notifications() {
         className="nf-card animate-nfFadeUp"
         style={{ padding: "22px 26px", animationDelay: "0.15s" }}
       >
-        <div className="text-[15px] font-semibold">Подписки</div>
+        <div className="text-[15px] font-semibold">{t("notif.subs_title")}</div>
         <p className="text-[12.5px] text-muted mt-1">
-          Что присылать в интерфейс и в Telegram-бот
+          {t("notif.subs_subtitle")}
         </p>
         <div className="mt-4 flex flex-col">
           {subs.map((s, i) => (
@@ -170,13 +168,13 @@ export default function Notifications() {
               }
             >
               <div className="flex-1 min-w-0">
-                <div className="text-[14px] font-medium">{s.label}</div>
-                <div className="text-[12px] text-muted mt-0.5">{s.hint}</div>
+                <div className="text-[14px] font-medium">{t(s.labelKey)}</div>
+                <div className="text-[12px] text-muted mt-0.5">{t(s.hintKey)}</div>
               </div>
               <Toggle
                 on={s.on}
                 onChange={(v) => toggleSub(s.key, v)}
-                aria-label={s.label}
+                aria-label={t(s.labelKey)}
               />
             </div>
           ))}

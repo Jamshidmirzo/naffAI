@@ -134,9 +134,9 @@ export default function MyLeads() {
   const counts = my.data?.counts ?? { active: 0, postponed: 0 };
 
   const tabs: TabItem<MyLeadsView>[] = [
-    { value: "active", label: "Активные", count: counts.active },
-    { value: "postponed", label: "Отложенные", count: counts.postponed },
-    { value: "all", label: "Все" },
+    { value: "active", label: t("my.tab_active"), count: counts.active },
+    { value: "postponed", label: t("my.tab_postponed"), count: counts.postponed },
+    { value: "all", label: t("my.tab_all") },
   ];
 
   const overdueCount = useMemo(
@@ -151,7 +151,7 @@ export default function MyLeads() {
   if (my.isLoading) {
     return (
       <div className="mx-auto max-w-[960px] py-16 text-center text-muted text-[14px]">
-        Загружаем лиды…
+        {t("my.loading")}
       </div>
     );
   }
@@ -165,7 +165,7 @@ export default function MyLeads() {
           border: "1px solid rgba(220,60,40,.2)",
         }}
       >
-        Не удалось загрузить лиды
+        {t("my.load_failed")}
       </div>
     );
   }
@@ -188,11 +188,11 @@ export default function MyLeads() {
           <div className="flex-1 min-w-0">
             <div className="text-[15px] font-semibold">
               {overdueCount > 0
-                ? `${overdueCount} просроченных колбэка`
-                : "Есть просроченные колбэки"}
+                ? t("my.overdue_count", { n: overdueCount })
+                : t("my.have_overdue")}
             </div>
             <div className="text-[13px] opacity-90">
-              Разберите их, чтобы продолжить работу — новые лиды пока не назначаются.
+              {t("my.overdue_hint")}
             </div>
           </div>
           <button
@@ -200,7 +200,7 @@ export default function MyLeads() {
             style={{ background: "#fff" }}
             onClick={() => setView("active")}
           >
-            Разобрать
+            {t("my.resolve")}
           </button>
         </div>
       )}
@@ -212,23 +212,23 @@ export default function MyLeads() {
       >
         <div className="grid gap-6 md:grid-cols-[1.4fr,1fr] items-center">
           <div>
-            <Eyebrow>Доброе утро</Eyebrow>
+            <Eyebrow>{t("my.morning")}</Eyebrow>
             <h1
               className="font-semibold mt-3"
               style={{ fontSize: 33, letterSpacing: "-0.03em", lineHeight: 1.1 }}
             >
               {counts.active > 0 ? (
                 <>
-                  У вас <span style={{ color: "var(--accent)" }}>{counts.active}</span>{" "}
-                  {counts.active === 1 ? "активный лид" : "активных лидов"}
+                  {t("my.you_have_prefix")} <span style={{ color: "var(--accent)" }}>{counts.active}</span>{" "}
+                  {counts.active === 1 ? t("my.active_lead_one") : t("my.active_lead_many")}
                 </>
               ) : (
-                <>Активные лиды разобраны</>
+                <>{t("my.all_done")}</>
               )}
             </h1>
             <p className="text-[14px] text-muted mt-2.5 max-w-md">
-              {operator?.full_name} · план на сегодня — {dailyPlan} звонков.
-              {counts.postponed > 0 && <> {counts.postponed} лидов отложены.</>}
+              {operator?.full_name} · {t("my.daily_plan_hint", { n: dailyPlan })}
+              {counts.postponed > 0 && <> {t("my.postponed_hint", { n: counts.postponed })}</>}
             </p>
           </div>
           <div
@@ -242,10 +242,10 @@ export default function MyLeads() {
             />
             <div className="absolute inset-x-0 bottom-3 text-center">
               <div className="text-[12.5px] font-medium">
-                План на день · {planPct}%
+                {t("my.plan_day_pct", { n: planPct })}
               </div>
               <div className="text-[11.5px] text-muted">
-                {donePlan} из {dailyPlan} лидов в работе
+                {t("my.plan_progress", { done: donePlan, total: dailyPlan })}
               </div>
             </div>
           </div>
@@ -256,12 +256,12 @@ export default function MyLeads() {
       <section className="flex flex-wrap items-center justify-between gap-3 animate-nfFadeUp">
         <TabPill value={view} onChange={(v) => { setView(v); setPage(1); }} items={tabs} />
         <div className="text-[13px] text-muted">
-          {results.length} лидов
+          {t("my.leads_count", { n: results.length })}
           {overdueCount > 0 && (
             <>
               {" · "}
               <span style={{ color: "var(--accent)" }} className="font-semibold">
-                {overdueCount} просрочено
+                {t("leads.overdue", { n: overdueCount })}
               </span>
             </>
           )}
@@ -274,7 +274,7 @@ export default function MyLeads() {
           className="rounded-2xl py-12 text-center text-[13.5px] text-muted"
           style={{ border: "1.5px dashed var(--border)" }}
         >
-          Здесь пока пусто
+          {t("my.empty")}
         </div>
       ) : (
         <section className="flex flex-col gap-[9px]">
@@ -365,11 +365,12 @@ function LeadCard({
   const overdue = isOverdue((lead as unknown as { callback_at?: string }).callback_at);
   const source = (lead as unknown as { source_name?: string }).source_name ?? "";
   const calls = (lead as unknown as { calls_count?: number }).calls_count ?? 0;
+  const t = useT();
 
   const handleCall = () => {
     onCall();
     setCalled(true);
-    toast.success("Звонок отмечен");
+    toast.success(t("my.call_marked"));
   };
 
   return (
@@ -402,26 +403,26 @@ function LeadCard({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <div className="text-[14.5px] font-medium truncate">
-            {lead.full_name || "Без имени"}
+            {lead.full_name || t("my.no_name")}
           </div>
           <StatusBadge tone={overdue || lead.status === "needs_review" ? "hot" : "neutral"}>
             {LEAD_STATUS_LABEL[lead.status as LeadStatus] ?? lead.status}
           </StatusBadge>
           {isPostponed && (
             <StatusBadge tone="hot">
-              <PauseCircle className="w-3 h-3 inline mr-0.5" /> отложен
+              <PauseCircle className="w-3 h-3 inline mr-0.5" /> {t("my.postponed_badge")}
             </StatusBadge>
           )}
         </div>
         <div className="text-[12.5px] text-muted mt-1 flex flex-wrap gap-x-3 gap-y-1">
-          <span>{lead.phone || "нет телефона"}</span>
+          <span>{lead.phone || t("leads.no_phone")}</span>
           {source && <span>· {source}</span>}
-          {calls > 0 && <span>· {calls} звонк.</span>}
+          {calls > 0 && <span>· {t("my.calls_short", { n: calls })}</span>}
           {(lead as unknown as { callback_at?: string }).callback_at && (
             <span
               style={overdue ? { color: "var(--accent)", fontWeight: 600 } : undefined}
             >
-              · {overdue ? "просрочен " : ""}
+              · {overdue ? `${t("my.overdue_prefix")} ` : ""}
               {fmtCallback((lead as unknown as { callback_at?: string }).callback_at)}
             </span>
           )}
@@ -432,7 +433,7 @@ function LeadCard({
         {called ? (
           <div className="text-[12.5px] text-muted flex items-center gap-1.5 px-3 py-2">
             <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
-            звонок отмечен
+            {t("my.call_marked_lower")}
           </div>
         ) : (
           <>
@@ -443,7 +444,7 @@ function LeadCard({
                 style={{ padding: "9px 14px", fontSize: 13 }}
                 onClick={handleCall}
               >
-                <Phone className="w-3.5 h-3.5" /> Позвонил
+                <Phone className="w-3.5 h-3.5" /> {t("my.called")}
               </a>
             )}
             <button
@@ -459,7 +460,7 @@ function LeadCard({
               className="nf-btn nf-btn--ghost"
               style={{ padding: "9px 12px", fontSize: 13 }}
               onClick={onMiss}
-              aria-label="Не берёт"
+              aria-label={t("my.no_answer")}
             >
               <PhoneMissed className="w-3.5 h-3.5" />
             </button>
@@ -469,7 +470,7 @@ function LeadCard({
                 style={{ padding: "9px 14px", fontSize: 13, color: "var(--accent)" }}
                 onClick={onUnpostpone}
               >
-                <PlayCircle className="w-3.5 h-3.5" /> Вернуть
+                <PlayCircle className="w-3.5 h-3.5" /> {t("my.return")}
               </button>
             ) : (
               <button
@@ -477,7 +478,7 @@ function LeadCard({
                 style={{ padding: "9px 14px", fontSize: 13 }}
                 onClick={onPostpone}
               >
-                <PauseCircle className="w-3.5 h-3.5" /> Отложить
+                <PauseCircle className="w-3.5 h-3.5" /> {t("my.postpone")}
               </button>
             )}
             <button
@@ -497,13 +498,13 @@ function LeadCard({
               }}
               onClick={onConvert}
             >
-              <Plus className="w-3.5 h-3.5" /> В продажу
+              <Plus className="w-3.5 h-3.5" /> {t("my.to_sale")}
             </button>
             <button
               className="nf-btn nf-btn--ghost"
               style={{ padding: "9px 12px", fontSize: 13, color: "var(--danger)" }}
               onClick={onReject}
-              aria-label="Отказ"
+              aria-label={t("my.reject")}
             >
               <XCircle className="w-3.5 h-3.5" />
             </button>
@@ -529,11 +530,12 @@ function ScheduleCallbackModal({
   const [comment, setComment] = useState("");
   const [error, setError] = useState("");
   const qc = useQueryClient();
+  const t = useT();
 
   const mut = useMutation({
     mutationFn: async () => {
       if (!lead) return;
-      if (!remindAt) throw new Error("Укажите время");
+      if (!remindAt) throw new Error(t("my.time_required"));
       await api.post(`/leads/${lead.id}/callbacks/`, {
         remind_at: new Date(remindAt).toISOString(),
         comment,
@@ -542,7 +544,7 @@ function ScheduleCallbackModal({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["leads-my"] });
       qc.invalidateQueries({ queryKey: ["callbacks-mine-due"] });
-      toast.success("Callback назначен");
+      toast.success(t("my.callback_scheduled"));
       onDone();
     },
     onError: (err) => setError(apiErrorMessage(err)),
@@ -556,7 +558,7 @@ function ScheduleCallbackModal({
         </div>
         <div className="mt-5 flex flex-col gap-4">
           <div>
-            <div className="nf-col mb-1.5">Когда перезвонить</div>
+            <div className="nf-col mb-1.5">{t("my.when_callback")}</div>
             <input
               type="datetime-local"
               className="nf-input"
@@ -565,12 +567,12 @@ function ScheduleCallbackModal({
             />
           </div>
           <div>
-            <div className="nf-col mb-1.5">Комментарий</div>
+            <div className="nf-col mb-1.5">{t("common.comment")}</div>
             <textarea
               className="nf-input min-h-[80px]"
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Что обсудили?"
+              placeholder={t("my.what_discussed")}
             />
           </div>
           {error && (
@@ -583,9 +585,9 @@ function ScheduleCallbackModal({
           )}
         </div>
         <div className="mt-7 flex gap-2 justify-end">
-          <Button variant="ghost" onClick={onClose}>Отмена</Button>
+          <Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button>
           <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
-            {mut.isPending ? "Сохраняем…" : "Назначить"}
+            {mut.isPending ? t("common.saving") : t("leads.assign_short")}
           </Button>
         </div>
       </div>
@@ -604,6 +606,7 @@ function PostponeModal({
 }) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const t = useT();
   const mut = useMutation({
     mutationFn: async () => {
       if (!lead) return;
@@ -612,7 +615,7 @@ function PostponeModal({
       });
     },
     onSuccess: () => {
-      toast.success("Лид отложен");
+      toast.success(t("my.lead_postponed"));
       onDone();
     },
     onError: (err) => setError(apiErrorMessage(err)),
@@ -622,18 +625,18 @@ function PostponeModal({
     <Modal open={!!lead} onClose={onClose} width={440}>
       <div className="p-7">
         <div className="text-[18px] font-semibold tracking-tight">
-          Отложить на потом
+          {t("my.postpone_title")}
         </div>
         <div className="text-[13px] text-muted mt-1">
-          {lead?.full_name || "Без имени"} · {lead?.phone || "без телефона"}
+          {lead?.full_name || t("my.no_name")} · {lead?.phone || t("my.no_phone_short")}
         </div>
         <div className="mt-5">
-          <div className="nf-col mb-1.5">Причина (не обязательно)</div>
+          <div className="nf-col mb-1.5">{t("leads.reason_optional")}</div>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value.slice(0, 280))}
             rows={3}
-            placeholder="Например: «после обеда», «ждёт зарплату»"
+            placeholder={t("my.postpone_reason_ph")}
             className="nf-input min-h-[80px]"
           />
           <div className="text-[11px] text-muted text-right mt-1">{reason.length}/280</div>
@@ -647,9 +650,9 @@ function PostponeModal({
           </div>
         )}
         <div className="mt-6 flex gap-2 justify-end">
-          <Button variant="ghost" onClick={onClose} disabled={mut.isPending}>Отмена</Button>
+          <Button variant="ghost" onClick={onClose} disabled={mut.isPending}>{t("common.cancel")}</Button>
           <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
-            {mut.isPending ? "Сохраняем…" : "Отложить"}
+            {mut.isPending ? t("common.saving") : t("my.postpone")}
           </Button>
         </div>
       </div>
@@ -670,6 +673,7 @@ function CallbackDueModal({
 }) {
   const qc = useQueryClient();
   const cur = reminders[0];
+  const t = useT();
 
   const complete = async () => {
     if (!cur) return;
@@ -679,7 +683,7 @@ function CallbackDueModal({
       qc.invalidateQueries({ queryKey: ["callbacks-mine-due"] });
       onDismiss(cur.id);
       onDone();
-      toast.success("Отмечено сделанным");
+      toast.success(t("my.marked_done"));
     } catch {
       /* silent */
     }
@@ -693,7 +697,7 @@ function CallbackDueModal({
       qc.invalidateQueries({ queryKey: ["callbacks-mine-due"] });
       onDismiss(cur.id);
       onDone();
-      toast.success(`Отложено на ${minutes} мин`);
+      toast.success(t("my.snoozed_min", { n: minutes }));
     } catch {
       /* silent */
     }
@@ -720,16 +724,16 @@ function CallbackDueModal({
               <AlarmClock className="w-6 h-6" />
             </div>
           </div>
-          <Eyebrow className="mt-5">Время колбэка</Eyebrow>
+          <Eyebrow className="mt-5">{t("my.callback_time")}</Eyebrow>
           <div
             className="mt-3 font-semibold"
             style={{ fontSize: 25, letterSpacing: "-0.02em", lineHeight: 1.15 }}
           >
-            {cur.lead_name || "Без имени"}
+            {cur.lead_name || t("my.no_name")}
           </div>
           <div className="mt-2 text-[13px] text-muted">
-            {cur.lead_phone || "нет телефона"}
-            {cur.remind_at && <> · обещал перезвон в {fmtCallback(cur.remind_at)}</>}
+            {cur.lead_phone || t("leads.no_phone")}
+            {cur.remind_at && <> · {t("my.promised_at", { time: fmtCallback(cur.remind_at) })}</>}
           </div>
           {cur.comment && (
             <div
@@ -741,10 +745,10 @@ function CallbackDueModal({
           )}
           <div className="mt-6 flex flex-col gap-2">
             <Button block onClick={complete}>
-              Позвонить сейчас
+              {t("my.call_now")}
             </Button>
             <Button variant="ghost" block onClick={() => snooze(15)}>
-              +15 мин
+              {t("my.plus_15_min")}
             </Button>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { Button, Eyebrow, toast } from "../components/ui";
 import { usePageHeader } from "../store/page";
+import { useT } from "../lib/i18n";
 
 interface Tip {
   title: string;
@@ -39,7 +40,8 @@ interface DailyLessonData {
 }
 
 export default function DailyLesson() {
-  usePageHeader({ title: "Урок на сегодня", subtitle: "AI-разбор вчерашнего дня" });
+  const t = useT();
+  usePageHeader({ title: t("lessons.today_page_title"), subtitle: t("lessons.today_page_subtitle") });
 
   const qc = useQueryClient();
   const { data: lesson, isLoading, error } = useQuery<DailyLessonData>({
@@ -58,7 +60,7 @@ export default function DailyLesson() {
     mutationFn: () => api.post("/lessons/today/mark-read/").catch(() => null),
     onSuccess: () => {
       setMarkedRead(true);
-      toast.success("Разбор прочитан");
+      toast.success(t("lessons.read_toast"));
       qc.invalidateQueries({ queryKey: ["lessons", "today", "peek"] });
     },
   });
@@ -66,7 +68,7 @@ export default function DailyLesson() {
   if (isLoading) {
     return (
       <div className="mx-auto max-w-[760px] py-16 text-center text-muted text-[14px]">
-        Загрузка разбора…
+        {t("lessons.loading_lesson")}
       </div>
     );
   }
@@ -79,11 +81,10 @@ export default function DailyLesson() {
           style={{ borderRadius: 26, padding: "44px 36px" }}
         >
           <div className="text-[18px] font-semibold mb-2">
-            Утренний разбор ещё не готов
+            {t("lessons.not_ready_title")}
           </div>
           <div className="text-[13.5px] text-muted max-w-md mx-auto">
-            Если вчера не было продаж или диалогов, урок пропускается. Отличный шанс
-            показать класс сегодня!
+            {t("lessons.not_ready_body")}
           </div>
           <div className="mt-6">
             <Link
@@ -91,7 +92,7 @@ export default function DailyLesson() {
               className="text-[13px] font-semibold"
               style={{ color: "var(--accent)" }}
             >
-              История моих разборов →
+              {t("lessons.my_history_link")}
             </Link>
           </div>
         </div>
@@ -111,7 +112,7 @@ export default function DailyLesson() {
         className="nf-card animate-nfFadeUp"
         style={{ borderRadius: 26, padding: "34px 36px" }}
       >
-        <Eyebrow>AI-РАЗБОР · ВЧЕРА</Eyebrow>
+        <Eyebrow>{t("lessons.eyebrow")}</Eyebrow>
         <h1
           className="font-semibold mt-3"
           style={{ fontSize: 30, letterSpacing: "-0.03em", lineHeight: 1.1 }}
@@ -134,7 +135,7 @@ export default function DailyLesson() {
         <div className="grid grid-cols-3 gap-3 mt-7">
           <div className="nf-tile" style={{ padding: "16px 18px" }}>
             <div className="text-[11.5px] text-muted uppercase tracking-wider font-medium">
-              Диалогов
+              {t("lessons.stat_dialogs")}
             </div>
             <div
               className="mt-1.5 font-semibold tabular-nums"
@@ -145,7 +146,7 @@ export default function DailyLesson() {
           </div>
           <div className="nf-tile" style={{ padding: "16px 18px" }}>
             <div className="text-[11.5px] text-muted uppercase tracking-wider font-medium">
-              Продаж
+              {t("lessons.stat_sales")}
             </div>
             <div
               className="mt-1.5 font-semibold tabular-nums"
@@ -156,7 +157,7 @@ export default function DailyLesson() {
           </div>
           <div className="nf-tile" style={{ padding: "16px 18px" }}>
             <div className="text-[11.5px] text-muted uppercase tracking-wider font-medium">
-              Конверсия
+              {t("lessons.stat_conversion")}
             </div>
             <div
               className="mt-1.5 font-semibold tabular-nums"
@@ -169,7 +170,7 @@ export default function DailyLesson() {
 
         {lesson.summary && (
           <div className="mt-7">
-            <div className="text-[14.5px] font-semibold">Как прошёл день</div>
+            <div className="text-[14.5px] font-semibold">{t("lessons.how_day_went")}</div>
             <p
               className="mt-2 text-[14.5px]"
               style={{ color: "var(--muted)", lineHeight: 1.6 }}
@@ -181,7 +182,7 @@ export default function DailyLesson() {
 
         {lesson.highlights && lesson.highlights.length > 0 && (
           <div className="mt-7">
-            <div className="text-[14.5px] font-semibold">Что сработало</div>
+            <div className="text-[14.5px] font-semibold">{t("lessons.what_worked")}</div>
             <div className="mt-2 flex flex-col gap-2.5">
               {lesson.highlights.map((hl, i) => (
                 <div
@@ -205,7 +206,7 @@ export default function DailyLesson() {
         {lesson.tips && lesson.tips.length > 0 && (
           <>
             <div className="mt-7">
-              <div className="text-[14.5px] font-semibold">Что мешало</div>
+              <div className="text-[14.5px] font-semibold">{t("lessons.what_blocked")}</div>
               <div className="mt-2 flex flex-col gap-2.5">
                 {lesson.tips.map((tip, i) => (
                   <div
@@ -226,7 +227,7 @@ export default function DailyLesson() {
             </div>
 
             <div className="mt-7">
-              <div className="text-[14.5px] font-semibold">План на сегодня</div>
+              <div className="text-[14.5px] font-semibold">{t("lessons.plan_today")}</div>
               <div className="mt-2 flex flex-col gap-3">
                 {lesson.tips.map((tip, i) => (
                   <div key={i}>
@@ -256,13 +257,13 @@ export default function DailyLesson() {
             to="/lessons/history"
             className="text-[13px] font-medium text-muted hover:text-text transition"
           >
-            История разборов →
+            {t("lessons.history_link")}
           </Link>
           <Button
             disabled={markedRead || markRead.isPending}
             onClick={() => markRead.mutate()}
           >
-            {markedRead ? "Разбор прочитан ✓" : "Отметить прочитанным"}
+            {markedRead ? t("lessons.marked_done") : t("lessons.mark_read_btn")}
           </Button>
         </div>
       </section>
