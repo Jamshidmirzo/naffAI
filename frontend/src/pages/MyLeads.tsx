@@ -127,16 +127,63 @@ export default function MyLeads() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["leads-my"] }),
   });
 
+  // Both mutations share an optimistic-update helper: we patch the lead's
+  // status in the react-query cache immediately so the chip counters and
+  // status badge on the card reflect the click before the network round
+  // trip. On error we roll back; on settle we invalidate so any server-side
+  // side effects (e.g. NO_ANSWER → NO_ANSWER_2 escalation) get picked up.
+  const applyOptimisticStatus = (leadId: number, status: LeadStatus) => {
+    const key = ["leads-my", page, view];
+    const prev = qc.getQueryData<MyResponse>(key);
+    if (prev) {
+      qc.setQueryData<MyResponse>(key, {
+        ...prev,
+        results: prev.results.map((l) =>
+          l.id === leadId ? { ...l, status } : l,
+        ),
+      });
+    }
+    return prev;
+  };
+
+  const OUTCOME_TO_STATUS: Partial<Record<CallOutcome, LeadStatus>> = {
+    talked_interested: "in_progress",
+    no_answer: "no_answer",
+    rejected: "lost",
+    tg_only: "contacted_telegram",
+  };
+
   const quickCall = useMutation({
     mutationFn: ({ lead, outcome, comment }: { lead: Lead; outcome: CallOutcome; comment?: string }) =>
       api.post(`/leads/${lead.id}/call-attempts/`, { outcome, comment }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["leads-my"] }),
+    onMutate: async ({ lead, outcome }) => {
+      await qc.cancelQueries({ queryKey: ["leads-my"] });
+      const next =
+        outcome === "no_answer" && lead.status === "no_answer"
+          ? "no_answer_2"
+          : OUTCOME_TO_STATUS[outcome];
+      if (!next) return { prev: undefined };
+      return { prev: applyOptimisticStatus(lead.id, next as LeadStatus) };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["leads-my", page, view], ctx.prev);
+      toast.error(t("toast.error"));
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["leads-my"] }),
   });
 
   const setStatus = useMutation({
     mutationFn: ({ lead, status }: { lead: Lead; status: LeadStatus }) =>
       api.post(`/leads/${lead.id}/status/`, { status }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["leads-my"] }),
+    onMutate: async ({ lead, status }) => {
+      await qc.cancelQueries({ queryKey: ["leads-my"] });
+      return { prev: applyOptimisticStatus(lead.id, status) };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["leads-my", page, view], ctx.prev);
+      toast.error(t("toast.error"));
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["leads-my"] }),
   });
 
   const watcher = useCallbackWatcher({ enabled: true });
@@ -395,15 +442,31 @@ export default function MyLeads() {
               key={lead.id}
               lead={lead}
               index={i}
-              onCall={() => quickCall.mutate({ lead, outcome: "talked_interested" })}
-              onMiss={() => quickCall.mutate({ lead, outcome: "no_answer" })}
-              onReject={() => quickCall.mutate({ lead, outcome: "rejected" })}
+              onCall={() => {
+                quickCall.mutate({ lead, outcome: "talked_interested" });
+                toast.success(t("my.toast_called"));
+              }}
+              onMiss={() => {
+                quickCall.mutate({ lead, outcome: "no_answer" });
+                toast.success(t("my.toast_no_answer"));
+              }}
+              onReject={() => {
+                quickCall.mutate({ lead, outcome: "rejected" });
+                toast.success(t("my.toast_rejected"));
+              }}
               onTg={() => {
                 openTg(lead);
                 quickCall.mutate({ lead, outcome: "tg_only" });
+                toast.success(t("my.toast_tg"));
               }}
-              onPhoneOn={() => setStatus.mutate({ lead, status: "phone_on" })}
-              onHasDebt={() => setStatus.mutate({ lead, status: "has_debt" })}
+              onPhoneOn={() => {
+                setStatus.mutate({ lead, status: "phone_on" });
+                toast.success(t("my.toast_phone_on"));
+              }}
+              onHasDebt={() => {
+                setStatus.mutate({ lead, status: "has_debt" });
+                toast.success(t("my.toast_debt"));
+              }}
               onSchedule={() => setScheduleFor(lead)}
               onPostpone={() => setPostponeFor(lead)}
               onUnpostpone={() => unpostpone.mutate(lead)}
@@ -484,6 +547,25 @@ function LeadCard({
   const [called, setCalled] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const contactRef = useRef<HTMLDivElement | null>(null);
+  const [flashKey, setFlashKey] = useState(0);
+  const prevStatusRef = useRef(lead.status);
+
+  // Whenever the lead's status changes (from optimistic update or refetch),
+  // pulse a soft accent ring around the whole card so the operator has a
+  // clear "yep, saved" confirmation.
+  useEffect(() => {
+    if (prevStatusRef.current !== lead.status) {
+      prevStatusRef.current = lead.status;
+      setFlashKey((k) => k + 1);
+    }
+  }, [lead.status]);
+
+  const wrap = <T extends unknown[]>(fn: (...args: T) => void) => {
+    return (...args: T) => {
+      setFlashKey((k) => k + 1); // immediate ring even before status arrives
+      fn(...args);
+    };
+  };
   const isPostponed = !!lead.postponed_at;
   const overdue = isOverdue((lead as unknown as { callback_at?: string }).callback_at);
   const source = (lead as unknown as { source_name?: string }).source_name ?? lead.sheet_source_name ?? "";
@@ -519,7 +601,8 @@ function LeadCard({
 
   return (
     <div
-      className="animate-nfFadeUp flex items-start gap-4"
+      key={`card-${lead.id}`}
+      className="animate-nfFadeUp flex items-start gap-4 relative"
       style={{
         borderRadius: 18,
         padding: "14px 18px",
@@ -529,6 +612,14 @@ function LeadCard({
         animationDelay: `${0.04 + index * 0.055}s`,
       }}
     >
+      {/* Feedback ring — remounts on flashKey change so the CSS animation
+          restarts on every action; pointer-events: none keeps it invisible
+          to the mouse. */}
+      <span
+        key={flashKey}
+        className="pointer-events-none absolute inset-0 animate-nfFlashRing"
+        style={{ borderRadius: 18 }}
+      />
       {/* avatar */}
       <div
         className="grid place-items-center text-white text-[13px] font-semibold shrink-0"
@@ -585,7 +676,7 @@ function LeadCard({
             <div className="relative" ref={contactRef}>
               <button
                 type="button"
-                className="nf-btn nf-btn--primary"
+                className="nf-btn nf-btn--primary transition-transform active:scale-[.94]"
                 style={{ padding: "9px 14px", fontSize: 13, gap: 6 }}
                 onClick={() => setContactOpen((v) => !v)}
                 disabled={!lead.phone}
@@ -605,16 +696,16 @@ function LeadCard({
                 >
                   <button
                     type="button"
-                    className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-[13px] hover:bg-[color:var(--faint)]"
-                    onClick={chooseCall}
+                    className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-[13px] hover:bg-[color:var(--faint)] transition-transform active:scale-[.98]"
+                    onClick={wrap(chooseCall)}
                   >
                     <Phone className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
                     {t("my.opt_call")}
                   </button>
                   <button
                     type="button"
-                    className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-[13px] hover:bg-[color:var(--faint)]"
-                    onClick={chooseTg}
+                    className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-[13px] hover:bg-[color:var(--faint)] transition-transform active:scale-[.98]"
+                    onClick={wrap(chooseTg)}
                   >
                     <MessageCircle className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
                     {t("my.opt_tg")}
@@ -624,34 +715,34 @@ function LeadCard({
             </div>
 
             <button
-              className="nf-btn nf-btn--ghost"
+              className="nf-btn nf-btn--ghost transition-transform active:scale-[.92]"
               style={{ padding: "9px 12px", fontSize: 13 }}
-              onClick={onMiss}
+              onClick={wrap(onMiss)}
               title={t("my.no_answer")}
             >
               <PhoneMissed className="w-3.5 h-3.5" />
               <span className="hidden md:inline ml-1">{t("my.chip_no_answer_1")}</span>
             </button>
             <button
-              className="nf-btn nf-btn--ghost"
+              className="nf-btn nf-btn--ghost transition-transform active:scale-[.92]"
               style={{ padding: "9px 12px", fontSize: 13 }}
-              onClick={onPhoneOn}
+              onClick={wrap(onPhoneOn)}
               title={t("my.chip_phone_on")}
             >
               <Phone className="w-3.5 h-3.5" />
               <span className="hidden md:inline ml-1">{t("my.chip_phone_on")}</span>
             </button>
             <button
-              className="nf-btn nf-btn--ghost"
+              className="nf-btn nf-btn--ghost transition-transform active:scale-[.92]"
               style={{ padding: "9px 12px", fontSize: 13 }}
-              onClick={onHasDebt}
+              onClick={wrap(onHasDebt)}
               title={t("my.chip_debt")}
             >
               <Wallet className="w-3.5 h-3.5" />
               <span className="hidden md:inline ml-1">{t("my.chip_debt")}</span>
             </button>
             <button
-              className="nf-btn nf-btn--ghost"
+              className="nf-btn nf-btn--ghost transition-transform active:scale-[.94]"
               style={{ padding: "9px 14px", fontSize: 13 }}
               onClick={onSchedule}
             >
@@ -659,15 +750,15 @@ function LeadCard({
             </button>
             {isPostponed ? (
               <button
-                className="nf-btn nf-btn--ghost"
+                className="nf-btn nf-btn--ghost transition-transform active:scale-[.94]"
                 style={{ padding: "9px 14px", fontSize: 13, color: "var(--accent)" }}
-                onClick={onUnpostpone}
+                onClick={wrap(onUnpostpone)}
               >
                 <PlayCircle className="w-3.5 h-3.5" /> {t("my.return")}
               </button>
             ) : (
               <button
-                className="nf-btn nf-btn--ghost"
+                className="nf-btn nf-btn--ghost transition-transform active:scale-[.94]"
                 style={{ padding: "9px 14px", fontSize: 13 }}
                 onClick={onPostpone}
               >
@@ -675,7 +766,7 @@ function LeadCard({
               </button>
             )}
             <button
-              className="nf-btn"
+              className="nf-btn transition-transform active:scale-[.94]"
               style={{
                 padding: "9px 14px",
                 fontSize: 13,
@@ -687,9 +778,9 @@ function LeadCard({
               <Plus className="w-3.5 h-3.5" /> {t("my.to_sale")}
             </button>
             <button
-              className="nf-btn nf-btn--ghost"
+              className="nf-btn nf-btn--ghost transition-transform active:scale-[.92]"
               style={{ padding: "9px 12px", fontSize: 13, color: "var(--danger)" }}
-              onClick={onReject}
+              onClick={wrap(onReject)}
               aria-label={t("my.reject")}
               title={t("my.reject")}
             >

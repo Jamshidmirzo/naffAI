@@ -77,6 +77,16 @@ export default {
           "0%": { transform: "scale(1)", opacity: "0.55" },
           "100%": { transform: "scale(1.9)", opacity: "0" },
         },
+        nfTap: {
+          "0%": { transform: "scale(1)" },
+          "35%": { transform: "scale(0.92)" },
+          "100%": { transform: "scale(1)" },
+        },
+        nfFlashRing: {
+          "0%": { boxShadow: "0 0 0 0 rgba(242,86,11,.55)" },
+          "70%": { boxShadow: "0 0 0 10px rgba(242,86,11,0)" },
+          "100%": { boxShadow: "0 0 0 0 rgba(242,86,11,0)" },
+        },
       },
       animation: {
         nfFadeUp: "nfFadeUp 550ms cubic-bezier(.2,.7,.2,1) both",
@@ -85,6 +95,8 @@ export default {
         nfSlide: "nfSlide 600ms cubic-bezier(.2,.7,.2,1) both",
         nfDraw: "nfDraw 1500ms cubic-bezier(.2,.7,.2,1) both",
         nfPulse: "nfPulse 1900ms cubic-bezier(.2,.7,.2,1) infinite",
+        nfTap: "nfTap 280ms cubic-bezier(.2,.8,.2,1) both",
+        nfFlashRing: "nfFlashRing 700ms cubic-bezier(.2,.7,.2,1) both",
       },
     },
   },

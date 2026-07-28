@@ -1093,6 +1093,12 @@ const STRINGS: Lookup = {
     "my.contact": "Bog'lanish",
     "my.opt_call": "📞 Qo'ng'iroq qildim",
     "my.opt_tg": "💬 Telegramda yozdim",
+    "my.toast_called": "✓ Позвонил — статус: в работе",
+    "my.toast_no_answer": "✓ Отмечено: Javob bermadi",
+    "my.toast_rejected": "✓ Отказ — лид закрыт",
+    "my.toast_tg": "✓ Отмечено: TG'га боғланди",
+    "my.toast_phone_on": "✓ Отмечено: Telfoni ochiq",
+    "my.toast_debt": "✓ Отмечено: Qarzi bor",
 
     // ------ attendance.today (extra) ------
     "attendance.today.qr_title": "QR-код для отметки на входе",
@@ -2283,6 +2289,12 @@ const STRINGS: Lookup = {
     "my.contact": "Bog'lanish",
     "my.opt_call": "📞 Qo'ng'iroq qildim",
     "my.opt_tg": "💬 Telegramda yozdim",
+    "my.toast_called": "✓ Qo'ng'iroq qildim — status: ishda",
+    "my.toast_no_answer": "✓ Belgilandi: Javob bermadi",
+    "my.toast_rejected": "✓ Rad etildi — lid yopildi",
+    "my.toast_tg": "✓ Belgilandi: TGga bog'landi",
+    "my.toast_phone_on": "✓ Belgilandi: Telfoni ochiq",
+    "my.toast_debt": "✓ Belgilandi: Qarzi bor",
 
     // ------ attendance.today (extra) ------
     "attendance.today.qr_title": "Kirishda belgilash uchun QR-kod",
