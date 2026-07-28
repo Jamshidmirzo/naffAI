@@ -1,46 +1,30 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { api } from "../lib/api";
 import { Button, Toggle, toast } from "../components/ui";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
+import { formatDateTime } from "../lib/format";
 
-interface NotifItem {
+interface NotificationRow {
   id: number;
-  titleKey: string;
-  bodyKey: string;
-  timeKey: string;
-  read: boolean;
+  kind: string;
+  title: string;
+  body: string;
+  link: string;
+  read_at: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
 }
 
-const MOCK_INITIAL: NotifItem[] = [
-  {
-    id: 1,
-    titleKey: "notif.demo_lead_title",
-    bodyKey: "notif.demo_lead_body",
-    timeKey: "notif.demo_time_5min",
-    read: false,
-  },
-  {
-    id: 2,
-    titleKey: "notif.demo_callback_title",
-    bodyKey: "notif.demo_callback_body",
-    timeKey: "notif.demo_time_12min",
-    read: false,
-  },
-  {
-    id: 3,
-    titleKey: "notif.demo_morning_title",
-    bodyKey: "notif.demo_morning_body",
-    timeKey: "notif.demo_time_morning",
-    read: false,
-  },
-  {
-    id: 4,
-    titleKey: "notif.demo_week_title",
-    bodyKey: "notif.demo_week_body",
-    timeKey: "notif.demo_time_yesterday",
-    read: true,
-  },
-];
+interface NotifResponse {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: NotificationRow[];
+  unread_count: number;
+}
 
 interface SubSetting {
   key: string;
@@ -58,51 +42,71 @@ const SUBS_INITIAL: SubSetting[] = [
 
 export default function Notifications() {
   const t = useT();
+  const qc = useQueryClient();
+  const nav = useNavigate();
   usePageHeader({
     title: t("notif.title"),
     subtitle: t("notif.header_subtitle"),
   });
 
-  const [items, setItems] = useState<NotifItem[]>(MOCK_INITIAL);
+  const q = useQuery<NotifResponse>({
+    queryKey: ["notifications", "list"],
+    queryFn: () =>
+      api.get<NotifResponse>("/notifications/").then((r) => r.data),
+    refetchInterval: 30_000,
+  });
+
+  const markOne = useMutation({
+    mutationFn: (id: number) => api.post("/notifications/mark-read/", { ids: [id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
+
+  const markAll = useMutation({
+    mutationFn: () => api.post("/notifications/mark-all-read/"),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+      toast.success(t("notif.all_marked"));
+    },
+  });
+
+  const items = q.data?.results ?? [];
+  const unread = q.data?.unread_count ?? 0;
+  const total = q.data?.count ?? items.length;
+
   const [subs, setSubs] = useState<SubSetting[]>(SUBS_INITIAL);
-
-  const unread = useMemo(() => items.filter((i) => !i.read).length, [items]);
-
-  const markRead = (id: number) => {
-    setItems((prev) =>
-      prev.map((it) => (it.id === id ? { ...it, read: true } : it)),
-    );
-  };
-
-  const markAllRead = () => {
-    setItems((prev) => prev.map((it) => ({ ...it, read: true })));
-    toast.success(t("notif.all_marked"));
-  };
-
   const toggleSub = (key: string, on: boolean) => {
     setSubs((prev) => prev.map((s) => (s.key === key ? { ...s, on } : s)));
     toast.success(t("toast.settings_saved"));
+  };
+
+  const handleClick = (n: NotificationRow) => {
+    if (!n.read_at) markOne.mutate(n.id);
+    if (n.link) nav(n.link);
   };
 
   return (
     <div className="mx-auto max-w-[820px] flex flex-col gap-5">
       <section className="flex items-center justify-between animate-nfFadeUp">
         <div className="text-[13px] text-muted">
-          {unread > 0 ? (
-            <>{t("notif.unread_of_total", { unread, total: items.length })}</>
+          {q.isLoading ? (
+            t("common.loading")
+          ) : unread > 0 ? (
+            <>{t("notif.unread_of_total", { unread, total })}</>
           ) : (
-            <>{t("notif.total_only", { n: items.length })}</>
+            <>{t("notif.total_only", { n: total })}</>
           )}
         </div>
         {unread > 0 && (
-          <Button variant="ghost" size="sm" onClick={markAllRead}>
+          <Button variant="ghost" size="sm" onClick={() => markAll.mutate()}>
             {t("notif.mark_all_short")}
           </Button>
         )}
       </section>
 
       <section className="flex flex-col gap-2">
-        {items.length === 0 && (
+        {!q.isLoading && items.length === 0 && (
           <div
             className="rounded-2xl py-12 text-center text-[13.5px] text-muted"
             style={{ border: "1.5px dashed var(--border)" }}
@@ -110,42 +114,47 @@ export default function Notifications() {
             {t("notif.empty_soft")}
           </div>
         )}
-        {items.map((it, i) => (
-          <button
-            key={it.id}
-            type="button"
-            onClick={() => markRead(it.id)}
-            className="text-left flex items-start gap-3.5 transition animate-nfFadeUp"
-            style={{
-              padding: "14px 18px",
-              borderRadius: 18,
-              background: "var(--surface)",
-              border: it.read
-                ? "1px solid var(--border)"
-                : "1px solid rgba(242,86,11,.35)",
-              boxShadow: "var(--shadow)",
-              animationDelay: `${0.03 + i * 0.045}s`,
-            }}
-          >
-            <span
-              className="mt-1.5 shrink-0 rounded-full"
+        {items.map((it, i) => {
+          const isRead = !!it.read_at;
+          return (
+            <button
+              key={it.id}
+              type="button"
+              onClick={() => handleClick(it)}
+              className="text-left flex items-start gap-3.5 transition animate-nfFadeUp"
               style={{
-                width: 8,
-                height: 8,
-                background: it.read ? "var(--faint2)" : "var(--accent)",
+                padding: "14px 18px",
+                borderRadius: 18,
+                background: "var(--surface)",
+                border: isRead
+                  ? "1px solid var(--border)"
+                  : "1px solid rgba(242,86,11,.35)",
+                boxShadow: "var(--shadow)",
+                animationDelay: `${0.03 + i * 0.045}s`,
               }}
-            />
-            <div className="flex-1 min-w-0">
-              <div className="text-[14px]" style={{ fontWeight: 550 }}>
-                {t(it.titleKey)}
+            >
+              <span
+                className="mt-1.5 shrink-0 rounded-full"
+                style={{
+                  width: 8,
+                  height: 8,
+                  background: isRead ? "var(--faint2)" : "var(--accent)",
+                }}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px]" style={{ fontWeight: 550 }}>
+                  {it.title}
+                </div>
+                {it.body && (
+                  <div className="text-[12.5px] text-muted mt-0.5">{it.body}</div>
+                )}
               </div>
-              <div className="text-[12.5px] text-muted mt-0.5">{t(it.bodyKey)}</div>
-            </div>
-            <div className="text-[12px] text-muted shrink-0 tabular-nums">
-              {t(it.timeKey)}
-            </div>
-          </button>
-        ))}
+              <div className="text-[12px] text-muted shrink-0 tabular-nums">
+                {formatDateTime(it.created_at)}
+              </div>
+            </button>
+          );
+        })}
       </section>
 
       <section

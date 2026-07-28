@@ -25,6 +25,14 @@ interface ByModelRow {
   count: number | string;
   total: number | string;
 }
+interface BySourceRow {
+  sheet_source_id: number | null;
+  sheet_source_name: string;
+  total: number | string;
+  sales_count: number;
+  leads_count: number;
+  conversion_pct: number;
+}
 interface FunnelRow {
   operator_id: number;
   operator_name: string;
@@ -73,6 +81,11 @@ export default function Analytics() {
     queryKey: ["by-model", paramKey],
     queryFn: () =>
       api.get<ByModelRow[]>("/analytics/by-model/", { params }).then((r) => r.data),
+  });
+  const src = useQuery<BySourceRow[]>({
+    queryKey: ["by-source", paramKey],
+    queryFn: () =>
+      api.get<BySourceRow[]>("/analytics/by-source/", { params }).then((r) => r.data),
   });
   const funnels = useQuery<FunnelRow[]>({
     queryKey: ["operator-funnels"],
@@ -156,8 +169,8 @@ export default function Analytics() {
         </div>
 
         <div className="nf-card p-6 animate-nfFadeUp" style={{ animationDelay: "0.05s" }}>
-          <div className="text-[15px] font-semibold tracking-tight">Каналы продаж</div>
-          <div className="text-[12.5px] text-muted mt-1">Доля в выручке · {title}</div>
+          <div className="text-[15px] font-semibold tracking-tight">{t("analytics.channels_title")}</div>
+          <div className="text-[12.5px] text-muted mt-1">{t("analytics.channels_hint", { period: title })}</div>
           <div className="mt-5 flex flex-col gap-4">
             {channels.length === 0 && (
               <div className="text-[13px] text-muted text-center py-6">Нет данных</div>
@@ -192,6 +205,99 @@ export default function Analytics() {
         </div>
       </section>
 
+      {/* By source (targetolog) */}
+      <section
+        className="nf-card p-6 animate-nfFadeUp"
+        style={{ animationDelay: "0.08s" }}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="text-[15px] font-semibold tracking-tight">
+              {t("analytics.by_source_title")}
+            </div>
+            <div className="text-[12.5px] text-muted mt-0.5">
+              {t("analytics.by_source_hint", { period: title })}
+            </div>
+          </div>
+        </div>
+        {(src.data ?? []).length === 0 ? (
+          <div className="text-[13px] text-muted text-center py-6">
+            {t("common.no_data")}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <div
+              className="grid gap-2 pb-2 nf-col"
+              style={{ gridTemplateColumns: "1.5fr .8fr .8fr .8fr 1.1fr" }}
+            >
+              <div>{t("analytics.by_source_col_name")}</div>
+              <div className="text-right">{t("analytics.by_source_col_leads")}</div>
+              <div className="text-right">{t("analytics.by_source_col_sales")}</div>
+              <div className="text-right">{t("analytics.by_source_col_conv")}</div>
+              <div className="text-right">{t("analytics.by_source_col_revenue")}</div>
+            </div>
+            {(src.data ?? []).map((r, i) => {
+              const max = Math.max(
+                1,
+                ...(src.data ?? []).map((x) => Number(x.total)),
+              );
+              const pct = (Number(r.total) / max) * 100;
+              return (
+                <div
+                  key={r.sheet_source_id ?? `direct-${i}`}
+                  className="grid gap-2 items-center py-2 animate-nfFadeUp"
+                  style={{
+                    gridTemplateColumns: "1.5fr .8fr .8fr .8fr 1.1fr",
+                    borderTop: i === 0 ? "1px solid var(--border)" : undefined,
+                    borderBottom: "1px solid var(--faint)",
+                    animationDelay: `${0.02 + i * 0.04}s`,
+                  }}
+                >
+                  <div className="flex flex-col gap-1 min-w-0">
+                    <span className="font-medium truncate text-[13.5px]">
+                      {r.sheet_source_name}
+                    </span>
+                    <div
+                      className="h-[5px] rounded-full overflow-hidden"
+                      style={{ background: "var(--faint)" }}
+                    >
+                      <div
+                        className="h-full rounded-full transition-all duration-700 ease-nf"
+                        style={{
+                          width: `${pct}%`,
+                          background:
+                            i === 0
+                              ? "var(--accent-grad)"
+                              : "linear-gradient(90deg, var(--accent2), var(--accent))",
+                          opacity: i === 0 ? 1 : Math.max(0.4, 0.75 - i * 0.08),
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="text-right tabular-nums text-[13px]">
+                    {r.leads_count}
+                  </div>
+                  <div className="text-right tabular-nums text-[13px]">
+                    {r.sales_count}
+                  </div>
+                  <div
+                    className="text-right tabular-nums text-[13px] font-semibold"
+                    style={{
+                      color: r.conversion_pct >= 3 ? "var(--accent)" : "var(--muted)",
+                    }}
+                  >
+                    {r.conversion_pct}%
+                  </div>
+                  <div className="text-right tabular-nums text-[13px]">
+                    {formatUZS(r.total)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       {/* Leaderboard bars */}
       <section
         className="nf-card p-6 animate-nfFadeUp"
@@ -200,9 +306,11 @@ export default function Analytics() {
         <div className="flex items-center justify-between mb-5">
           <div>
             <div className="text-[15px] font-semibold tracking-tight">
-              Топ операторов
+              {t("analytics.top_operators_title")}
             </div>
-            <div className="text-[12.5px] text-muted mt-0.5">По выручке · {title}</div>
+            <div className="text-[12.5px] text-muted mt-0.5">
+              {t("analytics.top_operators_hint", { period: title })}
+            </div>
           </div>
         </div>
         <div className="flex flex-col gap-3">

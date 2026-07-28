@@ -162,6 +162,8 @@ def sale_create(
     gifts: Iterable[dict] | None = None,
     allow_duplicate_imei: bool = False,
     duplicate_override_comment: str = "",
+    bonus_note: str = "",
+    sheet_source_id: int | None = None,
 ) -> Sale:
     """
     Create a sale.
@@ -243,6 +245,8 @@ def sale_create(
         sold_at=sold_at or timezone.now(),
         created_by=user if user and getattr(user, "is_authenticated", False) else None,
         status=status,
+        bonus_note=(bonus_note or "").strip(),
+        sheet_source_id=sheet_source_id,
     )
 
     SaleOperator.objects.bulk_create(
@@ -280,10 +284,93 @@ def sale_create(
             "total": str(total),
             "discount": str(discount_dec),
             "net": str(total - discount_dec),
+            "sheet_source_id": sheet_source_id,
+            "bonus_note": sale.bonus_note[:120] if sale.bonus_note else "",
         },
         comment=duplicate_override_comment if duplicates else "",
     )
+
+    _broadcast_new_sale(sale, primary_op, credited_operator_lines, total)
     return sale
+
+
+def _broadcast_new_sale(sale, primary_op, operator_lines, total) -> None:
+    """
+    Fire in-app notifications + Telegram DMs to every senior user
+    (manager / team_lead) about a freshly-created sale. Failures are
+    swallowed on purpose — an outage in the notification layer must
+    never abort the sale itself.
+    """
+    try:
+        from apps.notifications.services import (
+            NotificationKind,
+            notification_broadcast,
+        )
+        from apps.users.models import Profile, Role
+    except Exception:
+        return
+
+    op_names = ", ".join(o.full_name for o, _ in operator_lines) or (
+        primary_op.full_name if primary_op else "—"
+    )
+    source_name = None
+    try:
+        source_name = sale.sheet_source.name if sale.sheet_source_id else None
+    except Exception:
+        source_name = None
+    amount_int = int(total)
+
+    title = f"💰 {op_names} · {sale.phone_model}"
+    body_parts = [
+        f"{amount_int:,}".replace(",", " ") + " сум",
+        f"Источник: {source_name or 'Прямая'}",
+    ]
+    if sale.bonus_note.strip():
+        body_parts.append(f"🎁 {sale.bonus_note.strip()[:200]}")
+    body = " · ".join(body_parts)
+
+    seniors = Profile.objects.filter(
+        role__in=[Role.TEAM_LEAD, Role.MANAGER]
+    ).select_related("user")
+    recipient_ids = [p.user_id for p in seniors if p.user_id]
+    tg_ids = [p.telegram_user_id for p in seniors if p.telegram_user_id]
+
+    try:
+        notification_broadcast(
+            kind=NotificationKind.SALE_CREATED,
+            title=title,
+            body=body,
+            link=f"/sales/{sale.id}",
+            recipient_ids=recipient_ids,
+            metadata={
+                "sale_id": sale.id,
+                "amount": amount_int,
+                "operator_names": op_names,
+                "sheet_source_name": source_name,
+                "bonus_note": sale.bonus_note.strip()[:200],
+            },
+        )
+    except Exception:
+        pass
+
+    if tg_ids:
+        try:
+            import asyncio
+            from apps.tg_bot.notify import send_sale_created_dms
+
+            asyncio.run(
+                send_sale_created_dms(
+                    recipient_ids=tg_ids,
+                    operator_name=op_names,
+                    phone_model=sale.phone_model,
+                    amount_uzs=amount_int,
+                    sheet_source_name=source_name,
+                    bonus_note=sale.bonus_note,
+                    sale_id=sale.id,
+                )
+            )
+        except Exception:
+            pass
 
 
 @transaction.atomic

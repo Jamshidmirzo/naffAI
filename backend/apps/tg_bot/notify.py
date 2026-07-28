@@ -175,3 +175,81 @@ async def send_long_shift_warning_dms(
 
     return sent_to
 
+
+async def send_sale_created_dms(
+    *,
+    recipient_ids: list[int],
+    operator_name: str,
+    phone_model: str,
+    amount_uzs: int,
+    sheet_source_name: str | None,
+    bonus_note: str,
+    sale_id: int,
+) -> int:
+    """
+    Broadcast a "new sale" DM to each senior in `recipient_ids`. Returns the
+    number of DMs Telegram accepted. Silent no-op if the bot token is not
+    configured or aiogram isn't installed.
+    """
+    token = getattr(settings, "TELEGRAM_BOT_TOKEN", "")
+    if not token or not recipient_ids:
+        return 0
+
+    try:
+        from aiogram import Bot
+        from aiogram.exceptions import TelegramForbiddenError
+    except ImportError:
+        logger.warning("aiogram missing — sale DM skipped")
+        return 0
+
+    bot = Bot(token=token)
+    sent = 0
+    try:
+        text = _format_sale_created(
+            operator_name=operator_name,
+            phone_model=phone_model,
+            amount_uzs=amount_uzs,
+            sheet_source_name=sheet_source_name,
+            bonus_note=bonus_note,
+            sale_id=sale_id,
+        )
+        for uid in recipient_ids:
+            try:
+                await bot.send_message(uid, text, parse_mode="HTML")
+                sent += 1
+            except TelegramForbiddenError:
+                logger.info("skipping sale DM: user %s blocked bot", uid)
+            except Exception as e:
+                logger.warning("sale DM to %s failed: %s", uid, e)
+    finally:
+        try:
+            await bot.session.close()
+        except Exception:
+            pass
+    return sent
+
+
+def _format_sale_created(
+    *,
+    operator_name: str,
+    phone_model: str,
+    amount_uzs: int,
+    sheet_source_name: str | None,
+    bonus_note: str,
+    sale_id: int,
+) -> str:
+    def _fmt_uzs(n: int) -> str:
+        return f"{n:,}".replace(",", " ")
+
+    lines = [
+        "💰 <b>Новая продажа</b>",
+        f"Оператор: <b>{operator_name}</b>",
+        f"Модель: {phone_model}",
+        f"Сумма: <b>{_fmt_uzs(amount_uzs)} сум</b>",
+        f"Источник: {sheet_source_name or 'Прямая'}",
+    ]
+    if bonus_note.strip():
+        lines.append(f"🎁 Бонус: {bonus_note.strip()}")
+    lines.append(f"\n#sale-{sale_id}")
+    return "\n".join(lines)
+

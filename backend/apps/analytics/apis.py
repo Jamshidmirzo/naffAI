@@ -16,6 +16,7 @@ from .selectors import (
     leads_distribution_by_operator,
     operator_funnels,
     resolve_period,
+    sales_by_source,
     timeseries_daily,
 )
 
@@ -82,6 +83,16 @@ class ByChannelApi(APIView):
     def get(self, request):
         date_from, date_to = _window(request)
         return Response(by_channel(date_from=date_from, date_to=date_to))
+
+
+class BySourceApi(APIView):
+    """Per-SheetSource sales + leads + conversion for the targetolog dashboard."""
+
+    permission_classes = [IsTeamLeadOrManagerReadOnly]
+
+    def get(self, request):
+        date_from, date_to = _window(request)
+        return Response(sales_by_source(date_from=date_from, date_to=date_to))
 
 
 class ByModelApi(APIView):

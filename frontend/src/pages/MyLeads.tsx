@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
@@ -11,6 +11,9 @@ import {
   PhoneMissed,
   XCircle,
   Plus,
+  ChevronDown,
+  PhoneCall,
+  Wallet,
 } from "lucide-react";
 import { Paginator } from "../components/Paginator";
 import { apiErrorMessage } from "../lib/api-types";
@@ -38,6 +41,26 @@ import { useT } from "../lib/i18n";
 import { GaugeScene } from "../components/three/GaugeScene";
 
 type MyLeadsView = "active" | "postponed" | "all";
+type StatusChipKey =
+  | "all"
+  | "new"
+  | "callback"
+  | "no_answer_1"
+  | "no_answer_2"
+  | "phone_on"
+  | "tg"
+  | "debt";
+
+const STATUS_CHIP_MATCH: Record<StatusChipKey, (s: LeadStatus) => boolean> = {
+  all: () => true,
+  new: (s) => s === "new" || s === "assigned" || s === "in_progress",
+  callback: (s) => s === "callback_scheduled",
+  no_answer_1: (s) => s === "no_answer",
+  no_answer_2: (s) => s === "no_answer_2",
+  phone_on: (s) => s === "phone_on",
+  tg: (s) => s === "contacted_telegram",
+  debt: (s) => s === "has_debt",
+};
 
 type MyResponse = {
   operator: { id: number; full_name: string; status: string; blocked: boolean };
@@ -87,6 +110,7 @@ export default function MyLeads() {
   const [view, setView] = useState<MyLeadsView>("active");
   const [postponeFor, setPostponeFor] = useState<Lead | null>(null);
   const [scheduleFor, setScheduleFor] = useState<Lead | null>(null);
+  const [statusChip, setStatusChip] = useState<StatusChipKey>("all");
 
   const t = useT();
   usePageHeader({ title: t("my.title"), subtitle: t("my.subtitle") }, [t("my.title")]);
@@ -106,6 +130,12 @@ export default function MyLeads() {
   const quickCall = useMutation({
     mutationFn: ({ lead, outcome, comment }: { lead: Lead; outcome: CallOutcome; comment?: string }) =>
       api.post(`/leads/${lead.id}/call-attempts/`, { outcome, comment }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["leads-my"] }),
+  });
+
+  const setStatus = useMutation({
+    mutationFn: ({ lead, status }: { lead: Lead; status: LeadStatus }) =>
+      api.post(`/leads/${lead.id}/status/`, { status }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["leads-my"] }),
   });
 
@@ -143,6 +173,47 @@ export default function MyLeads() {
     () => results.filter((l) => isOverdue((l as unknown as { callback_at?: string }).callback_at)).length,
     [results],
   );
+
+  const statusChipCounts = useMemo(() => {
+    const c: Record<StatusChipKey, number> = {
+      all: results.length,
+      new: 0,
+      callback: 0,
+      no_answer_1: 0,
+      no_answer_2: 0,
+      phone_on: 0,
+      tg: 0,
+      debt: 0,
+    };
+    for (const l of results) {
+      const s = l.status as LeadStatus;
+      if (STATUS_CHIP_MATCH.new(s)) c.new++;
+      if (STATUS_CHIP_MATCH.callback(s)) c.callback++;
+      if (STATUS_CHIP_MATCH.no_answer_1(s)) c.no_answer_1++;
+      if (STATUS_CHIP_MATCH.no_answer_2(s)) c.no_answer_2++;
+      if (STATUS_CHIP_MATCH.phone_on(s)) c.phone_on++;
+      if (STATUS_CHIP_MATCH.tg(s)) c.tg++;
+      if (STATUS_CHIP_MATCH.debt(s)) c.debt++;
+    }
+    return c;
+  }, [results]);
+
+  const visibleLeads = useMemo(() => {
+    if (view !== "active" || statusChip === "all") return results;
+    const match = STATUS_CHIP_MATCH[statusChip];
+    return results.filter((l) => match(l.status as LeadStatus));
+  }, [results, view, statusChip]);
+
+  const statusChips: { key: StatusChipKey; label: string; count: number }[] = [
+    { key: "all", label: t("common.all"), count: statusChipCounts.all },
+    { key: "new", label: t("my.chip_new"), count: statusChipCounts.new },
+    { key: "callback", label: t("my.chip_callback"), count: statusChipCounts.callback },
+    { key: "no_answer_1", label: t("my.chip_no_answer_1"), count: statusChipCounts.no_answer_1 },
+    { key: "no_answer_2", label: t("my.chip_no_answer_2"), count: statusChipCounts.no_answer_2 },
+    { key: "phone_on", label: t("my.chip_phone_on"), count: statusChipCounts.phone_on },
+    { key: "tg", label: t("my.chip_tg"), count: statusChipCounts.tg },
+    { key: "debt", label: t("my.chip_debt"), count: statusChipCounts.debt },
+  ];
 
   const dailyPlan = 20;
   const donePlan = counts.active + counts.postponed;
@@ -254,9 +325,9 @@ export default function MyLeads() {
 
       {/* --- Tabs + summary --- */}
       <section className="flex flex-wrap items-center justify-between gap-3 animate-nfFadeUp">
-        <TabPill value={view} onChange={(v) => { setView(v); setPage(1); }} items={tabs} />
+        <TabPill value={view} onChange={(v) => { setView(v); setPage(1); setStatusChip("all"); }} items={tabs} />
         <div className="text-[13px] text-muted">
-          {t("my.leads_count", { n: results.length })}
+          {t("my.leads_count", { n: visibleLeads.length })}
           {overdueCount > 0 && (
             <>
               {" · "}
@@ -268,8 +339,49 @@ export default function MyLeads() {
         </div>
       </section>
 
+      {/* --- Status chips (only in "active" view) --- */}
+      {view === "active" && (
+        <section className="flex flex-wrap gap-2 animate-nfFadeUp">
+          {statusChips.map((chip) => {
+            const isActive = statusChip === chip.key;
+            const dim = chip.count === 0 && chip.key !== "all";
+            return (
+              <button
+                key={chip.key}
+                onClick={() => setStatusChip(chip.key)}
+                className="nf-chip"
+                style={{
+                  padding: "6px 12px",
+                  fontSize: 12.5,
+                  borderRadius: 999,
+                  border: "1px solid var(--border)",
+                  background: isActive ? "var(--accent-grad)" : "transparent",
+                  color: isActive ? "#fff" : dim ? "var(--muted)" : "var(--text)",
+                  fontWeight: isActive ? 600 : 500,
+                  opacity: dim ? 0.55 : 1,
+                }}
+              >
+                {chip.label}
+                {chip.count > 0 && (
+                  <span
+                    style={{
+                      marginLeft: 6,
+                      fontSize: 11,
+                      opacity: 0.75,
+                      fontWeight: 500,
+                    }}
+                  >
+                    · {chip.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </section>
+      )}
+
       {/* --- Lead cards --- */}
-      {results.length === 0 ? (
+      {visibleLeads.length === 0 ? (
         <div
           className="rounded-2xl py-12 text-center text-[13.5px] text-muted"
           style={{ border: "1.5px dashed var(--border)" }}
@@ -278,7 +390,7 @@ export default function MyLeads() {
         </div>
       ) : (
         <section className="flex flex-col gap-[9px]">
-          {results.map((lead, i) => (
+          {visibleLeads.map((lead, i) => (
             <LeadCard
               key={lead.id}
               lead={lead}
@@ -286,11 +398,16 @@ export default function MyLeads() {
               onCall={() => quickCall.mutate({ lead, outcome: "talked_interested" })}
               onMiss={() => quickCall.mutate({ lead, outcome: "no_answer" })}
               onReject={() => quickCall.mutate({ lead, outcome: "rejected" })}
-              onTg={() => openTg(lead)}
+              onTg={() => {
+                openTg(lead);
+                quickCall.mutate({ lead, outcome: "tg_only" });
+              }}
+              onPhoneOn={() => setStatus.mutate({ lead, status: "phone_on" })}
+              onHasDebt={() => setStatus.mutate({ lead, status: "has_debt" })}
               onSchedule={() => setScheduleFor(lead)}
               onPostpone={() => setPostponeFor(lead)}
               onUnpostpone={() => unpostpone.mutate(lead)}
-              onConvert={() => nav("/sales/new")}
+              onConvert={() => nav(`/sales/new?lead=${lead.id}`)}
             />
           ))}
         </section>
@@ -342,6 +459,8 @@ interface LeadCardProps {
   onMiss: () => void;
   onReject: () => void;
   onTg: () => void;
+  onPhoneOn: () => void;
+  onHasDebt: () => void;
   onSchedule: () => void;
   onPostpone: () => void;
   onUnpostpone: () => void;
@@ -355,22 +474,47 @@ function LeadCard({
   onMiss,
   onReject,
   onTg,
+  onPhoneOn,
+  onHasDebt,
   onSchedule,
   onPostpone,
   onUnpostpone,
   onConvert,
 }: LeadCardProps) {
   const [called, setCalled] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
+  const contactRef = useRef<HTMLDivElement | null>(null);
   const isPostponed = !!lead.postponed_at;
   const overdue = isOverdue((lead as unknown as { callback_at?: string }).callback_at);
-  const source = (lead as unknown as { source_name?: string }).source_name ?? "";
+  const source = (lead as unknown as { source_name?: string }).source_name ?? lead.sheet_source_name ?? "";
   const calls = (lead as unknown as { calls_count?: number }).calls_count ?? 0;
   const t = useT();
 
-  const handleCall = () => {
+  useEffect(() => {
+    if (!contactOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (contactRef.current && !contactRef.current.contains(e.target as Node)) {
+        setContactOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [contactOpen]);
+
+  const markCalled = () => {
     onCall();
     setCalled(true);
     toast.success(t("my.call_marked"));
+  };
+
+  const chooseCall = () => {
+    setContactOpen(false);
+    if (lead.phone) window.open(`tel:${lead.phone}`, "_self");
+    markCalled();
+  };
+  const chooseTg = () => {
+    setContactOpen(false);
+    onTg();
   };
 
   return (
@@ -429,7 +573,7 @@ function LeadCard({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 justify-end">
+      <div className="flex flex-wrap gap-2 justify-end items-start">
         {called ? (
           <div className="text-[12.5px] text-muted flex items-center gap-1.5 px-3 py-2">
             <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
@@ -437,32 +581,81 @@ function LeadCard({
           </div>
         ) : (
           <>
-            {lead.phone && (
-              <a
-                href={`tel:${lead.phone}`}
+            {/* Split-button: main "Bog'lanish" with dropdown for Call / TG */}
+            <div className="relative" ref={contactRef}>
+              <button
+                type="button"
                 className="nf-btn nf-btn--primary"
-                style={{ padding: "9px 14px", fontSize: 13 }}
-                onClick={handleCall}
+                style={{ padding: "9px 14px", fontSize: 13, gap: 6 }}
+                onClick={() => setContactOpen((v) => !v)}
+                disabled={!lead.phone}
               >
-                <Phone className="w-3.5 h-3.5" /> {t("my.called")}
-              </a>
-            )}
-            <button
-              className="nf-btn nf-btn--ghost"
-              style={{ padding: "9px 12px", fontSize: 13 }}
-              onClick={onTg}
-              disabled={!lead.phone}
-              aria-label="Telegram"
-            >
-              <MessageCircle className="w-3.5 h-3.5" />
-            </button>
+                <PhoneCall className="w-3.5 h-3.5" />
+                {t("my.contact")}
+                <ChevronDown className="w-3 h-3 opacity-80" />
+              </button>
+              {contactOpen && (
+                <div
+                  className="absolute right-0 mt-1 z-30 min-w-[200px] rounded-xl overflow-hidden"
+                  style={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    boxShadow: "var(--shadow-lg, 0 12px 28px -12px rgba(0,0,0,.35))",
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-[13px] hover:bg-[color:var(--faint)]"
+                    onClick={chooseCall}
+                  >
+                    <Phone className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
+                    {t("my.opt_call")}
+                  </button>
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-[13px] hover:bg-[color:var(--faint)]"
+                    onClick={chooseTg}
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
+                    {t("my.opt_tg")}
+                  </button>
+                </div>
+              )}
+            </div>
+
             <button
               className="nf-btn nf-btn--ghost"
               style={{ padding: "9px 12px", fontSize: 13 }}
               onClick={onMiss}
-              aria-label={t("my.no_answer")}
+              title={t("my.no_answer")}
             >
               <PhoneMissed className="w-3.5 h-3.5" />
+              <span className="hidden md:inline ml-1">{t("my.chip_no_answer_1")}</span>
+            </button>
+            <button
+              className="nf-btn nf-btn--ghost"
+              style={{ padding: "9px 12px", fontSize: 13 }}
+              onClick={onPhoneOn}
+              title={t("my.chip_phone_on")}
+            >
+              <Phone className="w-3.5 h-3.5" />
+              <span className="hidden md:inline ml-1">{t("my.chip_phone_on")}</span>
+            </button>
+            <button
+              className="nf-btn nf-btn--ghost"
+              style={{ padding: "9px 12px", fontSize: 13 }}
+              onClick={onHasDebt}
+              title={t("my.chip_debt")}
+            >
+              <Wallet className="w-3.5 h-3.5" />
+              <span className="hidden md:inline ml-1">{t("my.chip_debt")}</span>
+            </button>
+            <button
+              className="nf-btn nf-btn--ghost"
+              style={{ padding: "9px 14px", fontSize: 13 }}
+              onClick={onSchedule}
+            >
+              <AlarmClock className="w-3.5 h-3.5" /> Callback
             </button>
             {isPostponed ? (
               <button
@@ -482,13 +675,6 @@ function LeadCard({
               </button>
             )}
             <button
-              className="nf-btn nf-btn--ghost"
-              style={{ padding: "9px 14px", fontSize: 13 }}
-              onClick={onSchedule}
-            >
-              <AlarmClock className="w-3.5 h-3.5" /> Callback
-            </button>
-            <button
               className="nf-btn"
               style={{
                 padding: "9px 14px",
@@ -505,6 +691,7 @@ function LeadCard({
               style={{ padding: "9px 12px", fontSize: 13, color: "var(--danger)" }}
               onClick={onReject}
               aria-label={t("my.reject")}
+              title={t("my.reject")}
             >
               <XCircle className="w-3.5 h-3.5" />
             </button>

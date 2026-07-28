@@ -65,4 +65,6 @@ urlpatterns = [
     path("attendance/", include("apps.attendance.urls")),
     # Manager-only user management (web accounts, not operators).
     path("users/", include((users_urlpatterns, "users"))),
+    # In-app notifications (senior users get pinged on sale/callback events).
+    path("notifications/", include("apps.notifications.urls")),
 ]

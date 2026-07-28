@@ -34,6 +34,8 @@ export default function SaleCreate() {
   const [allowDup, setAllowDup] = useState(false);
   const [dupComment, setDupComment] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [hasBonus, setHasBonus] = useState(false);
+  const [bonusNote, setBonusNote] = useState("");
 
   const saleQ = useQuery({
     queryKey: ["sale", id],
@@ -50,6 +52,10 @@ export default function SaleCreate() {
       setClientName(s.client_name || "");
       setClientPhone(s.client_phone || "");
       setComment(s.comment || "");
+      if (s.bonus_note) {
+        setBonusNote(s.bonus_note);
+        setHasBonus(true);
+      }
       setDiscount(
         Number(s.discount) > 0 ? String(Math.round(Number(s.discount))) : "",
       );
@@ -171,6 +177,10 @@ export default function SaleCreate() {
       setError(t("sale_create.discount_too_big"));
       return;
     }
+    if (hasBonus && bonusNote.trim().length < 3) {
+      setError(t("sale_create.bonus_required"));
+      return;
+    }
 
     const qtyNum = Math.max(1, Number(quantity) || 1);
     const body = {
@@ -193,6 +203,7 @@ export default function SaleCreate() {
       comment,
       allow_duplicate_imei: allowDup,
       duplicate_override_comment: dupComment,
+      bonus_note: hasBonus ? bonusNote.trim() : "",
     };
 
     try {
@@ -405,6 +416,32 @@ export default function SaleCreate() {
         <div>
           <label className="label">{t("sale_create.comment_label")}</label>
           <textarea className="input" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
+        </div>
+
+        <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: "var(--border)" }}>
+          <label className="flex items-center gap-2 text-[13.5px] cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={hasBonus}
+              onChange={(e) => setHasBonus(e.target.checked)}
+            />
+            🎁 {t("sale_create.bonus_toggle")}
+          </label>
+          {hasBonus && (
+            <>
+              <textarea
+                className="input"
+                rows={2}
+                value={bonusNote}
+                onChange={(e) => setBonusNote(e.target.value)}
+                placeholder={t("sale_create.bonus_ph")}
+                autoFocus
+              />
+              <div className="text-[11.5px] text-muted">
+                {t("sale_create.bonus_hint")}
+              </div>
+            </>
+          )}
         </div>
 
         {allowDup && (

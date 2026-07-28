@@ -9,6 +9,9 @@ export type LeadStatus =
   | "callback_scheduled"
   | "contacted_telegram"
   | "no_answer"
+  | "no_answer_2"
+  | "phone_on"
+  | "has_debt"
   | "won"
   | "lost"
   | "archived"
@@ -66,8 +69,11 @@ export const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
   assigned: "Назначен",
   in_progress: "В работе",
   callback_scheduled: "Callback",
-  contacted_telegram: "Написали в TG",
-  no_answer: "Не берут трубку",
+  contacted_telegram: "TG'га боғланди",
+  no_answer: "Javob bermadi 1",
+  no_answer_2: "Javob bermadi 2",
+  phone_on: "Telfoni ochiq",
+  has_debt: "Qarzi bor",
   won: "Продажа",
   lost: "Потерян",
   archived: "Архив",
@@ -82,6 +88,9 @@ export const LEAD_STATUS_BADGE: Record<LeadStatus, string> = {
     "bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300",
   contacted_telegram: "bg-cyan-100 text-cyan-800 dark:bg-cyan-500/10 dark:text-cyan-300",
   no_answer: "bg-gray-100 text-gray-700 dark:bg-slate-700/40 dark:text-slate-300",
+  no_answer_2: "bg-orange-100 text-orange-800 dark:bg-orange-500/10 dark:text-orange-300",
+  phone_on: "bg-teal-100 text-teal-800 dark:bg-teal-500/10 dark:text-teal-300",
+  has_debt: "bg-rose-100 text-rose-800 dark:bg-rose-500/10 dark:text-rose-300",
   won: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300",
   lost: "bg-rose-100 text-rose-800 dark:bg-rose-500/10 dark:text-rose-300",
   archived: "bg-neutral-100 text-neutral-600 dark:bg-slate-700/30 dark:text-slate-400",

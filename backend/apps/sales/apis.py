@@ -50,6 +50,9 @@ class SalePartnerLineSerializer(serializers.ModelSerializer):
 class SaleSerializer(serializers.ModelSerializer):
     operator_name = serializers.CharField(source="operator.full_name", read_only=True)
     channel_name = serializers.CharField(source="channel.name", read_only=True)
+    sheet_source_name = serializers.CharField(
+        source="sheet_source.name", read_only=True, default=None
+    )
     gifts = GiftItemSerializer(many=True, read_only=True)
     operator_lines = SaleOperatorLineSerializer(many=True, read_only=True)
     partner_lines = SalePartnerLineSerializer(many=True, read_only=True)
@@ -78,6 +81,9 @@ class SaleSerializer(serializers.ModelSerializer):
             "operator_lines",
             "partner_lines",
             "comment",
+            "bonus_note",
+            "sheet_source",
+            "sheet_source_name",
             "sold_at",
             "status",
             "is_returned",
@@ -92,6 +98,7 @@ class SaleSerializer(serializers.ModelSerializer):
             "id",
             "operator_name",
             "channel_name",
+            "sheet_source_name",
             "gifts",
             "operator_lines",
             "partner_lines",
@@ -145,6 +152,8 @@ class SaleCreateInputSerializer(serializers.Serializer):
     gifts = serializers.ListField(child=serializers.DictField(), required=False, default=list)
     allow_duplicate_imei = serializers.BooleanField(required=False, default=False)
     duplicate_override_comment = serializers.CharField(required=False, allow_blank=True, default="")
+    bonus_note = serializers.CharField(required=False, allow_blank=True, default="")
+    sheet_source_id = serializers.IntegerField(required=False, allow_null=True)
 
     def to_internal_value(self, data):
         if isinstance(data, dict):

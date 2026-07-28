@@ -63,6 +63,7 @@ LOCAL_APPS = [
     "apps.marketing",
     "apps.lessons",
     "apps.attendance",
+    "apps.notifications",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -204,6 +205,13 @@ GOOGLE_SHEETS_CREDENTIALS_JSON = config("GOOGLE_SHEETS_CREDENTIALS_JSON", defaul
 CALLBACK_OVERDUE_GRACE_MINUTES = config(
     "CALLBACK_OVERDUE_GRACE_MINUTES", default=30, cast=int
 )
+
+# --- QR check-in ---
+# Public URL of the /scan page a phone camera will open when it decodes
+# an operator's QR. `operator_qr_png_bytes` wraps the raw HMAC token as
+# `{QR_CHECKIN_URL}?qr=<token>`. Leave empty to fall back to raw token
+# (dev only — cameras won't open plain text).
+QR_CHECKIN_URL = config("QR_CHECKIN_URL", default="")
 
 # --- Operator password reversible-encryption keys ---
 # Fernet keys used to (en|de)crypt the plaintext stored in `OperatorSecret`.

@@ -79,6 +79,22 @@ class Sale(TimestampedModel):
         on_delete=models.SET_NULL,
         related_name="sales",
     )
+    # Denormalised copy of `lead.sheet_source` at the moment of sale creation.
+    # Kept separately so per-source analytics survive lead deletion and so
+    # direct sales (without a lead) can still be attributed to a source by
+    # the manager. Auto-populated in lead_convert_to_sale; can be set
+    # manually elsewhere later if needed.
+    sheet_source = models.ForeignKey(
+        "leads.SheetSource",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="sales",
+    )
+    # Free-form note about a bonus, promo, or other one-off deal condition
+    # the operator wants to flag to the manager. Separate from `comment`
+    # so aggregations / notifications can pick it up cleanly.
+    bonus_note = models.TextField(blank=True, default="")
 
     class Meta:
         ordering = ["-sold_at"]

@@ -84,6 +84,11 @@ def call_attempt_log(
     # Reflect the outcome on the lead's status (idempotent — see
     # `lead_update_status`).
     new_status = _OUTCOME_TO_LEAD_STATUS.get(outcome)
+    # Escalate NO_ANSWER → NO_ANSWER_2 on repeat: if the lead was already
+    # marked "no_answer" and the operator marks it again, roll to the
+    # "no_answer_2" bucket so the manager sees repeat non-contact.
+    if outcome == CallOutcome.NO_ANSWER and lead.status == LeadStatus.NO_ANSWER:
+        new_status = LeadStatus.NO_ANSWER_2
     if new_status and lead.status != new_status:
         from apps.leads.services import lead_update_status
 

@@ -54,6 +54,49 @@ def _extract_metadata(raw_row: dict, column_map: dict) -> dict:
     return {k: raw_row.get(k) for k in extra_keys if k in raw_row}
 
 
+# Map the free-form Uzbek/Russian status strings that operators type
+# directly into the source sheet to our canonical LeadStatus. Keys are
+# compared case-insensitively and stripped of whitespace/punctuation.
+_SHEET_STATUS_MAP: dict[str, str] = {
+    "javob bermadi 1": LeadStatus.NO_ANSWER,
+    "javob bermadi": LeadStatus.NO_ANSWER,
+    "не ответил": LeadStatus.NO_ANSWER,
+    "не берет": LeadStatus.NO_ANSWER,
+    "не берёт": LeadStatus.NO_ANSWER,
+    "javob bermadi 2": LeadStatus.NO_ANSWER_2,
+    "не ответил 2": LeadStatus.NO_ANSWER_2,
+    "telfoni ochiq": LeadStatus.PHONE_ON,
+    "telefoni ochiq": LeadStatus.PHONE_ON,
+    "телефон включен": LeadStatus.PHONE_ON,
+    "телефон включён": LeadStatus.PHONE_ON,
+    "tgga boglandi": LeadStatus.CONTACTED_TELEGRAM,
+    "tg ga boglandi": LeadStatus.CONTACTED_TELEGRAM,
+    "tg da yozdi": LeadStatus.CONTACTED_TELEGRAM,
+    "tg": LeadStatus.CONTACTED_TELEGRAM,
+    "телеграм": LeadStatus.CONTACTED_TELEGRAM,
+    "qarzi bor": LeadStatus.HAS_DEBT,
+    "долг": LeadStatus.HAS_DEBT,
+    "у клиента долг": LeadStatus.HAS_DEBT,
+    "callback": LeadStatus.CALLBACK_SCHEDULED,
+    "перезвонить": LeadStatus.CALLBACK_SCHEDULED,
+    "sotildi": LeadStatus.WON,
+    "продажа": LeadStatus.WON,
+    "sotilmadi": LeadStatus.LOST,
+    "отказ": LeadStatus.LOST,
+    "потерян": LeadStatus.LOST,
+}
+
+
+def _map_sheet_status(raw: str) -> str | None:
+    """Normalise and look up the free-form sheet status label."""
+    if not raw:
+        return None
+    key = raw.strip().lower()
+    if not key:
+        return None
+    return _SHEET_STATUS_MAP.get(key)
+
+
 def _pick_column(raw_row: dict, spec: Any) -> str:
     """
     `spec` is either:
@@ -156,13 +199,25 @@ def lead_create_from_sheet_row(
     codepath handles Sheet 1 (has headers) and the operator column of Sheet
     2 (no header on the column that carries the operator alias).
     """
+    cm = sheet_source.column_map or {}
+    sheet_status_raw = _pick_column(raw_row, cm.get("status"))
+    mapped_sheet_status = _map_sheet_status(sheet_status_raw)
+
     existing = Lead.objects.filter(
         sheet_source=sheet_source, sheet_row_index=row_index
     ).first()
     if existing:
+        # Re-sync should honour freshly-typed status changes from the
+        # sheet — the operator may have marked "javob bermadi 2" after
+        # our first import.
+        if mapped_sheet_status and existing.status != mapped_sheet_status:
+            lead_update_status(
+                lead=existing,
+                status=mapped_sheet_status,
+                comment=f"resync: sheet status «{sheet_status_raw}»",
+            )
         return existing
 
-    cm = sheet_source.column_map or {}
     full_name = _pick_column(raw_row, cm.get("full_name"))
     phone_raw = _pick_column(raw_row, cm.get("phone"))
     product_hint = _pick_column(raw_row, cm.get("product_hint"))
@@ -174,7 +229,7 @@ def lead_create_from_sheet_row(
 
     default_status = sheet_source.default_status or LeadStatus.NEW
     needs_review = False
-    status = default_status
+    status = mapped_sheet_status or default_status
 
     # Alias resolution + distribution routing:
     # First look up the alias (persist unknown ones so admin can bind them),
@@ -483,6 +538,11 @@ def lead_convert_to_sale(*, lead: Lead, user=None, sale_data: dict):
                 {"field": "operator"},
             )
         sale_data = {**sale_data, "operator_id": lead.operator_id}
+
+    # Auto-propagate sheet_source from lead so analytics can attribute the
+    # sale to a targetolog without waiting for a manual pick.
+    if not sale_data.get("sheet_source_id") and lead.sheet_source_id:
+        sale_data = {**sale_data, "sheet_source_id": lead.sheet_source_id}
 
     sale = sale_create(user=user, **sale_data)
     sale.lead = lead

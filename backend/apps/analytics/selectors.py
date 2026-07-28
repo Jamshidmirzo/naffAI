@@ -214,6 +214,72 @@ def by_model(*, date_from=None, date_to=None, limit: int = 20) -> list[dict]:
     ]
 
 
+def sales_by_source(
+    *,
+    date_from: dt.datetime | None = None,
+    date_to: dt.datetime | None = None,
+) -> list[dict]:
+    """
+    Aggregate confirmed sales by the sheet source they came from. Sales
+    without a `sheet_source` (direct sales) are grouped under "Прямая".
+
+    Also counts total leads that flowed through each source in the window
+    so the UI can show a per-source conversion rate.
+    """
+    from apps.leads.models import Lead
+
+    sales_rows = (
+        _base_qs(date_from=date_from, date_to=date_to)
+        .values("sheet_source_id", "sheet_source__name")
+        .annotate(total=Sum(NET_AMOUNT), sales_count=Count("id"))
+    )
+    sales_by_src: dict[int | None, dict] = {}
+    for r in sales_rows:
+        sales_by_src[r["sheet_source_id"]] = {
+            "sheet_source_id": r["sheet_source_id"],
+            "sheet_source_name": r["sheet_source__name"] or "Прямая",
+            "total": str(r["total"] or 0),
+            "sales_count": r["sales_count"],
+        }
+
+    leads_qs = Lead.objects.filter(source="sheet")
+    if date_from:
+        leads_qs = leads_qs.filter(created_at__gte=date_from)
+    if date_to:
+        leads_qs = leads_qs.filter(created_at__lte=date_to)
+    leads_rows = (
+        leads_qs.values("sheet_source_id", "sheet_source__name")
+        .annotate(leads_count=Count("id"))
+    )
+    for r in leads_rows:
+        sid = r["sheet_source_id"]
+        entry = sales_by_src.setdefault(
+            sid,
+            {
+                "sheet_source_id": sid,
+                "sheet_source_name": r["sheet_source__name"] or "Прямая",
+                "total": "0",
+                "sales_count": 0,
+            },
+        )
+        entry["leads_count"] = r["leads_count"]
+
+    out = []
+    for entry in sales_by_src.values():
+        leads = entry.get("leads_count", 0)
+        sales = entry.get("sales_count", 0)
+        conv = round((sales / leads) * 100, 1) if leads else 0.0
+        out.append(
+            {
+                **entry,
+                "leads_count": leads,
+                "conversion_pct": conv,
+            }
+        )
+    out.sort(key=lambda x: (-float(x["total"] or 0), -x["leads_count"]))
+    return out
+
+
 def timeseries_daily(*, date_from, date_to) -> list[dict]:
     qs = _base_qs(date_from=date_from, date_to=date_to)
     rows = (

@@ -70,10 +70,19 @@ function useBadges(role: "manager" | "operator") {
     refetchInterval: 30000,
     retry: false,
   });
+  const unreadNotifs = useQuery({
+    queryKey: ["notifications", "unread-count"],
+    queryFn: () =>
+      api
+        .get<{ unread_count: number }>("/notifications/unread-count/")
+        .then((r) => r.data.unread_count),
+    refetchInterval: 30000,
+    retry: false,
+  });
   return {
     leadsReview: role === "manager" ? needsReview.data ?? 0 : 0,
     lessonNew: role === "operator" && lessonPeek.data && !lessonPeek.data.opened_at ? 1 : 0,
-    notifs: 0,
+    notifs: unreadNotifs.data ?? 0,
   };
 }
 

@@ -193,6 +193,8 @@ class LeadConvertInputSerializer(serializers.Serializer):
     duplicate_override_comment = serializers.CharField(
         required=False, allow_blank=True, default=""
     )
+    bonus_note = serializers.CharField(required=False, allow_blank=True, default="")
+    sheet_source_id = serializers.IntegerField(required=False, allow_null=True)
 
 
 # ---- helpers -------------------------------------------------------------

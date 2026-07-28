@@ -423,6 +423,30 @@ export default function SaleDetail() {
               </div>
             )}
 
+            {s.bonus_note && (
+              <div
+                className="mt-3 rounded-xl px-4 py-3 flex items-start gap-2 text-[13.5px]"
+                style={{
+                  background: "rgba(242,86,11,.08)",
+                  border: "1px solid rgba(242,86,11,.25)",
+                }}
+              >
+                <span style={{ fontSize: 18 }}>🎁</span>
+                <div>
+                  <div className="text-[11.5px] uppercase tracking-wide font-semibold" style={{ color: "var(--accent)" }}>
+                    {t("sale_detail.bonus_label")}
+                  </div>
+                  <div className="mt-0.5">{s.bonus_note}</div>
+                </div>
+              </div>
+            )}
+
+            {s.sheet_source_name && (
+              <div className="mt-3 text-[12.5px] text-muted">
+                {t("sale_detail.source_label")}: <span className="font-medium text-text">{s.sheet_source_name}</span>
+              </div>
+            )}
+
             {!isDeleted && (
               <div className="mt-6 flex flex-wrap gap-2">
                 <Button onClick={() => setEditOpen(true)}>{t("common.edit")}</Button>

@@ -49,14 +49,27 @@ def operator_qr_current_or_create(operator: Operator) -> OperatorQr:
 
 
 def operator_qr_png_bytes(operator: Operator) -> bytes:
+    from django.conf import settings
+
     qr_obj = operator_qr_current_or_create(operator)
     from .services import qr_token_build
 
     payload = qr_token_build(operator, qr_obj.nonce)
 
+    # Wrap the raw HMAC token into a scannable URL so a phone camera
+    # opens the /scan page directly. Falls back to the raw token if
+    # QR_CHECKIN_URL isn't configured.
+    base = getattr(settings, "QR_CHECKIN_URL", "").rstrip("/")
+    if base:
+        from urllib.parse import quote
+
+        content = f"{base}?qr={quote(payload, safe='')}"
+    else:
+        content = payload
+
     # Generate QR Code image bytes
     qr = qrcode.QRCode(version=1, box_size=10, border=4)
-    qr.add_data(payload)
+    qr.add_data(content)
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
 

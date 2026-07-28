@@ -1,16 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { Download, LogIn, RefreshCw } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { CheckCircle2, Download, LogIn, RefreshCw, XCircle } from "lucide-react";
 import qrcode from "qrcode-generator";
 import { Button, Eyebrow } from "../components/ui";
+import { useAttendanceScan, type ScanResponse } from "../hooks/useAttendanceScan";
+import { apiErrorMessage } from "../lib/api-types";
 
 /**
- * Public kiosk screen shown at the office entrance. It renders a QR that
- * points to the login page — operators scan it with their own phone
- * camera, land in the web app on the phone, and mark check-in from there.
+ * Two-mode screen:
  *
- * No browser camera permission is needed here — the phone does the
- * scanning; the kiosk just displays the code.
+ * 1. **Check-in mode** — the URL carries `?qr=<hmac-token>` (a phone camera
+ *    just decoded an operator's QR). We POST to `/attendance/scan/`,
+ *    show "checked in" or "checked out", and (on check_in) redirect the
+ *    operator into their own workstation with a freshly-issued token.
+ *
+ * 2. **Kiosk mode** — no `?qr=`. Renders a public QR that opens the login
+ *    page on the operator's phone.
  */
 
 const QR_CELL = 8;
@@ -44,6 +49,143 @@ function renderQrToCanvas(canvas: HTMLCanvasElement, text: string) {
 }
 
 export default function Scan() {
+  const [search] = useSearchParams();
+  const qrPayload = search.get("qr");
+  if (qrPayload) return <CheckInMode qrPayload={qrPayload} />;
+  return <KioskMode />;
+}
+
+function CheckInMode({ qrPayload }: { qrPayload: string }) {
+  const { scan } = useAttendanceScan();
+  const nav = useNavigate();
+  const [state, setState] = useState<
+    | { kind: "loading" }
+    | { kind: "success"; data: ScanResponse }
+    | { kind: "error"; message: string }
+  >({ kind: "loading" });
+
+  useEffect(() => {
+    let alive = true;
+    scan(qrPayload)
+      .then((data) => {
+        if (!alive) return;
+        setState({ kind: "success", data });
+        // On check-in the hook stored a fresh auth token — send the
+        // operator into their workstation after a short "success" beat.
+        if (data.action === "check_in" && data.token) {
+          setTimeout(() => nav("/my"), 1400);
+        }
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setState({ kind: "error", message: apiErrorMessage(err) });
+      });
+    return () => {
+      alive = false;
+    };
+    // qrPayload is stable per URL — intentionally ignoring `scan`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qrPayload]);
+
+  return (
+    <div className="min-h-screen relative overflow-hidden">
+      <div className="absolute inset-0 nf-hero" />
+      <div className="relative z-10 min-h-screen grid place-items-center px-4 py-10">
+        <div
+          className="animate-nfPop text-center"
+          style={{
+            width: 420,
+            maxWidth: "100%",
+            borderRadius: 34,
+            padding: "36px 32px 32px",
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            boxShadow: "0 40px 90px -40px rgba(0,0,0,.4)",
+          }}
+        >
+          <Eyebrow>QR CHECK-IN</Eyebrow>
+          {state.kind === "loading" && (
+            <>
+              <h1
+                className="font-semibold mt-3"
+                style={{ fontSize: 24, letterSpacing: "-0.025em" }}
+              >
+                Отмечаем…
+              </h1>
+              <p className="text-[13px] text-muted mt-2">
+                Секунду, проверяем ваш QR
+              </p>
+            </>
+          )}
+          {state.kind === "success" && (
+            <>
+              <div className="mt-4 mx-auto grid place-items-center" style={{ width: 72, height: 72, borderRadius: 999, background: "rgba(34,197,94,.14)" }}>
+                <CheckCircle2 className="w-9 h-9" style={{ color: "#16a34a" }} />
+              </div>
+              <h1
+                className="font-semibold mt-4"
+                style={{ fontSize: 24, letterSpacing: "-0.025em" }}
+              >
+                {state.data.action === "check_in"
+                  ? "Приход отмечен"
+                  : "Уход отмечен"}
+              </h1>
+              <p className="text-[13.5px] text-muted mt-1.5">
+                {state.data.operator.full_name}
+              </p>
+              {state.data.was_late && state.data.action === "check_in" && (
+                <div className="mt-3 text-[12.5px] font-semibold" style={{ color: "var(--accent)" }}>
+                  ⚠ Опоздание
+                </div>
+              )}
+              {state.data.action === "check_out" && state.data.duration_min && (
+                <div className="mt-3 text-[13px] text-muted">
+                  Смена: {Math.round(state.data.duration_min / 60 * 10) / 10} ч
+                </div>
+              )}
+              {state.data.action === "check_in" && state.data.token && (
+                <p className="mt-4 text-[12px] text-muted">
+                  Открываем ваш кабинет…
+                </p>
+              )}
+              {state.data.action === "check_out" && (
+                <div className="mt-6">
+                  <Link to="/login" className="nf-btn nf-btn--primary" style={{ padding: "10px 18px" }}>
+                    На главную
+                  </Link>
+                </div>
+              )}
+            </>
+          )}
+          {state.kind === "error" && (
+            <>
+              <div className="mt-4 mx-auto grid place-items-center" style={{ width: 72, height: 72, borderRadius: 999, background: "rgba(220,60,40,.14)" }}>
+                <XCircle className="w-9 h-9" style={{ color: "var(--danger)" }} />
+              </div>
+              <h1
+                className="font-semibold mt-4"
+                style={{ fontSize: 22, letterSpacing: "-0.025em" }}
+              >
+                QR не сработал
+              </h1>
+              <p className="text-[13px] text-muted mt-2 max-w-[320px] mx-auto">
+                {state.message ||
+                  "Попросите менеджера сгенерировать новый QR — старый мог быть отозван."}
+              </p>
+              <div className="mt-6 flex flex-wrap gap-2 justify-center">
+                <Link to="/login" className="nf-btn nf-btn--primary" style={{ padding: "10px 18px" }}>
+                  Войти по паролю
+                </Link>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function KioskMode() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [tick, setTick] = useState(0);
 
