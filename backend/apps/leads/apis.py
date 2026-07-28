@@ -25,6 +25,7 @@ from apps.users.permissions import (
 )
 
 from .models import (
+    DistributionMode,
     Lead,
     LeadStatus,
     OperatorSheetAlias,
@@ -123,6 +124,10 @@ class LeadStatusInputSerializer(serializers.Serializer):
 
 
 class SheetSourceSerializer(serializers.ModelSerializer):
+    default_operator_name = serializers.CharField(
+        source="default_operator.full_name", read_only=True, default=None
+    )
+
     class Meta:
         model = SheetSource
         fields = [
@@ -136,8 +141,16 @@ class SheetSourceSerializer(serializers.ModelSerializer):
             "active",
             "last_synced_at",
             "last_synced_row",
+            "default_operator",
+            "default_operator_name",
+            "distribution_mode",
         ]
-        read_only_fields = ["id", "last_synced_at", "last_synced_row"]
+        read_only_fields = [
+            "id",
+            "last_synced_at",
+            "last_synced_row",
+            "default_operator_name",
+        ]
 
 
 class OperatorSheetAliasSerializer(serializers.ModelSerializer):
@@ -431,6 +444,7 @@ class SheetSourceListCreateApi(ListCreateAPIView):
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
+        default_op = data.get("default_operator")
         obj = sheet_source_upsert(
             name=data["name"],
             spreadsheet_id=data["spreadsheet_id"],
@@ -439,6 +453,8 @@ class SheetSourceListCreateApi(ListCreateAPIView):
             default_status=data.get("default_status") or LeadStatus.NEW,
             worksheet_name=data.get("worksheet_name") or "",
             active=data.get("active", True),
+            default_operator=default_op if default_op else None,
+            distribution_mode=data.get("distribution_mode") or DistributionMode.ALIAS_ONLY,
             user=request.user,
         )
         return Response(
@@ -462,6 +478,7 @@ class SheetSourceDetailApi(APIView):
         ser = SheetSourceSerializer(obj, data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
+        default_op = data.get("default_operator", obj.default_operator)
         updated = sheet_source_upsert(
             name=data.get("name", obj.name),
             spreadsheet_id=data.get("spreadsheet_id", obj.spreadsheet_id),
@@ -470,6 +487,8 @@ class SheetSourceDetailApi(APIView):
             default_status=data.get("default_status", obj.default_status),
             worksheet_name=data.get("worksheet_name", obj.worksheet_name),
             active=data.get("active", obj.active),
+            default_operator=default_op if default_op else None,
+            distribution_mode=data.get("distribution_mode", obj.distribution_mode),
             user=request.user,
         )
         return Response(SheetSourceSerializer(updated).data)

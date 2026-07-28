@@ -26,6 +26,7 @@ from apps.common.validators import normalize_uz_phone
 from apps.operators.models import Operator, OperatorStatus
 
 from .models import (
+    DistributionMode,
     Lead,
     LeadAssignment,
     LeadAssignmentSource,
@@ -175,31 +176,63 @@ def lead_create_from_sheet_row(
     needs_review = False
     status = default_status
 
-    # Resolve operator from alias (per spec):
-    #   - alias empty            → status stays default, will hit round-robin below
-    #   - alias known + bound    → create sheet_manual assignment right away
-    #   - alias known + unbound  → mark needs_review
-    #   - alias unknown          → mark needs_review AND persist the alias
-    #                              with operator=None so admin can bind it later
-    assigned_op: Operator | None = None
-    assignment_reason = ""
+    # Alias resolution + distribution routing:
+    # First look up the alias (persist unknown ones so admin can bind them),
+    # then apply `sheet_source.distribution_mode` to decide what to do when
+    # the alias didn't produce a bound operator.
+    alias = None
+    alias_operator: Operator | None = None
     if operator_alias:
         alias = alias_lookup(operator_alias)
         if alias is None:
             OperatorSheetAlias.objects.get_or_create(alias_name=operator_alias.strip())
-            needs_review = True
-            status = LeadStatus.NEEDS_REVIEW
-            assignment_reason = f"Неизвестный alias «{operator_alias}»"
-        elif alias.operator is None:
-            needs_review = True
-            status = LeadStatus.NEEDS_REVIEW
-            assignment_reason = f"Alias «{operator_alias}» не привязан к оператору"
         else:
-            assigned_op = alias.operator
+            alias_operator = alias.operator
 
-    if not valid:
+    mode = sheet_source.distribution_mode or DistributionMode.ALIAS_ONLY
+    default_op = sheet_source.default_operator
+    if default_op is not None and default_op.status != OperatorStatus.ACTIVE:
+        default_op = None
+
+    assigned_op: Operator | None = None
+    assignment_reason = ""
+    use_round_robin = False
+
+    if mode == DistributionMode.DEFAULT_ONLY:
+        if default_op is not None:
+            assigned_op = default_op
+            assignment_reason = "default_only"
+        else:
+            needs_review = True
+            status = LeadStatus.NEEDS_REVIEW
+            assignment_reason = "default_only, но default_operator не задан/неактивен"
+    elif alias_operator is not None:
+        assigned_op = alias_operator
+        assignment_reason = f"alias «{operator_alias}»"
+    elif mode == DistributionMode.ALIAS_OR_DEFAULT and default_op is not None:
+        assigned_op = default_op
+        assignment_reason = "default_operator (fallback от alias_or_default)"
+    elif mode == DistributionMode.ALIAS_OR_ROUND_ROBIN:
+        use_round_robin = True
+    elif operator_alias:
+        # alias_only, либо alias_or_default без default: alias был задан,
+        # но не разрезолвился → на ревью.
         needs_review = True
         status = LeadStatus.NEEDS_REVIEW
+        if alias is None:
+            assignment_reason = f"Неизвестный alias «{operator_alias}»"
+        elif alias.operator is None:
+            assignment_reason = f"Alias «{operator_alias}» не привязан к оператору"
+    else:
+        # alias пуст, mode=alias_only → историческое поведение: round-robin.
+        use_round_robin = True
+
+    if not valid:
+        # Кривой телефон всегда перебивает автоматическое распределение.
+        needs_review = True
+        status = LeadStatus.NEEDS_REVIEW
+        assigned_op = None
+        use_round_robin = False
 
     if default_status == LeadStatus.ARCHIVED:
         # Archived rows (sheet 3 Bitrix export): skip auto-assignment and the
@@ -207,6 +240,7 @@ def lead_create_from_sheet_row(
         needs_review = False
         status = LeadStatus.ARCHIVED
         assigned_op = None
+        use_round_robin = False
 
     lead = Lead.objects.create(
         full_name=full_name[:128],
@@ -241,20 +275,16 @@ def lead_create_from_sheet_row(
         comment="Импорт из Google Sheets",
     )
     if assigned_op is not None:
-        # We got a real operator from the alias, but a broken phone still
-        # trumps assignment — the team lead has to review before this lead
-        # goes into the call rotation.
         LeadAssignment.objects.create(
             lead=lead,
             operator=assigned_op,
             source=LeadAssignmentSource.SHEET_MANUAL,
-            reason=f"alias «{operator_alias}»",
+            reason=assignment_reason[:256],
         )
         if not needs_review:
             lead.status = LeadStatus.ASSIGNED
             lead.save(update_fields=["status", "updated_at"])
-    elif not needs_review and status == LeadStatus.NEW and valid:
-        # No alias in the row, still valid → hand to auto-assignment.
+    elif use_round_robin and not needs_review and status == LeadStatus.NEW and valid:
         try:
             lead_auto_assign(lead=lead, user=None)
         except ApplicationError:
@@ -506,6 +536,8 @@ def sheet_source_upsert(
     default_status: str = LeadStatus.NEW,
     worksheet_name: str = "",
     active: bool = True,
+    default_operator: Operator | None = None,
+    distribution_mode: str = DistributionMode.ALIAS_ONLY,
     user=None,
 ) -> SheetSource:
     obj, created = SheetSource.objects.update_or_create(
@@ -517,6 +549,8 @@ def sheet_source_upsert(
             "column_map": column_map,
             "default_status": default_status,
             "active": active,
+            "default_operator": default_operator,
+            "distribution_mode": distribution_mode,
         },
     )
     audit_log_create(
@@ -529,6 +563,8 @@ def sheet_source_upsert(
             "spreadsheet_id": obj.spreadsheet_id,
             "gid": obj.gid,
             "active": obj.active,
+            "default_operator_id": obj.default_operator_id,
+            "distribution_mode": obj.distribution_mode,
         },
     )
     return obj

@@ -4,6 +4,7 @@ import { Plus, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../store/auth";
+import { normaliseRole } from "../components/RoleGate";
 import { formatUZS } from "../lib/format";
 import NumericInput from "../components/NumericInput";
 import { StickerPicker } from "../components/StickerPicker";
@@ -76,7 +77,7 @@ export default function Operators() {
   const qc = useQueryClient();
   const nav = useNavigate();
   const role = useAuth((s) => s.role);
-  const isManager = role === "manager";
+  const isManager = normaliseRole(role) === "manager";
 
   usePageHeader({ title: (useT())("operators.title"), subtitle: "Управление командой" });
 

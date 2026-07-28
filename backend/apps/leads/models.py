@@ -40,6 +40,17 @@ class LeadSource(models.TextChoices):
     BOT = "bot", "Telegram-бот"
 
 
+class DistributionMode(models.TextChoices):
+    """
+    How leads from a given sheet are routed to operators when the
+    per-row alias doesn't resolve to a bound operator.
+    """
+    ALIAS_ONLY = "alias_only", "Только по alias (иначе needs_review)"
+    ALIAS_OR_DEFAULT = "alias_or_default", "По alias, иначе default оператор"
+    DEFAULT_ONLY = "default_only", "Всегда default (игнорировать alias)"
+    ALIAS_OR_ROUND_ROBIN = "alias_or_rr", "По alias, иначе round-robin"
+
+
 class SheetSource(TimestampedModel):
     """
     Configuration for one Google Sheets worksheet — read once per sync run,
@@ -83,6 +94,26 @@ class SheetSource(TimestampedModel):
             "1-based row index of the highest row we've imported so far. "
             "sync_sheets_leads only fetches rows above this and processes new "
             "ones. Set to 0 to force a full re-scan."
+        ),
+    )
+    default_operator = models.ForeignKey(
+        "operators.Operator",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="default_for_sheets",
+        help_text=(
+            "Used by `alias_or_default` / `default_only` distribution modes "
+            "when the row alias didn't resolve to a bound operator."
+        ),
+    )
+    distribution_mode = models.CharField(
+        max_length=32,
+        choices=DistributionMode.choices,
+        default=DistributionMode.ALIAS_ONLY,
+        help_text=(
+            "Fallback routing rule when the row alias is missing or unknown. "
+            "Preserves the historical 'alias_only' behaviour by default."
         ),
     )
 

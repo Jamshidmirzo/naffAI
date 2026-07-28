@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
 import { useAuth } from "../../store/auth";
+import { normaliseRole } from "../RoleGate";
 import { Sidebar, type SidebarGroup } from "./Sidebar";
 import { Header } from "./Header";
 import MorningGreeting from "../MorningGreeting";
@@ -82,7 +83,7 @@ function useOperatorGroups(t: (k: string) => string): SidebarGroup[] {
 
 export default function AppShell() {
   const t = useT();
-  const role = useAuth((s) => (s.role as "manager" | "operator" | null) || "manager");
+  const role = normaliseRole(useAuth((s) => s.role)) ?? "manager";
   const managerGroups = useManagerGroups(t);
   const operatorGroups = useOperatorGroups(t);
   const groups = role === "operator" ? operatorGroups : managerGroups;

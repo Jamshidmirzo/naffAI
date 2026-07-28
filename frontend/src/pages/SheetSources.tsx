@@ -17,6 +17,12 @@ import {
 } from "../components/ui";
 import { usePageHeader } from "../store/page";
 
+type DistributionMode =
+  | "alias_only"
+  | "alias_or_default"
+  | "default_only"
+  | "alias_or_rr";
+
 type SheetSource = {
   id: number;
   name: string;
@@ -28,6 +34,16 @@ type SheetSource = {
   active: boolean;
   last_synced_at: string | null;
   last_synced_row: number;
+  default_operator: number | null;
+  default_operator_name: string | null;
+  distribution_mode: DistributionMode;
+};
+
+const DISTRIBUTION_LABEL: Record<DistributionMode, string> = {
+  alias_only: "Только alias",
+  alias_or_default: "Alias → дефолт",
+  default_only: "Только дефолт",
+  alias_or_rr: "Alias → round-robin",
 };
 
 type Alias = {
@@ -75,10 +91,19 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
         .then((r) => (Array.isArray(r.data) ? r.data : r.data.results || [])),
   });
 
+  const ops = useQuery({
+    queryKey: ["operators-active"],
+    queryFn: () =>
+      api
+        .get<Operator[] | { results?: Operator[] }>("/operators/?include_inactive=0")
+        .then((r) => (Array.isArray(r.data) ? r.data : r.data.results || [])),
+  });
+
   const [edit, setEdit] = useState<SheetSource | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
   const items = q.data || [];
+  const gridCols = "1.1fr 1.1fr .5fr .8fr 1fr .8fr .6fr";
 
   return (
     <>
@@ -91,12 +116,13 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       <section className="nf-card overflow-hidden">
         <div
           className="grid gap-2 px-6 pt-5 pb-3 nf-col"
-          style={{ gridTemplateColumns: "1.1fr 1.3fr .5fr .8fr .9fr .6fr" }}
+          style={{ gridTemplateColumns: gridCols }}
         >
           <div>Название</div>
           <div>Spreadsheet</div>
           <div>gid</div>
-          <div>Дефолт</div>
+          <div>Default op</div>
+          <div>Mode</div>
           <div>Последняя строка</div>
           <div className="text-right">Действия</div>
         </div>
@@ -111,7 +137,7 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 key={src.id}
                 className="nf-row animate-nfFadeUp"
                 style={{
-                  gridTemplateColumns: "1.1fr 1.3fr .5fr .8fr .9fr .6fr",
+                  gridTemplateColumns: gridCols,
                   animationDelay: `${0.02 + i * 0.035}s`,
                   cursor: "default",
                 }}
@@ -128,7 +154,17 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 <div className="font-mono text-[12px] text-muted tabular-nums">
                   {src.gid}
                 </div>
-                <div className="text-muted">{src.default_status}</div>
+                <div className="text-[13px] truncate">
+                  {src.default_operator_name || (
+                    <span className="text-muted">—</span>
+                  )}
+                </div>
+                <div className="text-[12px]">
+                  <StatusBadge tone="neutral">
+                    {DISTRIBUTION_LABEL[src.distribution_mode] ||
+                      src.distribution_mode}
+                  </StatusBadge>
+                </div>
                 <div>
                   <div className="tabular-nums">#{src.last_synced_row}</div>
                   {src.last_synced_at && (
@@ -155,6 +191,7 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
       {(edit || showCreate) && (
         <SheetSourceForm
           value={edit}
+          operators={ops.data || []}
           onClose={() => {
             setEdit(null);
             setShowCreate(false);
@@ -173,10 +210,12 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 
 function SheetSourceForm({
   value,
+  operators,
   onClose,
   onDone,
 }: {
   value: SheetSource | null;
+  operators: Operator[];
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -187,10 +226,23 @@ function SheetSourceForm({
   const [ws, setWs] = useState(value?.worksheet_name || "");
   const [defaultStatus, setDefaultStatus] = useState(value?.default_status || "new");
   const [active, setActive] = useState(value?.active ?? true);
+  const [defaultOperator, setDefaultOperator] = useState<string>(
+    value?.default_operator ? String(value.default_operator) : "",
+  );
+  const [distributionMode, setDistributionMode] = useState<DistributionMode>(
+    value?.distribution_mode || "alias_only",
+  );
   const [mapJson, setMapJson] = useState(
     JSON.stringify(value?.column_map || {}, null, 2),
   );
   const [error, setError] = useState("");
+
+  const modes: DistributionMode[] = [
+    "alias_only",
+    "alias_or_default",
+    "default_only",
+    "alias_or_rr",
+  ];
 
   const mut = useMutation({
     mutationFn: async () => {
@@ -208,6 +260,8 @@ function SheetSourceForm({
         column_map: columnMap,
         default_status: defaultStatus,
         active,
+        default_operator: defaultOperator ? Number(defaultOperator) : null,
+        distribution_mode: distributionMode,
       };
       if (isEdit) await api.patch(`/sheet-sources/${value!.id}/`, body);
       else await api.post("/sheet-sources/", body);
@@ -285,6 +339,45 @@ function SheetSourceForm({
                 placeholder='{"full_name": "full_name", "phone": "phone_number"}'
               />
             </Field>
+          </div>
+          <Field label="Default оператор">
+            <select
+              className="nf-input"
+              value={defaultOperator}
+              onChange={(e) => setDefaultOperator(e.target.value)}
+            >
+              <option value="">— нет —</option>
+              {operators.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.full_name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Distribution mode">
+            <select
+              className="nf-input"
+              value={distributionMode}
+              onChange={(e) =>
+                setDistributionMode(e.target.value as DistributionMode)
+              }
+            >
+              {modes.map((m) => (
+                <option key={m} value={m}>
+                  {DISTRIBUTION_LABEL[m]}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="col-span-2 text-[12px] text-muted">
+            {distributionMode === "alias_only" &&
+              "Лид назначается только если alias найден и привязан. Иначе — needs_review."}
+            {distributionMode === "alias_or_default" &&
+              "Если alias не разрезолвился — назначаем default оператору."}
+            {distributionMode === "default_only" &&
+              "Alias игнорируется, все лиды падают на default оператора."}
+            {distributionMode === "alias_or_rr" &&
+              "Если alias не разрезолвился — round-robin по активным операторам."}
           </div>
           <div className="col-span-2 flex items-center gap-2 text-[13.5px]">
             <input
