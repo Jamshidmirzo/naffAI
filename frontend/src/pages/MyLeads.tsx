@@ -649,36 +649,29 @@ function LeadCard({
             </StatusBadge>
           )}
         </div>
+        <div
+          className="mt-1 tabular-nums font-mono truncate"
+          style={{ fontSize: 14, fontWeight: 500 }}
+        >
+          {lead.phone || t("leads.no_phone")}
+        </div>
         {lead.product_hint && (
           <div
-            className="mt-1 inline-flex items-center gap-1.5 rounded-full text-[12px]"
-            style={{
-              padding: "3px 10px",
-              background: "rgba(242,86,11,.10)",
-              color: "var(--accent)",
-              fontWeight: 600,
-              maxWidth: "100%",
-            }}
+            className="text-[12px] text-muted truncate mt-0.5"
             title={lead.product_hint}
           >
-            <span aria-hidden>📱</span>
-            <span className="truncate">{lead.product_hint}</span>
+            {lead.product_hint}
           </div>
         )}
-        <div className="text-[12.5px] text-muted mt-1 flex flex-wrap gap-x-3 gap-y-1">
-          <span>{lead.phone || t("leads.no_phone")}</span>
-          {source && <span>· {source}</span>}
-          {lead.has_card && <span>· {t("my.card_label")}: {lead.has_card}</span>}
-          {calls > 0 && <span>· {t("my.calls_short", { n: calls })}</span>}
-          {(lead as unknown as { callback_at?: string }).callback_at && (
-            <span
-              style={overdue ? { color: "var(--accent)", fontWeight: 600 } : undefined}
-            >
-              · {overdue ? `${t("my.overdue_prefix")} ` : ""}
-              {fmtCallback((lead as unknown as { callback_at?: string }).callback_at)}
-            </span>
-          )}
-        </div>
+        {(lead as unknown as { callback_at?: string }).callback_at && (
+          <div
+            className="text-[12px] mt-0.5"
+            style={overdue ? { color: "var(--accent)", fontWeight: 600 } : { color: "var(--muted)" }}
+          >
+            {overdue ? `${t("my.overdue_prefix")} ` : ""}
+            {fmtCallback((lead as unknown as { callback_at?: string }).callback_at)}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2 justify-end items-start">
