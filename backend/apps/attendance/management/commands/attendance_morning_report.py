@@ -44,14 +44,24 @@ class Command(BaseCommand):
             f"❌ Не пришли: {absent_count} ({absent_names})\n"
         )
 
+        # Opt-in only: senior must (1) have linked their Telegram via
+        # /link CODE and (2) still be subscribed via /subscribe (this row
+        # gets flipped on automatically by /link, but the user can toggle
+        # it off with /unsubscribe without losing the binding).
+        from apps.tg_bot.models import BotSubscription
+
+        active_chat_ids = set(
+            BotSubscription.objects.filter(is_active=True).values_list("chat_id", flat=True)
+        )
         seniors = Profile.objects.filter(
             role__in=[Role.TEAM_LEAD, Role.MANAGER],
             telegram_user_id__isnull=False,
+            telegram_user_id__in=active_chat_ids,
         )
         chat_ids = [s.telegram_user_id for s in seniors]
 
         if not chat_ids:
-            self.stdout.write("No senior users with telegram_user_id configured.")
+            self.stdout.write("No subscribed senior users with linked Telegram.")
             return
 
         asyncio.run(self.send_report(chat_ids, text))

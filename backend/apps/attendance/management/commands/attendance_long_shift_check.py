@@ -62,9 +62,19 @@ class Command(BaseCommand):
                 ).first()
                 op_tg_id = op_profile.telegram_user_id if op_profile else None
 
+                # Opt-in: only seniors who /link'ed AND stay subscribed
+                # (BotSubscription.is_active) receive long-shift pings.
+                from apps.tg_bot.models import BotSubscription
+
+                _active_ids = set(
+                    BotSubscription.objects.filter(is_active=True).values_list(
+                        "chat_id", flat=True
+                    )
+                )
                 tl_profiles = Profile.objects.filter(
                     role__in=[Role.TEAM_LEAD, Role.MANAGER],
                     telegram_user_id__isnull=False,
+                    telegram_user_id__in=_active_ids,
                 )
                 tl_tg_ids = [p.telegram_user_id for p in tl_profiles]
 

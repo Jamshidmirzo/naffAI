@@ -406,6 +406,7 @@ async def main() -> None:
         def _bind() -> tuple[str, str | None]:
             from django.utils import timezone
             from apps.users.models import Profile
+            from apps.tg_bot.models import BotSubscription
 
             now = timezone.now()
             profile = (
@@ -432,14 +433,24 @@ async def main() -> None:
                     "tg_link_code_expires_at",
                 ]
             )
+            # Opt-in the freshly-linked chat to the daily report / long-shift
+            # broadcasts. The user can toggle this off later with /unsubscribe.
+            sub, _ = BotSubscription.objects.get_or_create(chat_id=msg.chat.id)
+            if not sub.is_active:
+                sub.is_active = True
+                sub.save(update_fields=["is_active", "updated_at"])
             return ("ok", profile.user.username)
 
         outcome, username = await asyncio.to_thread(_bind)
         if outcome == "ok":
             await msg.answer(
                 f"✅ Готово. Ваш Telegram привязан к аккаунту <b>{username}</b>.\n\n"
-                "Теперь сюда будут приходить уведомления о новых продажах, "
-                "просроченных колбэках и утренний отчёт по посещаемости.",
+                "Сюда будут приходить:\n"
+                "• 💰 уведомления о новых продажах;\n"
+                "• ⏰ напоминания о просроченных колбэках;\n"
+                "• 📊 утренний отчёт по посещаемости в 09:00.\n\n"
+                "Если утренний отчёт не нужен — отправьте /unsubscribe "
+                "(привязка сохранится, продажи и колбэки продолжат приходить).",
                 parse_mode="HTML",
             )
         else:
