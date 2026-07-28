@@ -602,7 +602,7 @@ function LeadCard({
   return (
     <div
       key={`card-${lead.id}`}
-      className="animate-nfFadeUp flex items-start gap-4 relative"
+      className="animate-nfFadeUp relative flex flex-wrap items-start gap-4"
       style={{
         borderRadius: 18,
         padding: "14px 18px",
@@ -635,7 +635,9 @@ function LeadCard({
         {initials(lead.full_name || lead.phone || "?")}
       </div>
 
-      <div className="flex-1 min-w-0">
+      {/* Text column — grows, but always keeps at least ~200px so name/phone
+          never collapse to 0 width when the action buttons pack the row. */}
+      <div className="flex-1 min-w-[200px]">
         <div className="flex items-center gap-2 flex-wrap">
           <div className="text-[14.5px] font-medium truncate">
             {lead.full_name || t("my.no_name")}
@@ -674,7 +676,9 @@ function LeadCard({
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2 justify-end items-start">
+      {/* Action row — full-width on the second visual line so buttons
+          never eat into the text column. */}
+      <div className="flex flex-wrap gap-2 items-start w-full md:w-auto md:ml-auto md:justify-end">
         {called ? (
           <div className="text-[12.5px] text-muted flex items-center gap-1.5 px-3 py-2">
             <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
