@@ -504,6 +504,15 @@ const STRINGS: Lookup = {
     "profile.tg_unknown_error": "Неизвестная ошибка",
     "profile.hide_password": "Скрыть пароль",
     "profile.show_password": "Показать пароль",
+    "profile.tg_notif_title": "Уведомления в Telegram",
+    "profile.tg_notif_hint": "Привяжите Telegram, чтобы получать пуши: новая продажа (менеджерам), просроченный колбэк, утренний отчёт.",
+    "profile.tg_notif_get_code": "Получить код для привязки",
+    "profile.tg_notif_active": "Привязано",
+    "profile.tg_notif_unlink": "Отвязать",
+    "profile.tg_notif_unlinked": "Telegram отвязан",
+    "profile.tg_notif_step1": "Откройте бота",
+    "profile.tg_notif_step2": "Отправьте команду:",
+    "profile.tg_notif_expires": "Код действует 10 минут. Не делитесь им ни с кем.",
 
     // ------ sale create ------
     "sale_create.title_new": "Новая продажа",
@@ -1701,6 +1710,15 @@ const STRINGS: Lookup = {
     "profile.tg_unknown_error": "Noma'lum xato",
     "profile.hide_password": "Parolni yashirish",
     "profile.show_password": "Parolni ko'rsatish",
+    "profile.tg_notif_title": "Telegram bildirishnomalari",
+    "profile.tg_notif_hint": "Telegramni bog'lang: yangi sotuv (menejerlarga), muddati o'tgan callback, ertalabki hisobot bildirishnomalari.",
+    "profile.tg_notif_get_code": "Bog'lash kodini olish",
+    "profile.tg_notif_active": "Bog'langan",
+    "profile.tg_notif_unlink": "Uzish",
+    "profile.tg_notif_unlinked": "Telegram uzildi",
+    "profile.tg_notif_step1": "Botni oching:",
+    "profile.tg_notif_step2": "Buyruq yuboring:",
+    "profile.tg_notif_expires": "Kod 10 daqiqa amal qiladi. Hech kim bilan bo'lishmang.",
 
     // ------ sale create ------
     "sale_create.title_new": "Yangi sotuv",

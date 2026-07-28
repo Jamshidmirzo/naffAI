@@ -11,6 +11,7 @@ from .apis import (
     OperatorAccountPasswordViewApi,
     OperatorAccountResetPasswordApi,
     SelfChangePasswordApi,
+    TelegramLinkCodeApi,
 )
 
 # Auth surface — mounted at /api/auth/ from config.api_urls.
@@ -24,6 +25,7 @@ urlpatterns = [
 # Self-service password change — mounted at /api/me/.
 me_urlpatterns = [
     path("change-password/", SelfChangePasswordApi.as_view()),
+    path("telegram/link/", TelegramLinkCodeApi.as_view()),
 ]
 
 

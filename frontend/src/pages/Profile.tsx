@@ -260,6 +260,12 @@ export default function Profile() {
         />
       </section>
 
+      {/* --- Telegram DM notifications (bot) --- */}
+      <TelegramBotSection
+        me={me.data}
+        onLinked={() => me.refetch()}
+      />
+
       {/* --- Telegram --- */}
       {me.data?.operator_id && (
         <section
@@ -400,6 +406,136 @@ function SettingRow({
       </div>
       <div className="shrink-0">{control}</div>
     </div>
+  );
+}
+
+function TelegramBotSection({
+  me,
+  onLinked,
+}: {
+  me: Me | undefined;
+  onLinked: () => void;
+}) {
+  const t = useT();
+  const qc = useQueryClient();
+  const linked = !!me?.telegram_user_id;
+  const [code, setCode] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const genMut = useMutation({
+    mutationFn: () =>
+      api.post<{ code: string; expires_at: string; bot_username: string }>(
+        "/me/telegram/link/",
+      ).then((r) => r.data),
+    onSuccess: (data) => {
+      setCode(data.code);
+    },
+  });
+  const unlinkMut = useMutation({
+    mutationFn: () => api.delete("/me/telegram/link/"),
+    onSuccess: () => {
+      setCode(null);
+      qc.invalidateQueries({ queryKey: ["me"] });
+      onLinked();
+      toast.success(t("profile.tg_notif_unlinked"));
+    },
+  });
+
+  const copyCode = async () => {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <section
+      className="nf-card animate-nfFadeUp"
+      style={{ padding: "22px 26px", animationDelay: "0.08s" }}
+    >
+      <Eyebrow>Telegram-bot</Eyebrow>
+      <div className="text-[15px] font-semibold mt-2">
+        {t("profile.tg_notif_title")}
+      </div>
+      <p className="text-[13px] text-muted mt-1.5 max-w-md">
+        {t("profile.tg_notif_hint")}
+      </p>
+
+      {linked ? (
+        <div className="mt-4 flex items-center gap-3 flex-wrap">
+          <StatusBadge tone="hot">✓ {t("profile.tg_notif_active")}</StatusBadge>
+          <span className="text-[12.5px] text-muted font-mono">
+            chat_id: {me?.telegram_user_id}
+          </span>
+          <Button
+            variant="ghost"
+            onClick={() => unlinkMut.mutate()}
+            disabled={unlinkMut.isPending}
+          >
+            {t("profile.tg_notif_unlink")}
+          </Button>
+        </div>
+      ) : code ? (
+        <div className="mt-4 flex flex-col gap-3">
+          <div
+            className="rounded-2xl px-5 py-4 flex items-center gap-3 flex-wrap"
+            style={{
+              background: "var(--faint)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            <div
+              className="font-mono tabular-nums tracking-[.3em] font-bold"
+              style={{ fontSize: 26 }}
+            >
+              {code}
+            </div>
+            <button
+              type="button"
+              className="nf-btn nf-btn--ghost text-[12px]"
+              onClick={copyCode}
+            >
+              {copied ? t("common.copied") : t("common.copy")}
+            </button>
+          </div>
+          <div
+            className="text-[13px] leading-relaxed"
+            style={{ color: "var(--text)" }}
+          >
+            {t("profile.tg_notif_step1")}{" "}
+            <a
+              href="https://t.me/naffai_bot"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "var(--accent)", fontWeight: 600 }}
+            >
+              @naffai_bot
+            </a>
+            <br />
+            {t("profile.tg_notif_step2")}{" "}
+            <code
+              className="font-mono"
+              style={{ background: "var(--faint)", padding: "2px 6px", borderRadius: 6 }}
+            >
+              /link {code}
+            </code>
+          </div>
+          <div className="text-[11.5px] text-muted">
+            {t("profile.tg_notif_expires")}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4">
+          <Button onClick={() => genMut.mutate()} disabled={genMut.isPending}>
+            {genMut.isPending ? t("common.loading") : t("profile.tg_notif_get_code")}
+          </Button>
+        </div>
+      )}
+    </section>
   );
 }
 

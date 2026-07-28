@@ -46,6 +46,12 @@ class Profile(models.Model):
             "confirms their operator phone. Used to DM callback reminders."
         ),
     )
+    # One-time 6-digit code the user pastes to @naffai_bot with `/link CODE`
+    # to bind their Telegram chat to this profile. Cleared on successful
+    # bind. Read/written by the /me/telegram/link-code/ endpoint and the
+    # bot's cmd_link handler.
+    tg_link_code = models.CharField(max_length=8, blank=True, default="", db_index=True)
+    tg_link_code_expires_at = models.DateTimeField(null=True, blank=True)
     deleted_at = models.DateTimeField(
         null=True,
         blank=True,

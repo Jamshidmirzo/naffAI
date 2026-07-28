@@ -389,6 +389,107 @@ async def main() -> None:
         text = await asyncio.to_thread(build_daily_report, None, lang)
         await msg.answer(text, parse_mode="Markdown")
 
+    @dp.message(Command("link"))
+    async def cmd_link(msg: Message) -> None:
+        """Bind the sender's Telegram user id to the profile that generated
+        the one-time code via `POST /api/me/telegram/link/`."""
+        parts = (msg.text or "").split()
+        code = parts[1].strip() if len(parts) >= 2 else ""
+        if not code or not code.isdigit() or len(code) != 6:
+            await msg.answer(
+                "Пришлите команду в формате `/link 123456` — 6-значный код "
+                "выдаёт страница «Профиль» в веб-интерфейсе.",
+                parse_mode="Markdown",
+            )
+            return
+
+        def _bind() -> tuple[str, str | None]:
+            from django.utils import timezone
+            from apps.users.models import Profile
+
+            now = timezone.now()
+            profile = (
+                Profile.objects.filter(tg_link_code=code)
+                .filter(tg_link_code_expires_at__gt=now)
+                .select_related("user")
+                .first()
+            )
+            if profile is None:
+                return ("bad", None)
+
+            # If another profile is already linked to this chat, unlink it first.
+            Profile.objects.filter(telegram_user_id=msg.chat.id).exclude(
+                pk=profile.pk
+            ).update(telegram_user_id=None)
+
+            profile.telegram_user_id = msg.chat.id
+            profile.tg_link_code = ""
+            profile.tg_link_code_expires_at = None
+            profile.save(
+                update_fields=[
+                    "telegram_user_id",
+                    "tg_link_code",
+                    "tg_link_code_expires_at",
+                ]
+            )
+            return ("ok", profile.user.username)
+
+        outcome, username = await asyncio.to_thread(_bind)
+        if outcome == "ok":
+            await msg.answer(
+                f"✅ Готово. Ваш Telegram привязан к аккаунту <b>{username}</b>.\n\n"
+                "Теперь сюда будут приходить уведомления о новых продажах, "
+                "просроченных колбэках и утренний отчёт по посещаемости.",
+                parse_mode="HTML",
+            )
+        else:
+            await msg.answer(
+                "❌ Код неверный или уже истёк. Сгенерируйте новый на "
+                "странице «Профиль» → «Telegram-уведомления»."
+            )
+
+    @dp.message(Command("whoami"))
+    async def cmd_whoami(msg: Message) -> None:
+        def _lookup():
+            from apps.users.models import Profile
+
+            p = (
+                Profile.objects.filter(telegram_user_id=msg.chat.id)
+                .select_related("user")
+                .first()
+            )
+            return (p.user.username, p.role) if p else (None, None)
+
+        username, role = await asyncio.to_thread(_lookup)
+        if username:
+            await msg.answer(
+                f"👤 Вы вошли как <b>{username}</b> ({role}).\n"
+                "Отвязать — /unlink",
+                parse_mode="HTML",
+            )
+        else:
+            await msg.answer(
+                "Ваш Telegram пока не связан ни с одним аккаунтом.\n"
+                "Откройте /profile в веб-интерфейсе, нажмите «Telegram-уведомления → "
+                "Получить код», затем пришлите сюда `/link 123456`.",
+                parse_mode="Markdown",
+            )
+
+    @dp.message(Command("unlink"))
+    async def cmd_unlink(msg: Message) -> None:
+        def _unlink() -> int:
+            from apps.users.models import Profile
+
+            return Profile.objects.filter(telegram_user_id=msg.chat.id).update(
+                telegram_user_id=None
+            )
+
+        n = await asyncio.to_thread(_unlink)
+        if n:
+            await msg.answer("✓ Telegram отвязан. Уведомления больше не будут приходить.")
+        else:
+            await msg.answer("Здесь нечего отвязывать — этот Telegram не был привязан.")
+
     @dp.message(NewSale.model)
     async def step_model(msg: Message, state: FSMContext) -> None:
         lang = await lang_for(msg)

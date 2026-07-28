@@ -123,6 +123,60 @@ class SelfChangePasswordApi(APIView):
 
 
 # ---------------------------------------------------------------------------
+# Telegram-linking — the user asks the API for a one-time 6-digit code,
+# then pastes `/link <code>` into @naffai_bot; the bot binds their
+# telegram_user_id in place.
+# ---------------------------------------------------------------------------
+
+
+class TelegramLinkCodeApi(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        import secrets as _secrets
+
+        from django.utils import timezone
+        import datetime as _dt
+
+        from apps.users.models import Profile
+
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        code = f"{_secrets.randbelow(1_000_000):06d}"
+        profile.tg_link_code = code
+        profile.tg_link_code_expires_at = timezone.now() + _dt.timedelta(minutes=10)
+        profile.save(update_fields=["tg_link_code", "tg_link_code_expires_at"])
+        return Response(
+            {
+                "code": code,
+                "expires_at": profile.tg_link_code_expires_at.isoformat(),
+                "bot_username": "naffai_bot",
+                "instruction": (
+                    f"Откройте @naffai_bot и отправьте команду `/link {code}` — "
+                    "в течение 10 минут."
+                ),
+            }
+        )
+
+    def delete(self, request):
+        from apps.users.models import Profile
+
+        profile = getattr(request.user, "profile", None)
+        if profile is None:
+            return Response(status=204)
+        profile.telegram_user_id = None
+        profile.tg_link_code = ""
+        profile.tg_link_code_expires_at = None
+        profile.save(
+            update_fields=[
+                "telegram_user_id",
+                "tg_link_code",
+                "tg_link_code_expires_at",
+            ]
+        )
+        return Response(status=204)
+
+
+# ---------------------------------------------------------------------------
 # Manager admin surface — operator account CRUD
 # ---------------------------------------------------------------------------
 
