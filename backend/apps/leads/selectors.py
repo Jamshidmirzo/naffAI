@@ -28,6 +28,9 @@ ACTIVE_LEAD_STATUSES = (
     LeadStatus.CALLBACK_SCHEDULED,
     LeadStatus.CONTACTED_TELEGRAM,
     LeadStatus.NO_ANSWER,
+    LeadStatus.NO_ANSWER_2,
+    LeadStatus.PHONE_ON,
+    LeadStatus.HAS_DEBT,
 )
 
 

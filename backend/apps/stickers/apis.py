@@ -130,6 +130,12 @@ class OperatorStickerApi(APIView):
 
     permission_classes = [IsTeamLeadOrManager]
 
+    def get(self, request, pk: int):
+        op = operator_get(pk)
+        if op is None:
+            return Response({"detail": "Not found"}, status=404)
+        return Response({"sticker": _serialize_sticker(sticker_for(op))})
+
     def put(self, request, pk: int):
         op = operator_get(pk)
         if op is None:

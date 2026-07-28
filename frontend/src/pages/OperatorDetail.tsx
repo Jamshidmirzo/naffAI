@@ -17,6 +17,7 @@ import MonthPicker from "../components/MonthPicker";
 import NumericInput from "../components/NumericInput";
 import ProgressBar from "../components/ProgressBar";
 import TgDialogsPanel from "../components/TgDialogsPanel";
+import { StickerPicker } from "../components/StickerPicker";
 import {
   Bar,
   BarChart,
@@ -136,6 +137,7 @@ export default function OperatorDetail() {
   const [editPhones, setEditPhones] = useState(false);
   const [phoneWork, setPhoneWork] = useState("");
   const [phonePersonal, setPhonePersonal] = useState("");
+  const [stickerOpen, setStickerOpen] = useState(false);
 
   const isSpecific = choice.kind !== "current";
   const params = buildPeriodParams(period, choice);
@@ -159,6 +161,12 @@ export default function OperatorDetail() {
     queryFn: () =>
       api.get<OperatorDetail>(`/operators/${id}/`).then((r) => r.data),
     enabled: !!id,
+  });
+  const stickerQ = useQuery<{ sticker: { emoji: string; is_rare: boolean } | null }>({
+    queryKey: ["operator-sticker", id],
+    queryFn: () =>
+      api.get(`/operators/${id}/sticker/`).then((r) => r.data),
+    enabled: !!id && isManager,
   });
   const account: AccountState = detail.data?.account ?? {
     has_account: false,
@@ -501,7 +509,11 @@ export default function OperatorDetail() {
           <div className="flex gap-2 flex-wrap">
             {isManager && (
               <>
-                <Button>{t("op_detail.assign_sticker")}</Button>
+                <Button onClick={() => setStickerOpen(true)}>
+                  {stickerQ.data?.sticker?.emoji
+                    ? `${stickerQ.data.sticker.emoji}  ${t("common.edit")}`
+                    : t("op_detail.assign_sticker")}
+                </Button>
                 <Button variant="secondary" onClick={() => setQrOpen(true)}>
                   <QrCode className="w-3.5 h-3.5" /> {t("op_detail.login_qr")}
                 </Button>
@@ -1534,6 +1546,17 @@ export default function OperatorDetail() {
           </div>
         </div>
       </Modal>
+
+      {stickerOpen && (
+        <StickerPicker
+          operatorId={Number(id)}
+          currentEmoji={stickerQ.data?.sticker?.emoji ?? null}
+          currentIsRare={stickerQ.data?.sticker?.is_rare ?? false}
+          adminMode
+          onChanged={() => stickerQ.refetch()}
+          onClose={() => setStickerOpen(false)}
+        />
+      )}
     </div>
   );
 }
