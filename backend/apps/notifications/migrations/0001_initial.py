@@ -15,7 +15,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="Notification",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 (
@@ -56,10 +64,20 @@ class Migration(migrations.Migration):
             ],
             options={
                 "ordering": ["-created_at"],
-                "indexes": [
-                    models.Index(fields=["recipient", "-created_at"], name="notif_recip_created_idx"),
-                    models.Index(fields=["recipient", "read_at"], name="notif_recip_read_idx"),
-                ],
             },
+        ),
+        migrations.AddIndex(
+            model_name="notification",
+            index=models.Index(
+                fields=["recipient", "-created_at"],
+                name="notificatio_recipie_a972ce_idx",
+            ),
+        ),
+        migrations.AddIndex(
+            model_name="notification",
+            index=models.Index(
+                fields=["recipient", "read_at"],
+                name="notificatio_recipie_564b1f_idx",
+            ),
         ),
     ]
