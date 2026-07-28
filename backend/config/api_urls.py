@@ -6,6 +6,7 @@ from apps.calls.urls import (
 )
 from apps.leads.urls import (
     alias_urlpatterns,
+    lead_status_urlpatterns,
     sheet_source_urlpatterns,
     telegram_urlpatterns,
 )
@@ -54,6 +55,7 @@ urlpatterns = [
     path("callbacks/", include((callback_urlpatterns, "callbacks"))),
     path("sheet-sources/", include((sheet_source_urlpatterns, "sheet_sources"))),
     path("operator-sheet-aliases/", include((alias_urlpatterns, "operator_sheet_aliases"))),
+    path("lead-statuses/", include((lead_status_urlpatterns, "lead_statuses"))),
     path("telegram/", include((telegram_urlpatterns, "telegram"))),
     # Telegram user-client (Telethon MTProto — operator session management)
     path("tg-userclient/", include("apps.tg_userclient.urls")),

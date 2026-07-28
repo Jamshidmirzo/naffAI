@@ -8,12 +8,10 @@ import {
   CheckCircle2,
   PauseCircle,
   PlayCircle,
-  PhoneMissed,
   XCircle,
   Plus,
   ChevronDown,
   PhoneCall,
-  Wallet,
 } from "lucide-react";
 import { Paginator } from "../components/Paginator";
 import { apiErrorMessage } from "../lib/api-types";
@@ -21,11 +19,16 @@ import { api } from "../lib/api";
 import {
   type CallOutcome,
   type CallbackReminder,
-  LEAD_STATUS_LABEL,
   type Lead,
   type LeadStatus,
   TG_LINK_FALLBACK,
 } from "../lib/leads";
+import {
+  useLeadStatuses,
+  useLeadStatusInfo,
+  type LeadStatusRow,
+  type LeadStatusTone,
+} from "../hooks/useLeadStatuses";
 import { useCallbackWatcher } from "../hooks/useCallbackWatcher";
 import {
   Button,
@@ -37,30 +40,12 @@ import {
   type TabItem,
 } from "../components/ui";
 import { usePageHeader } from "../store/page";
-import { useT } from "../lib/i18n";
+import { useT, useLangValue } from "../lib/i18n";
 import { GaugeScene } from "../components/three/GaugeScene";
 
 type MyLeadsView = "active" | "postponed" | "all";
-type StatusChipKey =
-  | "all"
-  | "new"
-  | "callback"
-  | "no_answer_1"
-  | "no_answer_2"
-  | "phone_on"
-  | "tg"
-  | "debt";
-
-const STATUS_CHIP_MATCH: Record<StatusChipKey, (s: LeadStatus) => boolean> = {
-  all: () => true,
-  new: (s) => s === "new" || s === "assigned" || s === "in_progress",
-  callback: (s) => s === "callback_scheduled",
-  no_answer_1: (s) => s === "no_answer",
-  no_answer_2: (s) => s === "no_answer_2",
-  phone_on: (s) => s === "phone_on",
-  tg: (s) => s === "contacted_telegram",
-  debt: (s) => s === "has_debt",
-};
+// Chip filter key = LeadStatusLabel.code OR the sentinel "all".
+type StatusChipKey = string;
 
 type MyResponse = {
   operator: { id: number; full_name: string; status: string; blocked: boolean };
@@ -91,6 +76,29 @@ function isOverdue(iso: string | null | undefined) {
   } catch {
     return false;
   }
+}
+
+function LeadStatusBadge({
+  code,
+  overdue = false,
+}: {
+  code: string;
+  overdue?: boolean;
+}) {
+  const info = useLeadStatusInfo(code);
+  const tone: "hot" | "danger" | "neutral" =
+    overdue
+      ? "hot"
+      : info.tone === "danger"
+      ? "danger"
+      : info.tone === "hot" || info.tone === "success" || info.tone === "info"
+      ? "hot"
+      : "neutral";
+  return (
+    <StatusBadge tone={tone}>
+      {info.emoji ? `${info.emoji} ${info.label}` : info.label}
+    </StatusBadge>
+  );
 }
 
 function initials(name: string) {
@@ -132,7 +140,7 @@ export default function MyLeads() {
   // status badge on the card reflect the click before the network round
   // trip. On error we roll back; on settle we invalidate so any server-side
   // side effects (e.g. NO_ANSWER → NO_ANSWER_2 escalation) get picked up.
-  const applyOptimisticStatus = (leadId: number, status: LeadStatus) => {
+  const applyOptimisticStatus = (leadId: number, status: string) => {
     const key = ["leads-my", page, view];
     const prev = qc.getQueryData<MyResponse>(key);
     if (prev) {
@@ -173,7 +181,7 @@ export default function MyLeads() {
   });
 
   const setStatus = useMutation({
-    mutationFn: ({ lead, status }: { lead: Lead; status: LeadStatus }) =>
+    mutationFn: ({ lead, status }: { lead: Lead; status: string }) =>
       api.post(`/leads/${lead.id}/status/`, { status }),
     onMutate: async ({ lead, status }) => {
       await qc.cancelQueries({ queryKey: ["leads-my"] });
@@ -221,45 +229,48 @@ export default function MyLeads() {
     [results],
   );
 
+  // Chip filters + LeadCard mark-as buttons are now driven by the
+  // manager-managed LeadStatusLabel catalog.
+  const statusesQ = useLeadStatuses();
+  const chipStatuses = useMemo(
+    () =>
+      (statusesQ.data ?? [])
+        .filter((s) => s.is_active && s.show_in_chip)
+        .sort((a, b) => a.sort_order - b.sort_order),
+    [statusesQ.data],
+  );
+  const buttonStatuses = useMemo(
+    () =>
+      (statusesQ.data ?? [])
+        .filter((s) => s.is_active && s.show_in_button)
+        .sort((a, b) => a.sort_order - b.sort_order),
+    [statusesQ.data],
+  );
+  const lang = useLangValue();
+  const labelFor = (row: LeadStatusRow) =>
+    lang === "uz" && row.label_uz ? row.label_uz : row.label_ru;
+
   const statusChipCounts = useMemo(() => {
-    const c: Record<StatusChipKey, number> = {
-      all: results.length,
-      new: 0,
-      callback: 0,
-      no_answer_1: 0,
-      no_answer_2: 0,
-      phone_on: 0,
-      tg: 0,
-      debt: 0,
-    };
+    const c: Record<string, number> = { all: results.length };
+    for (const s of chipStatuses) c[s.code] = 0;
     for (const l of results) {
-      const s = l.status as LeadStatus;
-      if (STATUS_CHIP_MATCH.new(s)) c.new++;
-      if (STATUS_CHIP_MATCH.callback(s)) c.callback++;
-      if (STATUS_CHIP_MATCH.no_answer_1(s)) c.no_answer_1++;
-      if (STATUS_CHIP_MATCH.no_answer_2(s)) c.no_answer_2++;
-      if (STATUS_CHIP_MATCH.phone_on(s)) c.phone_on++;
-      if (STATUS_CHIP_MATCH.tg(s)) c.tg++;
-      if (STATUS_CHIP_MATCH.debt(s)) c.debt++;
+      if (c[l.status] !== undefined) c[l.status]++;
     }
     return c;
-  }, [results]);
+  }, [results, chipStatuses]);
 
   const visibleLeads = useMemo(() => {
     if (view !== "active" || statusChip === "all") return results;
-    const match = STATUS_CHIP_MATCH[statusChip];
-    return results.filter((l) => match(l.status as LeadStatus));
+    return results.filter((l) => l.status === statusChip);
   }, [results, view, statusChip]);
 
   const statusChips: { key: StatusChipKey; label: string; count: number }[] = [
-    { key: "all", label: t("common.all"), count: statusChipCounts.all },
-    { key: "new", label: t("my.chip_new"), count: statusChipCounts.new },
-    { key: "callback", label: t("my.chip_callback"), count: statusChipCounts.callback },
-    { key: "no_answer_1", label: t("my.chip_no_answer_1"), count: statusChipCounts.no_answer_1 },
-    { key: "no_answer_2", label: t("my.chip_no_answer_2"), count: statusChipCounts.no_answer_2 },
-    { key: "phone_on", label: t("my.chip_phone_on"), count: statusChipCounts.phone_on },
-    { key: "tg", label: t("my.chip_tg"), count: statusChipCounts.tg },
-    { key: "debt", label: t("my.chip_debt"), count: statusChipCounts.debt },
+    { key: "all", label: t("common.all"), count: statusChipCounts.all ?? results.length },
+    ...chipStatuses.map((s) => ({
+      key: s.code,
+      label: `${s.emoji ? s.emoji + " " : ""}${labelFor(s)}`,
+      count: statusChipCounts[s.code] ?? 0,
+    })),
   ];
 
   const dailyPlan = 20;
@@ -446,10 +457,6 @@ export default function MyLeads() {
                 quickCall.mutate({ lead, outcome: "talked_interested" });
                 toast.success(t("my.toast_called"));
               }}
-              onMiss={() => {
-                quickCall.mutate({ lead, outcome: "no_answer" });
-                toast.success(t("my.toast_no_answer"));
-              }}
               onReject={() => {
                 quickCall.mutate({ lead, outcome: "rejected" });
                 toast.success(t("my.toast_rejected"));
@@ -459,13 +466,24 @@ export default function MyLeads() {
                 quickCall.mutate({ lead, outcome: "tg_only" });
                 toast.success(t("my.toast_tg"));
               }}
-              onPhoneOn={() => {
-                setStatus.mutate({ lead, status: "phone_on" });
-                toast.success(t("my.toast_phone_on"));
-              }}
-              onHasDebt={() => {
-                setStatus.mutate({ lead, status: "has_debt" });
-                toast.success(t("my.toast_debt"));
+              statusButtons={buttonStatuses.map((s) => ({
+                code: s.code,
+                emoji: s.emoji,
+                label: labelFor(s),
+              }))}
+              onStatus={(code) => {
+                // no_answer keeps its escalate-to-2 flow via call_attempt_log;
+                // any other status (including custom ones) goes through the
+                // generic setStatus endpoint.
+                if (code === "no_answer") {
+                  quickCall.mutate({ lead, outcome: "no_answer" });
+                } else {
+                  setStatus.mutate({ lead, status: code });
+                }
+                const btn = buttonStatuses.find((s) => s.code === code);
+                toast.success(
+                  btn ? `✓ ${btn.emoji ? btn.emoji + " " : ""}${labelFor(btn)}` : "✓",
+                );
               }}
               onSchedule={() => setScheduleFor(lead)}
               onPostpone={() => setPostponeFor(lead)}
@@ -519,11 +537,10 @@ interface LeadCardProps {
   lead: Lead;
   index: number;
   onCall: () => void;
-  onMiss: () => void;
   onReject: () => void;
   onTg: () => void;
-  onPhoneOn: () => void;
-  onHasDebt: () => void;
+  statusButtons: { code: string; emoji: string; label: string }[];
+  onStatus: (code: string) => void;
   onSchedule: () => void;
   onPostpone: () => void;
   onUnpostpone: () => void;
@@ -534,11 +551,10 @@ function LeadCard({
   lead,
   index,
   onCall,
-  onMiss,
   onReject,
   onTg,
-  onPhoneOn,
-  onHasDebt,
+  statusButtons,
+  onStatus,
   onSchedule,
   onPostpone,
   onUnpostpone,
@@ -642,9 +658,7 @@ function LeadCard({
           <div className="text-[14.5px] font-medium truncate">
             {lead.full_name || t("my.no_name")}
           </div>
-          <StatusBadge tone={overdue || lead.status === "needs_review" ? "hot" : "neutral"}>
-            {LEAD_STATUS_LABEL[lead.status as LeadStatus] ?? lead.status}
-          </StatusBadge>
+          <LeadStatusBadge code={lead.status} overdue={overdue} />
           {isPostponed && (
             <StatusBadge tone="hot">
               <PauseCircle className="w-3 h-3 inline mr-0.5" /> {t("my.postponed_badge")}
@@ -728,33 +742,20 @@ function LeadCard({
               )}
             </div>
 
-            <button
-              className="nf-btn nf-btn--ghost transition-transform active:scale-[.92]"
-              style={{ padding: "9px 12px", fontSize: 13 }}
-              onClick={wrap(onMiss)}
-              title={t("my.no_answer")}
-            >
-              <PhoneMissed className="w-3.5 h-3.5" />
-              <span className="hidden md:inline ml-1">{t("my.chip_no_answer_1")}</span>
-            </button>
-            <button
-              className="nf-btn nf-btn--ghost transition-transform active:scale-[.92]"
-              style={{ padding: "9px 12px", fontSize: 13 }}
-              onClick={wrap(onPhoneOn)}
-              title={t("my.chip_phone_on")}
-            >
-              <Phone className="w-3.5 h-3.5" />
-              <span className="hidden md:inline ml-1">{t("my.chip_phone_on")}</span>
-            </button>
-            <button
-              className="nf-btn nf-btn--ghost transition-transform active:scale-[.92]"
-              style={{ padding: "9px 12px", fontSize: 13 }}
-              onClick={wrap(onHasDebt)}
-              title={t("my.chip_debt")}
-            >
-              <Wallet className="w-3.5 h-3.5" />
-              <span className="hidden md:inline ml-1">{t("my.chip_debt")}</span>
-            </button>
+            {statusButtons.map((btn) => (
+              <button
+                key={btn.code}
+                className="nf-btn nf-btn--ghost transition-transform active:scale-[.92]"
+                style={{ padding: "9px 12px", fontSize: 13 }}
+                onClick={wrap(() => onStatus(btn.code))}
+                title={btn.label}
+              >
+                {btn.emoji ? (
+                  <span aria-hidden style={{ fontSize: 14 }}>{btn.emoji}</span>
+                ) : null}
+                <span className="hidden md:inline ml-1">{btn.label}</span>
+              </button>
+            ))}
             <button
               className="nf-btn nf-btn--ghost transition-transform active:scale-[.94]"
               style={{ padding: "9px 14px", fontSize: 13 }}

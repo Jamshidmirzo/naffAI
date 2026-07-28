@@ -15,6 +15,7 @@ import Login from "./pages/Login";
 import MyLeads from "./pages/MyLeads";
 import Leads from "./pages/Leads";
 import SheetSources from "./pages/SheetSources";
+import LeadStatuses from "./pages/LeadStatuses";
 import Profile from "./pages/Profile";
 import AIChat from "./pages/AIChat";
 import Marketing from "./pages/Marketing";
@@ -75,6 +76,7 @@ export default function App() {
           <Route path="/sales-today" element={<RoleGate allow={["manager"]}><SalesToday /></RoleGate>} />
           <Route path="/tg-queue" element={<RoleGate allow={["manager"]}><TgQueue /></RoleGate>} />
           <Route path="/sheet-sources" element={<RoleGate allow={["manager"]}><SheetSources /></RoleGate>} />
+          <Route path="/statuses" element={<RoleGate allow={["manager"]}><LeadStatuses /></RoleGate>} />
           <Route path="/sales" element={<RoleGate allow={["manager"]}><Sales /></RoleGate>} />
           <Route path="/sales/new" element={<RoleGate allow={["manager"]}><SaleCreate /></RoleGate>} />
           <Route path="/sales/:id" element={<RoleGate allow={["manager"]}><SaleDetail /></RoleGate>} />

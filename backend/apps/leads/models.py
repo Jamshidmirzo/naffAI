@@ -43,6 +43,63 @@ class LeadSource(models.TextChoices):
     BOT = "bot", "Telegram-бот"
 
 
+class LeadStatusTone(models.TextChoices):
+    NEUTRAL = "neutral", "нейтральный"
+    HOT = "hot", "оранжевый (акцент)"
+    DANGER = "danger", "красный"
+    SUCCESS = "success", "зелёный"
+    INFO = "info", "синий"
+
+
+class LeadStatusLabel(TimestampedModel):
+    """
+    Manager-editable catalog of statuses a Lead can carry. Ships with 13
+    built-in rows (data-migration 0007) that map 1-to-1 to the historical
+    LeadStatus enum. Managers can add custom ones (e.g. "Ждёт зарплаты"),
+    rename / recolour any row, and toggle whether it shows up as a chip
+    or as a mark-button in the operator's card.
+
+    - `code` is the immutable string persisted on Lead.status. For builtin
+      rows it matches the old LeadStatus enum value.
+    - `is_builtin=True` rows can be re-labelled but NOT deleted and their
+      code is protected (system logic like sale conversion or callback
+      escalation still references them).
+    - `show_in_chip` controls the filter chip on /my's active view.
+    - `show_in_button` controls the quick mark-as button on LeadCard.
+    """
+
+    code = models.CharField(max_length=64, unique=True)
+    label_ru = models.CharField(max_length=80)
+    label_uz = models.CharField(max_length=80, blank=True, default="")
+    tone = models.CharField(
+        max_length=16,
+        choices=LeadStatusTone.choices,
+        default=LeadStatusTone.NEUTRAL,
+    )
+    emoji = models.CharField(max_length=8, blank=True, default="")
+    sort_order = models.PositiveSmallIntegerField(default=100)
+    show_in_chip = models.BooleanField(default=True)
+    show_in_button = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True)
+    is_builtin = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        indexes = [
+            models.Index(fields=["is_active", "sort_order"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.emoji} {self.label_ru} [{self.code}]".strip()
+
+
 class DistributionMode(models.TextChoices):
     """
     How leads from a given sheet are routed to operators when the

@@ -8,6 +8,8 @@ from .apis import (
     LeadPostponeApi,
     LeadReassignApi,
     LeadStatusApi,
+    LeadStatusLabelDetailApi,
+    LeadStatusLabelListCreateApi,
     LeadUnpostponeApi,
     OperatorSheetAliasDetailApi,
     OperatorSheetAliasListCreateApi,
@@ -40,4 +42,9 @@ alias_urlpatterns = [
 
 telegram_urlpatterns = [
     path("lookup/", TelegramLookupApi.as_view()),
+]
+
+lead_status_urlpatterns = [
+    path("", LeadStatusLabelListCreateApi.as_view()),
+    path("<int:pk>/", LeadStatusLabelDetailApi.as_view()),
 ]

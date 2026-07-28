@@ -4,7 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Search, Users, X } from "lucide-react";
 import { apiErrorMessage } from "../lib/api-types";
 import { api } from "../lib/api";
-import { LEAD_STATUS_LABEL, type Lead, type LeadStatus } from "../lib/leads";
+import { type Lead } from "../lib/leads";
+import { useLeadStatusInfo } from "../hooks/useLeadStatuses";
 import { Paginator } from "../components/Paginator";
 import { formatDate } from "../lib/format";
 import { Button, Checkbox, Chip, Modal, StatusBadge, toast } from "../components/ui";
@@ -299,9 +300,7 @@ export default function Leads() {
                     )}
                   </div>
                   <div>
-                    <StatusBadge tone={lead.status === "needs_review" ? "hot" : "neutral"}>
-                      {LEAD_STATUS_LABEL[lead.status as LeadStatus] ?? lead.status}
-                    </StatusBadge>
+                    <LeadRowStatus code={lead.status} />
                   </div>
                   <div className="text-right text-muted tabular-nums">{calls}</div>
                   <div
@@ -437,5 +436,20 @@ function AssignModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+function LeadRowStatus({ code }: { code: string }) {
+  const info = useLeadStatusInfo(code);
+  const tone: "hot" | "danger" | "neutral" =
+    info.tone === "danger"
+      ? "danger"
+      : info.tone === "hot" || info.tone === "success" || info.tone === "info"
+      ? "hot"
+      : "neutral";
+  return (
+    <StatusBadge tone={tone}>
+      {info.emoji ? `${info.emoji} ${info.label}` : info.label}
+    </StatusBadge>
   );
 }

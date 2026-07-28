@@ -2,7 +2,10 @@
  * Types + helpers shared by /my (operator workstation) and /leads (admin).
  */
 
-export type LeadStatus =
+// Built-in codes (kept as string-literals for autocomplete), but the field
+// is intentionally widened to `string` — manager-created custom statuses
+// carry arbitrary codes stored in the DB `LeadStatusLabel.code`.
+export type LeadStatusCode =
   | "new"
   | "assigned"
   | "in_progress"
@@ -16,6 +19,7 @@ export type LeadStatus =
   | "lost"
   | "archived"
   | "needs_review";
+export type LeadStatus = LeadStatusCode | (string & {});
 
 export type CallOutcome =
   | "talked_interested"

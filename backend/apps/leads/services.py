@@ -88,13 +88,31 @@ _SHEET_STATUS_MAP: dict[str, str] = {
 
 
 def _map_sheet_status(raw: str) -> str | None:
-    """Normalise and look up the free-form sheet status label."""
+    """
+    Normalise and look up the free-form sheet status label. First checks the
+    hard-coded synonym map (Uzbek/Russian slang → builtin codes), then falls
+    back to a DB lookup on `LeadStatusLabel.label_ru / label_uz` so that
+    custom manager-created statuses ("Ждёт зарплаты") work too.
+    """
     if not raw:
         return None
     key = raw.strip().lower()
     if not key:
         return None
-    return _SHEET_STATUS_MAP.get(key)
+    mapped = _SHEET_STATUS_MAP.get(key)
+    if mapped:
+        return mapped
+    from django.db.models import Q
+
+    from .models import LeadStatusLabel
+
+    row = (
+        LeadStatusLabel.objects.filter(is_active=True)
+        .filter(Q(label_ru__iexact=key) | Q(label_uz__iexact=key))
+        .values_list("code", flat=True)
+        .first()
+    )
+    return row
 
 
 def _pick_column(raw_row: dict, spec: Any) -> str:
@@ -487,8 +505,13 @@ def lead_reassign(
 
 @transaction.atomic
 def lead_update_status(*, lead: Lead, status: str, user=None, comment: str = "") -> Lead:
+    # Historic enum values stay valid; on top of them we accept any
+    # currently-active LeadStatusLabel code (custom manager-created ones).
     if status not in dict(LeadStatus.choices):
-        raise ApplicationError("Неизвестный статус лида", {"field": "status"})
+        from .models import LeadStatusLabel
+
+        if not LeadStatusLabel.objects.filter(code=status, is_active=True).exists():
+            raise ApplicationError("Неизвестный статус лида", {"field": "status"})
     old = lead.status
     if old == status:
         return lead

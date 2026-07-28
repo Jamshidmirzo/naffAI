@@ -28,6 +28,7 @@ from .models import (
     DistributionMode,
     Lead,
     LeadStatus,
+    LeadStatusLabel,
     OperatorSheetAlias,
     SheetSource,
 )
@@ -119,7 +120,10 @@ class LeadReassignInputSerializer(serializers.Serializer):
 
 
 class LeadStatusInputSerializer(serializers.Serializer):
-    status = serializers.ChoiceField(choices=LeadStatus.choices)
+    # Accepts any string — real validation happens in `lead_update_status`,
+    # which cross-references LeadStatusLabel so custom manager-created
+    # statuses are accepted alongside the builtin enum.
+    status = serializers.CharField(max_length=64)
     comment = serializers.CharField(required=False, allow_blank=True, default="")
 
 
@@ -591,6 +595,116 @@ class TelegramLookupApi(APIView):
         if link is None:
             return Response({"detail": "Некорректный телефон"}, status=400)
         return Response({"phone": link.phone, "username": link.username})
+
+
+# ---- LeadStatusLabel CRUD ----------------------------------------------
+
+import re as _re
+
+
+class LeadStatusLabelSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LeadStatusLabel
+        fields = [
+            "id",
+            "code",
+            "label_ru",
+            "label_uz",
+            "tone",
+            "emoji",
+            "sort_order",
+            "show_in_chip",
+            "show_in_button",
+            "is_active",
+            "is_builtin",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "is_builtin", "created_at", "updated_at"]
+
+
+_CODE_RE = _re.compile(r"^[a-z][a-z0-9_]{1,63}$")
+
+
+class LeadStatusLabelListCreateApi(APIView):
+    """GET: any authenticated. POST: senior only."""
+
+    def get_permissions(self):
+        from rest_framework.permissions import IsAuthenticated
+
+        if self.request.method == "POST":
+            return [IsTeamLead()]
+        return [IsAuthenticated()]
+
+    def get(self, request):
+        qs = LeadStatusLabel.objects.all().order_by("sort_order", "id")
+        return Response(LeadStatusLabelSerializer(qs, many=True).data)
+
+    def post(self, request):
+        data = dict(request.data)
+        code = (data.get("code") or "").strip().lower()
+        if not _CODE_RE.match(code):
+            return Response(
+                {"detail": "code: только a-z, 0-9 и _; 2–64 символа, начинается с буквы"},
+                status=400,
+            )
+        if LeadStatusLabel.objects.filter(code=code).exists():
+            return Response({"detail": "Такой code уже существует"}, status=400)
+        obj = LeadStatusLabel.objects.create(
+            code=code,
+            label_ru=(data.get("label_ru") or "").strip()[:80] or code,
+            label_uz=(data.get("label_uz") or "").strip()[:80],
+            tone=(data.get("tone") or "neutral")[:16],
+            emoji=(data.get("emoji") or "")[:8],
+            sort_order=int(data.get("sort_order") or 100),
+            show_in_chip=bool(data.get("show_in_chip", True)),
+            show_in_button=bool(data.get("show_in_button", True)),
+            is_active=bool(data.get("is_active", True)),
+            is_builtin=False,
+            created_by=request.user if request.user.is_authenticated else None,
+        )
+        return Response(LeadStatusLabelSerializer(obj).data, status=201)
+
+
+class LeadStatusLabelDetailApi(APIView):
+    permission_classes = [IsTeamLead]
+
+    def patch(self, request, pk: int):
+        obj = LeadStatusLabel.objects.filter(pk=pk).first()
+        if not obj:
+            return Response({"detail": "Not found"}, status=404)
+        # `code` is immutable for everyone; `is_builtin` cannot flip.
+        for field in [
+            "label_ru",
+            "label_uz",
+            "tone",
+            "emoji",
+            "sort_order",
+            "show_in_chip",
+            "show_in_button",
+            "is_active",
+        ]:
+            if field in request.data:
+                setattr(obj, field, request.data[field])
+        obj.save()
+        return Response(LeadStatusLabelSerializer(obj).data)
+
+    def delete(self, request, pk: int):
+        obj = LeadStatusLabel.objects.filter(pk=pk).first()
+        if not obj:
+            return Response(status=204)
+        if obj.is_builtin:
+            return Response(
+                {"detail": "Встроенный статус нельзя удалить — можно только скрыть (is_active=false)"},
+                status=400,
+            )
+        if Lead.objects.filter(status=obj.code).exists():
+            return Response(
+                {"detail": "Есть лиды с этим статусом. Сначала переведите их в другой статус."},
+                status=400,
+            )
+        obj.delete()
+        return Response(status=204)
 
 
 # ---- Parse helper -------------------------------------------------------

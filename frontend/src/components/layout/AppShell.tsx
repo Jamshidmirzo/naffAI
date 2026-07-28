@@ -52,6 +52,7 @@ function useManagerGroups(t: (k: string) => string): SidebarGroup[] {
         { to: "/catalog", label: t("nav.catalog") },
         { to: "/partners", label: t("nav.partners") },
         { to: "/sheet-sources", label: t("nav.sheet_sources") },
+        { to: "/statuses", label: t("nav.statuses") },
         { to: "/calls", label: t("nav.calls") },
       ],
     },
