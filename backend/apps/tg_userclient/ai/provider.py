@@ -196,7 +196,7 @@ class GeminiProvider:
 
     def _call(self, model: str, prompt: str, response_json: bool = True) -> str:
         config: dict[str, Any] = {
-            "max_output_tokens": 1500,
+            "max_output_tokens": 4096,
             "temperature": 0.3,
         }
         if response_json:
