@@ -130,11 +130,14 @@ def generate_marketing_insight(
 
     try:
         provider = get_llm_provider()
-        quote = provider.generate_quote(prompt=prompt)
-        raw = quote.text or ""
+        resp = provider.generate_content(prompt=prompt, response_json=True)
+        raw = (resp.text or "").strip()
+        # Gemini/OpenAI-style JSON may arrive wrapped in ```json fences.
+        if raw.startswith("```"):
+            raw = raw.strip("`").lstrip("json").strip()
         parsed: Any = None
         try:
-            parsed = json.loads(raw) if raw.strip().startswith("{") else None
+            parsed = json.loads(raw) if raw.startswith("{") else None
         except json.JSONDecodeError:
             parsed = None
         if isinstance(parsed, dict):
@@ -143,8 +146,8 @@ def generate_marketing_insight(
         else:
             recommendations = _default_recommendations(sources)
             summary = raw[:400] or "LLM не вернул структурированный ответ."
-        model_version = quote.model_version or "unknown"
-        provider_used = quote.provider or ""
+        model_version = resp.model_used or "unknown"
+        provider_used = resp.provider or ""
     except LLMChainExhaustedError as exc:
         logger.warning("LLM chain exhausted for marketing insight: %s", exc)
         recommendations = _default_recommendations(sources)
