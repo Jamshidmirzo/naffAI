@@ -125,10 +125,21 @@ export default function Operators() {
 
   const toggle = useMutation({
     mutationFn: ({ id, active }: { id: number; active: boolean }) =>
-      api.post(`/operators/${id}/${active ? "reactivate" : "deactivate"}/`),
-    onSuccess: () => {
+      api
+        .post<{ rebalanced_count?: number; callbacks_moved?: number }>(
+          `/operators/${id}/${active ? "reactivate" : "deactivate"}/`,
+        )
+        .then((r) => r.data),
+    onSuccess: (data, vars) => {
       qc.invalidateQueries({ queryKey: ["operators"] });
-      toast.success(t("operators.status_updated"));
+      qc.invalidateQueries({ queryKey: ["leads-my"] });
+      qc.invalidateQueries({ queryKey: ["leads"] });
+      const n = data?.rebalanced_count ?? 0;
+      if (!vars.active && n > 0) {
+        toast.success(t("operators.deactivated_with_rebalance", { n }));
+      } else {
+        toast.success(t("operators.status_updated"));
+      }
     },
   });
 

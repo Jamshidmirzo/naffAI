@@ -1221,6 +1221,7 @@ const STRINGS: Lookup = {
     "operators.op_add_failed": "Не удалось добавить оператора",
     "operators.op_delete_failed": "Не удалось удалить оператора",
     "operators.status_updated": "Статус обновлён",
+    "operators.deactivated_with_rebalance": "Деактивирован · {n} лидов автоматом раскинуты по остальным",
 
     // ------ lead_statuses ------
     "lead_statuses.title": "Статусы лидов",
@@ -2457,6 +2458,7 @@ const STRINGS: Lookup = {
     "operators.op_add_failed": "Operatorni qo'shib bo'lmadi",
     "operators.op_delete_failed": "Operatorni o'chirib bo'lmadi",
     "operators.status_updated": "Status yangilandi",
+    "operators.deactivated_with_rebalance": "Deaktivatsiya · {n} ta lid boshqalarga avtomatik taqsimlandi",
 
     // ------ lead_statuses ------
     "lead_statuses.title": "Lid statuslari",

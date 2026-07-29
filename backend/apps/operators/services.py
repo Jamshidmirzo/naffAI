@@ -41,8 +41,149 @@ def operator_update(*, operator: Operator, user=None, **fields) -> Operator:
 
 @transaction.atomic
 def operator_deactivate(*, operator: Operator, user=None) -> Operator:
-    """Soft delete: we never remove operators (sale history points to them)."""
-    return operator_update(operator=operator, user=user, status=OperatorStatus.INACTIVE)
+    """
+    Soft delete + auto-rebalance:
+    1. Set the operator's status to INACTIVE (round-robin will skip them
+       for any new leads).
+    2. Take back their **untouched** leads (status in {new, assigned},
+       not postponed) and hand them out round-robin across the remaining
+       eligible operators. Leads where the operator already made contact
+       (in_progress / callback / no_answer / phone_on / has_debt) stay
+       put so the context isn't lost.
+    3. For every re-assigned lead, live callback reminders (pending /
+       snoozed / overdue) that belong to the leaving operator are moved
+       to the new owner with `dm_sent_at` cleared, so the next cron tick
+       DMs the new operator instead of the ex-owner.
+
+    Returns the operator with the extra `.rebalanced_count` /
+    `.callbacks_moved` attributes attached (not persisted) — the view
+    surfaces them in the API response.
+    """
+    from collections import defaultdict
+
+    from django.db.models import Count, Q
+    from django.utils import timezone
+
+    from apps.leads.models import (
+        Lead,
+        LeadAssignment,
+        LeadAssignmentSource,
+        LeadStatus,
+    )
+    from apps.leads.selectors import (
+        ACTIVE_LEAD_STATUSES,
+        operators_eligible_for_new_leads,
+    )
+
+    operator_update(operator=operator, user=user, status=OperatorStatus.INACTIVE)
+
+    candidate_ids = list(
+        Lead.objects.filter(
+            operator_id=operator.id,
+            status__in=[LeadStatus.NEW, LeadStatus.ASSIGNED],
+            postponed_at__isnull=True,
+        ).values_list("id", flat=True)
+    )
+    operator.rebalanced_count = 0
+    operator.callbacks_moved = 0
+
+    if not candidate_ids:
+        return operator
+
+    ops = list(operators_eligible_for_new_leads().exclude(pk=operator.id))
+    if not ops:
+        # Nobody to receive — leave them on the deactivated operator.
+        return operator
+
+    # Snapshot current load per candidate operator, then run round-robin
+    # in-memory: always give the next lead to the least-loaded operator
+    # (tie broken by id for determinism).
+    load_qs = (
+        Lead.objects.filter(operator_id__in=[o.id for o in ops])
+        .values("operator_id")
+        .annotate(n=Count("id", filter=Q(status__in=ACTIVE_LEAD_STATUSES)))
+    )
+    load = defaultdict(int)
+    for row in load_qs:
+        load[row["operator_id"]] = row["n"]
+
+    now = timezone.now()
+    per_op: dict[int, int] = defaultdict(int)
+
+    def pick_next() -> int:
+        return min(ops, key=lambda o: (load[o.id], o.id)).id
+
+    CHUNK = 500
+    total_reassigned = 0
+    for start in range(0, len(candidate_ids), CHUNK):
+        chunk = candidate_ids[start : start + CHUNK]
+        leads = list(Lead.objects.filter(id__in=chunk))
+        assignments = []
+        for lead in leads:
+            op_id = pick_next()
+            LeadAssignment.objects.filter(lead=lead, active=True).update(active=False)
+            lead.operator_id = op_id
+            lead.status = LeadStatus.ASSIGNED
+            lead.updated_at = now
+            load[op_id] += 1
+            per_op[op_id] += 1
+            assignments.append(
+                LeadAssignment(
+                    lead=lead,
+                    operator_id=op_id,
+                    source=LeadAssignmentSource.AUTO_ROUND_ROBIN,
+                    reason=f"auto-rebalance on operator#{operator.id} deactivation",
+                    active=True,
+                )
+            )
+        Lead.objects.bulk_update(
+            leads, ["operator_id", "status", "updated_at"], batch_size=200
+        )
+        LeadAssignment.objects.bulk_create(assignments, batch_size=200)
+        total_reassigned += len(leads)
+
+    # Move any live callback reminders on these leads to the new owner
+    # so DM cron pings the right person.
+    from apps.calls.models import CallbackReminder, CallbackReminderStatus
+
+    live_statuses = (
+        CallbackReminderStatus.PENDING,
+        CallbackReminderStatus.SNOOZED,
+        CallbackReminderStatus.OVERDUE,
+    )
+    cb_qs = CallbackReminder.objects.filter(
+        lead_id__in=candidate_ids,
+        operator_id=operator.id,
+        status__in=live_statuses,
+    )
+    # Per-lead new_operator lookup: rebuild it via a single query
+    # (bulk_update rewired the operator FK above).
+    lead_owner = dict(
+        Lead.objects.filter(id__in=candidate_ids).values_list("id", "operator_id")
+    )
+    for cb in cb_qs:
+        cb.operator_id = lead_owner.get(cb.lead_id, cb.operator_id)
+        cb.dm_sent_at = None
+    if cb_qs.exists():
+        CallbackReminder.objects.bulk_update(list(cb_qs), ["operator_id", "dm_sent_at"], batch_size=200)
+
+    operator.rebalanced_count = total_reassigned
+    operator.callbacks_moved = cb_qs.count()
+
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="operators.Operator",
+        entity_id=operator.id,
+        changes={
+            "auto_rebalance_on_deactivate": True,
+            "leads_reassigned": total_reassigned,
+            "callbacks_moved": operator.callbacks_moved,
+            "per_operator": {op.full_name: per_op[op.id] for op in ops if per_op.get(op.id)},
+        },
+        comment=f"Auto-rebalanced {total_reassigned} untouched leads on deactivate",
+    )
+    return operator
 
 
 @transaction.atomic

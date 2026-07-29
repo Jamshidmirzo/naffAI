@@ -111,7 +111,12 @@ class OperatorDeactivateApi(APIView):
         if not op:
             return Response({"detail": "Not found"}, status=404)
         operator_deactivate(operator=op, user=request.user)
-        return Response(OperatorSerializer(op).data)
+        payload = OperatorSerializer(op).data
+        # Surface the counters the service attached on `op` so the UI
+        # can toast "Deactivated, N leads reassigned".
+        payload["rebalanced_count"] = getattr(op, "rebalanced_count", 0)
+        payload["callbacks_moved"] = getattr(op, "callbacks_moved", 0)
+        return Response(payload)
 
 
 class OperatorReactivateApi(APIView):
