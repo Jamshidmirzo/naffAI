@@ -176,6 +176,22 @@ class SheetSource(TimestampedModel):
             "Preserves the historical 'alias_only' behaviour by default."
         ),
     )
+    # Where CRM writes back per-lead state so the manager can see current
+    # status/operator/timestamps directly in the Google sheet. Columns are
+    # spreadsheet letters ("D", "AA", ...). `enabled=False` disables the
+    # feature completely for this source without dropping the config.
+    writeback_columns = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Writeback layout: {"
+            "'enabled': true, "
+            "'status_col': 'D', "
+            "'operator_col': 'E', "
+            "'updated_col': 'F', "
+            "'comment_col': 'G'}. Missing keys fall back to the defaults."
+        ),
+    )
 
     class Meta:
         ordering = ["name"]

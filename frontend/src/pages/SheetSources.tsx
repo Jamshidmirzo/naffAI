@@ -24,6 +24,14 @@ type DistributionMode =
   | "default_only"
   | "alias_or_rr";
 
+type WritebackColumns = {
+  enabled?: boolean;
+  status_col?: string;
+  operator_col?: string;
+  updated_col?: string;
+  comment_col?: string;
+};
+
 type SheetSource = {
   id: number;
   name: string;
@@ -38,6 +46,7 @@ type SheetSource = {
   default_operator: number | null;
   default_operator_name: string | null;
   distribution_mode: DistributionMode;
+  writeback_columns: WritebackColumns;
 };
 
 const DISTRIBUTION_KEY: Record<DistributionMode, string> = {
@@ -240,6 +249,12 @@ function SheetSourceForm({
   const [mapJson, setMapJson] = useState(
     JSON.stringify(value?.column_map || {}, null, 2),
   );
+  const wb = value?.writeback_columns || {};
+  const [writebackEnabled, setWritebackEnabled] = useState<boolean>(wb.enabled ?? true);
+  const [wbStatusCol, setWbStatusCol] = useState(wb.status_col || "D");
+  const [wbOperatorCol, setWbOperatorCol] = useState(wb.operator_col || "E");
+  const [wbUpdatedCol, setWbUpdatedCol] = useState(wb.updated_col || "F");
+  const [wbCommentCol, setWbCommentCol] = useState(wb.comment_col || "G");
   const [error, setError] = useState("");
 
   const modes: DistributionMode[] = [
@@ -267,6 +282,13 @@ function SheetSourceForm({
         active,
         default_operator: defaultOperator ? Number(defaultOperator) : null,
         distribution_mode: distributionMode,
+        writeback_columns: {
+          enabled: writebackEnabled,
+          status_col: wbStatusCol.trim().toUpperCase() || "D",
+          operator_col: wbOperatorCol.trim().toUpperCase() || "E",
+          updated_col: wbUpdatedCol.trim().toUpperCase() || "F",
+          comment_col: wbCommentCol.trim().toUpperCase() || "G",
+        },
       };
       if (isEdit) await api.patch(`/sheet-sources/${value!.id}/`, body);
       else await api.post("/sheet-sources/", body);
@@ -392,6 +414,70 @@ function SheetSourceForm({
               id="active"
             />
             <label htmlFor="active">{t("sheet_src.active_hint")}</label>
+          </div>
+
+          {/* --- Writeback (CRM → sheet) --- */}
+          <div
+            className="col-span-2 mt-2 rounded-xl border p-4 space-y-3"
+            style={{ borderColor: "var(--border)" }}
+          >
+            <label className="flex items-center gap-2 text-[13.5px] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={writebackEnabled}
+                onChange={(e) => setWritebackEnabled(e.target.checked)}
+              />
+              🔁 {t("sheet_src.writeback_title")}
+            </label>
+            {writebackEnabled && (
+              <>
+                <div className="grid grid-cols-4 gap-3">
+                  <div>
+                    <div className="nf-col mb-1">{t("sheet_src.wb_status_col")}</div>
+                    <input
+                      className="nf-input font-mono uppercase text-center"
+                      value={wbStatusCol}
+                      onChange={(e) => setWbStatusCol(e.target.value.slice(0, 3))}
+                      maxLength={3}
+                      placeholder="D"
+                    />
+                  </div>
+                  <div>
+                    <div className="nf-col mb-1">{t("sheet_src.wb_operator_col")}</div>
+                    <input
+                      className="nf-input font-mono uppercase text-center"
+                      value={wbOperatorCol}
+                      onChange={(e) => setWbOperatorCol(e.target.value.slice(0, 3))}
+                      maxLength={3}
+                      placeholder="E"
+                    />
+                  </div>
+                  <div>
+                    <div className="nf-col mb-1">{t("sheet_src.wb_updated_col")}</div>
+                    <input
+                      className="nf-input font-mono uppercase text-center"
+                      value={wbUpdatedCol}
+                      onChange={(e) => setWbUpdatedCol(e.target.value.slice(0, 3))}
+                      maxLength={3}
+                      placeholder="F"
+                    />
+                  </div>
+                  <div>
+                    <div className="nf-col mb-1">{t("sheet_src.wb_comment_col")}</div>
+                    <input
+                      className="nf-input font-mono uppercase text-center"
+                      value={wbCommentCol}
+                      onChange={(e) => setWbCommentCol(e.target.value.slice(0, 3))}
+                      maxLength={3}
+                      placeholder="G"
+                    />
+                  </div>
+                </div>
+                <div className="text-[11.5px] text-muted">
+                  {t("sheet_src.writeback_hint")}
+                </div>
+              </>
+            )}
           </div>
         </div>
         {error && (

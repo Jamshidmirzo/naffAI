@@ -23,7 +23,9 @@ from django.conf import settings
 logger = logging.getLogger("leads.google_sheets")
 
 _SHEETS_API_ROOT = "https://sheets.googleapis.com/v4/spreadsheets"
-_SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+# Full read/write — writeback needs `values.update`. Reader-only scopes
+# would 403 on PUT even if the service account has Editor rights.
+_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 
 class GoogleSheetsUnavailable(Exception):
@@ -115,6 +117,36 @@ class GoogleSheetsClient:
             params={"valueRenderOption": "FORMATTED_VALUE"},
         )
         return data.get("values", [])
+
+    def update_cells(
+        self,
+        spreadsheet_id: str,
+        sheet_range: str,
+        values: list[list[str]],
+    ) -> dict:
+        """
+        PUT one contiguous range with cell values (RAW input option, so
+        Google Sheets doesn't try to interpret them as formulas).
+
+        `sheet_range` in A1 notation. Values is a 2-D array: one inner
+        list per row, cell values as strings.
+
+        Raises `httpx.HTTPError` on 4xx/5xx — callers decide whether to
+        swallow (writeback) or propagate.
+        """
+        from urllib.parse import quote
+
+        token = self._access_token()
+        url = f"{_SHEETS_API_ROOT}/{spreadsheet_id}/values/{quote(sheet_range, safe='!:')}"
+        r = httpx.put(
+            url,
+            params={"valueInputOption": "RAW"},
+            headers={"Authorization": f"Bearer {token}"},
+            json={"values": values},
+            timeout=15.0,
+        )
+        r.raise_for_status()
+        return r.json()
 
     def get_rows(
         self, spreadsheet_id: str, worksheet_name: str

@@ -15,10 +15,14 @@ as sales edits.
 from __future__ import annotations
 
 import datetime as dt
+import logging
+import threading
 from typing import Any
 
 from django.db import transaction
 from django.utils import timezone
+
+logger = logging.getLogger("leads.writeback")
 
 from apps.audit.services import AuditAction, audit_log_create
 from apps.common.exceptions import ApplicationError
@@ -138,6 +142,156 @@ def _pick_column(raw_row: dict, spec: Any) -> str:
             v = cells[idx]
             return "" if v is None else str(v).strip()
     return ""
+
+
+# ---- Google-Sheet writeback ---------------------------------------------
+
+# Default writeback layout: assumes source rows only fill A/B/C and D-G
+# are free. Overridable per SheetSource.writeback_columns in the admin UI.
+_WRITEBACK_DEFAULTS = {
+    "enabled": True,
+    "status_col": "D",
+    "operator_col": "E",
+    "updated_col": "F",
+    "comment_col": "G",
+}
+
+
+def _writeback_config(sheet_source) -> dict:
+    cfg = dict(_WRITEBACK_DEFAULTS)
+    cfg.update(sheet_source.writeback_columns or {})
+    return cfg
+
+
+def _min_max_col(cols: list[str]) -> tuple[str, str]:
+    """Given ["D", "E", "F", "G"] return ("D", "G")."""
+    def _idx(letters: str) -> int:
+        letters = letters.strip().upper()
+        n = 0
+        for ch in letters:
+            n = n * 26 + (ord(ch) - ord("A") + 1)
+        return n
+
+    ordered = sorted(cols, key=_idx)
+    return ordered[0], ordered[-1]
+
+
+def _cols_between(lo: str, hi: str) -> list[str]:
+    def _idx(letters: str) -> int:
+        letters = letters.strip().upper()
+        n = 0
+        for ch in letters:
+            n = n * 26 + (ord(ch) - ord("A") + 1)
+        return n
+
+    def _letter(idx: int) -> str:
+        out = ""
+        while idx > 0:
+            idx, r = divmod(idx - 1, 26)
+            out = chr(ord("A") + r) + out
+        return out
+
+    return [_letter(i) for i in range(_idx(lo), _idx(hi) + 1)]
+
+
+def lead_writeback_to_sheet(lead, comment: str = "") -> None:
+    """
+    Push the lead's current state (status label, operator, timestamp,
+    optional comment) into the source Google sheet row it came from.
+    Fails silent-with-log — never let a writeback error break the caller.
+    """
+    sheet_source = lead.sheet_source
+    if sheet_source is None or lead.sheet_row_index is None:
+        return
+    cfg = _writeback_config(sheet_source)
+    if not cfg.get("enabled", True):
+        return
+
+    # Human-readable status label — prefer the manager-editable catalog,
+    # fall back to the raw code.
+    from .models import LeadStatusLabel
+
+    label = LeadStatusLabel.objects.filter(code=lead.status).values_list(
+        "label_ru", flat=True
+    ).first() or lead.status
+
+    operator_name = lead.operator.full_name if lead.operator_id else "—"
+    updated = timezone.localtime(timezone.now()).strftime("%Y-%m-%d %H:%M")
+
+    status_col = cfg["status_col"]
+    operator_col = cfg["operator_col"]
+    updated_col = cfg["updated_col"]
+    comment_col = cfg["comment_col"]
+
+    # Sparse layout is fine — build one continuous range from min→max
+    # column, filling non-target cells with `None` so we don't clobber
+    # unrelated data (Google's RAW mode leaves nulls untouched).
+    lo, hi = _min_max_col([status_col, operator_col, updated_col, comment_col])
+    cell_map = {
+        status_col: label,
+        operator_col: operator_name,
+        updated_col: updated,
+        comment_col: (comment or "").strip(),
+    }
+    row_values = [cell_map.get(col, None) for col in _cols_between(lo, hi)]
+
+    try:
+        from .integrations.google_sheets.client import (
+            GoogleSheetsClient,
+            GoogleSheetsUnavailable,
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.warning("google-sheets client import failed: %s", exc)
+        return
+
+    try:
+        client = GoogleSheetsClient()
+    except GoogleSheetsUnavailable as exc:
+        logger.warning("writeback disabled: %s", exc)
+        return
+
+    ws_name = sheet_source.worksheet_name or client.worksheet_name_by_gid(
+        sheet_source.spreadsheet_id, sheet_source.gid
+    )
+    if not ws_name:
+        logger.warning("writeback: cannot resolve worksheet name for gid=%s", sheet_source.gid)
+        return
+
+    safe = ws_name.replace("'", "''")
+    row_index = lead.sheet_row_index
+    sheet_range = f"'{safe}'!{lo}{row_index}:{hi}{row_index}"
+
+    try:
+        client.update_cells(
+            sheet_source.spreadsheet_id, sheet_range, [row_values]
+        )
+    except Exception:
+        logger.exception(
+            "writeback failed lead=%s range=%s", lead.id, sheet_range
+        )
+
+
+def _writeback_async(lead_id: int, comment: str = "") -> None:
+    """
+    Fire a daemon thread to write the lead's state back into the sheet.
+    Callers should schedule this via `transaction.on_commit` so the DB
+    change is durable before we try to reflect it in Google.
+    """
+    def _run() -> None:
+        try:
+            from .models import Lead
+
+            lead = Lead.objects.select_related("sheet_source", "operator").get(pk=lead_id)
+            lead_writeback_to_sheet(lead, comment=comment)
+        except Exception:
+            logger.exception("_writeback_async: fetch/write failed for lead=%s", lead_id)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _schedule_writeback(lead_id: int, comment: str = "") -> None:
+    """Wire the writeback to fire once the surrounding transaction commits."""
+    transaction.on_commit(lambda: _writeback_async(lead_id, comment))
 
 
 # ---- lead lifecycle ------------------------------------------------------
@@ -500,6 +654,11 @@ def lead_reassign(
             comment="Reminders moved with lead reassignment",
         )
 
+    _schedule_writeback(
+        lead.id,
+        comment=f"Переназначен → {new_operator.full_name}"
+        + (f" ({reason})" if reason else ""),
+    )
     return assignment
 
 
@@ -525,6 +684,7 @@ def lead_update_status(*, lead: Lead, status: str, user=None, comment: str = "")
         changes={"status": {"old": old, "new": status}},
         comment=comment,
     )
+    _schedule_writeback(lead.id, comment=comment)
     return lead
 
 
@@ -581,6 +741,10 @@ def lead_convert_to_sale(*, lead: Lead, user=None, sale_data: dict):
         changes={"status": {"old": LeadStatus.IN_PROGRESS, "new": LeadStatus.WON}, "sale_id": sale.id},
         comment="Конвертация в продажу",
     )
+    _schedule_writeback(
+        lead.id,
+        comment=(sale.bonus_note or f"→ Sale #{sale.id}"),
+    )
     return sale
 
 
@@ -621,20 +785,24 @@ def sheet_source_upsert(
     active: bool = True,
     default_operator: Operator | None = None,
     distribution_mode: str = DistributionMode.ALIAS_ONLY,
+    writeback_columns: dict | None = None,
     user=None,
 ) -> SheetSource:
+    defaults = {
+        "name": name[:128],
+        "worksheet_name": worksheet_name[:128],
+        "column_map": column_map,
+        "default_status": default_status,
+        "active": active,
+        "default_operator": default_operator,
+        "distribution_mode": distribution_mode,
+    }
+    if writeback_columns is not None:
+        defaults["writeback_columns"] = writeback_columns
     obj, created = SheetSource.objects.update_or_create(
         spreadsheet_id=spreadsheet_id,
         gid=gid,
-        defaults={
-            "name": name[:128],
-            "worksheet_name": worksheet_name[:128],
-            "column_map": column_map,
-            "default_status": default_status,
-            "active": active,
-            "default_operator": default_operator,
-            "distribution_mode": distribution_mode,
-        },
+        defaults=defaults,
     )
     audit_log_create(
         user=user,
@@ -710,6 +878,10 @@ def lead_postpone(*, lead: Lead, operator: Operator, reason: str = "", user=None
         },
         comment="postponed by operator",
     )
+    _schedule_writeback(
+        lead.id,
+        comment=f"Отложен: {lead.postpone_reason}" if lead.postpone_reason else "Отложен",
+    )
     return lead
 
 
@@ -732,4 +904,5 @@ def lead_unpostpone(*, lead: Lead, operator: Operator, user=None) -> Lead:
         changes={"unpostponed": old},
         comment="unpostponed by operator",
     )
+    _schedule_writeback(lead.id, comment="Возвращён в работу")
     return lead

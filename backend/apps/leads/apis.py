@@ -148,6 +148,7 @@ class SheetSourceSerializer(serializers.ModelSerializer):
             "default_operator",
             "default_operator_name",
             "distribution_mode",
+            "writeback_columns",
         ]
         read_only_fields = [
             "id",
@@ -461,6 +462,7 @@ class SheetSourceListCreateApi(ListCreateAPIView):
             active=data.get("active", True),
             default_operator=default_op if default_op else None,
             distribution_mode=data.get("distribution_mode") or DistributionMode.ALIAS_ONLY,
+            writeback_columns=data.get("writeback_columns"),
             user=request.user,
         )
         return Response(
@@ -495,6 +497,7 @@ class SheetSourceDetailApi(APIView):
             active=data.get("active", obj.active),
             default_operator=default_op if default_op else None,
             distribution_mode=data.get("distribution_mode", obj.distribution_mode),
+            writeback_columns=data.get("writeback_columns", obj.writeback_columns),
             user=request.user,
         )
         return Response(SheetSourceSerializer(updated).data)
