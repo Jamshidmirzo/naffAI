@@ -104,6 +104,7 @@ def _history_payload(session: ChatSession) -> list[dict]:
             "role": m.role,
             "content": m.content,
             "tool_name": m.tool_name,
+            "tool_calls": m.tool_calls or [],
         })
     return payload
 
@@ -161,10 +162,17 @@ def handle_user_message(
             return assistant
         except Exception as exc:
             logger.exception("LLM chat_with_tools failed: %s", exc)
+            # User-facing text kept clean; the raw exception is in the log
+            # for whoever is on-call. If we knew this was a rate-limit we
+            # would have branched into LLMChainExhaustedError above, so
+            # anything landing here is unexpected → generic retry hint.
             assistant = ChatMessage.objects.create(
                 session=session,
                 role=ChatMessage.ROLE_ASSISTANT,
-                content=f"Извините, ошибка LLM: {exc}",
+                content=(
+                    "AI временно недоступен — попробуйте ещё раз через минуту. "
+                    "Если повторится, скажите менеджеру."
+                ),
             )
             return assistant
 

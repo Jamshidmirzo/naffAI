@@ -189,7 +189,7 @@ class GeminiProvider:
         from google import genai
 
         self._client = genai.Client(api_key=key)
-        self._model = model or getattr(settings, "GEMINI_MODEL", "gemini-3.6-flash")
+        self._model = model or getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash-lite")
         self._fallback_model = fallback_model or getattr(
             settings, "GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite"
         )
@@ -310,10 +310,29 @@ class GeminiProvider:
         contents = []
         for msg in history:
             role = msg["role"]
+            content = msg.get("content", "") or ""
+            raw_tool_calls = msg.get("tool_calls") or []
             if role == "user":
-                contents.append(gtypes.Content(role="user", parts=[gtypes.Part(text=msg["content"])]))
+                contents.append(gtypes.Content(role="user", parts=[gtypes.Part(text=content)]))
             elif role == "assistant":
-                contents.append(gtypes.Content(role="model", parts=[gtypes.Part(text=msg["content"])]))
+                # Prefer tool-call parts when the assistant asked for tools;
+                # skip empty text-only assistant stubs (Gemini rejects empty
+                # parts inside a `model` Content).
+                parts: list = []
+                if raw_tool_calls:
+                    for tc in raw_tool_calls:
+                        parts.append(
+                            gtypes.Part(
+                                function_call=gtypes.FunctionCall(
+                                    name=tc.get("name") or "tool",
+                                    args=tc.get("arguments") or {},
+                                )
+                            )
+                        )
+                if content:
+                    parts.append(gtypes.Part(text=content))
+                if parts:
+                    contents.append(gtypes.Content(role="model", parts=parts))
             elif role == "tool":
                 contents.append(
                     gtypes.Content(
@@ -322,7 +341,7 @@ class GeminiProvider:
                             gtypes.Part(
                                 function_response=gtypes.FunctionResponse(
                                     name=msg.get("tool_name", "tool"),
-                                    response={"result": msg["content"]},
+                                    response={"result": content},
                                 )
                             )
                         ],
@@ -542,28 +561,68 @@ class GitHubModelsProvider:
         if system_prompt:
             openai_messages.append({"role": "system", "content": system_prompt})
 
-        pending_tool_call_id: str | None = None
+        # Reconstruct the tool_call_id chain that OpenAI/GH Models require:
+        # every `role: tool` message must reference a preceding assistant
+        # tool_calls[…].id. We re-issue synthetic ids ("call_0", "call_1"…)
+        # per assistant so the pairing is deterministic even after reload.
+        pending_ids: list[str] = []
+        tool_cursor = 0
+        call_counter = 0
         for msg in history:
             role = msg.get("role")
             content = msg.get("content", "") or ""
+            raw_tool_calls = msg.get("tool_calls") or []
             if role == "user":
                 openai_messages.append({"role": "user", "content": content})
+                pending_ids = []
+                tool_cursor = 0
             elif role == "assistant":
-                # Skip empty assistant stubs that were only tool requests —
-                # OpenAI wants either content or tool_calls, and reconstructing
-                # the tool_call_id chain from our storage isn't worth the risk.
-                if content:
+                if raw_tool_calls:
+                    # Assistant asked for one or more tool invocations.
+                    tc_list = []
+                    pending_ids = []
+                    for tc in raw_tool_calls:
+                        name = tc.get("name") or "tool"
+                        args = tc.get("arguments") or {}
+                        cid = f"call_{call_counter}"
+                        call_counter += 1
+                        pending_ids.append(cid)
+                        tc_list.append(
+                            {
+                                "id": cid,
+                                "type": "function",
+                                "function": {
+                                    "name": name,
+                                    "arguments": json.dumps(args),
+                                },
+                            }
+                        )
+                    openai_messages.append(
+                        {
+                            "role": "assistant",
+                            "content": content or None,
+                            "tool_calls": tc_list,
+                        }
+                    )
+                    tool_cursor = 0
+                elif content:
                     openai_messages.append({"role": "assistant", "content": content})
+                    pending_ids = []
+                    tool_cursor = 0
             elif role == "tool":
-                # Fabricate a tool_call_id so the payload is well-formed.
-                pending_tool_call_id = pending_tool_call_id or "call_0"
-                openai_messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": pending_tool_call_id,
-                        "content": content,
-                    }
-                )
+                # Match tool responses to the pending assistant's tool_calls
+                # in order. If we somehow lost the parent (e.g. old history
+                # written before this fix), drop the orphan rather than send
+                # a malformed payload the server will reject.
+                if tool_cursor < len(pending_ids):
+                    openai_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": pending_ids[tool_cursor],
+                            "content": content,
+                        }
+                    )
+                    tool_cursor += 1
 
         data = self._post_chat(
             openai_messages,
@@ -941,10 +1000,13 @@ def _default_chain_models() -> dict[str, str]:
     Fallback dict when `settings.LLM_CHAIN_MODELS` is not defined (older env).
     Keeps the factory usable in tests and legacy configs.
     """
+    # NB: DeepSeek slot dropped — the GH Models catalog id
+    # `deepseek/deepseek-v3-0324` currently returns HTTP 400 "unknown
+    # model" (looks like the endpoint strips the vendor prefix), so the
+    # slot poisoned the chain. Add it back after GH restores it.
     return {
-        "gemini": getattr(settings, "GEMINI_MODEL", "gemini-flash-latest"),
+        "gemini": getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash-lite"),
         "github_models_gpt4omini": "openai/gpt-4o-mini",
-        "github_models_deepseek": "deepseek/deepseek-v3-0324",
         "github_models_llama": "meta/llama-3.3-70b-instruct",
         "github_models_gpt41mini": "openai/gpt-4.1-mini",
     }
@@ -1026,7 +1088,7 @@ def get_provider() -> LLMProvider:
             raise ValueError("GEMINI_API_KEY is not configured")
         return GeminiProvider(
             api_key=api_key,
-            model=getattr(settings, "GEMINI_MODEL", "gemini-3.6-flash"),
+            model=getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash-lite"),
             fallback_model=getattr(settings, "GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite"),
         )
     if name == "github_models":
