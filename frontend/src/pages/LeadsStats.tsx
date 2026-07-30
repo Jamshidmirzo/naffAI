@@ -45,12 +45,14 @@ type StatsResponse = {
   daily: DailyRow[];
 };
 
-const TONE_BG: Record<string, string> = {
-  neutral: "#e5e7eb",
-  info: "#dbeafe",
-  hot: "#fed7aa",
-  danger: "#fecaca",
-  success: "#bbf7d0",
+// Solid accent used for the top stripe of each chip. Kept saturated
+// so it reads at a glance without staining the whole card.
+const TONE_ACCENT: Record<string, string> = {
+  neutral: "#94a3b8", // slate-400
+  info: "#3b82f6",    // blue-500
+  hot: "#f97316",     // orange-500
+  danger: "#ef4444",  // red-500
+  success: "#10b981", // emerald-500
 };
 
 export default function LeadsStats() {
@@ -151,22 +153,41 @@ export default function LeadsStats() {
               </ResponsiveContainer>
             </div>
             <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-              {(data?.by_status || []).map((s) => (
-                <div
-                  key={s.code}
-                  className="rounded-lg px-3 py-2 text-[12.5px]"
-                  style={{ background: TONE_BG[s.tone] || TONE_BG.neutral }}
-                >
-                  <div className="font-medium truncate">
-                    {s.emoji && `${s.emoji} `}
-                    {s.label_ru || s.code}
+              {(data?.by_status || []).map((s) => {
+                const accent = TONE_ACCENT[s.tone] || TONE_ACCENT.neutral;
+                return (
+                  <div
+                    key={s.code}
+                    className="relative rounded-lg border bg-white px-3 pt-3 pb-2 text-[12.5px] overflow-hidden"
+                    style={{ borderColor: "var(--border)" }}
+                  >
+                    {/* colour cue as a thin top stripe — cheap-to-scan, keeps
+                        the card body high-contrast for the number + label. */}
+                    <span
+                      className="absolute top-0 left-0 right-0"
+                      style={{ height: 3, background: accent }}
+                    />
+                    <div
+                      className="font-medium truncate flex items-center gap-1.5"
+                      style={{ color: "var(--fg)" }}
+                    >
+                      {s.emoji && <span>{s.emoji}</span>}
+                      <span className="truncate">{s.label_ru || s.code}</span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5 mt-0.5">
+                      <span
+                        className="text-[18px] font-semibold tabular-nums leading-none"
+                        style={{ color: accent }}
+                      >
+                        {s.count}
+                      </span>
+                      <span className="text-[11px] text-muted tabular-nums">
+                        {s.pct}%
+                      </span>
+                    </div>
                   </div>
-                  <div className="tabular-nums">
-                    <b>{s.count}</b>
-                    <span className="text-[11px] opacity-70"> · {s.pct}%</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}
