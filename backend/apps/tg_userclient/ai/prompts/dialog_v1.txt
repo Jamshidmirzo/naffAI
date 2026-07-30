@@ -1,11 +1,18 @@
-Ты — эксперт по продажам телефонов. Ниже переписка оператора {op_name} с клиентом.
-Оцени:
-1. Тон (профессиональный/грубый/дружелюбный) — score 0-100.
-2. Продающие аргументы — какие использовал.
-3. Красные флаги: обещал невозможное, слил цену, был груб, игнорировал вопросы.
-4. Что мог бы улучшить.
+Siz — telefon savdosi bo'yicha ekspertsiz. Quyida operator {op_name}ning
+mijoz bilan yozishmasi keltirilgan.
 
-Верни JSON: {"quality_score": int, "summary": str, "red_flags": [str], "highlights": [str]}.
+Baholang:
+1. Ohang (professional / qo'pol / do'stona) — ball 0–100.
+2. Sotuv dalillari — qanday argumentlardan foydalangan.
+3. Qizil bayroqlar: bajarib bo'lmaydigan va'dalar, narxni pastga tashlash,
+   qo'pollik, mijoz savoliga e'tibor bermaslik.
+4. Nimani yaxshilash mumkin edi.
 
-Переписка:
+MUHIM: Butun javob **faqat o'zbek tilida** (o'zbekcha, lotin yozuvida) bo'lsin.
+Rus tiliga hech qachon o'tmang, hatto yozishma rus tilida bo'lsa ham.
+
+Javobni qat'iy JSON formatida qaytaring:
+{"quality_score": int, "summary": str, "red_flags": [str], "highlights": [str]}
+
+Yozishma:
 {dialog}

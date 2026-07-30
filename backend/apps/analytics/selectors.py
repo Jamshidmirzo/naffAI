@@ -446,3 +446,143 @@ def callback_hour_heatmap(*, days_back: int = 30) -> dict:
     hours = list(range(24))
     matrix = [[grid.get((op["id"], h), 0) for h in hours] for op in operator_list]
     return {"operators": operator_list, "hours": hours, "matrix": matrix}
+
+
+# ---- Manager lead stats ----------------------------------------------
+
+# LeadStatus codes we consider "closed" for the daily-close chart.
+_CLOSED_STATUS_CODES = {"won", "lost", "archived"}
+
+
+def lead_stats_snapshot(
+    *,
+    date_from: dt.datetime | None,
+    date_to: dt.datetime | None,
+) -> dict:
+    """
+    Per-period lead breakdown for the manager stats page.
+
+    Returns:
+      {
+        "total": int,
+        "by_status": [{code, label_ru, label_uz, tone, emoji, count, pct}],
+        "by_operator": [{operator_id, operator_name, total, won, lost,
+                          in_progress, conversion_pct}],
+        "daily": [{date: 'YYYY-MM-DD', created: N, won: N, lost: N}]
+      }
+
+    `created_at` bounds the leads that count; `won`/`lost` counts refer
+    to those same leads and their CURRENT status (a lead created today
+    that gets marked won today counts in both `created` and `won` for
+    today).
+    """
+    from apps.leads.models import Lead, LeadStatusLabel
+
+    qs = Lead.objects.all()
+    if date_from:
+        qs = qs.filter(created_at__gte=date_from)
+    if date_to:
+        qs = qs.filter(created_at__lte=date_to)
+
+    total = qs.count()
+
+    # ---- by_status: current status of each lead in the period.
+    labels_map = {
+        row.code: row
+        for row in LeadStatusLabel.objects.filter(is_active=True)
+    }
+    raw_status = (
+        qs.values("status")
+        .annotate(count=Count("id"))
+        .order_by("-count")
+    )
+    by_status: list[dict] = []
+    for r in raw_status:
+        code = r["status"] or "new"
+        cnt = int(r["count"] or 0)
+        lbl = labels_map.get(code)
+        by_status.append(
+            {
+                "code": code,
+                "label_ru": lbl.label_ru if lbl else code,
+                "label_uz": lbl.label_uz if lbl else "",
+                "tone": lbl.tone if lbl else "neutral",
+                "emoji": lbl.emoji if lbl else "",
+                "count": cnt,
+                "pct": round(cnt * 100.0 / total, 1) if total else 0.0,
+            }
+        )
+
+    # ---- by_operator: total + won/lost/in_progress + conversion.
+    per_op_rows = (
+        qs.exclude(operator__isnull=True)
+        .values("operator_id", "operator__full_name")
+        .annotate(
+            total=Count("id"),
+            won=Count("id", filter=models.Q(status="won")),
+            lost=Count("id", filter=models.Q(status="lost")),
+            in_progress=Count(
+                "id",
+                filter=~models.Q(status__in=("won", "lost", "archived")),
+            ),
+        )
+        .order_by("-total")
+    )
+    by_operator: list[dict] = []
+    for r in per_op_rows:
+        t = int(r["total"] or 0)
+        w = int(r["won"] or 0)
+        by_operator.append(
+            {
+                "operator_id": r["operator_id"],
+                "operator_name": r["operator__full_name"] or "",
+                "total": t,
+                "won": w,
+                "lost": int(r["lost"] or 0),
+                "in_progress": int(r["in_progress"] or 0),
+                "conversion_pct": round(w * 100.0 / t, 1) if t else 0.0,
+            }
+        )
+
+    # ---- daily: created / won / lost per calendar day in [from..to].
+    daily: list[dict] = []
+    if date_from and date_to:
+        created_by_day = dict(
+            qs.annotate(d=TruncDate("created_at"))
+            .values_list("d")
+            .annotate(n=Count("id"))
+            .values_list("d", "n")
+        )
+        won_by_day = dict(
+            qs.filter(status="won")
+            .annotate(d=TruncDate("updated_at"))
+            .values_list("d")
+            .annotate(n=Count("id"))
+            .values_list("d", "n")
+        )
+        lost_by_day = dict(
+            qs.filter(status="lost")
+            .annotate(d=TruncDate("updated_at"))
+            .values_list("d")
+            .annotate(n=Count("id"))
+            .values_list("d", "n")
+        )
+        cursor = date_from.date()
+        end = date_to.date()
+        while cursor <= end:
+            daily.append(
+                {
+                    "date": cursor.isoformat(),
+                    "created": int(created_by_day.get(cursor, 0)),
+                    "won": int(won_by_day.get(cursor, 0)),
+                    "lost": int(lost_by_day.get(cursor, 0)),
+                }
+            )
+            cursor = cursor + dt.timedelta(days=1)
+
+    return {
+        "total": total,
+        "by_status": by_status,
+        "by_operator": by_operator,
+        "daily": daily,
+    }
