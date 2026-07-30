@@ -33,6 +33,7 @@ export type Lead = {
   id: number;
   full_name: string;
   phone: string;
+  phone_alt?: string;
   phone_raw: string;
   phone_invalid: boolean;
   product_hint: string;

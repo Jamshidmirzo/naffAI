@@ -89,6 +89,7 @@ class LeadSerializer(serializers.ModelSerializer):
             "id",
             "full_name",
             "phone",
+            "phone_alt",
             "phone_raw",
             "phone_invalid",
             "product_hint",

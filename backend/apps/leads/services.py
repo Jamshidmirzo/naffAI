@@ -119,24 +119,39 @@ def _map_sheet_status(raw: str) -> str | None:
     return row
 
 
-def _scan_row_for_phone(cells: list[Any]) -> tuple[str, int]:
+def _scan_row_for_phones(cells: list[Any]) -> tuple[list[str], int]:
     """
-    Fallback phone finder used when column_map's `phone` position yields
-    an invalid number — happens on sheets where the operator's data-entry
-    format shifts (extra "age" column pushes everything right).
+    Scan the row for every valid +998 number. Returns
+    (distinct_normalized_list, 1-based-col-of-first-hit-from-the-right).
 
-    Scans right→left so we prefer the fully-normalized `+998...` cell over
-    the raw-digits duplicate that often precedes it. Returns
-    (normalized_phone, 1-based-column-index) or ("", -1).
+    The list preserves the right→left order — the fully-normalized
+    `+998...` cell (usually rightmost) becomes the primary phone; the
+    same-client alternative (usually left of it, e.g. an unnormalized
+    duplicate OR a genuinely different second number) becomes phone_alt.
+    Duplicates after normalization are collapsed.
     """
+    found: list[str] = []
+    first_col = -1
     for i in range(len(cells) - 1, -1, -1):
         raw = "" if cells[i] is None else str(cells[i]).strip()
         if not raw:
             continue
         norm, valid = normalize_uz_phone(raw)
-        if valid:
-            return norm, i + 1
-    return "", -1
+        if not valid or norm in found:
+            continue
+        found.append(norm)
+        if first_col < 0:
+            first_col = i + 1
+    return found, first_col
+
+
+def _scan_row_for_phone(cells: list[Any]) -> tuple[str, int]:
+    """
+    Backward-compat single-phone wrapper — returns just the primary phone
+    and its column. Callers who need both should use _scan_row_for_phones.
+    """
+    phones, col = _scan_row_for_phones(cells)
+    return (phones[0] if phones else ""), col
 
 
 def _scan_row_for_name(cells: list[Any], *, phone_col_1based: int) -> str:
@@ -201,35 +216,30 @@ def _writeback_config(sheet_source) -> dict:
     return cfg
 
 
+def _col_to_idx(letters: str) -> int:
+    letters = letters.strip().upper()
+    n = 0
+    for ch in letters:
+        n = n * 26 + (ord(ch) - ord("A") + 1)
+    return n
+
+
+def _idx_to_col(idx: int) -> str:
+    out = ""
+    while idx > 0:
+        idx, r = divmod(idx - 1, 26)
+        out = chr(ord("A") + r) + out
+    return out
+
+
 def _min_max_col(cols: list[str]) -> tuple[str, str]:
     """Given ["D", "E", "F", "G"] return ("D", "G")."""
-    def _idx(letters: str) -> int:
-        letters = letters.strip().upper()
-        n = 0
-        for ch in letters:
-            n = n * 26 + (ord(ch) - ord("A") + 1)
-        return n
-
-    ordered = sorted(cols, key=_idx)
+    ordered = sorted(cols, key=_col_to_idx)
     return ordered[0], ordered[-1]
 
 
 def _cols_between(lo: str, hi: str) -> list[str]:
-    def _idx(letters: str) -> int:
-        letters = letters.strip().upper()
-        n = 0
-        for ch in letters:
-            n = n * 26 + (ord(ch) - ord("A") + 1)
-        return n
-
-    def _letter(idx: int) -> str:
-        out = ""
-        while idx > 0:
-            idx, r = divmod(idx - 1, 26)
-            out = chr(ord("A") + r) + out
-        return out
-
-    return [_letter(i) for i in range(_idx(lo), _idx(hi) + 1)]
+    return [_idx_to_col(i) for i in range(_col_to_idx(lo), _col_to_idx(hi) + 1)]
 
 
 def lead_writeback_to_sheet(lead, comment: str = "") -> None:
@@ -256,23 +266,6 @@ def lead_writeback_to_sheet(lead, comment: str = "") -> None:
     operator_name = lead.operator.full_name if lead.operator_id else "—"
     updated = timezone.localtime(timezone.now()).strftime("%Y-%m-%d %H:%M")
 
-    status_col = cfg["status_col"]
-    operator_col = cfg["operator_col"]
-    updated_col = cfg["updated_col"]
-    comment_col = cfg["comment_col"]
-
-    # Sparse layout is fine — build one continuous range from min→max
-    # column, filling non-target cells with `None` so we don't clobber
-    # unrelated data (Google's RAW mode leaves nulls untouched).
-    lo, hi = _min_max_col([status_col, operator_col, updated_col, comment_col])
-    cell_map = {
-        status_col: label,
-        operator_col: operator_name,
-        updated_col: updated,
-        comment_col: (comment or "").strip(),
-    }
-    row_values = [cell_map.get(col, None) for col in _cols_between(lo, hi)]
-
     try:
         from .integrations.google_sheets.client import (
             GoogleSheetsClient,
@@ -297,6 +290,53 @@ def lead_writeback_to_sheet(lead, comment: str = "") -> None:
 
     safe = ws_name.replace("'", "''")
     row_index = lead.sheet_row_index
+
+    # Auto-offset: pick the writeback start column once per lead so we
+    # never overwrite real data on rows whose format shifted right
+    # (srm added an "age" column, pushing phone into E). Result is
+    # sticky — cached in metadata.writeback_start_col so subsequent
+    # writebacks land in the same cells and don't drift rightward.
+    metadata = lead.metadata or {}
+    cached_start = metadata.get("writeback_start_col")
+    default_start_idx = _col_to_idx(cfg["status_col"])
+    if cached_start:
+        chosen_start_idx = _col_to_idx(cached_start)
+    else:
+        try:
+            row_cells = client.raw_values(
+                sheet_source.spreadsheet_id,
+                f"'{safe}'!A{row_index}:Z{row_index}",
+            )
+            cells = row_cells[0] if row_cells else []
+        except Exception:
+            cells = []
+        last_data_col = 0
+        for i, v in enumerate(cells, start=1):
+            if v is not None and str(v).strip():
+                last_data_col = i
+        chosen_start_idx = max(default_start_idx, last_data_col + 1)
+        # Persist so future writebacks stay in the same 4-cell block.
+        metadata["writeback_start_col"] = _idx_to_col(chosen_start_idx)
+        Lead.objects.filter(pk=lead.pk).update(metadata=metadata)
+
+    shift = chosen_start_idx - default_start_idx
+    status_col = _idx_to_col(_col_to_idx(cfg["status_col"]) + shift)
+    operator_col = _idx_to_col(_col_to_idx(cfg["operator_col"]) + shift)
+    updated_col = _idx_to_col(_col_to_idx(cfg["updated_col"]) + shift)
+    comment_col = _idx_to_col(_col_to_idx(cfg["comment_col"]) + shift)
+
+    # Sparse layout is fine — build one continuous range from min→max
+    # column, filling non-target cells with `None` so we don't clobber
+    # unrelated data (Google's RAW mode leaves nulls untouched).
+    lo, hi = _min_max_col([status_col, operator_col, updated_col, comment_col])
+    cell_map = {
+        status_col: label,
+        operator_col: operator_name,
+        updated_col: updated,
+        comment_col: (comment or "").strip(),
+    }
+    row_values = [cell_map.get(col, None) for col in _cols_between(lo, hi)]
+
     sheet_range = f"'{safe}'!{lo}{row_index}:{hi}{row_index}"
 
     try:
@@ -440,16 +480,28 @@ def lead_create_from_sheet_row(
     # product and name, shifting the phone rightward. If column_map's
     # position missed → scan the raw row for the last valid +998 number,
     # then pick the first alphabetic cell before it as the name.
+    cells = raw_row.get("__cells__") or []
+    phone_alt = ""
     if not valid:
-        cells = raw_row.get("__cells__") or []
-        smart_phone, phone_col = _scan_row_for_phone(cells)
-        if smart_phone:
-            normalized, valid = smart_phone, True
-            phone_raw = smart_phone
+        smart_phones, phone_col = _scan_row_for_phones(cells)
+        if smart_phones:
+            normalized, valid = smart_phones[0], True
+            phone_raw = smart_phones[0]
+            if len(smart_phones) > 1 and smart_phones[1] != smart_phones[0]:
+                phone_alt = smart_phones[1]
             if not full_name or not any(ch.isalpha() for ch in full_name):
                 smart_name = _scan_row_for_name(cells, phone_col_1based=phone_col)
                 if smart_name:
                     full_name = smart_name
+    else:
+        # column_map hit — but the row may STILL have a second phone in a
+        # neighbouring cell (new srm format has both a raw duplicate and
+        # the +998-normalized one). Grab it into phone_alt if distinct.
+        smart_phones, _ = _scan_row_for_phones(cells)
+        for candidate in smart_phones:
+            if candidate != normalized:
+                phone_alt = candidate
+                break
     metadata = _extract_metadata(raw_row, cm)
 
     default_status = sheet_source.default_status or LeadStatus.NEW
@@ -526,6 +578,7 @@ def lead_create_from_sheet_row(
         full_name=full_name[:128],
         phone_raw=phone_raw[:64],
         phone=normalized if valid else "",
+        phone_alt=phone_alt[:16],
         phone_invalid=not valid,
         product_hint=product_hint[:256],
         has_card=has_card[:64],

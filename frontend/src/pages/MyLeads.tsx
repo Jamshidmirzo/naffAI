@@ -682,6 +682,14 @@ function LeadCard({
         >
           {lead.phone || t("leads.no_phone")}
         </div>
+        {lead.phone_alt && lead.phone_alt !== lead.phone && (
+          <a
+            href={`tel:${lead.phone_alt}`}
+            className="mt-0.5 text-[12px] text-muted underline block tabular-nums font-mono"
+          >
+            {t("my.phone_alt_prefix")} {lead.phone_alt}
+          </a>
+        )}
         {lead.product_hint && (
           <div
             className="text-[12px] text-muted truncate mt-0.5"

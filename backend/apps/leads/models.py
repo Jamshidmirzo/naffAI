@@ -252,6 +252,12 @@ class Lead(TimestampedModel):
         db_index=True,
         help_text="Normalized to +998XXXXXXXXX. Empty if unparseable.",
     )
+    phone_alt = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        help_text="Second normalized +998 number if the sheet row carries two.",
+    )
     phone_invalid = models.BooleanField(
         default=False,
         help_text="True if the raw phone could not be normalized to +998 + 9 digits.",
