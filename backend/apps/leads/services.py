@@ -119,6 +119,44 @@ def _map_sheet_status(raw: str) -> str | None:
     return row
 
 
+def _scan_row_for_phone(cells: list[Any]) -> tuple[str, int]:
+    """
+    Fallback phone finder used when column_map's `phone` position yields
+    an invalid number — happens on sheets where the operator's data-entry
+    format shifts (extra "age" column pushes everything right).
+
+    Scans right→left so we prefer the fully-normalized `+998...` cell over
+    the raw-digits duplicate that often precedes it. Returns
+    (normalized_phone, 1-based-column-index) or ("", -1).
+    """
+    for i in range(len(cells) - 1, -1, -1):
+        raw = "" if cells[i] is None else str(cells[i]).strip()
+        if not raw:
+            continue
+        norm, valid = normalize_uz_phone(raw)
+        if valid:
+            return norm, i + 1
+    return "", -1
+
+
+def _scan_row_for_name(cells: list[Any], *, phone_col_1based: int) -> str:
+    """
+    Fallback name finder. Looks for the first alphabetic cell after col 1
+    (which is the product hint in every srm-family sheet) and before the
+    phone column. Skips cells that are just digits/dots/punctuation
+    (age numbers, duplicated phones).
+    """
+    start = 1  # skip col 1 = product
+    stop = phone_col_1based - 1 if phone_col_1based > 0 else len(cells)
+    for i in range(start, min(stop, len(cells))):
+        raw = "" if cells[i] is None else str(cells[i]).strip()
+        if not raw:
+            continue
+        if any(ch.isalpha() for ch in raw):
+            return raw
+    return ""
+
+
 def _pick_column(raw_row: dict, spec: Any) -> str:
     """
     `spec` is either:
@@ -397,6 +435,21 @@ def lead_create_from_sheet_row(
     operator_alias = _pick_column(raw_row, cm.get("operator_alias"))
 
     normalized, valid = normalize_uz_phone(phone_raw)
+
+    # Format-drift fallback: some srm rows added an "age" column between
+    # product and name, shifting the phone rightward. If column_map's
+    # position missed → scan the raw row for the last valid +998 number,
+    # then pick the first alphabetic cell before it as the name.
+    if not valid:
+        cells = raw_row.get("__cells__") or []
+        smart_phone, phone_col = _scan_row_for_phone(cells)
+        if smart_phone:
+            normalized, valid = smart_phone, True
+            phone_raw = smart_phone
+            if not full_name or not any(ch.isalpha() for ch in full_name):
+                smart_name = _scan_row_for_name(cells, phone_col_1based=phone_col)
+                if smart_name:
+                    full_name = smart_name
     metadata = _extract_metadata(raw_row, cm)
 
     default_status = sheet_source.default_status or LeadStatus.NEW
