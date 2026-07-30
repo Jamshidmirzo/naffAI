@@ -357,6 +357,7 @@ class LeadAssignmentSource(models.TextChoices):
     SHEET_MANUAL = "sheet_manual", "Из таблицы (alias)"
     AUTO_ROUND_ROBIN = "auto_round_robin", "Автоматически (RR)"
     ADMIN_REASSIGN = "admin_reassign", "Переназначение админом"
+    QIMMATLIK_RETRY = "qimmatlik_retry", "Retry после qimmatlik"
 
 
 class LeadAssignment(TimestampedModel):

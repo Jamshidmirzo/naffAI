@@ -50,6 +50,8 @@ export type Lead = {
   postponed_by: number | null;
   postponed_by_name: string | null;
   postpone_reason: string;
+  previous_operator_name?: string;
+  is_retry?: boolean;
   created_at: string;
   updated_at: string;
 };

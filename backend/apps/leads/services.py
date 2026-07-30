@@ -716,7 +716,14 @@ def lead_reassign(
 
 
 @transaction.atomic
-def lead_update_status(*, lead: Lead, status: str, user=None, comment: str = "") -> Lead:
+def lead_update_status(
+    *,
+    lead: Lead,
+    status: str,
+    user=None,
+    comment: str = "",
+    skip_retry: bool = False,
+) -> Lead:
     # Historic enum values stay valid; on top of them we accept any
     # currently-active LeadStatusLabel code (custom manager-created ones).
     if status not in dict(LeadStatus.choices):
@@ -738,7 +745,95 @@ def lead_update_status(*, lead: Lead, status: str, user=None, comment: str = "")
         comment=comment,
     )
     _schedule_writeback(lead.id, comment=comment)
+    # Qimmatlik → auto-reassign to a fresh operator (once). skip_retry
+    # is the recursion-guard used by lead_qimmatlik_retry itself when it
+    # decides to close as LOST.
+    if status == "qimmatlik_qildi" and not skip_retry:
+        lead_id = lead.id
+        transaction.on_commit(lambda: _run_qimmatlik_retry(lead_id))
     return lead
+
+
+def _run_qimmatlik_retry(lead_id: int) -> None:
+    """
+    Thin wrapper: refetch the lead in a fresh transaction so we don't
+    reuse a stale in-memory instance from the outer atomic block, then
+    delegate to lead_qimmatlik_retry.
+    """
+    try:
+        fresh = Lead.objects.select_related("operator").filter(pk=lead_id).first()
+        if fresh is None:
+            return
+        lead_qimmatlik_retry(fresh)
+    except Exception:
+        logger.exception("qimmatlik retry failed lead=%s", lead_id)
+
+
+@transaction.atomic
+def lead_qimmatlik_retry(lead: Lead) -> Operator | None:
+    """
+    Called from lead_update_status when status flipped to
+    'qimmatlik_qildi'. Picks a fresh operator (RR among those who
+    haven't already touched this lead) and reassigns; if none left →
+    close as LOST with a diagnostic comment.
+    """
+    from django.db.models import Count, Q
+
+    from .selectors import ACTIVE_LEAD_STATUSES, operators_eligible_for_new_leads
+
+    previous_ids = list(
+        lead.assignments.values_list("operator_id", flat=True).distinct()
+    )
+    from_op_id = lead.operator_id
+
+    candidate = (
+        operators_eligible_for_new_leads()
+        .exclude(pk__in=previous_ids)
+        .annotate(
+            active_leads_count=Count(
+                "leads", filter=Q(leads__status__in=ACTIVE_LEAD_STATUSES)
+            )
+        )
+        .order_by("active_leads_count", "id")
+        .first()
+    )
+    if candidate is None:
+        lead_update_status(
+            lead=lead,
+            status=LeadStatus.LOST,
+            comment="qimmatlik: все операторы уже пробовали",
+            skip_retry=True,
+        )
+        return None
+
+    lead.assignments.filter(active=True).update(active=False)
+    LeadAssignment.objects.create(
+        lead=lead,
+        operator=candidate,
+        source=LeadAssignmentSource.QIMMATLIK_RETRY,
+        active=True,
+        reason=f"retry after qimmatlik from op#{from_op_id}",
+    )
+    lead.operator = candidate
+    lead.status = LeadStatus.ASSIGNED
+    lead.postponed_at = None
+    lead.postponed_by = None
+    lead.postpone_reason = ""
+    lead.save(
+        update_fields=[
+            "operator",
+            "status",
+            "postponed_at",
+            "postponed_by",
+            "postpone_reason",
+            "updated_at",
+        ]
+    )
+    _schedule_writeback(
+        lead.id,
+        comment=f"qimmatlik retry → {candidate.full_name}",
+    )
+    return candidate
 
 
 @transaction.atomic

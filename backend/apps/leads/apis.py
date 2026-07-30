@@ -36,7 +36,9 @@ from .selectors import (
     lead_get,
     lead_list,
     leads_for_operator,
+    operator_has_open_callbacks,
     operator_is_blocked_by_overdue_callbacks,
+    operator_open_callbacks_count,
     telegram_link_for_phone,
 )
 from .services import (
@@ -62,6 +64,24 @@ class LeadSerializer(serializers.ModelSerializer):
     postponed_by_name = serializers.CharField(
         source="postponed_by.full_name", read_only=True, default=None
     )
+    previous_operator_name = serializers.SerializerMethodField()
+    is_retry = serializers.SerializerMethodField()
+
+    def get_previous_operator_name(self, lead: Lead) -> str:
+        prev = (
+            lead.assignments.exclude(operator_id=lead.operator_id)
+            .order_by("-created_at")
+            .select_related("operator")
+            .first()
+        )
+        return prev.operator.full_name if prev else ""
+
+    def get_is_retry(self, lead: Lead) -> bool:
+        from .models import LeadAssignmentSource
+
+        return lead.assignments.filter(
+            source=LeadAssignmentSource.QIMMATLIK_RETRY
+        ).exists()
 
     class Meta:
         model = Lead
@@ -86,6 +106,8 @@ class LeadSerializer(serializers.ModelSerializer):
             "postponed_by",
             "postponed_by_name",
             "postpone_reason",
+            "previous_operator_name",
+            "is_retry",
             "created_at",
             "updated_at",
         ]
@@ -98,6 +120,8 @@ class LeadSerializer(serializers.ModelSerializer):
             "postponed_by",
             "postponed_by_name",
             "postpone_reason",
+            "previous_operator_name",
+            "is_retry",
             "created_at",
             "updated_at",
         ]
@@ -290,13 +314,18 @@ class LeadMyListApi(APIView):
             operator, include_archived=include_archived, view="postponed"
         ).count()
 
+        open_cb_count = operator_open_callbacks_count(operator)
         return Response(
             {
                 "operator": {
                     "id": operator.id,
                     "full_name": operator.full_name,
                     "status": operator.status,
-                    "blocked": operator_is_blocked_by_overdue_callbacks(operator),
+                    "blocked": operator_has_open_callbacks(operator),
+                    "overdue_blocked": operator_is_blocked_by_overdue_callbacks(
+                        operator
+                    ),
+                    "open_callbacks": open_cb_count,
                 },
                 "counts": {"active": active_count, "postponed": postponed_count},
                 "results": LeadSerializer(qs, many=True).data,

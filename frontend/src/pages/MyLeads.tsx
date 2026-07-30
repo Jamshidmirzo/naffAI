@@ -48,7 +48,14 @@ type MyLeadsView = "active" | "postponed" | "all";
 type StatusChipKey = string;
 
 type MyResponse = {
-  operator: { id: number; full_name: string; status: string; blocked: boolean };
+  operator: {
+    id: number;
+    full_name: string;
+    status: string;
+    blocked: boolean;
+    overdue_blocked?: boolean;
+    open_callbacks?: number;
+  };
   counts: { active: number; postponed: number };
   results: Lead[];
   count?: number;
@@ -318,10 +325,14 @@ export default function MyLeads() {
             <div className="text-[15px] font-semibold">
               {overdueCount > 0
                 ? t("my.overdue_count", { n: overdueCount })
-                : t("my.have_overdue")}
+                : t("my.open_cb_gate", {
+                    n: operator?.open_callbacks ?? 0,
+                  })}
             </div>
             <div className="text-[13px] opacity-90">
-              {t("my.overdue_hint")}
+              {overdueCount > 0
+                ? t("my.overdue_hint")
+                : t("my.open_cb_gate_hint")}
             </div>
           </div>
           <button
@@ -677,6 +688,26 @@ function LeadCard({
             title={lead.product_hint}
           >
             {lead.product_hint}
+          </div>
+        )}
+        {lead.is_retry && lead.previous_operator_name && (
+          <div
+            className="mt-1 flex items-start gap-1.5 rounded-md border px-2 py-1 text-[12px]"
+            style={{
+              background: "rgba(249,115,22,0.10)",
+              borderColor: "rgba(249,115,22,0.40)",
+              color: "#c2410c",
+            }}
+          >
+            <span>🔄</span>
+            <div className="leading-tight">
+              <div className="font-semibold">
+                {t("lead.retry_badge", { name: lead.previous_operator_name })}
+              </div>
+              <div className="text-[11px] opacity-90">
+                {t("lead.retry_hint")}
+              </div>
+            </div>
           </div>
         )}
         {(lead as unknown as { callback_at?: string }).callback_at && (

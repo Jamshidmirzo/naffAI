@@ -133,22 +133,53 @@ def operator_is_blocked_by_overdue_callbacks(operator: Operator) -> bool:
     ).exists()
 
 
-def operators_eligible_for_new_leads() -> QuerySet[Operator]:
+def operator_has_open_callbacks(operator: Operator) -> bool:
     """
-    Active operators who don't have any overdue callbacks. Used by
-    round-robin auto-assignment.
+    True if the operator has ANY live callback (pending/overdue/snoozed),
+    regardless of `remind_at`. Powers the morning-gate: an operator with
+    a hanging callback doesn't get fresh RR leads until they clear it.
     """
     from apps.calls.models import CallbackReminder, CallbackReminderStatus
 
-    grace = getattr(settings, "CALLBACK_OVERDUE_GRACE_MINUTES", 30)
-    cutoff = timezone.now() - dt.timedelta(minutes=grace)
+    return CallbackReminder.objects.filter(
+        operator=operator,
+        status__in=(
+            CallbackReminderStatus.PENDING,
+            CallbackReminderStatus.OVERDUE,
+            CallbackReminderStatus.SNOOZED,
+        ),
+    ).exists()
+
+
+def operator_open_callbacks_count(operator: Operator) -> int:
+    """Count for the /my red banner (`У тебя N незакрытых callback`)."""
+    from apps.calls.models import CallbackReminder, CallbackReminderStatus
+
+    return CallbackReminder.objects.filter(
+        operator=operator,
+        status__in=(
+            CallbackReminderStatus.PENDING,
+            CallbackReminderStatus.OVERDUE,
+            CallbackReminderStatus.SNOOZED,
+        ),
+    ).count()
+
+
+def operators_eligible_for_new_leads() -> QuerySet[Operator]:
+    """
+    Active operators with zero open callbacks (of any status). Used by
+    round-robin auto-assignment — morning gate is the primary reason
+    we exclude anyone with a live callback, so they finish yesterday's
+    tail before we hand them fresh numbers.
+    """
+    from apps.calls.models import CallbackReminder, CallbackReminderStatus
+
     blocked_ids = CallbackReminder.objects.filter(
         status__in=(
             CallbackReminderStatus.PENDING,
             CallbackReminderStatus.OVERDUE,
             CallbackReminderStatus.SNOOZED,
         ),
-        remind_at__lte=cutoff,
     ).values_list("operator_id", flat=True)
     return (
         Operator.objects.filter(status=OperatorStatus.ACTIVE)
