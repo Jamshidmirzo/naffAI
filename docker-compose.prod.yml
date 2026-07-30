@@ -40,6 +40,43 @@ services:
     command: ["python", "-m", "apps.tg_bot.runner"]
     profiles: ["bot"]
 
+  # Telethon user-client — collects operator dialogs into TgMessage.
+  # One long-lived asyncio loop; StringSession lives in Postgres so no
+  # extra volume needed.
+  userclient:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "manage.py", "run_tg_userclient"]
+
+  # Scheduler — currently drives the TG dialog analyzer every 15 min.
+  # Simple bash loop instead of cron to keep the image small and logs
+  # visible via `docker logs`.
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          echo "[$(date +%FT%T%z)] analyze_tg_dialogs start"
+          python manage.py analyze_tg_dialogs || echo "analyze_tg_dialogs failed rc=$?"
+          echo "[$(date +%FT%T%z)] analyze_tg_dialogs done — sleep 900s"
+          sleep 900
+        done
+
 volumes:
   postgres-data:
   media-data:
