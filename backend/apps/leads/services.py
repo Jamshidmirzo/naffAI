@@ -832,7 +832,7 @@ def lead_qimmatlik_retry(lead: Lead) -> Operator | None:
     """
     from django.db.models import Count, Q
 
-    from .selectors import ACTIVE_LEAD_STATUSES, operators_eligible_for_new_leads
+    from .selectors import active_lead_status_codes, operators_eligible_for_new_leads
 
     previous_ids = list(
         lead.assignments.values_list("operator_id", flat=True).distinct()
@@ -844,7 +844,7 @@ def lead_qimmatlik_retry(lead: Lead) -> Operator | None:
         .exclude(pk__in=previous_ids)
         .annotate(
             active_leads_count=Count(
-                "leads", filter=Q(leads__status__in=ACTIVE_LEAD_STATUSES)
+                "leads", filter=Q(leads__status__in=active_lead_status_codes())
             )
         )
         .order_by("active_leads_count", "id")

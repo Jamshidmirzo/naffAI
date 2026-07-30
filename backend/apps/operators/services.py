@@ -71,7 +71,7 @@ def operator_deactivate(*, operator: Operator, user=None) -> Operator:
         LeadStatus,
     )
     from apps.leads.selectors import (
-        ACTIVE_LEAD_STATUSES,
+        active_lead_status_codes,
         operators_eligible_for_new_leads,
     )
 
@@ -101,7 +101,7 @@ def operator_deactivate(*, operator: Operator, user=None) -> Operator:
     load_qs = (
         Lead.objects.filter(operator_id__in=[o.id for o in ops])
         .values("operator_id")
-        .annotate(n=Count("id", filter=Q(status__in=ACTIVE_LEAD_STATUSES)))
+        .annotate(n=Count("id", filter=Q(status__in=active_lead_status_codes())))
     )
     load = defaultdict(int)
     for row in load_qs:

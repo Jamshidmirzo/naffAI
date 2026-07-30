@@ -158,8 +158,11 @@ export default function LeadsStats() {
                 return (
                   <div
                     key={s.code}
-                    className="relative rounded-lg border bg-white px-3 pt-3 pb-2 text-[12.5px] overflow-hidden"
-                    style={{ borderColor: "var(--border)" }}
+                    className="relative rounded-lg border px-3 pt-3 pb-2 text-[12.5px] overflow-hidden"
+                    style={{
+                      background: "var(--surface)",
+                      borderColor: "var(--border)",
+                    }}
                   >
                     {/* colour cue as a thin top stripe — cheap-to-scan, keeps
                         the card body high-contrast for the number + label. */}

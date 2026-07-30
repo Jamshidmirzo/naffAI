@@ -21,17 +21,52 @@ from .models import Lead, LeadStatus, OperatorSheetAlias, TelegramLink
 # ---- Lead queries ---------------------------------------------------------
 
 
-ACTIVE_LEAD_STATUSES = (
-    LeadStatus.NEW,
-    LeadStatus.ASSIGNED,
-    LeadStatus.IN_PROGRESS,
-    LeadStatus.CALLBACK_SCHEDULED,
-    LeadStatus.CONTACTED_TELEGRAM,
-    LeadStatus.NO_ANSWER,
-    LeadStatus.NO_ANSWER_2,
-    LeadStatus.PHONE_ON,
-    LeadStatus.HAS_DEBT,
-)
+# Terminal buckets — a lead in one of these never counts as "active".
+# Everything else that lives in LeadStatusLabel and is is_active=True is
+# considered active, so manager-created codes (dokonga_keladi, kartsi_yoq,
+# waiting_salary, …) don't silently vanish from /my the moment an operator
+# sets them.
+TERMINAL_LEAD_STATUSES = ("won", "lost", "archived", "needs_review")
+
+
+def active_lead_status_codes() -> list[str]:
+    """
+    Dynamic list of statuses that count as "active" for /my, RR
+    denominators, funnels, etc. Pulled from LeadStatusLabel so custom
+    manager-created codes participate too.
+
+    Kept as a function (not a cached module constant) so status changes
+    in the admin take effect immediately without a process restart.
+    """
+    from .models import LeadStatusLabel
+
+    return list(
+        LeadStatusLabel.objects.filter(is_active=True)
+        .exclude(code__in=TERMINAL_LEAD_STATUSES)
+        .values_list("code", flat=True)
+    )
+
+
+# Backwards-compat alias — some callsites still import the old name. The
+# tuple form is preserved so `status__in=ACTIVE_LEAD_STATUSES` continues
+# to compile at import time; the values are refreshed on every access.
+class _ActiveStatusesProxy:
+    """Behaves like a tuple but re-queries the DB on every iteration."""
+
+    def __iter__(self):
+        return iter(active_lead_status_codes())
+
+    def __contains__(self, item):
+        return item in active_lead_status_codes()
+
+    def __len__(self):
+        return len(active_lead_status_codes())
+
+    def __repr__(self):
+        return f"ActiveLeadStatuses({active_lead_status_codes()!r})"
+
+
+ACTIVE_LEAD_STATUSES = _ActiveStatusesProxy()
 
 
 def lead_get(pk: int) -> Lead | None:
@@ -97,7 +132,7 @@ def leads_for_operator(
     if status:
         qs = qs.filter(status=status)
     elif not include_archived:
-        qs = qs.filter(status__in=ACTIVE_LEAD_STATUSES)
+        qs = qs.filter(status__in=active_lead_status_codes())
 
     if view == "active":
         qs = qs.filter(postponed_at__isnull=True)
@@ -196,7 +231,7 @@ def next_operator_for_round_robin() -> Operator | None:
     qs = operators_eligible_for_new_leads().annotate(
         active_leads_count=Count(
             "leads",
-            filter=Q(leads__status__in=ACTIVE_LEAD_STATUSES),
+            filter=Q(leads__status__in=active_lead_status_codes()),
         )
     )
     return qs.order_by("active_leads_count", "id").first()
