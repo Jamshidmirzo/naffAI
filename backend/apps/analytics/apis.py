@@ -12,6 +12,7 @@ from .selectors import (
     by_model,
     callback_hour_heatmap,
     kpi_snapshot,
+    lead_stats_snapshot,
     leaderboard,
     leads_distribution_by_operator,
     operator_funnels,
@@ -119,6 +120,29 @@ class TimeseriesApi(APIView):
         if date_to is None:
             date_to = dt.datetime.now()
         return Response(timeseries_daily(date_from=date_from, date_to=date_to))
+
+
+class LeadStatsApi(APIView):
+    """
+    Manager stats page: total leads in the period + status/operator/daily
+    breakdowns. Accepts `?period=day|week|month` or explicit
+    `?date_from=&date_to=`.
+    """
+
+    permission_classes = [IsTeamLeadOrManagerReadOnly]
+
+    def get(self, request):
+        date_from, date_to = _window(request)
+        if date_from is None:
+            # Default: today (matches the FE default tab).
+            from django.utils import timezone
+
+            now = timezone.now()
+            date_from = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            date_to = now
+        return Response(
+            lead_stats_snapshot(date_from=date_from, date_to=date_to)
+        )
 
 
 class LeadsDistributionApi(APIView):

@@ -25,6 +25,7 @@ function useManagerGroups(t: (k: string) => string): SidebarGroup[] {
       title: t("sidebar.analytics"),
       items: [
         { to: "/analytics", label: t("nav.analytics") },
+        { to: "/leads-stats", label: t("nav.leads_stats") },
         { to: "/reports", label: t("nav.reports") },
         { to: "/screen", label: t("nav.screen"), external: true },
       ],

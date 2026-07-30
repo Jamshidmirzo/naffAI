@@ -8,6 +8,7 @@ import Operators from "./pages/Operators";
 import OperatorDetail from "./pages/OperatorDetail";
 import Partners from "./pages/Partners";
 import Analytics from "./pages/Analytics";
+import LeadsStats from "./pages/LeadsStats";
 import Payroll from "./pages/Payroll";
 import Audit from "./pages/Audit";
 import Screen from "./pages/Screen";
@@ -85,6 +86,7 @@ export default function App() {
           <Route path="/operators/:id" element={<RoleGate allow={["manager"]}><OperatorDetail /></RoleGate>} />
           <Route path="/partners" element={<RoleGate allow={["manager"]}><Partners /></RoleGate>} />
           <Route path="/analytics" element={<RoleGate allow={["manager"]}><Analytics /></RoleGate>} />
+          <Route path="/leads-stats" element={<RoleGate allow={["manager"]}><LeadsStats /></RoleGate>} />
           <Route path="/payroll" element={<RoleGate allow={["manager"]}><Payroll /></RoleGate>} />
           <Route path="/audit" element={<RoleGate allow={["manager"]}><Audit /></RoleGate>} />
           <Route path="/ai-chat" element={<RoleGate allow={["manager"]}><AIChat /></RoleGate>} />

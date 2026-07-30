@@ -1,0 +1,262 @@
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+
+import { api } from "../lib/api";
+import { useT } from "../lib/i18n";
+import type { Period } from "../lib/period";
+
+type StatusRow = {
+  code: string;
+  label_ru: string;
+  label_uz: string;
+  tone: string;
+  emoji: string;
+  count: number;
+  pct: number;
+};
+
+type OperatorRow = {
+  operator_id: number;
+  operator_name: string;
+  total: number;
+  won: number;
+  lost: number;
+  in_progress: number;
+  conversion_pct: number;
+};
+
+type DailyRow = { date: string; created: number; won: number; lost: number };
+
+type StatsResponse = {
+  total: number;
+  by_status: StatusRow[];
+  by_operator: OperatorRow[];
+  daily: DailyRow[];
+};
+
+const TONE_BG: Record<string, string> = {
+  neutral: "#e5e7eb",
+  info: "#dbeafe",
+  hot: "#fed7aa",
+  danger: "#fecaca",
+  success: "#bbf7d0",
+};
+
+export default function LeadsStats() {
+  const t = useT();
+  const [period, setPeriod] = useState<Period>("day");
+
+  const q = useQuery<StatsResponse>({
+    queryKey: ["lead-stats", period],
+    queryFn: () =>
+      api
+        .get<StatsResponse>("/analytics/lead-stats/", { params: { period } })
+        .then((r) => r.data),
+  });
+
+  const data = q.data;
+
+  const statusChartData = useMemo(
+    () =>
+      (data?.by_status || []).map((s) => ({
+        name: s.label_ru || s.code,
+        count: s.count,
+        pct: s.pct,
+        tone: s.tone,
+      })),
+    [data],
+  );
+
+  const dailyChartData = useMemo(() => data?.daily || [], [data]);
+
+  return (
+    <div className="mx-auto max-w-[1100px] flex flex-col gap-5">
+      {/* Header + period tabs */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-[22px] font-semibold">{t("leads_stats.title")}</h1>
+          <div className="text-[13px] text-muted mt-0.5">
+            {t("leads_stats.subtitle")}
+          </div>
+        </div>
+        <div className="inline-flex rounded-full border" style={{ borderColor: "var(--border)" }}>
+          {(["day", "week", "month"] as Period[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className="px-4 py-2 text-[13px] font-medium first:rounded-l-full last:rounded-r-full"
+              style={{
+                background: period === p ? "var(--accent)" : "transparent",
+                color: period === p ? "#fff" : "var(--fg)",
+              }}
+            >
+              {t(`leads_stats.period_${p}`)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Total card */}
+      <div
+        className="rounded-[20px] px-6 py-5 flex items-center gap-4"
+        style={{
+          background: "linear-gradient(100deg, var(--accent), var(--accent2))",
+          color: "#fff",
+        }}
+      >
+        <div className="flex-1">
+          <div className="text-[13px] opacity-90">{t("leads_stats.total_label")}</div>
+          <div className="text-[36px] font-semibold leading-tight tabular-nums">
+            {q.isLoading ? "…" : (data?.total ?? 0)}
+          </div>
+        </div>
+      </div>
+
+      {/* By status */}
+      <section className="rounded-[16px] border p-5" style={{ borderColor: "var(--border)" }}>
+        <h2 className="text-[16px] font-semibold mb-3">
+          {t("leads_stats.by_status")}
+        </h2>
+        {statusChartData.length === 0 ? (
+          <div className="text-[13px] text-muted">{t("leads_stats.no_data")}</div>
+        ) : (
+          <>
+            <div style={{ width: "100%", height: 260 }}>
+              <ResponsiveContainer>
+                <BarChart data={statusChartData} margin={{ top: 8, right: 12, bottom: 32, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis
+                    dataKey="name"
+                    angle={-20}
+                    textAnchor="end"
+                    interval={0}
+                    tick={{ fontSize: 11 }}
+                    height={60}
+                  />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="#f97316" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+              {(data?.by_status || []).map((s) => (
+                <div
+                  key={s.code}
+                  className="rounded-lg px-3 py-2 text-[12.5px]"
+                  style={{ background: TONE_BG[s.tone] || TONE_BG.neutral }}
+                >
+                  <div className="font-medium truncate">
+                    {s.emoji && `${s.emoji} `}
+                    {s.label_ru || s.code}
+                  </div>
+                  <div className="tabular-nums">
+                    <b>{s.count}</b>
+                    <span className="text-[11px] opacity-70"> · {s.pct}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+
+      {/* By operator */}
+      <section className="rounded-[16px] border p-5" style={{ borderColor: "var(--border)" }}>
+        <h2 className="text-[16px] font-semibold mb-3">
+          {t("leads_stats.by_operator")}
+        </h2>
+        {(data?.by_operator || []).length === 0 ? (
+          <div className="text-[13px] text-muted">{t("leads_stats.no_data")}</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
+                  <th className="py-2 pr-3">{t("leads_stats.op_name")}</th>
+                  <th className="py-2 px-3 text-right">{t("leads_stats.op_total")}</th>
+                  <th className="py-2 px-3 text-right">{t("leads_stats.op_won")}</th>
+                  <th className="py-2 px-3 text-right">{t("leads_stats.op_in_progress")}</th>
+                  <th className="py-2 px-3 text-right">{t("leads_stats.op_lost")}</th>
+                  <th className="py-2 pl-3 text-right">{t("leads_stats.op_conversion")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.by_operator || []).map((r) => (
+                  <tr key={r.operator_id} className="border-b" style={{ borderColor: "var(--border)" }}>
+                    <td className="py-2 pr-3">{r.operator_name}</td>
+                    <td className="py-2 px-3 text-right tabular-nums font-medium">{r.total}</td>
+                    <td className="py-2 px-3 text-right tabular-nums" style={{ color: "#059669" }}>
+                      {r.won}
+                    </td>
+                    <td className="py-2 px-3 text-right tabular-nums">{r.in_progress}</td>
+                    <td className="py-2 px-3 text-right tabular-nums" style={{ color: "#dc2626" }}>
+                      {r.lost}
+                    </td>
+                    <td className="py-2 pl-3 text-right tabular-nums font-medium">
+                      {r.conversion_pct}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* Daily */}
+      {dailyChartData.length > 1 && (
+        <section className="rounded-[16px] border p-5" style={{ borderColor: "var(--border)" }}>
+          <h2 className="text-[16px] font-semibold mb-3">
+            {t("leads_stats.daily")}
+          </h2>
+          <div style={{ width: "100%", height: 260 }}>
+            <ResponsiveContainer>
+              <LineChart data={dailyChartData} margin={{ top: 8, right: 12, bottom: 8, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <Tooltip />
+                <Line
+                  type="monotone"
+                  dataKey="created"
+                  name={t("leads_stats.d_created")}
+                  stroke="#f97316"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="won"
+                  name={t("leads_stats.d_won")}
+                  stroke="#059669"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="lost"
+                  name={t("leads_stats.d_lost")}
+                  stroke="#dc2626"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
