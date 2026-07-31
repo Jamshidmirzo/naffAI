@@ -54,9 +54,7 @@ services:
         condition: service_healthy
     command: ["python", "manage.py", "run_tg_userclient"]
 
-  # Scheduler — currently drives the TG dialog analyzer every 15 min.
-  # Simple bash loop instead of cron to keep the image small and logs
-  # visible via `docker logs`.
+  # Scheduler — drives the TG dialog analyzer every 15 min.
   scheduler:
     build:
       context: ./backend
@@ -75,6 +73,29 @@ services:
           python manage.py analyze_tg_dialogs || echo "analyze_tg_dialogs failed rc=$?"
           echo "[$(date +%FT%T%z)] analyze_tg_dialogs done — sleep 900s"
           sleep 900
+        done
+
+  # Sheet sync — pull new leads from Google Sheets every 5 minutes.
+  # Kept separate from `scheduler` so an analyze/LLM stall never blocks
+  # inbound leads (or vice versa). Every iteration logs via docker logs.
+  sheet-sync:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          echo "[$(date +%FT%T%z)] sync_sheets_leads start"
+          python manage.py sync_sheets_leads || echo "sync_sheets_leads failed rc=$?"
+          echo "[$(date +%FT%T%z)] sync_sheets_leads done — sleep 300s"
+          sleep 300
         done
 
 volumes:
