@@ -127,7 +127,11 @@ class OperatorReactivateApi(APIView):
         if not op:
             return Response({"detail": "Not found"}, status=404)
         operator_reactivate(operator=op, user=request.user)
-        return Response(OperatorSerializer(op).data)
+        payload = OperatorSerializer(op).data
+        # Same shape as OperatorDeactivateApi so the FE can render one
+        # generic toast: "Активирован — N лидов подтянуто от других".
+        payload["rebalanced_count"] = getattr(op, "rebalanced_count", 0)
+        return Response(payload)
 
 
 class OperatorDeleteApi(APIView):

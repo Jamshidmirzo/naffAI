@@ -137,6 +137,8 @@ export default function Operators() {
       const n = data?.rebalanced_count ?? 0;
       if (!vars.active && n > 0) {
         toast.success(t("operators.deactivated_with_rebalance", { n }));
+      } else if (vars.active && n > 0) {
+        toast.success(t("operators.activated_with_rebalance", { n }));
       } else {
         toast.success(t("operators.status_updated"));
       }

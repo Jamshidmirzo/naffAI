@@ -188,7 +188,104 @@ def operator_deactivate(*, operator: Operator, user=None) -> Operator:
 
 @transaction.atomic
 def operator_reactivate(*, operator: Operator, user=None) -> Operator:
-    return operator_update(operator=operator, user=user, status=OperatorStatus.ACTIVE)
+    """
+    Flip to ACTIVE, then auto-rebalance untouched leads TO the new
+    operator so they don't sit on 0 while everyone else has 60. Mirrors
+    `operator_deactivate` — same untouched-only rule (status ∈ {new,
+    assigned}, not postponed), same LeadAssignment history, same audit
+    shape. Callbacks are not pulled: they belong to the donor's
+    previous contact with that client.
+    """
+    from collections import defaultdict
+
+    from django.db.models import Count, Q
+
+    from apps.leads.models import (
+        Lead,
+        LeadAssignment,
+        LeadAssignmentSource,
+        LeadStatus,
+    )
+    from apps.leads.selectors import (
+        active_lead_status_codes,
+        operators_eligible_for_new_leads,
+    )
+
+    operator_update(operator=operator, user=user, status=OperatorStatus.ACTIVE)
+    operator.rebalanced_count = 0
+
+    donors = list(operators_eligible_for_new_leads().exclude(pk=operator.id))
+    if not donors:
+        return operator
+
+    all_ops = donors + [operator]
+    active_codes = active_lead_status_codes()
+
+    load: dict[int, int] = defaultdict(int)
+    for row in (
+        Lead.objects.filter(operator_id__in=[o.id for o in all_ops])
+        .values("operator_id")
+        .annotate(n=Count("id", filter=Q(status__in=active_codes)))
+    ):
+        load[row["operator_id"]] = row["n"]
+
+    target = sum(load.values()) // len(all_ops)
+    per_donor: dict[int, int] = defaultdict(int)
+    total_moved = 0
+
+    active_donors = list(donors)
+    while load[operator.id] < target and active_donors:
+        donor = max(active_donors, key=lambda o: load[o.id])
+        if load[donor.id] <= target:
+            break
+        lead = (
+            Lead.objects.filter(
+                operator_id=donor.id,
+                status__in=(LeadStatus.NEW, LeadStatus.ASSIGNED),
+                postponed_at__isnull=True,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if lead is None:
+            active_donors = [o for o in active_donors if o.id != donor.id]
+            continue
+
+        LeadAssignment.objects.filter(lead=lead, active=True).update(active=False)
+        LeadAssignment.objects.create(
+            lead=lead,
+            operator=operator,
+            source=LeadAssignmentSource.AUTO_ROUND_ROBIN,
+            active=True,
+            reason=f"rebalance on activate: from op#{donor.id}",
+        )
+        lead.operator = operator
+        lead.save(update_fields=["operator", "updated_at"])
+        load[donor.id] -= 1
+        load[operator.id] += 1
+        per_donor[donor.id] += 1
+        total_moved += 1
+
+    operator.rebalanced_count = total_moved
+    if total_moved:
+        donor_names = {
+            o.full_name: per_donor[o.id]
+            for o in donors
+            if per_donor.get(o.id)
+        }
+        audit_log_create(
+            user=user,
+            action=AuditAction.UPDATE,
+            entity="operators.Operator",
+            entity_id=operator.id,
+            changes={
+                "auto_rebalance_on_activate": True,
+                "leads_reassigned": total_moved,
+                "per_donor": donor_names,
+            },
+            comment=f"Auto-rebalanced {total_moved} untouched leads on activate",
+        )
+    return operator
 
 
 @transaction.atomic
