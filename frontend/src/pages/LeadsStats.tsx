@@ -4,6 +4,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -134,21 +135,44 @@ export default function LeadsStats() {
           <div className="text-[13px] text-muted">{t("leads_stats.no_data")}</div>
         ) : (
           <>
-            <div style={{ width: "100%", height: 260 }}>
+            {/* Horizontal bars — vertical layout would clip long uz labels
+                like «TG'га боғланди» when the pool grows past ~7 statuses.
+                Height auto-scales with row count so every status is legible. */}
+            <div
+              style={{
+                width: "100%",
+                height: Math.max(180, statusChartData.length * 30 + 24),
+              }}
+            >
               <ResponsiveContainer>
-                <BarChart data={statusChartData} margin={{ top: 8, right: 12, bottom: 32, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis
+                <BarChart
+                  data={statusChartData}
+                  layout="vertical"
+                  margin={{ top: 4, right: 24, bottom: 4, left: 4 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <YAxis
                     dataKey="name"
-                    angle={-20}
-                    textAnchor="end"
+                    type="category"
+                    tick={{ fontSize: 12 }}
+                    width={140}
                     interval={0}
-                    tick={{ fontSize: 11 }}
-                    height={60}
                   />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="#f97316" radius={[6, 6, 0, 0]} />
+                  <Tooltip
+                    formatter={(value: number, _n, entry) => [
+                      `${value} · ${(entry.payload as { pct: number }).pct}%`,
+                      "лидов",
+                    ]}
+                  />
+                  <Bar dataKey="count" radius={[0, 6, 6, 0]}>
+                    {statusChartData.map((s, i) => (
+                      <Cell
+                        key={i}
+                        fill={TONE_ACCENT[s.tone] || TONE_ACCENT.neutral}
+                      />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
