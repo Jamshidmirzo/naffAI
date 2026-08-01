@@ -29,7 +29,14 @@ api.interceptors.response.use(
       localStorage.removeItem("naffai_token");
       localStorage.removeItem("naffai_username");
       localStorage.removeItem("naffai_role");
-      if (location.pathname !== "/login") location.href = "/login";
+      // The /scan kiosk is a phone-first standalone view for the operator
+      // — it never requires login (scan endpoint itself is AllowAny). Do
+      // NOT bounce them to /login just because /attendance/me/current/
+      // returned 401 (token invalidated after check-out is normal).
+      const onKiosk = location.pathname === "/scan";
+      if (!onKiosk && location.pathname !== "/login") {
+        location.href = "/login";
+      }
     } else if (err.response?.status === 403) {
       // Silence role-scoped endpoints (e.g. manager hitting operator's /my/)
       // — RoleGate already routes users to their home; a global toast just

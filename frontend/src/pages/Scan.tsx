@@ -295,21 +295,31 @@ function KioskCheckMode({
           {/* Big single toggle button */}
           <button
             onClick={doScan}
-            disabled={pending}
-            className="mt-6 w-full grid place-items-center rounded-2xl font-bold text-white transition-all active:scale-[.98] disabled:opacity-60"
+            disabled={pending || cooldownLeft > 0}
+            className="mt-6 w-full grid place-items-center rounded-2xl font-bold text-white transition-all active:scale-[.98] disabled:opacity-70"
             style={{
               height: 68,
               fontSize: 18,
-              background: isIn
-                ? "linear-gradient(180deg, #dc2626, #b91c1c)"
-                : "linear-gradient(180deg, #16a34a, #15803d)",
-              boxShadow: isIn
-                ? "0 12px 30px -12px rgba(220,38,38,.55)"
-                : "0 12px 30px -12px rgba(34,197,94,.55)",
+              background:
+                cooldownLeft > 0
+                  ? "linear-gradient(180deg, #64748b, #475569)"
+                  : isIn
+                    ? "linear-gradient(180deg, #dc2626, #b91c1c)"
+                    : "linear-gradient(180deg, #16a34a, #15803d)",
+              boxShadow:
+                cooldownLeft > 0
+                  ? "0 8px 20px -12px rgba(0,0,0,.35)"
+                  : isIn
+                    ? "0 12px 30px -12px rgba(220,38,38,.55)"
+                    : "0 12px 30px -12px rgba(34,197,94,.55)",
             }}
           >
             {pending ? (
               "Отмечаем…"
+            ) : cooldownLeft > 0 ? (
+              <span className="inline-flex items-center gap-2">
+                ⏱ Подождите {cooldownLeft} сек
+              </span>
             ) : (
               <span className="inline-flex items-center gap-2">
                 {isIn ? <LogOut className="w-5 h-5" /> : <LogIn className="w-5 h-5" />}
