@@ -6,6 +6,7 @@ import {
   MessageCircle,
   AlarmClock,
   CheckCircle2,
+  Lock,
   PauseCircle,
   PlayCircle,
   XCircle,
@@ -453,6 +454,36 @@ export default function MyLeads() {
       )}
 
       {/* --- Lead cards --- */}
+      {view === "active" && operator?.blocked && (
+        <div
+          className="sticky z-30 flex items-center gap-3 rounded-2xl border px-4 py-3 backdrop-blur-md shadow-lg"
+          style={{
+            top: 74,
+            background: "rgba(220, 38, 38, 0.10)",
+            borderColor: "rgba(220, 38, 38, 0.45)",
+            color: "var(--fg)",
+          }}
+        >
+          <div
+            className="shrink-0 rounded-xl p-2"
+            style={{ background: "rgba(220, 38, 38, 0.18)" }}
+          >
+            <Lock className="w-6 h-6" style={{ color: "#dc2626" }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-[14.5px]" style={{ color: "#dc2626" }}>
+              {t("my.locked_title", {
+                n:
+                  (operator?.open_callbacks ?? 0) +
+                  (operator?.yesterday_backlog ?? 0),
+              })}
+            </div>
+            <div className="text-[12.5px] opacity-90">
+              {t("my.locked_hint")}
+            </div>
+          </div>
+        </div>
+      )}
       {visibleLeads.length === 0 ? (
         <div
           className="rounded-2xl py-12 text-center text-[13.5px] text-muted"
