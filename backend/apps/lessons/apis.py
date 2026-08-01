@@ -39,7 +39,61 @@ class TodayLessonApi(APIView):
             operator_id=profile.operator_id, lesson_date=target_date
         ).first()
         if not lesson:
-            return Response({"detail": "No lesson for today"}, status=status.HTTP_404_NOT_FOUND)
+            # Lazy-generate: if the nightly cron hasn't run for this operator
+            # yet (or never), build the lesson on demand so the operator
+            # doesn't stare at «no lesson today».
+            from apps.lessons.selectors import collect_yesterday_facts
+            from apps.lessons.ai.generator import generate_daily_lesson
+            from apps.operators.models import Operator
+
+            op = Operator.objects.filter(pk=profile.operator_id).first()
+            if op is None:
+                return Response(
+                    {"detail": "No lesson for today"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            facts = collect_yesterday_facts(op, target_date)
+            sales_count = facts["sales"]["count"]
+            dialogs_count = facts["dialogs"]["count"]
+            if sales_count == 0 and dialogs_count == 0:
+                return Response(
+                    {"detail": "No activity yesterday"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            try:
+                tenure_days = 0
+                if op.hired_at:
+                    tenure_days = max(0, (target_date - op.hired_at).days)
+                res = generate_daily_lesson(op.full_name, tenure_days, facts)
+                stats_snapshot = {
+                    "sales_count": sales_count,
+                    "revenue_uzs": facts["sales"]["revenue"],
+                    "avg_check": facts["sales"]["avg_check"],
+                    "dialogs_count": dialogs_count,
+                    "avg_quality": facts["dialogs"]["avg_quality_score"],
+                    "callbacks_missed": facts["callbacks"]["missed"],
+                    "leads_won": facts["leads"]["won"],
+                    "leads_lost": facts["leads"]["lost"],
+                    "month_progress_pct": facts["context"]["month_progress_pct"],
+                    "delta_revenue": facts["sales"]["delta_revenue"],
+                    "delta_count": facts["sales"]["delta_count"],
+                }
+                lesson = DailyLesson.objects.create(
+                    operator=op,
+                    lesson_date=target_date,
+                    summary=res["summary"],
+                    highlights=res["highlights"],
+                    tips=res["tips"],
+                    micro_lesson=res["micro_lesson"],
+                    stats_snapshot=stats_snapshot,
+                    model_version=res["model_used"],
+                    prompt_version="v1",
+                )
+            except Exception:
+                return Response(
+                    {"detail": "No lesson for today"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
         self.check_object_permissions(request, lesson)
 

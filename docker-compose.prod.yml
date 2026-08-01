@@ -75,6 +75,30 @@ services:
           sleep 900
         done
 
+  # Daily lessons — generate yesterday's summary for every operator
+  # once per calendar day (loop sleeps 6h between passes; the command
+  # itself is idempotent — skips operators that already have a lesson
+  # for the target date).
+  lesson-generator:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          echo "[$(date +%FT%T%z)] generate_daily_lessons start"
+          python manage.py generate_daily_lessons || echo "generate_daily_lessons failed rc=$?"
+          echo "[$(date +%FT%T%z)] generate_daily_lessons done — sleep 21600s"
+          sleep 21600
+        done
+
   # Sheet sync — pull new leads from Google Sheets every 5 minutes.
   # Kept separate from `scheduler` so an analyze/LLM stall never blocks
   # inbound leads (or vice versa). Every iteration logs via docker logs.
