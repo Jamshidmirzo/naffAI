@@ -91,6 +91,15 @@ class LeadStatusLabel(TimestampedModel):
             "before RR hands them a fresh number."
         ),
     )
+    is_terminal = models.BooleanField(
+        default=False,
+        help_text=(
+            "Terminal / «закрытый» status: the lead is done, operator "
+            "doesn't work it anymore. Terminal leads don't count toward "
+            "the RR batch quota, don't block new-lead intake, and are "
+            "excluded from the /my active tab by default."
+        ),
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,

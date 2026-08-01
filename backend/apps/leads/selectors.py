@@ -240,6 +240,41 @@ def blocking_lead_status_codes() -> list[str]:
     )
 
 
+def terminal_lead_status_codes() -> list[str]:
+    """
+    Terminal codes — lead is done. Excluded from batch quota, /my active
+    tab, and RR gate.
+    """
+    from .models import LeadStatusLabel
+
+    return list(
+        LeadStatusLabel.objects.filter(is_active=True, is_terminal=True)
+        .values_list("code", flat=True)
+    )
+
+
+def operator_working_lead_count(operator: Operator) -> int:
+    """
+    Count of «leads still on operator's plate»: active status, not
+    terminal, not postponed. Powers the batch=N gate — while this
+    count >= N, RR skips the operator.
+    """
+    terminal = set(terminal_lead_status_codes())
+    all_active = set(active_lead_status_codes())
+    workable = list(all_active - terminal)
+    if not workable:
+        return 0
+    return Lead.objects.filter(
+        operator=operator,
+        status__in=workable,
+        postponed_at__isnull=True,
+    ).count()
+
+
+def _rr_batch_size() -> int:
+    return int(getattr(settings, "RR_BATCH_SIZE", 5))
+
+
 def operator_yesterday_backlog_count(operator: Operator) -> int:
     """
     Count of leads holding the operator: any lead in a
@@ -267,14 +302,38 @@ def operator_has_open_backlog(operator: Operator) -> bool:
 
 def operators_eligible_for_new_leads() -> QuerySet[Operator]:
     """
-    Active operators eligible for round-robin. When the morning gate is
-    disabled (default), returns everyone active — RR just spreads leads.
-    When enabled, excludes anyone with a due callback or a blocking-status
-    lead (see MORNING_GATE_ENABLED).
+    Active operators eligible for round-robin.
+
+    Batch quota: an operator holding >= RR_BATCH_SIZE working leads
+    (active, non-terminal, non-postponed) is skipped — they finish
+    their current pack of 5 before RR hands them the next batch.
+
+    When MORNING_GATE_ENABLED=1, additionally excludes anyone with a
+    due callback or a blocking-status lead (legacy gate, off by default).
     """
-    base = Operator.objects.filter(status=OperatorStatus.ACTIVE).order_by("id")
+    from django.db.models import Count, Q
+
+    terminal = set(terminal_lead_status_codes())
+    workable = list(set(active_lead_status_codes()) - terminal)
+    batch = _rr_batch_size()
+
+    qs = (
+        Operator.objects.filter(status=OperatorStatus.ACTIVE)
+        .annotate(
+            _working_count=Count(
+                "leads",
+                filter=Q(
+                    leads__status__in=workable,
+                    leads__postponed_at__isnull=True,
+                ),
+            ),
+        )
+        .filter(_working_count__lt=batch)
+        .order_by("id")
+    )
+
     if not _morning_gate_enabled():
-        return base
+        return qs
 
     from apps.calls.models import CallbackReminder, CallbackReminderStatus
 
@@ -288,17 +347,7 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
             remind_at__lte=_callback_due_cutoff(),
         ).values_list("operator_id", flat=True)
     )
-    codes = [c for c in blocking_lead_status_codes() if c != "callback_scheduled"]
-    backlog_blocked = set()
-    if codes:
-        backlog_blocked = set(
-            Lead.objects.filter(
-                status__in=codes,
-                operator__isnull=False,
-            ).values_list("operator_id", flat=True)
-        )
-    blocked = cb_blocked | backlog_blocked
-    return base.exclude(pk__in=blocked)
+    return qs.exclude(pk__in=cb_blocked)
 
 
 def next_operator_for_round_robin() -> Operator | None:

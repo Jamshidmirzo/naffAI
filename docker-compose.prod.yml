@@ -75,6 +75,41 @@ services:
           sleep 900
         done
 
+  # Nightly ops-cron: release stale leads (>10d untouched) and DM the
+  # daily manager report. Simple bash loop, one iteration per calendar
+  # day; scheduled at 23:30 local Tashkent (UTC+5) so it fires after
+  # the CRM day ends.
+  ops-nightly:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          # Compute seconds until next 23:30 Tashkent (UTC+5 → 18:30 UTC).
+          now_epoch=$(date -u +%s)
+          today_target=$(date -u -d 'today 18:30' +%s 2>/dev/null || python -c "import datetime,calendar; d=datetime.datetime.utcnow().replace(hour=18,minute=30,second=0,microsecond=0); print(calendar.timegm(d.timetuple()))")
+          if [ "$now_epoch" -ge "$today_target" ]; then
+            tomorrow_target=$((today_target + 86400))
+            sleep_sec=$((tomorrow_target - now_epoch))
+          else
+            sleep_sec=$((today_target - now_epoch))
+          fi
+          echo "[$(date +%FT%T%z)] ops-nightly sleep $sleep_sec s (until 23:30 Tashkent)"
+          sleep "$sleep_sec"
+          echo "[$(date +%FT%T%z)] release_stale_leads --days 10"
+          python manage.py release_stale_leads --days 10 || echo "release_stale_leads rc=$?"
+          echo "[$(date +%FT%T%z)] send_daily_manager_report"
+          python manage.py send_daily_manager_report || echo "daily_report rc=$?"
+        done
+
   # Daily lessons — generate yesterday's summary for every operator
   # once per calendar day (loop sleeps 6h between passes; the command
   # itself is idempotent — skips operators that already have a lesson
