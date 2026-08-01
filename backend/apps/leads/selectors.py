@@ -180,12 +180,23 @@ def _callback_due_cutoff():
     return timezone.now() + dt.timedelta(minutes=lookahead)
 
 
+def _morning_gate_enabled() -> bool:
+    """
+    Kill-switch for the whole morning-gate (callback + blocking-status).
+    Set MORNING_GATE_ENABLED=1 in .env to turn it back on. Default off
+    so RR just distributes whatever lands, no user-visible lock.
+    """
+    return bool(getattr(settings, "MORNING_GATE_ENABLED", False))
+
+
 def operator_has_open_callbacks(operator: Operator) -> bool:
     """
     True only if the operator has a callback whose remind_at is due
     now or within the lookahead window. Future callbacks («перезвонить
     после обеда») don't block morning RR intake.
     """
+    if not _morning_gate_enabled():
+        return False
     from apps.calls.models import CallbackReminder, CallbackReminderStatus
 
     return CallbackReminder.objects.filter(
@@ -201,6 +212,8 @@ def operator_has_open_callbacks(operator: Operator) -> bool:
 
 def operator_open_callbacks_count(operator: Operator) -> int:
     """Due-or-soon callbacks — matches the `has_open_callbacks` window."""
+    if not _morning_gate_enabled():
+        return 0
     from apps.calls.models import CallbackReminder, CallbackReminderStatus
 
     return CallbackReminder.objects.filter(
@@ -234,6 +247,8 @@ def operator_yesterday_backlog_count(operator: Operator) -> int:
     lead marked five minutes ago still counts, because that phone
     conversation isn't done. Feeds the /my lock overlay.
     """
+    if not _morning_gate_enabled():
+        return 0
     # Same rule as operators_eligible_for_new_leads: callback_scheduled
     # is counted only when the reminder is due (via operator_open_callbacks_count).
     codes = [c for c in blocking_lead_status_codes() if c != "callback_scheduled"]
@@ -252,10 +267,15 @@ def operator_has_open_backlog(operator: Operator) -> bool:
 
 def operators_eligible_for_new_leads() -> QuerySet[Operator]:
     """
-    Active operators with no unresolved backlog. RR skips anyone who
-    still has yesterday's callbacks / no-answer / in-progress leads
-    hanging — they clear them first, then get fresh numbers.
+    Active operators eligible for round-robin. When the morning gate is
+    disabled (default), returns everyone active — RR just spreads leads.
+    When enabled, excludes anyone with a due callback or a blocking-status
+    lead (see MORNING_GATE_ENABLED).
     """
+    base = Operator.objects.filter(status=OperatorStatus.ACTIVE).order_by("id")
+    if not _morning_gate_enabled():
+        return base
+
     from apps.calls.models import CallbackReminder, CallbackReminderStatus
 
     cb_blocked = set(
@@ -268,9 +288,6 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
             remind_at__lte=_callback_due_cutoff(),
         ).values_list("operator_id", flat=True)
     )
-    # Skip `callback_scheduled` from the raw status list — its blocking
-    # is time-driven via CallbackReminder above. Everything else (no_answer,
-    # phone_on, has_debt, custom manager-flagged codes) blocks unconditionally.
     codes = [c for c in blocking_lead_status_codes() if c != "callback_scheduled"]
     backlog_blocked = set()
     if codes:
@@ -281,11 +298,7 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
             ).values_list("operator_id", flat=True)
         )
     blocked = cb_blocked | backlog_blocked
-    return (
-        Operator.objects.filter(status=OperatorStatus.ACTIVE)
-        .exclude(pk__in=blocked)
-        .order_by("id")
-    )
+    return base.exclude(pk__in=blocked)
 
 
 def next_operator_for_round_robin() -> Operator | None:
