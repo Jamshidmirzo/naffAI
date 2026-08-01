@@ -1,7 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { CheckCircle2, Download, LogIn, RefreshCw, XCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import {
+  CheckCircle2,
+  Download,
+  LogIn,
+  LogOut,
+  PlayCircle,
+  RefreshCw,
+  XCircle,
+} from "lucide-react";
 import qrcode from "qrcode-generator";
+import { api } from "../lib/api";
 import { Button, Eyebrow } from "../components/ui";
 import { useAttendanceScan, type ScanResponse } from "../hooks/useAttendanceScan";
 import { apiErrorMessage } from "../lib/api-types";
@@ -48,16 +57,269 @@ function renderQrToCanvas(canvas: HTMLCanvasElement, text: string) {
   }
 }
 
+type OpenLog = {
+  id: number;
+  checked_in_at: string;
+  was_late: boolean;
+} | null;
+
+type MeCurrentResp = {
+  open_log: OpenLog;
+  today_events: Array<{
+    id: number;
+    checked_in_at: string;
+    checked_out_at: string | null;
+    was_late: boolean;
+  }>;
+};
+
+const QR_LS_KEY = "naff_kiosk_qr";
+
 export default function Scan() {
   const [search] = useSearchParams();
-  const qrPayload = search.get("qr");
-  if (qrPayload) return <CheckInMode qrPayload={qrPayload} />;
+  const qrFromUrl = search.get("qr");
+  // Persist the last-scanned QR so the operator can toggle check-in/out
+  // without rescanning between shifts on the same phone/kiosk device.
+  const savedQr = typeof window !== "undefined" ? localStorage.getItem(QR_LS_KEY) : null;
+  const qrPayload = qrFromUrl || savedQr;
+
+  useEffect(() => {
+    if (qrFromUrl) localStorage.setItem(QR_LS_KEY, qrFromUrl);
+  }, [qrFromUrl]);
+
+  if (qrPayload) return <KioskCheckMode qrPayload={qrPayload} initialAuto={!!qrFromUrl} />;
   return <KioskMode />;
 }
 
-function CheckInMode({ qrPayload }: { qrPayload: string }) {
+function fmtDuration(from: string): string {
+  const ms = Date.now() - new Date(from).getTime();
+  if (ms < 0) return "0 мин";
+  const total = Math.floor(ms / 60000);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h <= 0) return `${m} мин`;
+  return `${h} ч ${m} мин`;
+}
+
+function fmtTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/**
+ * Persistent kiosk view: shows current shift state (in/out) and a single
+ * big button to toggle. Auto-fires the scan once when the operator lands
+ * from a fresh QR (initialAuto), then stays put so they can check-out
+ * later without opening the CRM on the phone.
+ */
+function KioskCheckMode({
+  qrPayload,
+  initialAuto,
+}: {
+  qrPayload: string;
+  initialAuto: boolean;
+}) {
   const { scan } = useAttendanceScan();
-  const nav = useNavigate();
+  const [current, setCurrent] = useState<MeCurrentResp | null>(null);
+  const [lastEvent, setLastEvent] = useState<ScanResponse | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string>("");
+  const [, tick] = useState(0);
+
+  // Live tick every 30 s so the "работает 3 ч 12 мин" counter updates.
+  useEffect(() => {
+    const id = setInterval(() => tick((v) => v + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const loadCurrent = useCallback(async () => {
+    try {
+      const r = await api.get<MeCurrentResp>("/attendance/me/current/");
+      setCurrent(r.data);
+    } catch {
+      // If token isn't valid yet (before first check-in) — quietly ignore.
+      setCurrent(null);
+    }
+  }, []);
+
+  const doScan = useCallback(async () => {
+    setError("");
+    setPending(true);
+    try {
+      const data = await scan(qrPayload);
+      setLastEvent(data);
+      await loadCurrent();
+    } catch (e) {
+      setError(apiErrorMessage(e));
+    } finally {
+      setPending(false);
+    }
+  }, [qrPayload, scan, loadCurrent]);
+
+  // First mount: if we arrived directly from a fresh QR scan → auto-fire
+  // one scan (so the operator doesn't need an extra tap on top of scanning
+  // the code). Otherwise (returning to a stored kiosk page) just load
+  // current state and wait for a button tap.
+  const bootedRef = useRef(false);
+  useEffect(() => {
+    if (bootedRef.current) return;
+    bootedRef.current = true;
+    (async () => {
+      if (initialAuto) await doScan();
+      else await loadCurrent();
+    })();
+  }, [initialAuto, doScan, loadCurrent]);
+
+  const openLog = current?.open_log;
+  const isIn = !!openLog;
+
+  return (
+    <div className="min-h-screen relative overflow-hidden">
+      <div className="absolute inset-0 nf-hero" />
+      <div className="relative z-10 min-h-screen grid place-items-center px-4 py-6">
+        <div
+          className="w-full text-center animate-nfPop"
+          style={{
+            maxWidth: 380,
+            borderRadius: 28,
+            padding: "28px 24px 24px",
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            boxShadow: "0 40px 90px -40px rgba(0,0,0,.4)",
+          }}
+        >
+          <Eyebrow>{isIn ? "СМЕНА ИДЁТ" : "СМЕНА ЗАКРЫТА"}</Eyebrow>
+
+          {/* Big status icon */}
+          <div
+            className="mt-3 mx-auto grid place-items-center animate-nfPop"
+            style={{
+              width: 108,
+              height: 108,
+              borderRadius: 999,
+              background: isIn ? "rgba(34,197,94,.14)" : "rgba(148,163,184,.14)",
+            }}
+          >
+            {isIn ? (
+              <PlayCircle className="w-16 h-16" style={{ color: "#16a34a" }} />
+            ) : (
+              <LogOut className="w-16 h-16" style={{ color: "#94a3b8" }} />
+            )}
+          </div>
+
+          {/* Name + shift state */}
+          <div
+            className="mt-4 text-[24px] font-bold tracking-tight"
+            title={lastEvent?.operator.full_name}
+          >
+            {lastEvent?.operator.full_name || " "}
+          </div>
+
+          {isIn && openLog ? (
+            <>
+              <div className="mt-3 text-[14px]" style={{ color: "var(--muted)" }}>
+                Пришёл в{" "}
+                <b className="text-text tabular-nums">
+                  {fmtTime(openLog.checked_in_at)}
+                </b>
+                {openLog.was_late && (
+                  <span
+                    className="ml-2 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                    style={{
+                      background: "rgba(220,38,38,.14)",
+                      color: "#dc2626",
+                    }}
+                  >
+                    ⚠ ОПОЗДАНИЕ
+                  </span>
+                )}
+              </div>
+              <div className="mt-2 text-[13.5px] text-muted">
+                Работает{" "}
+                <b className="text-text tabular-nums">
+                  {fmtDuration(openLog.checked_in_at)}
+                </b>
+              </div>
+            </>
+          ) : lastEvent?.action === "check_out" && lastEvent.checked_out_at ? (
+            <div className="mt-3 text-[14px] text-muted">
+              Ушёл в{" "}
+              <b className="text-text tabular-nums">
+                {fmtTime(lastEvent.checked_out_at)}
+              </b>
+              {lastEvent.duration_min ? (
+                <div className="mt-1">
+                  Смена:{" "}
+                  <b className="text-text">
+                    {Math.round(lastEvent.duration_min / 60 * 10) / 10} ч
+                  </b>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="mt-3 text-[13.5px] text-muted">
+              Нажмите кнопку чтобы начать смену
+            </div>
+          )}
+
+          {/* Big single toggle button */}
+          <button
+            onClick={doScan}
+            disabled={pending}
+            className="mt-6 w-full grid place-items-center rounded-2xl font-bold text-white transition-all active:scale-[.98] disabled:opacity-60"
+            style={{
+              height: 68,
+              fontSize: 18,
+              background: isIn
+                ? "linear-gradient(180deg, #dc2626, #b91c1c)"
+                : "linear-gradient(180deg, #16a34a, #15803d)",
+              boxShadow: isIn
+                ? "0 12px 30px -12px rgba(220,38,38,.55)"
+                : "0 12px 30px -12px rgba(34,197,94,.55)",
+            }}
+          >
+            {pending ? (
+              "Отмечаем…"
+            ) : (
+              <span className="inline-flex items-center gap-2">
+                {isIn ? <LogOut className="w-5 h-5" /> : <LogIn className="w-5 h-5" />}
+                {isIn ? "Завершить смену" : "Начать смену"}
+              </span>
+            )}
+          </button>
+
+          {error && (
+            <div
+              className="mt-4 text-[12.5px] rounded-xl px-3 py-2 text-left"
+              style={{
+                background: "rgba(220,60,40,.10)",
+                color: "#dc2626",
+              }}
+            >
+              <XCircle className="w-4 h-4 inline mr-1 -mt-0.5" />
+              {error}
+            </div>
+          )}
+
+          {/* Small footer with the last event confirmation */}
+          {lastEvent && !error && (
+            <div className="mt-4 text-[11.5px] text-muted">
+              <CheckCircle2 className="w-3.5 h-3.5 inline mr-1 -mt-0.5" style={{ color: "#16a34a" }} />
+              {lastEvent.action === "check_in" ? "Приход зафиксирован" : "Уход зафиксирован"}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Legacy CheckInMode kept only for backwards-URL compatibility (unused).
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _LegacyCheckInMode({ qrPayload }: { qrPayload: string }) {
+  const { scan } = useAttendanceScan();
   const [state, setState] = useState<
     | { kind: "loading" }
     | { kind: "success"; data: ScanResponse }
@@ -70,11 +332,6 @@ function CheckInMode({ qrPayload }: { qrPayload: string }) {
       .then((data) => {
         if (!alive) return;
         setState({ kind: "success", data });
-        // On check-in the hook stored a fresh auth token — send the
-        // operator into their workstation after a short "success" beat.
-        if (data.action === "check_in" && data.token) {
-          setTimeout(() => nav("/my"), 1400);
-        }
       })
       .catch((err) => {
         if (!alive) return;
@@ -83,7 +340,6 @@ function CheckInMode({ qrPayload }: { qrPayload: string }) {
     return () => {
       alive = false;
     };
-    // qrPayload is stable per URL — intentionally ignoring `scan`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qrPayload]);
 
