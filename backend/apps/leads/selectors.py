@@ -168,11 +168,23 @@ def operator_is_blocked_by_overdue_callbacks(operator: Operator) -> bool:
     ).exists()
 
 
+def _callback_due_cutoff():
+    """
+    Callback blocks RR only when its `remind_at` is now-or-imminent.
+    A callback scheduled for «after lunch» (remind_at in a few hours)
+    lets the operator keep working morning leads normally; once the
+    lookahead window (15 min) reaches remind_at, gate kicks in and
+    they finish the callback before RR resumes.
+    """
+    lookahead = getattr(settings, "CALLBACK_GATE_LOOKAHEAD_MINUTES", 15)
+    return timezone.now() + dt.timedelta(minutes=lookahead)
+
+
 def operator_has_open_callbacks(operator: Operator) -> bool:
     """
-    True if the operator has ANY live callback (pending/overdue/snoozed),
-    regardless of `remind_at`. Powers the morning-gate: an operator with
-    a hanging callback doesn't get fresh RR leads until they clear it.
+    True only if the operator has a callback whose remind_at is due
+    now or within the lookahead window. Future callbacks («перезвонить
+    после обеда») don't block morning RR intake.
     """
     from apps.calls.models import CallbackReminder, CallbackReminderStatus
 
@@ -183,11 +195,12 @@ def operator_has_open_callbacks(operator: Operator) -> bool:
             CallbackReminderStatus.OVERDUE,
             CallbackReminderStatus.SNOOZED,
         ),
+        remind_at__lte=_callback_due_cutoff(),
     ).exists()
 
 
 def operator_open_callbacks_count(operator: Operator) -> int:
-    """Count for the /my red banner (`У тебя N незакрытых callback`)."""
+    """Due-or-soon callbacks — matches the `has_open_callbacks` window."""
     from apps.calls.models import CallbackReminder, CallbackReminderStatus
 
     return CallbackReminder.objects.filter(
@@ -197,6 +210,7 @@ def operator_open_callbacks_count(operator: Operator) -> int:
             CallbackReminderStatus.OVERDUE,
             CallbackReminderStatus.SNOOZED,
         ),
+        remind_at__lte=_callback_due_cutoff(),
     ).count()
 
 
@@ -220,7 +234,9 @@ def operator_yesterday_backlog_count(operator: Operator) -> int:
     lead marked five minutes ago still counts, because that phone
     conversation isn't done. Feeds the /my lock overlay.
     """
-    codes = blocking_lead_status_codes()
+    # Same rule as operators_eligible_for_new_leads: callback_scheduled
+    # is counted only when the reminder is due (via operator_open_callbacks_count).
+    codes = [c for c in blocking_lead_status_codes() if c != "callback_scheduled"]
     if not codes:
         return 0
     return Lead.objects.filter(operator=operator, status__in=codes).count()
@@ -249,9 +265,13 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
                 CallbackReminderStatus.OVERDUE,
                 CallbackReminderStatus.SNOOZED,
             ),
+            remind_at__lte=_callback_due_cutoff(),
         ).values_list("operator_id", flat=True)
     )
-    codes = blocking_lead_status_codes()
+    # Skip `callback_scheduled` from the raw status list — its blocking
+    # is time-driven via CallbackReminder above. Everything else (no_answer,
+    # phone_on, has_debt, custom manager-flagged codes) blocks unconditionally.
+    codes = [c for c in blocking_lead_status_codes() if c != "callback_scheduled"]
     backlog_blocked = set()
     if codes:
         backlog_blocked = set(
