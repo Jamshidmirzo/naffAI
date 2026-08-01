@@ -227,8 +227,15 @@ export default function MyLeads() {
   const results = my.data?.results ?? [];
   const counts = my.data?.counts ?? { active: 0, postponed: 0 };
 
+  const backlogCount =
+    (operator?.open_callbacks ?? 0) + (operator?.yesterday_backlog ?? 0);
   const tabs: TabItem<MyLeadsView>[] = [
-    { value: "active", label: t("my.tab_active"), count: counts.active },
+    {
+      value: "active",
+      label: t("my.tab_active"),
+      count: backlogCount > 0 ? backlogCount : counts.active,
+      danger: backlogCount > 0,
+    },
     { value: "postponed", label: t("my.tab_postponed"), count: counts.postponed },
     { value: "all", label: t("my.tab_all") },
   ];

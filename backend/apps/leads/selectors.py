@@ -200,41 +200,34 @@ def operator_open_callbacks_count(operator: Operator) -> int:
     ).count()
 
 
-def _today_start():
-    """Local-tz midnight of the current calendar day."""
-    now = timezone.localtime(timezone.now())
-    return now.replace(hour=0, minute=0, second=0, microsecond=0)
+def blocking_lead_status_codes() -> list[str]:
+    """
+    Codes flagged by the manager as «must be closed before you get new
+    ones». Powers the morning gate and the /my lock overlay.
+    """
+    from .models import LeadStatusLabel
+
+    return list(
+        LeadStatusLabel.objects.filter(is_active=True, blocks_new_leads=True)
+        .values_list("code", flat=True)
+    )
 
 
 def operator_yesterday_backlog_count(operator: Operator) -> int:
     """
-    Count of «touched but unresolved» leads carried over from previous
-    days. A lead counts if:
-      - status is active (any code in active_lead_status_codes())
-      - status is NOT the pristine intake bucket (new/assigned) —
-        those are RR's responsibility, not backlog.
-      - updated_at is before local-midnight of today.
-
-    Feeds the morning-gate: an operator with any such lead has to
-    resolve them (mark won/lost/archived, requeue callback, or at
-    minimum touch the lead so updated_at moves to today) before RR
-    hands them a fresh number.
+    Count of leads holding the operator: any lead in a
+    manager-flagged «blocking» status. Time-independent — a phone_on
+    lead marked five minutes ago still counts, because that phone
+    conversation isn't done. Feeds the /my lock overlay.
     """
-    codes = [
-        c for c in active_lead_status_codes()
-        if c not in (LeadStatus.NEW, LeadStatus.ASSIGNED)
-    ]
+    codes = blocking_lead_status_codes()
     if not codes:
         return 0
-    return Lead.objects.filter(
-        operator=operator,
-        status__in=codes,
-        updated_at__lt=_today_start(),
-    ).count()
+    return Lead.objects.filter(operator=operator, status__in=codes).count()
 
 
 def operator_has_open_backlog(operator: Operator) -> bool:
-    """Union check used by morning gate: open callback OR yesterday-touched."""
+    """Union check used by morning gate: open callback OR blocking status."""
     return (
         operator_has_open_callbacks(operator)
         or operator_yesterday_backlog_count(operator) > 0
@@ -258,17 +251,12 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
             ),
         ).values_list("operator_id", flat=True)
     )
-    today = _today_start()
-    codes = [
-        c for c in active_lead_status_codes()
-        if c not in (LeadStatus.NEW, LeadStatus.ASSIGNED)
-    ]
+    codes = blocking_lead_status_codes()
     backlog_blocked = set()
     if codes:
         backlog_blocked = set(
             Lead.objects.filter(
                 status__in=codes,
-                updated_at__lt=today,
                 operator__isnull=False,
             ).values_list("operator_id", flat=True)
         )

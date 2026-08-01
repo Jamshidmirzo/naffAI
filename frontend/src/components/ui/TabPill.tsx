@@ -4,6 +4,12 @@ export interface TabItem<V extends string = string> {
   value: V;
   label: string;
   count?: number;
+  /**
+   * When true, render the count in danger-red and prefix a small 🔒
+   * — used by /my to signal that N blocking-status leads are holding
+   * the operator's RR intake.
+   */
+  danger?: boolean;
 }
 
 interface Props<V extends string> {
@@ -40,10 +46,12 @@ export function TabPill<V extends string>({
             {typeof it.count === "number" && (
               <span
                 className={cn(
-                  "ml-1.5 text-[11px] tabular-nums",
-                  active ? "text-muted" : "text-muted",
+                  "ml-1.5 text-[11px] tabular-nums font-semibold",
+                  !it.danger && (active ? "text-muted" : "text-muted"),
                 )}
+                style={it.danger ? { color: "#dc2626" } : undefined}
               >
+                {it.danger && "🔒 "}
                 {it.count}
               </span>
             )}

@@ -16,6 +16,7 @@ export interface LeadStatusRow {
   show_in_button: boolean;
   is_active: boolean;
   is_builtin: boolean;
+  blocks_new_leads: boolean;
   created_at: string;
   updated_at: string;
 }

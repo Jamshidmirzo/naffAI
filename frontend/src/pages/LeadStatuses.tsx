@@ -141,6 +141,18 @@ export default function LeadStatuses() {
                     builtin
                   </span>
                 )}
+                {r.blocks_new_leads && (
+                  <span
+                    className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full inline-flex items-center gap-1"
+                    style={{
+                      background: "rgba(220,38,38,0.12)",
+                      color: "#dc2626",
+                    }}
+                    title={t("lead_statuses.blocks_new_leads_hint")}
+                  >
+                    🔒 {t("lead_statuses.blocks_short")}
+                  </span>
+                )}
               </div>
               <div className="text-[12.5px] text-muted truncate">
                 {r.label_uz || "—"}
@@ -221,6 +233,7 @@ function StatusFormModal({
   const [showChip, setShowChip] = useState(value?.show_in_chip ?? true);
   const [showButton, setShowButton] = useState(value?.show_in_button ?? true);
   const [isActive, setIsActive] = useState(value?.is_active ?? true);
+  const [blocksNew, setBlocksNew] = useState(value?.blocks_new_leads ?? false);
   const [error, setError] = useState("");
   const [codeManuallyEdited, setCodeManuallyEdited] = useState(false);
 
@@ -242,6 +255,7 @@ function StatusFormModal({
         show_in_chip: showChip,
         show_in_button: showButton,
         is_active: isActive,
+        blocks_new_leads: blocksNew,
       };
       if (isEdit) {
         await api.patch(`/lead-statuses/${value!.id}/`, body);
@@ -375,6 +389,29 @@ function StatusFormModal({
                 aria-label={t("lead_statuses.col_active")}
               />
               {t("lead_statuses.active")}
+            </label>
+          </div>
+          <div className="col-span-2 mt-1">
+            <label
+              className="flex items-start gap-3 text-[13px] cursor-pointer rounded-xl px-3 py-3 border"
+              style={{
+                borderColor: blocksNew ? "rgba(220,38,38,0.4)" : "var(--border)",
+                background: blocksNew ? "rgba(220,38,38,0.06)" : "transparent",
+              }}
+            >
+              <Toggle
+                on={blocksNew}
+                onChange={setBlocksNew}
+                aria-label={t("lead_statuses.blocks_new_leads")}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="font-medium">
+                  🔒 {t("lead_statuses.blocks_new_leads")}
+                </div>
+                <div className="text-[11.5px] text-muted mt-0.5">
+                  {t("lead_statuses.blocks_new_leads_hint")}
+                </div>
+              </div>
             </label>
           </div>
         </div>

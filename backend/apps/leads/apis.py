@@ -702,6 +702,7 @@ class LeadStatusLabelSerializer(serializers.ModelSerializer):
             "show_in_button",
             "is_active",
             "is_builtin",
+            "blocks_new_leads",
             "created_at",
             "updated_at",
         ]
@@ -745,6 +746,7 @@ class LeadStatusLabelListCreateApi(APIView):
             show_in_chip=bool(data.get("show_in_chip", True)),
             show_in_button=bool(data.get("show_in_button", True)),
             is_active=bool(data.get("is_active", True)),
+            blocks_new_leads=bool(data.get("blocks_new_leads", False)),
             is_builtin=False,
             created_by=request.user if request.user.is_authenticated else None,
         )
@@ -768,6 +770,7 @@ class LeadStatusLabelDetailApi(APIView):
             "show_in_chip",
             "show_in_button",
             "is_active",
+            "blocks_new_leads",
         ]:
             if field in request.data:
                 setattr(obj, field, request.data[field])

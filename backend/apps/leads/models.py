@@ -82,6 +82,15 @@ class LeadStatusLabel(TimestampedModel):
     show_in_button = models.BooleanField(default=True)
     is_active = models.BooleanField(default=True)
     is_builtin = models.BooleanField(default=False)
+    blocks_new_leads = models.BooleanField(
+        default=False,
+        help_text=(
+            "If true, an operator holding at least one lead in this "
+            "status is skipped by round-robin — they must resolve it "
+            "(mark won/lost/archived or move to a non-blocking status) "
+            "before RR hands them a fresh number."
+        ),
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,

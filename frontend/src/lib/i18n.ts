@@ -1287,6 +1287,9 @@ const STRINGS: Lookup = {
     "lead_statuses.show_chip": "Показывать в чипах",
     "lead_statuses.show_button": "Кнопка «Отметить»",
     "lead_statuses.active": "Активен",
+    "lead_statuses.blocks_new_leads": "Блокирует получение новых лидов",
+    "lead_statuses.blocks_new_leads_hint": "Пока оператор держит хоть один лид в этом статусе — round-robin новых лидов ему не выдаёт. Нужно закрыть/сдвинуть в другой статус.",
+    "lead_statuses.blocks_short": "блокер",
   },
 
   uz: {
@@ -2560,6 +2563,9 @@ const STRINGS: Lookup = {
     "lead_statuses.show_chip": "Chiplarda ko'rsatish",
     "lead_statuses.show_button": "«Belgilash» tugmasi",
     "lead_statuses.active": "Faol",
+    "lead_statuses.blocks_new_leads": "Yangi lidlarni olishni bloklaydi",
+    "lead_statuses.blocks_new_leads_hint": "Operator bu statusdagi kamida bitta lid ushlab tursa, round-robin unga yangi lid bermaydi. Yopish yoki boshqa statusga o'tkazish kerak.",
+    "lead_statuses.blocks_short": "bloker",
   },
 };
 
