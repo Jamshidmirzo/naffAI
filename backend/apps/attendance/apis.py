@@ -80,6 +80,41 @@ class ScanAttendanceApi(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+class MeToggleAttendanceApi(APIView):
+    """
+    Auth-based check-in/out for the /profile card. No QR needed —
+    identifies the operator from request.user.profile.operator and
+    delegates to the same process_attendance_event that the QR flow
+    uses, so cooldowns, notifications and audit all match.
+    """
+
+    permission_classes = [IsAuthenticated, IsAuthenticatedAnyRole]
+
+    def post(self, request):
+        profile = getattr(request.user, "profile", None)
+        if not profile or not profile.operator_id:
+            return Response(
+                {"error": "No operator linked to this user"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        ip = _get_client_ip(request)
+        ua = request.META.get("HTTP_USER_AGENT", "")[:256]
+        try:
+            res = process_attendance_event(
+                operator=profile.operator,
+                source="manual",
+                initiator=f"profile:{request.user.username}",
+                ip=ip,
+                user_agent=ua,
+                issue_token=False,
+            )
+            return Response(res, status=status.HTTP_200_OK)
+        except ScanRateLimitError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        except ValidationError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
 class MeCurrentAttendanceApi(APIView):
     permission_classes = [IsAuthenticated, IsAuthenticatedAnyRole]
 

@@ -175,20 +175,21 @@ function KioskCheckMode({
     }
   }, [qrPayload, scan, loadCurrent, cooldownUntil]);
 
-  // First mount: always start by loading current state so we know which
-  // way to flip. Auto-fire scan ONLY when the operator just landed from
-  // a fresh ?qr= URL AND has no open shift — that's the intended
-  // "clock-in on scan" flow. If they already have an open shift, show
-  // them the "Завершить смену" button and let them tap it deliberately;
-  // auto-firing here would silently clock them out on every rescan.
+  // First mount:
+  // - Fresh ?qr=... URL → auto-fire scan (backend flips check-in/out).
+  //   loadCurrent will 401 on an unauthenticated phone until scan
+  //   issues a token, so we don't gate on it.
+  // - Return visit (from bookmark, no ?qr=) → just show the state that
+  //   loadCurrent brings and wait for a button tap.
   const bootedRef = useRef(false);
   useEffect(() => {
     if (bootedRef.current) return;
     bootedRef.current = true;
     (async () => {
-      const cur = await loadCurrent();
-      if (initialAuto && !cur?.open_log) {
+      if (initialAuto) {
         await doScan();
+      } else {
+        await loadCurrent();
       }
     })();
   }, [initialAuto, doScan, loadCurrent]);

@@ -4,6 +4,7 @@ from .apis import (
     MeCurrentAttendanceApi,
     MeHistoryAttendanceApi,
     MeQrAttendanceApi,
+    MeToggleAttendanceApi,
     ReportAttendanceApi,
     OperatorLogsAttendanceApi,
     OperatorQrAttendanceApi,
@@ -16,6 +17,7 @@ from .apis import (
 urlpatterns = [
     path("scan/", ScanAttendanceApi.as_view(), name="attendance-scan"),
     path("me/current/", MeCurrentAttendanceApi.as_view(), name="attendance-me-current"),
+    path("me/toggle/", MeToggleAttendanceApi.as_view(), name="attendance-me-toggle"),
     path("me/history/", MeHistoryAttendanceApi.as_view(), name="attendance-me-history"),
     path("report/", ReportAttendanceApi.as_view(), name="attendance-report"),
     path("today/", ReportAttendanceApi.as_view(), name="attendance-today"),

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, QrCode } from "lucide-react";
+import { Eye, EyeOff, LogIn, LogOut, PlayCircle, QrCode } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../store/auth";
 import { useTheme } from "../store/theme";
@@ -105,6 +105,50 @@ export default function Profile() {
     },
   });
 
+  // --- Attendance mini-card (operator only) ---
+  type MeCur = {
+    open_log: { id: number; checked_in_at: string; was_late: boolean } | null;
+  };
+  const meCur = useQuery<MeCur>({
+    queryKey: ["me", "attendance"],
+    queryFn: () => api.get<MeCur>("/attendance/me/current/").then((r) => r.data),
+    enabled: !!me.data?.operator_id,
+    refetchInterval: 60_000,
+  });
+  const [attCooldown, setAttCooldown] = useState(0);
+  useEffect(() => {
+    if (attCooldown <= 0) return;
+    const id = setInterval(() => setAttCooldown((v) => Math.max(0, v - 1)), 1000);
+    return () => clearInterval(id);
+  }, [attCooldown]);
+  const attToggle = useMutation({
+    mutationFn: () =>
+      api
+        .post<{ action: "check_in" | "check_out"; was_late?: boolean; duration_min?: number }>(
+          "/attendance/me/toggle/",
+        )
+        .then((r) => r.data),
+    onSuccess: (d) => {
+      qc.invalidateQueries({ queryKey: ["me", "attendance"] });
+      setAttCooldown(30);
+      toast.success(
+        d.action === "check_in"
+          ? d.was_late
+            ? "🟢 Приход отмечен · опоздание"
+            : "🟢 Приход отмечен"
+          : `🔴 Уход отмечен${d.duration_min ? ` · смена ${Math.round(d.duration_min / 60 * 10) / 10} ч` : ""}`,
+      );
+    },
+    onError: (e: unknown) => {
+      const msg =
+        (e as { response?: { data?: { error?: string; detail?: string } } })?.response?.data?.error ||
+        (e as { response?: { data?: { error?: string; detail?: string } } })?.response?.data?.detail ||
+        "Ошибка check-in/out";
+      toast.error(msg);
+      if (/секунд/i.test(String(msg))) setAttCooldown(30);
+    },
+  });
+
   const tgStatusQ = useQuery({
     queryKey: TG_STATUS_KEY(),
     queryFn: () => tgStatus().then((r) => r.data),
@@ -181,6 +225,111 @@ export default function Profile() {
           )}
         </div>
       </section>
+
+      {/* --- Attendance (operator only) --- */}
+      {me.data?.operator_id && (() => {
+        const open = meCur.data?.open_log;
+        const isIn = !!open;
+        const startedAt = open ? new Date(open.checked_in_at) : null;
+        const runMin = startedAt
+          ? Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 60000))
+          : 0;
+        const runH = Math.floor(runMin / 60);
+        const runRest = runMin % 60;
+        return (
+          <section
+            className="nf-card animate-nfFadeUp"
+            style={{ padding: 20, animationDelay: "0.03s" }}
+          >
+            <div className="flex items-center gap-4">
+              <div
+                className="shrink-0 grid place-items-center rounded-2xl"
+                style={{
+                  width: 56,
+                  height: 56,
+                  background: isIn ? "rgba(34,197,94,.14)" : "rgba(148,163,184,.18)",
+                }}
+              >
+                {isIn ? (
+                  <PlayCircle className="w-8 h-8" style={{ color: "#16a34a" }} />
+                ) : (
+                  <LogOut className="w-8 h-8" style={{ color: "#94a3b8" }} />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] uppercase tracking-widest font-semibold text-muted">
+                  {isIn ? "СМЕНА ИДЁТ" : "СМЕНА ЗАКРЫТА"}
+                </div>
+                {isIn && startedAt ? (
+                  <div className="text-[14px] mt-0.5">
+                    Пришёл в{" "}
+                    <b className="tabular-nums">
+                      {startedAt.toLocaleTimeString("ru-RU", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </b>
+                    {" · "}
+                    <span className="text-muted tabular-nums">
+                      {runH > 0 ? `${runH} ч ${runRest} мин` : `${runRest} мин`}
+                    </span>
+                    {open.was_late && (
+                      <span
+                        className="ml-2 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                        style={{
+                          background: "rgba(220,38,38,.14)",
+                          color: "#dc2626",
+                        }}
+                      >
+                        ⚠ ОПОЗДАНИЕ
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-[13px] text-muted mt-0.5">
+                    Нажми чтобы начать смену
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => attToggle.mutate()}
+                disabled={attToggle.isPending || attCooldown > 0}
+                className="rounded-2xl font-bold text-white transition-all active:scale-[.98] disabled:opacity-70 inline-flex items-center gap-2"
+                style={{
+                  padding: "12px 20px",
+                  fontSize: 14,
+                  background:
+                    attCooldown > 0
+                      ? "linear-gradient(180deg, #64748b, #475569)"
+                      : isIn
+                        ? "linear-gradient(180deg, #dc2626, #b91c1c)"
+                        : "linear-gradient(180deg, #16a34a, #15803d)",
+                  boxShadow:
+                    attCooldown > 0
+                      ? "0 6px 16px -10px rgba(0,0,0,.4)"
+                      : isIn
+                        ? "0 8px 22px -12px rgba(220,38,38,.55)"
+                        : "0 8px 22px -12px rgba(34,197,94,.55)",
+                }}
+              >
+                {attToggle.isPending ? (
+                  "…"
+                ) : attCooldown > 0 ? (
+                  <>⏱ {attCooldown} сек</>
+                ) : isIn ? (
+                  <>
+                    <LogOut className="w-4 h-4" /> Завершить смену
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="w-4 h-4" /> Начать смену
+                  </>
+                )}
+              </button>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* --- Settings --- */}
       <section
