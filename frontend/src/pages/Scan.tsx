@@ -127,53 +127,81 @@ function KioskCheckMode({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>("");
   const [, tick] = useState(0);
+  // Backend enforces a 30 s cooldown between scans per operator; mirror
+  // it here so the button visibly ticks down instead of firing a 429.
+  const [cooldownUntil, setCooldownUntil] = useState<number>(0);
 
-  // Live tick every 30 s so the "работает 3 ч 12 мин" counter updates.
+  // Live tick every 1 s so the shift counter + cooldown update.
   useEffect(() => {
-    const id = setInterval(() => tick((v) => v + 1), 30_000);
+    const id = setInterval(() => tick((v) => v + 1), 1_000);
     return () => clearInterval(id);
   }, []);
+
+  const cooldownLeft = Math.max(
+    0,
+    Math.ceil((cooldownUntil - Date.now()) / 1000),
+  );
 
   const loadCurrent = useCallback(async () => {
     try {
       const r = await api.get<MeCurrentResp>("/attendance/me/current/");
       setCurrent(r.data);
+      return r.data;
     } catch {
-      // If token isn't valid yet (before first check-in) — quietly ignore.
+      // If token isn't valid yet (before first check-in) OR was just
+      // invalidated by check-out — quietly ignore, UI falls back to
+      // `lastEvent`.
       setCurrent(null);
+      return null;
     }
   }, []);
 
   const doScan = useCallback(async () => {
+    if (Date.now() < cooldownUntil) return;
     setError("");
     setPending(true);
     try {
       const data = await scan(qrPayload);
       setLastEvent(data);
-      await loadCurrent();
+      setCooldownUntil(Date.now() + 30_000);
+      // check-out invalidates the token — loadCurrent would 401. Skip
+      // it and rely on lastEvent for the closed-shift render.
+      if (data.action === "check_in") await loadCurrent();
+      else setCurrent({ open_log: null, today_events: [] });
     } catch (e) {
       setError(apiErrorMessage(e));
     } finally {
       setPending(false);
     }
-  }, [qrPayload, scan, loadCurrent]);
+  }, [qrPayload, scan, loadCurrent, cooldownUntil]);
 
-  // First mount: if we arrived directly from a fresh QR scan → auto-fire
-  // one scan (so the operator doesn't need an extra tap on top of scanning
-  // the code). Otherwise (returning to a stored kiosk page) just load
-  // current state and wait for a button tap.
+  // First mount: always start by loading current state so we know which
+  // way to flip. Auto-fire scan ONLY when the operator just landed from
+  // a fresh ?qr= URL AND has no open shift — that's the intended
+  // "clock-in on scan" flow. If they already have an open shift, show
+  // them the "Завершить смену" button and let them tap it deliberately;
+  // auto-firing here would silently clock them out on every rescan.
   const bootedRef = useRef(false);
   useEffect(() => {
     if (bootedRef.current) return;
     bootedRef.current = true;
     (async () => {
-      if (initialAuto) await doScan();
-      else await loadCurrent();
+      const cur = await loadCurrent();
+      if (initialAuto && !cur?.open_log) {
+        await doScan();
+      }
     })();
   }, [initialAuto, doScan, loadCurrent]);
 
   const openLog = current?.open_log;
-  const isIn = !!openLog;
+  // Prefer `current.open_log` (server truth); if the API is 401'd because
+  // of a just-fired check-out, fall back to lastEvent so the UI still
+  // reflects reality.
+  const isIn = openLog
+    ? true
+    : lastEvent?.action === "check_in"
+      ? true
+      : false;
 
   return (
     <div className="min-h-screen relative overflow-hidden">
