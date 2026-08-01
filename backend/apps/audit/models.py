@@ -17,7 +17,7 @@ class AuditLog(models.Model):
         blank=True,
         related_name="audit_entries",
     )
-    action = models.CharField(max_length=16, choices=AuditAction.choices)
+    action = models.CharField(max_length=64, choices=AuditAction.choices)
     entity = models.CharField(max_length=64, db_index=True)
     entity_id = models.CharField(max_length=64, db_index=True)
     changes = models.JSONField(default=dict, blank=True)
