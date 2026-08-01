@@ -36,9 +36,11 @@ from .selectors import (
     lead_get,
     lead_list,
     leads_for_operator,
+    operator_has_open_backlog,
     operator_has_open_callbacks,
     operator_is_blocked_by_overdue_callbacks,
     operator_open_callbacks_count,
+    operator_yesterday_backlog_count,
     telegram_link_for_phone,
 )
 from .services import (
@@ -235,6 +237,46 @@ def _operator_for_request(request) -> int | None:
     return profile.operator_id if profile else None
 
 
+def _notify_backlog_once(operator, open_cb: int, backlog: int) -> None:
+    """
+    Fire an in-app Notification for this operator at most once per
+    calendar day. Rendered in the bell menu so they see the reminder
+    even if the /my banner scrolls off-screen.
+    """
+    import datetime as dt
+    from django.utils import timezone
+
+    from apps.notifications.models import Notification, NotificationKind
+    from apps.users.selectors import user_by_operator
+
+    user = user_by_operator(operator)
+    if user is None:
+        return
+    today = timezone.localtime(timezone.now()).date()
+    already = Notification.objects.filter(
+        recipient=user,
+        kind=NotificationKind.CALLBACK_OVERDUE,
+        created_at__date=today,
+        metadata__morning_gate=True,
+    ).exists()
+    if already:
+        return
+    parts = []
+    if open_cb:
+        parts.append(f"{open_cb} callback")
+    if backlog:
+        parts.append(f"{backlog} вчерашних")
+    body = " + ".join(parts) if parts else ""
+    Notification.objects.create(
+        recipient=user,
+        kind=NotificationKind.CALLBACK_OVERDUE,
+        title="Разбери вчерашние — тогда получишь новые лиды",
+        body=body,
+        link="/my",
+        metadata={"morning_gate": True, "open_callbacks": open_cb, "yesterday_backlog": backlog},
+    )
+
+
 # ---- Views ---------------------------------------------------------------
 
 
@@ -316,17 +358,27 @@ class LeadMyListApi(APIView):
         ).count()
 
         open_cb_count = operator_open_callbacks_count(operator)
+        yesterday_backlog = operator_yesterday_backlog_count(operator)
+        blocked = operator_has_open_backlog(operator)
+
+        # First hit of /my with backlog → push an in-app notification so
+        # it lands in the bell menu too, not just the red banner. Once a
+        # day per operator so we don't spam every refresh.
+        if blocked:
+            _notify_backlog_once(operator, open_cb_count, yesterday_backlog)
+
         return Response(
             {
                 "operator": {
                     "id": operator.id,
                     "full_name": operator.full_name,
                     "status": operator.status,
-                    "blocked": operator_has_open_callbacks(operator),
+                    "blocked": blocked,
                     "overdue_blocked": operator_is_blocked_by_overdue_callbacks(
                         operator
                     ),
                     "open_callbacks": open_cb_count,
+                    "yesterday_backlog": yesterday_backlog,
                 },
                 "counts": {"active": active_count, "postponed": postponed_count},
                 "results": LeadSerializer(qs, many=True).data,

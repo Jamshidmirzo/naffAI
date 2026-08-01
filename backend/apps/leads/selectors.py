@@ -200,25 +200,82 @@ def operator_open_callbacks_count(operator: Operator) -> int:
     ).count()
 
 
+def _today_start():
+    """Local-tz midnight of the current calendar day."""
+    now = timezone.localtime(timezone.now())
+    return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def operator_yesterday_backlog_count(operator: Operator) -> int:
+    """
+    Count of «touched but unresolved» leads carried over from previous
+    days. A lead counts if:
+      - status is active (any code in active_lead_status_codes())
+      - status is NOT the pristine intake bucket (new/assigned) —
+        those are RR's responsibility, not backlog.
+      - updated_at is before local-midnight of today.
+
+    Feeds the morning-gate: an operator with any such lead has to
+    resolve them (mark won/lost/archived, requeue callback, or at
+    minimum touch the lead so updated_at moves to today) before RR
+    hands them a fresh number.
+    """
+    codes = [
+        c for c in active_lead_status_codes()
+        if c not in (LeadStatus.NEW, LeadStatus.ASSIGNED)
+    ]
+    if not codes:
+        return 0
+    return Lead.objects.filter(
+        operator=operator,
+        status__in=codes,
+        updated_at__lt=_today_start(),
+    ).count()
+
+
+def operator_has_open_backlog(operator: Operator) -> bool:
+    """Union check used by morning gate: open callback OR yesterday-touched."""
+    return (
+        operator_has_open_callbacks(operator)
+        or operator_yesterday_backlog_count(operator) > 0
+    )
+
+
 def operators_eligible_for_new_leads() -> QuerySet[Operator]:
     """
-    Active operators with zero open callbacks (of any status). Used by
-    round-robin auto-assignment — morning gate is the primary reason
-    we exclude anyone with a live callback, so they finish yesterday's
-    tail before we hand them fresh numbers.
+    Active operators with no unresolved backlog. RR skips anyone who
+    still has yesterday's callbacks / no-answer / in-progress leads
+    hanging — they clear them first, then get fresh numbers.
     """
     from apps.calls.models import CallbackReminder, CallbackReminderStatus
 
-    blocked_ids = CallbackReminder.objects.filter(
-        status__in=(
-            CallbackReminderStatus.PENDING,
-            CallbackReminderStatus.OVERDUE,
-            CallbackReminderStatus.SNOOZED,
-        ),
-    ).values_list("operator_id", flat=True)
+    cb_blocked = set(
+        CallbackReminder.objects.filter(
+            status__in=(
+                CallbackReminderStatus.PENDING,
+                CallbackReminderStatus.OVERDUE,
+                CallbackReminderStatus.SNOOZED,
+            ),
+        ).values_list("operator_id", flat=True)
+    )
+    today = _today_start()
+    codes = [
+        c for c in active_lead_status_codes()
+        if c not in (LeadStatus.NEW, LeadStatus.ASSIGNED)
+    ]
+    backlog_blocked = set()
+    if codes:
+        backlog_blocked = set(
+            Lead.objects.filter(
+                status__in=codes,
+                updated_at__lt=today,
+                operator__isnull=False,
+            ).values_list("operator_id", flat=True)
+        )
+    blocked = cb_blocked | backlog_blocked
     return (
         Operator.objects.filter(status=OperatorStatus.ACTIVE)
-        .exclude(pk__in=blocked_ids)
+        .exclude(pk__in=blocked)
         .order_by("id")
     )
 

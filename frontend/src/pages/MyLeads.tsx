@@ -55,6 +55,7 @@ type MyResponse = {
     blocked: boolean;
     overdue_blocked?: boolean;
     open_callbacks?: number;
+    yesterday_backlog?: number;
   };
   counts: { active: number; postponed: number };
   results: Lead[];
@@ -325,14 +326,16 @@ export default function MyLeads() {
             <div className="text-[15px] font-semibold">
               {overdueCount > 0
                 ? t("my.overdue_count", { n: overdueCount })
-                : t("my.open_cb_gate", {
-                    n: operator?.open_callbacks ?? 0,
+                : t("my.backlog_gate", {
+                    n:
+                      (operator?.open_callbacks ?? 0) +
+                      (operator?.yesterday_backlog ?? 0),
                   })}
             </div>
             <div className="text-[13px] opacity-90">
               {overdueCount > 0
                 ? t("my.overdue_hint")
-                : t("my.open_cb_gate_hint")}
+                : t("my.backlog_gate_hint")}
             </div>
           </div>
           <button
