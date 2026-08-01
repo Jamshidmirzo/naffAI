@@ -36,6 +36,59 @@ class TgCheckinDisabledError(ValidationError):
     pass
 
 
+def _notify_managers_attendance(
+    *, operator: Operator, action: str, was_late: bool = False, duration_min: int = 0
+) -> None:
+    """
+    Fan out a bell-notification to every manager profile so the check-in
+    or check-out shows up in the notifications menu of the CRM in real
+    time. Fire-and-forget: swallows any error to never break the scan
+    transaction.
+    """
+    try:
+        from apps.notifications.models import Notification, NotificationKind
+        from apps.users.models import Role
+
+        managers = User.objects.filter(
+            profile__role__in=(Role.MANAGER, Role.TEAM_LEAD),
+            is_active=True,
+        )
+        if not managers.exists():
+            return
+        if action == "check_in":
+            title = f"🟢 {operator.full_name} — приход"
+            body = "⚠ опоздание" if was_late else ""
+        else:
+            hrs = round(duration_min / 60, 1) if duration_min else 0
+            title = f"🔴 {operator.full_name} — уход"
+            body = f"смена {hrs} ч" if hrs else ""
+        Notification.objects.bulk_create(
+            [
+                Notification(
+                    recipient=m,
+                    kind=NotificationKind.SYSTEM,
+                    title=title,
+                    body=body,
+                    link=f"/operators/{operator.id}",
+                    metadata={
+                        "kind": "attendance",
+                        "action": action,
+                        "operator_id": operator.id,
+                        "was_late": was_late,
+                        "duration_min": duration_min,
+                    },
+                )
+                for m in managers
+            ]
+        )
+    except Exception:
+        import logging
+
+        logging.getLogger("attendance").warning(
+            "manager notify failed op=%s action=%s", operator.id, action, exc_info=True
+        )
+
+
 def _ip_allowed(ip: str | None) -> bool:
     networks = getattr(settings, "ATTENDANCE_ALLOWED_NETWORKS", [])
     if not networks:
@@ -338,6 +391,11 @@ def _attendance_check_in(
             "initiator": initiator,
         },
     )
+    transaction.on_commit(
+        lambda: _notify_managers_attendance(
+            operator=operator, action="check_in", was_late=was_late
+        )
+    )
 
     return {
         "action": "check_in",
@@ -386,6 +444,12 @@ def _attendance_check_out(*, log, source, initiator, ip, user_agent) -> dict:
     )
 
     duration_min = int((now - log.checked_in_at).total_seconds() / 60)
+    op_ref = log.operator
+    transaction.on_commit(
+        lambda: _notify_managers_attendance(
+            operator=op_ref, action="check_out", duration_min=duration_min
+        )
+    )
 
     return {
         "action": "check_out",

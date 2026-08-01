@@ -117,46 +117,82 @@ function CheckInMode({ qrPayload }: { qrPayload: string }) {
               </p>
             </>
           )}
-          {state.kind === "success" && (
-            <>
-              <div className="mt-4 mx-auto grid place-items-center" style={{ width: 72, height: 72, borderRadius: 999, background: "rgba(34,197,94,.14)" }}>
-                <CheckCircle2 className="w-9 h-9" style={{ color: "#16a34a" }} />
-              </div>
-              <h1
-                className="font-semibold mt-4"
-                style={{ fontSize: 24, letterSpacing: "-0.025em" }}
-              >
-                {state.data.action === "check_in"
-                  ? "Приход отмечен"
-                  : "Уход отмечен"}
-              </h1>
-              <p className="text-[13.5px] text-muted mt-1.5">
-                {state.data.operator.full_name}
-              </p>
-              {state.data.was_late && state.data.action === "check_in" && (
-                <div className="mt-3 text-[12.5px] font-semibold" style={{ color: "var(--accent)" }}>
-                  ⚠ Опоздание
+          {state.kind === "success" && (() => {
+            const isIn = state.data.action === "check_in";
+            const bg = isIn ? "rgba(34,197,94,.16)" : "rgba(59,130,246,.16)";
+            const fg = isIn ? "#16a34a" : "#2563eb";
+            const iso = isIn ? state.data.checked_in_at : state.data.checked_out_at;
+            const timeText = iso
+              ? new Date(iso).toLocaleTimeString("ru-RU", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "";
+            return (
+              <>
+                <div
+                  className="mt-4 mx-auto grid place-items-center animate-nfPop"
+                  style={{
+                    width: 96,
+                    height: 96,
+                    borderRadius: 999,
+                    background: bg,
+                  }}
+                >
+                  <CheckCircle2 className="w-14 h-14" style={{ color: fg }} />
                 </div>
-              )}
-              {state.data.action === "check_out" && state.data.duration_min && (
-                <div className="mt-3 text-[13px] text-muted">
-                  Смена: {Math.round(state.data.duration_min / 60 * 10) / 10} ч
+                <div
+                  className="mt-5 mx-auto text-[11px] font-bold uppercase tracking-widest"
+                  style={{ color: fg }}
+                >
+                  {isIn ? "✅ ПРИХОД" : "🏁 УХОД"}
                 </div>
-              )}
-              {state.data.action === "check_in" && state.data.token && (
-                <p className="mt-4 text-[12px] text-muted">
-                  Открываем ваш кабинет…
-                </p>
-              )}
-              {state.data.action === "check_out" && (
-                <div className="mt-6">
-                  <Link to="/login" className="nf-btn nf-btn--primary" style={{ padding: "10px 18px" }}>
-                    На главную
-                  </Link>
-                </div>
-              )}
-            </>
-          )}
+                <h1
+                  className="font-bold mt-1"
+                  style={{ fontSize: 28, letterSpacing: "-0.025em" }}
+                >
+                  {state.data.operator.full_name}
+                </h1>
+                {timeText && (
+                  <div
+                    className="mt-2 text-[18px] font-semibold tabular-nums"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    {timeText}
+                  </div>
+                )}
+                {state.data.was_late && isIn && (
+                  <div
+                    className="mt-3 inline-block rounded-full px-3 py-1 text-[12px] font-semibold"
+                    style={{
+                      background: "rgba(220,38,38,.14)",
+                      color: "#dc2626",
+                    }}
+                  >
+                    ⚠ ОПОЗДАНИЕ
+                  </div>
+                )}
+                {!isIn && state.data.duration_min ? (
+                  <div className="mt-3 text-[13.5px] text-muted">
+                    Смена: <b className="text-text">{Math.round(state.data.duration_min / 60 * 10) / 10} ч</b>
+                    <span className="opacity-60"> · {state.data.duration_min} мин</span>
+                  </div>
+                ) : null}
+                {isIn && state.data.token && (
+                  <p className="mt-4 text-[12px] text-muted">
+                    Открываем ваш кабинет…
+                  </p>
+                )}
+                {!isIn && (
+                  <div className="mt-6">
+                    <Link to="/login" className="nf-btn nf-btn--primary" style={{ padding: "10px 18px" }}>
+                      На главную
+                    </Link>
+                  </div>
+                )}
+              </>
+            );
+          })()}
           {state.kind === "error" && (
             <>
               <div className="mt-4 mx-auto grid place-items-center" style={{ width: 72, height: 72, borderRadius: 999, background: "rgba(220,60,40,.14)" }}>
