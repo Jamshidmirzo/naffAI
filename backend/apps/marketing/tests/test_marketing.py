@@ -58,7 +58,8 @@ def test_generate_insight_uses_llm_when_valid_json(sheet):
     Lead.objects.create(sheet_source=sheet, status=LeadStatus.NEW)
     end = timezone.localdate()
     start = end - dt.timedelta(days=6)
-    with patch("apps.marketing.services.get_llm_provider") as gp:
+    with patch("apps.marketing.services.get_marketing_provider") as gp:
+
         class P:
             def generate_quote(self, *, prompt):
                 return QuoteResult(
@@ -78,7 +79,8 @@ def test_generate_insight_falls_back_when_llm_fails(sheet):
     Lead.objects.create(sheet_source=sheet, status=LeadStatus.NEW)
     end = timezone.localdate()
     start = end - dt.timedelta(days=6)
-    with patch("apps.marketing.services.get_llm_provider") as gp:
+    with patch("apps.marketing.services.get_marketing_provider") as gp:
+
         class P:
             def generate_quote(self, *, prompt):
                 raise RuntimeError("boom")

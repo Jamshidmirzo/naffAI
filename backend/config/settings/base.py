@@ -311,6 +311,18 @@ LLM_CHAIN_MODELS = {
     "github_models_gpt41mini": config("LLM_CHAIN_GH_GPT41MINI", default="openai/gpt-4.1-mini"),
 }
 
+# Per-app LLM overrides. Если задана тройка base_url + api_key + model —
+# соответствующий модуль (ai_chat / marketing) обойдёт LLM_PROVIDER/chain
+# и пойдёт напрямую в OpenAI-совместимый endpoint (llm.int.glob.uz, Together,
+# OpenRouter, кастомный proxy — что угодно с /chat/completions).
+AI_CHAT_LLM_BASE_URL = config("AI_CHAT_LLM_BASE_URL", default="")
+AI_CHAT_LLM_API_KEY = config("AI_CHAT_LLM_API_KEY", default="")
+AI_CHAT_LLM_MODEL = config("AI_CHAT_LLM_MODEL", default="")
+
+MARKETING_LLM_BASE_URL = config("MARKETING_LLM_BASE_URL", default="")
+MARKETING_LLM_API_KEY = config("MARKETING_LLM_API_KEY", default="")
+MARKETING_LLM_MODEL = config("MARKETING_LLM_MODEL", default="")
+
 # --- Logging ---
 LOG_DIR = config("LOG_DIR", default="")
 _handlers = {

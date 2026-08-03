@@ -100,6 +100,7 @@ class ChatResponse:
       or more tools; the caller must run them and feed the results back.
     - When ``text`` is set and ``tool_calls`` is empty the loop is done.
     """
+
     text: str = ""
     tool_calls: list[ChatToolCall] = field(default_factory=list)
     model_version: str = ""
@@ -208,7 +209,9 @@ class GeminiProvider:
         )
         return resp.text or ""
 
-    def _call_with_internal_fallback(self, prompt: str, *, response_json: bool = True) -> tuple[str, str]:
+    def _call_with_internal_fallback(
+        self, prompt: str, *, response_json: bool = True
+    ) -> tuple[str, str]:
         """
         Try the primary Gemini model, on 429 fall back to the secondary Gemini
         model. If both fail with 429, raise LLMRateLimitError so the outer
@@ -230,12 +233,8 @@ class GeminiProvider:
                 return raw, self._fallback_model
             except Exception as fb_exc:
                 if _is_quota_error(fb_exc):
-                    raise LLMRateLimitError(
-                        f"Gemini both models exhausted: {fb_exc}"
-                    ) from fb_exc
-                raise LLMProviderError(
-                    f"Gemini fallback model also failed: {fb_exc}"
-                ) from fb_exc
+                    raise LLMRateLimitError(f"Gemini both models exhausted: {fb_exc}") from fb_exc
+                raise LLMProviderError(f"Gemini fallback model also failed: {fb_exc}") from fb_exc
 
     def generate_content(self, *, prompt: str, response_json: bool = False) -> LLMResponse:
         raw, model_used = self._call_with_internal_fallback(prompt, response_json=response_json)
@@ -470,9 +469,7 @@ class GitHubModelsProvider:
             if r.status_code == 429:
                 raise LLMRateLimitError(f"GitHub Models 429: {r.text[:200]}")
         if r.status_code >= 400:
-            raise LLMProviderError(
-                f"GitHub Models {r.status_code}: {r.text[:300]}"
-            )
+            raise LLMProviderError(f"GitHub Models {r.status_code}: {r.text[:300]}")
         return r.json()
 
     def generate_content(self, *, prompt: str, response_json: bool = False) -> LLMResponse:
@@ -743,6 +740,260 @@ class OpenAIProvider:
         raise LLMProviderError("chat_with_tools not implemented for OpenAIProvider")
 
 
+class OpenAICompatibleProvider:
+    """
+    Универсальный OpenAI-Chat-Completions клиент — работает с любым
+    proxy, который держит /chat/completions endpoint (llm.int.glob.uz,
+    Together, OpenRouter, ollama-openai, GitHub Models, …).
+    ``base_url``, ``api_key`` и ``model`` задаются в конструкторе.
+
+    Реализация зеркалит ``GitHubModelsProvider`` (тот тоже OpenAI-совместимый),
+    поменяны только URL, модель и обработчик 400 (без magic fallback без
+    ``response_format`` — раз proxy строгий, лучше пусть ошибка всплывёт).
+    """
+
+    PROVIDER_NAME = "openai_compat"
+
+    def __init__(self, *, base_url: str, api_key: str, model: str) -> None:
+        if not base_url:
+            raise ValueError("OpenAICompatibleProvider: base_url is empty")
+        if not api_key:
+            raise ValueError("OpenAICompatibleProvider: api_key is empty")
+        if not model:
+            raise ValueError("OpenAICompatibleProvider: model is empty")
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.model = model
+
+    def _post_chat(
+        self,
+        messages: list[dict],
+        *,
+        response_json: bool = False,
+        temperature: float = 0.3,
+        max_tokens: int = 2000,
+        tools: list[dict] | None = None,
+    ) -> dict:
+        import httpx
+
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if response_json:
+            payload["response_format"] = {"type": "json_object"}
+        if tools:
+            payload["tools"] = tools
+
+        url = f"{self.base_url}/chat/completions"
+        try:
+            r = httpx.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=60,
+            )
+        except httpx.HTTPError as exc:
+            raise LLMProviderError(f"OpenAI-compat network error ({url}): {exc}") from exc
+
+        if r.status_code == 429:
+            raise LLMRateLimitError(f"OpenAI-compat 429: {r.text[:200]}")
+        if r.status_code == 400 and response_json:
+            # Некоторые backends (llama-style) ругаются на response_format —
+            # ретрай один раз без него.
+            payload.pop("response_format", None)
+            r = httpx.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=60,
+            )
+            if r.status_code == 429:
+                raise LLMRateLimitError(f"OpenAI-compat 429: {r.text[:200]}")
+        if r.status_code >= 400:
+            raise LLMProviderError(f"OpenAI-compat {r.status_code}: {r.text[:300]}")
+        try:
+            return r.json()
+        except ValueError as exc:
+            raise LLMProviderError(f"OpenAI-compat returned non-JSON body: {r.text[:200]}") from exc
+
+    def generate_content(self, *, prompt: str, response_json: bool = False) -> LLMResponse:
+        data = self._post_chat(
+            [{"role": "user", "content": prompt}],
+            response_json=response_json,
+        )
+        text = (data["choices"][0]["message"].get("content") or "") if data.get("choices") else ""
+        return LLMResponse(text=text, model_used=self.model, provider=self.PROVIDER_NAME)
+
+    def analyze_dialogs(
+        self,
+        messages: list[MessageDTO],
+        op_name: str,
+        prompt_version: str = "v1",
+    ) -> InsightResult:
+        dialog_text = _format_dialog(messages)
+        prompt = _load_prompt(prompt_version, op_name, dialog_text)
+        data = self._post_chat(
+            [{"role": "user", "content": prompt}],
+            response_json=True,
+        )
+        raw = (data["choices"][0]["message"].get("content") or "") if data.get("choices") else ""
+        parsed = _parse_llm_json(raw)
+        if not isinstance(parsed, dict):
+            raise LLMProviderError(f"OpenAI-compat returned non-dict json: {raw[:200]}")
+        return InsightResult(
+            quality_score=parsed.get("quality_score", 0),
+            summary=parsed.get("summary", ""),
+            red_flags=parsed.get("red_flags", []),
+            highlights=parsed.get("highlights", []),
+            model_version=self.model,
+            provider=self.PROVIDER_NAME,
+        )
+
+    def generate_quote(self, *, prompt: str) -> QuoteResult:
+        data = self._post_chat(
+            [{"role": "user", "content": prompt}],
+            response_json=True,
+            temperature=0.7,
+        )
+        raw = (data["choices"][0]["message"].get("content") or "") if data.get("choices") else ""
+        parsed = _parse_llm_json(raw)
+        if isinstance(parsed, dict):
+            return QuoteResult(
+                text=parsed.get("text", "") or raw,
+                author=parsed.get("author", ""),
+                model_version=self.model,
+                provider=self.PROVIDER_NAME,
+            )
+        return QuoteResult(
+            text=raw,
+            author="",
+            model_version=self.model,
+            provider=self.PROVIDER_NAME,
+        )
+
+    def chat_with_tools(
+        self,
+        *,
+        history: list[dict],
+        tool_specs: dict,
+        system_prompt: str = "",
+    ) -> ChatResponse:
+        """
+        OpenAI-style tool calling — идентичен ``GitHubModelsProvider``, но
+        стучится в собственный ``base_url`` c собственным ``model``.
+        """
+        tools_payload = [
+            {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": spec.get("description", ""),
+                    "parameters": spec.get("parameters", {"type": "object", "properties": {}}),
+                },
+            }
+            for name, spec in tool_specs.items()
+        ]
+
+        openai_messages: list[dict] = []
+        if system_prompt:
+            openai_messages.append({"role": "system", "content": system_prompt})
+
+        pending_ids: list[str] = []
+        tool_cursor = 0
+        call_counter = 0
+        for msg in history:
+            role = msg.get("role")
+            content = msg.get("content", "") or ""
+            raw_tool_calls = msg.get("tool_calls") or []
+            if role == "user":
+                openai_messages.append({"role": "user", "content": content})
+                pending_ids = []
+                tool_cursor = 0
+            elif role == "assistant":
+                if raw_tool_calls:
+                    tc_list = []
+                    pending_ids = []
+                    for tc in raw_tool_calls:
+                        name = tc.get("name") or "tool"
+                        args = tc.get("arguments") or {}
+                        cid = f"call_{call_counter}"
+                        call_counter += 1
+                        pending_ids.append(cid)
+                        tc_list.append(
+                            {
+                                "id": cid,
+                                "type": "function",
+                                "function": {
+                                    "name": name,
+                                    "arguments": json.dumps(args),
+                                },
+                            }
+                        )
+                    openai_messages.append(
+                        {
+                            "role": "assistant",
+                            "content": content or None,
+                            "tool_calls": tc_list,
+                        }
+                    )
+                    tool_cursor = 0
+                elif content:
+                    openai_messages.append({"role": "assistant", "content": content})
+                    pending_ids = []
+                    tool_cursor = 0
+            elif role == "tool":
+                if tool_cursor < len(pending_ids):
+                    openai_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": pending_ids[tool_cursor],
+                            "content": content,
+                        }
+                    )
+                    tool_cursor += 1
+
+        data = self._post_chat(
+            openai_messages,
+            response_json=False,
+            temperature=0.2,
+            max_tokens=1500,
+            tools=tools_payload or None,
+        )
+
+        choice = data["choices"][0]
+        message = choice.get("message") or {}
+        text = message.get("content") or ""
+        tool_calls_raw = message.get("tool_calls") or []
+        tool_calls: list[ChatToolCall] = []
+        for tc in tool_calls_raw:
+            fn = tc.get("function") or {}
+            name = fn.get("name") or "tool"
+            raw_args = fn.get("arguments") or "{}"
+            try:
+                args = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
+            except json.JSONDecodeError:
+                args = {}
+            tool_calls.append(ChatToolCall(name=name, arguments=args))
+
+        return ChatResponse(
+            text=text,
+            tool_calls=tool_calls,
+            model_version=self.model,
+            provider=self.PROVIDER_NAME,
+        )
+
+
 class AnthropicProvider:
     """Legacy stub — kept for backward compatibility with older env configs."""
 
@@ -978,9 +1229,7 @@ class LLMProviderChain:
                 )
                 last_error = exc
                 continue
-        raise LLMChainExhaustedError(
-            f"All providers exhausted for {method_name}: {last_error}"
-        )
+        raise LLMChainExhaustedError(f"All providers exhausted for {method_name}: {last_error}")
 
     def generate_content(self, **kwargs: Any) -> LLMResponse:
         return self._call("generate_content", **kwargs)
@@ -1037,7 +1286,9 @@ def _build_chain_from_settings() -> LLMProvider:
                 provider = GeminiProvider(
                     api_key=getattr(settings, "GEMINI_API_KEY", ""),
                     model=model or getattr(settings, "GEMINI_MODEL", "gemini-flash-latest"),
-                    fallback_model=getattr(settings, "GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite"),
+                    fallback_model=getattr(
+                        settings, "GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite"
+                    ),
                 )
             elif slot.startswith("github_models"):
                 if not model:
@@ -1144,6 +1395,31 @@ def get_provider_by_key(key: str) -> LLMProvider:
     except Exception as exc:  # noqa: BLE001
         logger.warning("llm.by_key: could not build '%s': %s", key, exc)
     return NoneProvider()
+
+
+def get_ai_chat_provider() -> LLMProvider:
+    """
+    Провайдер для ``apps.ai_chat``. Если задана тройка
+    ``AI_CHAT_LLM_BASE_URL`` / ``AI_CHAT_LLM_API_KEY`` / ``AI_CHAT_LLM_MODEL`` —
+    возвращаем ``OpenAICompatibleProvider`` c этими креденшлами и полностью
+    игнорируем ``LLM_PROVIDER`` / chain. Иначе — обычный ``get_provider()``.
+    """
+    base_url = getattr(settings, "AI_CHAT_LLM_BASE_URL", "") or ""
+    api_key = getattr(settings, "AI_CHAT_LLM_API_KEY", "") or ""
+    model = getattr(settings, "AI_CHAT_LLM_MODEL", "") or ""
+    if base_url and api_key and model:
+        return OpenAICompatibleProvider(base_url=base_url, api_key=api_key, model=model)
+    return get_provider()
+
+
+def get_marketing_provider() -> LLMProvider:
+    """То же, что ``get_ai_chat_provider``, но для ``apps.marketing``."""
+    base_url = getattr(settings, "MARKETING_LLM_BASE_URL", "") or ""
+    api_key = getattr(settings, "MARKETING_LLM_API_KEY", "") or ""
+    model = getattr(settings, "MARKETING_LLM_MODEL", "") or ""
+    if base_url and api_key and model:
+        return OpenAICompatibleProvider(base_url=base_url, api_key=api_key, model=model)
+    return get_provider()
 
 
 def list_available_providers() -> list[dict[str, str]]:

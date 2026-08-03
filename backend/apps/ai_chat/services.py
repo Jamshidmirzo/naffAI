@@ -23,7 +23,7 @@ from apps.audit.services import AuditAction, audit_log_create
 from apps.tg_userclient.ai.provider import (
     ChatResponse,
     LLMChainExhaustedError,
-    get_llm_provider,
+    get_ai_chat_provider,
     get_provider_by_key,
 )
 
@@ -100,12 +100,14 @@ def _tool_specs_for_llm() -> dict:
 def _history_payload(session: ChatSession) -> list[dict]:
     payload = []
     for m in session.messages.order_by("created_at"):
-        payload.append({
-            "role": m.role,
-            "content": m.content,
-            "tool_name": m.tool_name,
-            "tool_calls": m.tool_calls or [],
-        })
+        payload.append(
+            {
+                "role": m.role,
+                "content": m.content,
+                "tool_name": m.tool_name,
+                "tool_calls": m.tool_calls or [],
+            }
+        )
     return payload
 
 
@@ -122,7 +124,9 @@ def handle_user_message(
     if not text.strip():
         raise ValueError("Empty message")
 
-    user_msg = ChatMessage.objects.create(session=session, role=ChatMessage.ROLE_USER, content=text.strip())
+    user_msg = ChatMessage.objects.create(
+        session=session, role=ChatMessage.ROLE_USER, content=text.strip()
+    )
     audit_log_create(
         user=session.user,
         action=AuditAction.CREATE,
@@ -136,7 +140,7 @@ def handle_user_message(
         },
     )
 
-    provider = get_provider_by_key(provider_key) if provider_key else get_llm_provider()
+    provider = get_provider_by_key(provider_key) if provider_key else get_ai_chat_provider()
     specs = _tool_specs_for_llm()
     prompt = build_system_prompt(language)
 

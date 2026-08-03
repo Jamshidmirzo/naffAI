@@ -21,7 +21,7 @@ from django.utils import timezone
 
 from apps.audit.services import AuditAction, audit_log_create
 from apps.leads.models import Lead
-from apps.tg_userclient.ai.provider import LLMChainExhaustedError, get_llm_provider
+from apps.tg_userclient.ai.provider import LLMChainExhaustedError, get_marketing_provider
 
 from .models import MarketingInsight
 
@@ -50,10 +50,14 @@ MARKETING_PROMPT_TEMPLATE = """Ты — маркетинг-аналитик дл
 
 def _collect_source_stats(*, period_start: dt.date, period_end: dt.date) -> list[dict]:
     """Per-sheet volume, conversion (leads → won)."""
-    start_dt = dt.datetime.combine(period_start, dt.time.min, tzinfo=timezone.get_current_timezone())
+    start_dt = dt.datetime.combine(
+        period_start, dt.time.min, tzinfo=timezone.get_current_timezone()
+    )
     end_dt = dt.datetime.combine(period_end, dt.time.max, tzinfo=timezone.get_current_timezone())
     rows = (
-        Lead.objects.filter(created_at__gte=start_dt, created_at__lte=end_dt, sheet_source__isnull=False)
+        Lead.objects.filter(
+            created_at__gte=start_dt, created_at__lte=end_dt, sheet_source__isnull=False
+        )
         .values("sheet_source_id", "sheet_source__name")
         .annotate(
             leads=Count("id"),
@@ -65,18 +69,22 @@ def _collect_source_stats(*, period_start: dt.date, period_end: dt.date) -> list
     for r in rows:
         leads = r["leads"] or 0
         converted = r["converted"] or 0
-        result.append({
-            "sheet_source_id": r["sheet_source_id"],
-            "source_name": r["sheet_source__name"] or "",
-            "leads": leads,
-            "converted": converted,
-            "conversion_rate": round(converted * 100.0 / leads, 2) if leads else 0.0,
-        })
+        result.append(
+            {
+                "sheet_source_id": r["sheet_source_id"],
+                "source_name": r["sheet_source__name"] or "",
+                "leads": leads,
+                "converted": converted,
+                "conversion_rate": round(converted * 100.0 / leads, 2) if leads else 0.0,
+            }
+        )
     return result
 
 
 def _collect_top_products(*, period_start: dt.date, period_end: dt.date) -> list[dict]:
-    start_dt = dt.datetime.combine(period_start, dt.time.min, tzinfo=timezone.get_current_timezone())
+    start_dt = dt.datetime.combine(
+        period_start, dt.time.min, tzinfo=timezone.get_current_timezone()
+    )
     end_dt = dt.datetime.combine(period_end, dt.time.max, tzinfo=timezone.get_current_timezone())
     rows = (
         Lead.objects.filter(created_at__gte=start_dt, created_at__lte=end_dt)
@@ -129,7 +137,7 @@ def generate_marketing_insight(
     provider_used: str
 
     try:
-        provider = get_llm_provider()
+        provider = get_marketing_provider()
         resp = provider.generate_content(prompt=prompt, response_json=True)
         raw = (resp.text or "").strip()
         # Gemini/OpenAI-style JSON may arrive wrapped in ```json fences.

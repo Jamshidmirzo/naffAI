@@ -64,7 +64,8 @@ def test_call_tool_raises_for_unknown():
 @pytest.mark.django_db
 def test_chat_loop_returns_plain_text(manager):
     session = session_create(user=manager, title="test")
-    with patch("apps.ai_chat.services.get_llm_provider") as mock_get:
+    with patch("apps.ai_chat.services.get_ai_chat_provider") as mock_get:
+
         class P:
             def chat_with_tools(self, *, history, tool_specs, system_prompt=""):
                 return ChatResponse(text="hi there", tool_calls=[], model_version="test")
@@ -81,7 +82,8 @@ def test_chat_loop_calls_tool_then_returns_text(manager):
 
     calls = {"n": 0}
 
-    with patch("apps.ai_chat.services.get_llm_provider") as mock_get:
+    with patch("apps.ai_chat.services.get_ai_chat_provider") as mock_get:
+
         class P:
             def chat_with_tools(self, *, history, tool_specs, system_prompt=""):
                 calls["n"] += 1
@@ -109,7 +111,8 @@ def test_chat_loop_calls_tool_then_returns_text(manager):
 def test_chat_loop_stops_at_max_tool_turns(manager):
     session = session_create(user=manager, title="test")
 
-    with patch("apps.ai_chat.services.get_llm_provider") as mock_get:
+    with patch("apps.ai_chat.services.get_ai_chat_provider") as mock_get:
+
         class P:
             """Always asks for a tool call → loop must abort at MAX_TOOL_TURNS."""
 
