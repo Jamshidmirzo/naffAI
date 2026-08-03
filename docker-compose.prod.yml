@@ -24,7 +24,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "80:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - media-data:/app/media
     command: ["/app/scripts/entrypoint.sh"]
