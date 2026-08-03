@@ -1,0 +1,9 @@
+{
+  "buildCommand": "cd frontend && npm ci && npm run build",
+  "outputDirectory": "frontend/dist",
+  "installCommand": "echo skip",
+  "framework": null,
+  "rewrites": [
+    { "source": "/((?!assets|vite\\.svg|favicon).*)", "destination": "/index.html" }
+  ]
+}
