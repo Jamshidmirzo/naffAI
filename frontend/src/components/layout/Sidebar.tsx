@@ -231,7 +231,7 @@ export function Sidebar({ groups, role }: Props) {
     nav("/login");
   };
 
-  const me = useQuery<{ operator_name: string | null }>({
+  const me = useQuery<{ operator_name: string | null; display_name: string | null }>({
     queryKey: ["auth-me-sidebar"],
     queryFn: () => api.get("/auth/me/").then((r) => r.data),
     staleTime: 5 * 60_000,
@@ -239,7 +239,7 @@ export function Sidebar({ groups, role }: Props) {
 
   const initials = (auth.username || "?").slice(0, 2).toUpperCase();
   const roleLabel = role === "manager" ? t("role.manager") : t("role.operator");
-  const displayName = me.data?.operator_name?.trim();
+  const displayName = (me.data?.display_name ?? me.data?.operator_name)?.trim();
   const roleWithName = displayName ? `${roleLabel} ${displayName}` : roleLabel;
 
   return (

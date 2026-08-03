@@ -79,13 +79,16 @@ class MeApi(APIView):
     def get(self, request):
         user = request.user
         profile = getattr(user, "profile", None)
+        operator_name = profile.operator.full_name if profile and profile.operator else None
+        display_name = operator_name or (user.get_full_name() or None)
         return Response(
             {
                 "username": user.username,
                 "role": profile.role if profile else "team_lead",
                 "is_superuser": user.is_superuser,
                 "operator_id": profile.operator_id if profile else None,
-                "operator_name": profile.operator.full_name if profile and profile.operator else None,
+                "operator_name": operator_name,
+                "display_name": display_name,
                 "telegram_user_id": profile.telegram_user_id if profile else None,
             }
         )
