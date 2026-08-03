@@ -146,6 +146,25 @@ def orphan_leads(
     return qs.order_by("created_at", "id")
 
 
+def _today_start_local() -> dt.datetime:
+    """
+    Полночь текущего локального дня (Asia/Tashkent) в виде aware datetime.
+    Используем для правила «оператор ещё не трогал лид сегодня» — лид
+    считается «активным для сегодня», если `updated_at < today_start`
+    или это свежий `new`/`assigned`, который оператор не тронул.
+    """
+    now_local = timezone.localtime()
+    day_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    return day_start_local
+
+
+# Статусы, при которых лид считается «нетронутым» — только что раздали,
+# оператор ещё не выставил ни один из бизнес-статусов. Такие лиды всегда
+# в «активных на сегодня», даже если updated_at свежее today_start
+# (RR-раздача обновляет updated_at).
+UNTOUCHED_LEAD_STATUSES = ("new", "assigned")
+
+
 def leads_for_operator(
     operator: Operator,
     *,
@@ -159,6 +178,10 @@ def leads_for_operator(
 
     `view` filters by the operator-set postpone flag:
       - "active"    (default): only lead where postponed_at IS NULL
+                    AND (status ∈ {new, assigned} OR updated_at < сегодня 00:00).
+                    Идея: если оператор сегодня тронул лид (любой статус,
+                    включая carry_over) — лид «отработан на сегодня» и
+                    исчезает из активной вкладки; завтра снова появится.
       - "postponed": only lead where postponed_at IS NOT NULL
       - "all":       no postpone filter
     """
@@ -172,6 +195,10 @@ def leads_for_operator(
 
     if view == "active":
         qs = qs.filter(postponed_at__isnull=True)
+        today_start = _today_start_local()
+        qs = qs.filter(
+            Q(status__in=UNTOUCHED_LEAD_STATUSES) | Q(updated_at__lt=today_start)
+        )
         carry_codes = carry_over_status_codes()
         if not carry_codes:
             return qs.order_by("-updated_at")
@@ -325,20 +352,42 @@ def carry_over_status_codes() -> list[str]:
 
 def operator_working_lead_count(operator: Operator) -> int:
     """
-    Count of «leads still on operator's plate»: active status, not
-    terminal, not postponed. Powers the batch=N gate — while this
-    count >= N, RR skips the operator.
+    Count of «leads still on operator's plate for today»: active status,
+    not terminal, not postponed, и **лид ещё не тронут сегодня** —
+    иначе оператор мог обработать всю пачку и всё равно остался бы
+    «busy» до конца дня, и RR никогда бы его не долил.
+
+    Новое правило:
+      lead in count ↔
+        status in active_lead_status_codes() minus terminal
+        AND postponed_at IS NULL
+        AND (status in {new, assigned} OR updated_at < today_start)
+
+    Тронутые сегодня carry-статусы (no_answer, phone_on, callback_scheduled,
+    contacted_telegram, dokonga_keladi, …) исчезают из «сегодня-плеч»
+    сразу после того, как оператор их выставил, но завтра снова всплывают
+    (updated_at < today_start новый), поэтому оператор снова получит их
+    в /my active первыми.
+
+    Powers the batch=N gate: while this count >= N, RR skips the operator.
     """
     terminal = set(terminal_lead_status_codes())
     all_active = set(active_lead_status_codes())
     workable = list(all_active - terminal)
     if not workable:
         return 0
-    return Lead.objects.filter(
-        operator=operator,
-        status__in=workable,
-        postponed_at__isnull=True,
-    ).count()
+    today_start = _today_start_local()
+    return (
+        Lead.objects.filter(
+            operator=operator,
+            status__in=workable,
+            postponed_at__isnull=True,
+        )
+        .filter(
+            Q(status__in=UNTOUCHED_LEAD_STATUSES) | Q(updated_at__lt=today_start)
+        )
+        .count()
+    )
 
 
 def _rr_batch_size() -> int:
@@ -375,8 +424,11 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
     Active operators eligible for round-robin.
 
     Batch quota: an operator holding >= RR_BATCH_SIZE working leads
-    (active, non-terminal, non-postponed) is skipped — they finish
-    their current pack of 5 before RR hands them the next batch.
+    (active, non-terminal, non-postponed, **и ещё не тронутых сегодня**)
+    is skipped — они добивают текущую «сегодня-пачку» до того, как RR
+    подкинет следующую. Как только оператор сегодня закрыл/обработал
+    все свои лиды, _working_count падает до 0 и он снова становится
+    eligible → приходит новая пачка.
 
     When MORNING_GATE_ENABLED=1, additionally excludes anyone with a
     due callback or a blocking-status lead (legacy gate, off by default).
@@ -386,6 +438,7 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
     terminal = set(terminal_lead_status_codes())
     workable = list(set(active_lead_status_codes()) - terminal)
     batch = _rr_batch_size()
+    today_start = _today_start_local()
 
     qs = (
         Operator.objects.filter(status=OperatorStatus.ACTIVE)
@@ -395,6 +448,10 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
                 filter=Q(
                     leads__status__in=workable,
                     leads__postponed_at__isnull=True,
+                )
+                & (
+                    Q(leads__status__in=UNTOUCHED_LEAD_STATUSES)
+                    | Q(leads__updated_at__lt=today_start)
                 ),
             ),
         )
@@ -442,15 +499,21 @@ def operators_distribution_status() -> list[dict]:
 
     terminal = set(terminal_lead_status_codes())
     workable = list(set(active_lead_status_codes()) - terminal)
+    today_start = _today_start_local()
 
     ops = list(
         Operator.objects.filter(status=OperatorStatus.ACTIVE)
         .annotate(
+            # «сегодня-плечи»: активные, не отложенные, не тронутые сегодня.
             _working_count=Count(
                 "leads",
                 filter=Q(
                     leads__status__in=workable,
                     leads__postponed_at__isnull=True,
+                )
+                & (
+                    Q(leads__status__in=UNTOUCHED_LEAD_STATUSES)
+                    | Q(leads__updated_at__lt=today_start)
                 ),
             ),
             _postponed_count=Count(

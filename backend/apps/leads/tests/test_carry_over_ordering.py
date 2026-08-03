@@ -1,8 +1,11 @@
 """
 Сортировка `/api/leads/my/?view=active`:
   1. carry_over (спец-лиды, no_answer/phone_on/callback_scheduled/...) — первыми
-  2. вчерашние (созданные до today_start) — после свежих
-  3. затем по -updated_at
+  2. свежие assigned/new (untouched)
+  3. вчерашние прочие active — по -updated_at
+
+Правило «сегодня уже тронул» (updated_at >= today_start и status ∉
+{new, assigned}) → лид исчезает из view=active до завтра.
 
 view=postponed / view=all — сортировку не ломаем.
 """
@@ -139,3 +142,81 @@ def test_view_all_ordering_untouched(op):
     # view=all — просто -updated_at, без carry/morning-аннотаций.
     assert ordered[0] == b.id
     assert ordered[1] == a.id
+
+
+# ---- Новое правило «сегодня уже тронул — исчезает» -----------------------
+
+
+@pytest.mark.django_db
+def test_carry_touched_today_hidden_from_active(op):
+    """
+    Оператор сегодня поставил no_answer лиду → лид не должен
+    отображаться в /my active (правило «сегодня уже отработан»).
+    Проверяем через updated_at = сейчас (>= today_start).
+    """
+    _mk_lead(
+        op,
+        1,
+        status=LeadStatus.NO_ANSWER,
+        created_days_ago=0,
+        # updated_offset_seconds=0 → updated_at = created = now,
+        # т.е. >= today_start и статус не в {new, assigned} → скрыт.
+        updated_offset_seconds=0,
+    )
+    visible = list(leads_for_operator(op, view="active").values_list("id", flat=True))
+    assert visible == []
+
+
+@pytest.mark.django_db
+def test_carry_touched_yesterday_visible_first(op):
+    """
+    Вчерашний no_answer виден в active первым (carry-группа).
+    Сегодняшний no_answer (только что тронут) — скрыт.
+    """
+    yesterday_carry = _mk_lead(
+        op, 1, status=LeadStatus.NO_ANSWER, created_days_ago=1, updated_offset_seconds=10
+    )
+    today_touched = _mk_lead(
+        op, 2, status=LeadStatus.NO_ANSWER, created_days_ago=0, updated_offset_seconds=0
+    )
+    today_assigned = _mk_lead(
+        op, 3, status=LeadStatus.ASSIGNED, created_days_ago=0, updated_offset_seconds=100
+    )
+
+    visible = list(leads_for_operator(op, view="active").values_list("id", flat=True))
+    assert today_touched.id not in visible
+    # yesterday_carry первым, today_assigned вторым (untouched status).
+    assert visible == [yesterday_carry.id, today_assigned.id]
+
+
+@pytest.mark.django_db
+def test_today_assigned_stays_visible(op):
+    """
+    RR только что раздал assigned (обновил updated_at на now) — статус
+    остаётся `assigned`, значит «не тронут оператором», должен быть виден.
+    """
+    fresh = _mk_lead(
+        op, 1, status=LeadStatus.ASSIGNED, created_days_ago=0, updated_offset_seconds=0
+    )
+    visible = list(leads_for_operator(op, view="active").values_list("id", flat=True))
+    assert visible == [fresh.id]
+
+
+@pytest.mark.django_db
+def test_today_new_stays_visible(op):
+    """Статус `new` — untouched, виден даже если updated только что."""
+    fresh = _mk_lead(
+        op, 1, status=LeadStatus.NEW, created_days_ago=0, updated_offset_seconds=0
+    )
+    visible = list(leads_for_operator(op, view="active").values_list("id", flat=True))
+    assert visible == [fresh.id]
+
+
+@pytest.mark.django_db
+def test_touched_today_still_in_view_all(op):
+    """view=all и view=postponed правило «сегодня тронут» не фильтрует."""
+    touched = _mk_lead(
+        op, 1, status=LeadStatus.NO_ANSWER, created_days_ago=0, updated_offset_seconds=0
+    )
+    all_ids = list(leads_for_operator(op, view="all").values_list("id", flat=True))
+    assert touched.id in all_ids

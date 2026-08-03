@@ -103,6 +103,47 @@ def test_refill_delivers_partial_batch_when_pool_smaller_than_size():
 
 
 @pytest.mark.django_db(transaction=True, serialized_rollback=True)
+def test_refill_fires_after_operator_processed_all_leads_today():
+    """
+    Новое правило «сегодня-плечи»: оператор с 5 assigned-лидами
+    сегодня обработал каждый (поставил no_answer / phone_on / …) —
+    working_count падает до 0 (все «тронуты сегодня»), поэтому:
+      - когда последний терминализуется (или иначе триггерит refill),
+        _run_refill_if_empty видит 0 и доливает пачку.
+
+    Здесь эмулируем это: 5 лидов, 4 из них уже переведены сегодня в
+    no_answer (carry, не терминал, но «тронут»), пятый переводится в
+    WON → срабатывает refill → +5 свежих.
+    """
+    op = Operator.objects.create(full_name="OP", status=OperatorStatus.ACTIVE)
+
+    # 4 лида уже «отработаны сегодня» — обновлены на текущее время
+    # со статусом no_answer.
+    for i in range(4):
+        Lead.objects.create(
+            full_name=f"H-{i}",
+            phone=f"+99897{i:07d}",
+            status=LeadStatus.NO_ANSWER,
+            operator=op,
+        )
+    # Пятый — «сейчас закрою в won».
+    last = _assign_lead(op, 99)
+
+    for i in range(20):
+        _mk_orphan(i)
+
+    lead_update_status(lead=last, status=LeadStatus.WON)
+
+    # Итог: 4 no_answer (тронуты сегодня, скрыты из активных) +
+    # 1 won (терминал) + 5 свежих из refill = 10 у оператора.
+    total = Lead.objects.filter(operator=op).count()
+    assert total == 10
+    assert LeadAssignment.objects.filter(
+        operator=op, source=LeadAssignmentSource.AUTO_REFILL
+    ).count() == 5
+
+
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
 def test_refill_skips_inactive_operator():
     """Оператор INACTIVE → refill не срабатывает даже если пул полный."""
     op = Operator.objects.create(full_name="OP", status=OperatorStatus.ACTIVE)
