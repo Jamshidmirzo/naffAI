@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { Toggle, toast } from "../components/ui";
 import { apiErrorMessage } from "../lib/api-types";
 import { usePageHeader } from "../store/page";
+import { useT } from "../lib/i18n";
 
 interface DistributionSettings {
   auto_distribution_enabled: boolean;
@@ -27,8 +28,9 @@ function fmtDateTime(iso: string | null) {
 }
 
 export default function Settings() {
+  const t = useT();
   usePageHeader(
-    { title: "Настройки", subtitle: "Глобальные тумблеры и правила системы" },
+    { title: t("settings.title"), subtitle: t("settings.subtitle") },
     ["settings"],
   );
   const qc = useQueryClient();
@@ -51,8 +53,8 @@ export default function Settings() {
       qc.invalidateQueries({ queryKey: ["settings", "distribution"] });
       toast.success(
         data.auto_distribution_enabled
-          ? "Авто-распределение включено"
-          : "Авто-распределение выключено",
+          ? t("settings.auto_distribution.enabled_toast")
+          : t("settings.auto_distribution.disabled_toast"),
       );
     },
     onError: (err: unknown) => toast.error(apiErrorMessage(err)),
@@ -66,16 +68,21 @@ export default function Settings() {
         <div className="flex items-start justify-between gap-6">
           <div className="min-w-0">
             <div className="text-[15px] font-semibold tracking-tight">
-              Авто-распределение лидов
+              {t("settings.auto_distribution.title")}
             </div>
             <p className="text-[13px] text-muted mt-1.5 leading-relaxed">
-              Если выключено — утренний split, доливка и watcher не работают.
-              Все лиды распределяются менеджером вручную из «Свободных лидов».
+              {t("settings.auto_distribution.hint")}
             </p>
             {data && (
               <div className="text-[11.5px] text-muted mt-3">
-                Изменено {fmtDateTime(data.updated_at)}
-                {data.updated_by ? ` — ${data.updated_by.full_name}` : ""}
+                {data.updated_by
+                  ? t("settings.updated_with_user", {
+                      date: fmtDateTime(data.updated_at),
+                      name: data.updated_by.full_name,
+                    })
+                  : t("settings.updated_no_user", {
+                      date: fmtDateTime(data.updated_at),
+                    })}
               </div>
             )}
           </div>
@@ -84,7 +91,7 @@ export default function Settings() {
               on={!!data?.auto_distribution_enabled}
               onChange={(v) => patchMut.mutate(v)}
               disabled={settingsQ.isLoading || patchMut.isPending}
-              aria-label="Авто-распределение включено"
+              aria-label={t("settings.auto_distribution.aria")}
             />
           </div>
         </div>
@@ -99,10 +106,7 @@ export default function Settings() {
             }}
           >
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-            <div>
-              Раздача полностью выключена. Все новые лиды копятся в пуле
-              свободных, пока менеджер не назначит их вручную.
-            </div>
+            <div>{t("settings.disabled_warning")}</div>
           </div>
         )}
       </section>

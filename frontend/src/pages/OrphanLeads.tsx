@@ -8,6 +8,7 @@ import { type Lead } from "../lib/leads";
 import { Button, Checkbox, Chip, Modal, StatusBadge, toast } from "../components/ui";
 import { Paginator } from "../components/Paginator";
 import { usePageHeader } from "../store/page";
+import { useT } from "../lib/i18n";
 
 interface OrphanResponse {
   results: Lead[];
@@ -65,8 +66,9 @@ function fmtDateTime(iso: string | null | undefined) {
 }
 
 export default function OrphanLeads() {
+  const t = useT();
   usePageHeader(
-    { title: "Свободные лиды", subtitle: "Пул без оператора — раздайте вручную" },
+    { title: t("orphans.title"), subtitle: t("orphans.subtitle") },
     ["orphan-leads"],
   );
 
@@ -147,9 +149,9 @@ export default function OrphanLeads() {
       qc.invalidateQueries({ queryKey: ["distribution-status"] });
       qc.invalidateQueries({ queryKey: ["leads"] });
       if (total === 0) {
-        toast("Раздавать нечего — пул пуст");
+        toast(t("orphans.toast.pool_empty"));
       } else {
-        toast.success(`Раздано лидов: ${total}`);
+        toast.success(t("orphans.toast.distributed", { n: total }));
       }
     },
     onError: (err: unknown) => toast.error(apiErrorMessage(err)),
@@ -191,7 +193,7 @@ export default function OrphanLeads() {
       qc.invalidateQueries({ queryKey: ["orphan-leads-count"] });
       qc.invalidateQueries({ queryKey: ["distribution-status"] });
       qc.invalidateQueries({ queryKey: ["leads"] });
-      toast.success(`Раздано: ${total}`);
+      toast.success(t("orphans.toast.assigned", { n: total }));
     },
     onError: (err: unknown) => toast.error(apiErrorMessage(err)),
   });
@@ -226,7 +228,7 @@ export default function OrphanLeads() {
         <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
           <div>
             <div className="text-[11px] text-muted uppercase tracking-wide font-semibold">
-              Всего сирот
+              {t("orphans.metrics.total_label")}
             </div>
             <div className="text-[22px] font-semibold tabular-nums mt-0.5">
               {totalCount}
@@ -235,7 +237,7 @@ export default function OrphanLeads() {
           {Object.entries(countsBySource).length > 0 && (
             <div className="flex-1 min-w-[240px]">
               <div className="text-[11px] text-muted uppercase tracking-wide font-semibold">
-                По источникам
+                {t("orphans.metrics.by_source")}
               </div>
               <div className="mt-1 flex flex-wrap gap-2 text-[12.5px]">
                 {Object.entries(countsBySource).map(([name, n]) => (
@@ -257,7 +259,7 @@ export default function OrphanLeads() {
             active={sheetSourceId === null}
             onClick={() => setFilter("sheet_source", null)}
           >
-            Все источники
+            {t("orphans.chip.all_sources")}
           </Chip>
           {sourceChips.map((s) => (
             <Chip
@@ -275,11 +277,11 @@ export default function OrphanLeads() {
         <div className="text-[13px] text-muted">
           {picked.size > 0 ? (
             <span className="tabular-nums">
-              Выбрано: {picked.size} из {rows.length}
+              {t("orphans.toolbar.picked", { picked: picked.size, rows: rows.length })}
             </span>
           ) : (
             <span>
-              Всего:{" "}
+              {t("orphans.toolbar.total_prefix")}{" "}
               <span className="text-text tabular-nums">{totalCount}</span>
             </span>
           )}
@@ -290,13 +292,13 @@ export default function OrphanLeads() {
             onClick={distributeEvenly}
             variant="secondary"
           >
-            <Shuffle className="w-3.5 h-3.5" /> Раздать поровну
+            <Shuffle className="w-3.5 h-3.5" /> {t("orphans.toolbar.distribute_selected")}
           </Button>
           <Button
             disabled={picked.size === 0}
             onClick={() => setAssignOpen(true)}
           >
-            <Users className="w-3.5 h-3.5" /> Назначить оператору…
+            <Users className="w-3.5 h-3.5" /> {t("orphans.toolbar.assign_op")}
           </Button>
           {picked.size > 0 && (
             <button
@@ -304,7 +306,7 @@ export default function OrphanLeads() {
               style={{ padding: "9px 14px" }}
               onClick={() => setPicked(new Set())}
             >
-              <X className="w-3.5 h-3.5" /> Снять выбор
+              <X className="w-3.5 h-3.5" /> {t("orphans.toolbar.clear_selection")}
             </button>
           )}
         </div>
@@ -320,21 +322,21 @@ export default function OrphanLeads() {
             <Checkbox
               checked={rows.length > 0 && picked.size === rows.length}
               onChange={toggleAll}
-              aria-label="Выбрать все"
+              aria-label={t("orphans.table.select_all_aria")}
             />
           </div>
-          <div>Лид</div>
-          <div>Источник</div>
-          <div>Статус</div>
-          <div>Товар</div>
-          <div className="text-right">Создан</div>
+          <div>{t("orphans.table.col.lead")}</div>
+          <div>{t("orphans.table.col.source")}</div>
+          <div>{t("orphans.table.col.status")}</div>
+          <div>{t("orphans.table.col.product")}</div>
+          <div className="text-right">{t("orphans.table.col.created")}</div>
         </div>
 
         {orphansQ.isLoading ? (
-          <div className="text-center text-muted py-16 text-[13px]">Загрузка…</div>
+          <div className="text-center text-muted py-16 text-[13px]">{t("orphans.loading")}</div>
         ) : rows.length === 0 ? (
           <div className="text-center text-muted py-16 text-[13px]">
-            Свободных лидов нет.
+            {t("orphans.empty")}
           </div>
         ) : (
           <div>
@@ -364,7 +366,7 @@ export default function OrphanLeads() {
                     <div className="text-[12px] text-muted truncate">
                       {lead.phone || (
                         <span style={{ color: "var(--danger)" }}>
-                          {lead.phone_raw || "нет телефона"}
+                          {lead.phone_raw || t("orphans.table.no_phone")}
                         </span>
                       )}
                     </div>
@@ -429,10 +431,11 @@ function DistributionStatusPanel({
   onDistribute: () => void;
   distributing: boolean;
 }) {
+  const t = useT();
   if (loading && !data) {
     return (
       <section className="nf-card p-5 animate-nfFadeUp text-[13px] text-muted">
-        Загружаем статус распределения…
+        {t("orphans.dist.loading")}
       </section>
     );
   }
@@ -442,14 +445,14 @@ function DistributionStatusPanel({
   const totalOps = data.operators.length;
 
   const badgeFor = (row: DistributionOperatorRow) => {
-    if (row.eligible) return { tone: "hot" as const, label: "ок" };
+    if (row.eligible) return { tone: "hot" as const, label: t("orphans.dist.badge.ok") };
     if (row.reason.startsWith("Квота"))
-      return { tone: "neutral" as const, label: "квота" };
+      return { tone: "neutral" as const, label: t("orphans.dist.badge.quota") };
     if (row.reason.includes("morning-gate"))
-      return { tone: "danger" as const, label: "gate" };
+      return { tone: "danger" as const, label: t("orphans.dist.badge.gate") };
     if (row.reason.includes("не в статусе"))
-      return { tone: "danger" as const, label: "выключен" };
-    return { tone: "neutral" as const, label: "—" };
+      return { tone: "danger" as const, label: t("orphans.dist.badge.disabled") };
+    return { tone: "neutral" as const, label: t("orphans.dist.badge.dash") };
   };
 
   return (
@@ -457,25 +460,38 @@ function DistributionStatusPanel({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="text-[15px] font-semibold tracking-tight">
-            Статус распределения
+            {t("orphans.dist.title")}
           </div>
           <div className="text-[12.5px] text-muted mt-1">
-            RR_BATCH_SIZE = <b className="text-text tabular-nums">{data.rr_batch_size}</b>{" "}
-            · авто-раздача{" "}
-            <b
-              className="text-text"
-              style={{
-                color: data.auto_distribution_enabled
-                  ? "var(--accent, #16a34a)"
-                  : "var(--danger)",
-              }}
-            >
-              {data.auto_distribution_enabled ? "ВКЛ" : "ВЫКЛ"}
-            </b>{" "}
-            · получают лиды сейчас:{" "}
-            <b className="text-text tabular-nums">
-              {eligibleCount}/{totalOps}
-            </b>
+            {(() => {
+              const stateStr = data.auto_distribution_enabled
+                ? t("orphans.dist.state_on")
+                : t("orphans.dist.state_off");
+              const meta = t("orphans.dist.meta", {
+                batch: data.rr_batch_size,
+                state: stateStr,
+                eligible: eligibleCount,
+                total: totalOps,
+              });
+              // Emphasize the on/off state with color while preserving translated meta.
+              const parts = meta.split(stateStr);
+              return (
+                <>
+                  {parts[0]}
+                  <b
+                    className="text-text"
+                    style={{
+                      color: data.auto_distribution_enabled
+                        ? "var(--accent, #16a34a)"
+                        : "var(--danger)",
+                    }}
+                  >
+                    {stateStr}
+                  </b>
+                  {parts.slice(1).join(stateStr)}
+                </>
+              );
+            })()}
           </div>
         </div>
         <div className="shrink-0 flex items-center gap-2">
@@ -485,16 +501,16 @@ function DistributionStatusPanel({
             onClick={onDistribute}
             title={
               !data.auto_distribution_enabled
-                ? "Сначала включите авто-распределение в /settings"
+                ? t("orphans.dist.tooltip_disabled")
                 : data.orphans_count === 0
-                ? "Пул сирот пуст"
-                : "Раздать всех сирот поровну активным операторам"
+                ? t("orphans.dist.tooltip_empty")
+                : t("orphans.dist.tooltip_action")
             }
           >
             <Split className="w-3.5 h-3.5" />
             {distributing
-              ? "Раздаём…"
-              : `Раздать все ${data.orphans_count} сейчас поровну`}
+              ? t("orphans.dist.distributing")
+              : t("orphans.dist.distribute_all", { n: data.orphans_count })}
           </Button>
         </div>
       </div>
@@ -508,15 +524,13 @@ function DistributionStatusPanel({
             border: "1px solid rgba(220,60,40,.2)",
           }}
         >
-          Авто-раздача выключена в /settings. Пока не включите — новые
-          лиды не будут уходить операторам автоматически.
+          {t("orphans.dist.auto_off_warning")}
         </div>
       )}
 
       {totalOps === 0 ? (
         <div className="mt-4 text-[13px] text-muted">
-          Нет активных операторов. Пока не активируете хотя бы одного —
-          RR некуда раздавать.
+          {t("orphans.dist.no_operators")}
         </div>
       ) : (
         <div className="mt-4 overflow-hidden">
@@ -524,11 +538,11 @@ function DistributionStatusPanel({
             className="grid gap-2 px-3 pb-2 nf-col items-center text-[11px] uppercase tracking-wide"
             style={{ gridTemplateColumns: "1.4fr .5fr .5fr .6fr 1.5fr" }}
           >
-            <div>Оператор</div>
-            <div className="text-right">Работает</div>
-            <div className="text-right">Отложено</div>
-            <div>Статус</div>
-            <div>Почему</div>
+            <div>{t("orphans.dist.col.operator")}</div>
+            <div className="text-right">{t("orphans.dist.col.working")}</div>
+            <div className="text-right">{t("orphans.dist.col.postponed")}</div>
+            <div>{t("orphans.dist.col.status")}</div>
+            <div>{t("orphans.dist.col.reason")}</div>
           </div>
           <div>
             {data.operators.map((row) => {
@@ -587,6 +601,7 @@ function AssignModal({
   onSubmit: (operatorId: number) => void;
   submitting: boolean;
 }) {
+  const t = useT();
   const [opId, setOpId] = useState<string>("");
 
   useEffect(() => {
@@ -597,15 +612,14 @@ function AssignModal({
     <Modal open={open} onClose={onClose} width={460}>
       <div className="p-7">
         <div className="text-[18px] font-semibold tracking-tight">
-          Назначить оператору · {pickedIds.length}
+          {t("orphans.assign_modal.title", { n: pickedIds.length })}
         </div>
         <p className="text-[13px] text-muted mt-1">
-          Все выделенные лиды уйдут выбранному оператору. История назначений
-          сохраняется в аудит-логе.
+          {t("orphans.assign_modal.hint")}
         </p>
         <div className="mt-6 flex flex-col gap-4">
           <div>
-            <div className="nf-col mb-1.5">Оператор</div>
+            <div className="nf-col mb-1.5">{t("orphans.assign_modal.op_label")}</div>
             <select
               className="nf-input"
               value={opId}
@@ -621,13 +635,13 @@ function AssignModal({
         </div>
         <div className="mt-7 flex gap-2 justify-end">
           <Button variant="ghost" onClick={onClose}>
-            Отмена
+            {t("orphans.assign_modal.cancel")}
           </Button>
           <Button
             onClick={() => opId && onSubmit(Number(opId))}
             disabled={submitting || !opId}
           >
-            {submitting ? "Сохраняем…" : "Назначить"}
+            {submitting ? t("orphans.assign_modal.saving") : t("orphans.assign_modal.submit")}
           </Button>
         </div>
       </div>

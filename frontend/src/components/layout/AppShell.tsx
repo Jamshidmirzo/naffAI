@@ -19,7 +19,7 @@ function useManagerGroups(t: (k: string) => string): SidebarGroup[] {
         { to: "/", label: t("nav.dashboard"), end: true },
         { to: "/sales", label: t("nav.sales") },
         { to: "/leads", label: t("nav.leads"), badgeKey: "leadsReview" },
-        { to: "/leads/orphans", label: "Свободные лиды", badgeKey: "orphans" },
+        { to: "/leads/orphans", label: t("nav.orphans"), badgeKey: "orphans" },
       ],
     },
     {
@@ -69,7 +69,7 @@ function useManagerGroups(t: (k: string) => string): SidebarGroup[] {
     {
       items: [
         { to: "/audit", label: t("nav.audit") },
-        { to: "/settings", label: "Настройки" },
+        { to: "/settings", label: t("nav.settings") },
       ],
     },
   ];
