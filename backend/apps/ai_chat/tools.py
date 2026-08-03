@@ -49,6 +49,54 @@ def get_leads_count(status: str | None = None) -> dict[str, Any]:
     return {"count": qs.count(), "status_filter": status or "any"}
 
 
+def get_lead_status_breakdown(
+    period: str | None = None, operator_id: int | None = None
+) -> dict[str, Any]:
+    """
+    Все статусы лидов (из LeadStatusLabel) с количеством лидов в каждом.
+    Опционально фильтр по периоду создания и оператору.
+    """
+    from django.db.models import Count
+
+    from apps.leads.models import Lead, LeadStatusLabel
+
+    labels = {l.code: l for l in LeadStatusLabel.objects.filter(is_active=True)}
+    qs = Lead.objects.all()
+    if operator_id:
+        qs = qs.filter(operator_id=operator_id)
+    if period:
+        date_from, date_to = _resolve_window(period)
+        if date_from:
+            qs = qs.filter(created_at__gte=date_from)
+        if date_to:
+            qs = qs.filter(created_at__lte=date_to)
+
+    rows = qs.values("status").annotate(n=Count("id")).order_by("-n")
+
+    total = 0
+    items = []
+    for r in rows:
+        code = r["status"]
+        n = r["n"]
+        total += n
+        label = labels.get(code)
+        items.append(
+            {
+                "code": code,
+                "label_ru": label.label_ru if label else code,
+                "is_terminal": label.is_terminal if label else False,
+                "is_carry_over": label.carry_over_next_day if label else False,
+                "count": n,
+            }
+        )
+    return {
+        "total": total,
+        "items": items,
+        "period": period or "all",
+        "operator_id": operator_id,
+    }
+
+
 def get_sales_summary(period: str = "month") -> dict[str, Any]:
     """Grand totals for the given period + sales count."""
     kpi = kpi_snapshot(period=period)
@@ -165,7 +213,12 @@ TOOLS: dict[str, ToolSpec] = {
         "handler": get_kpi_snapshot,
     },
     "get_leads_count": {
-        "description": "Return the number of leads, optionally filtered by status.",
+        "description": (
+            "Return the count of leads. If `status` is given — count for that specific "
+            "status code (must be a real code from LeadStatusLabel — call "
+            "get_lead_status_breakdown first to discover valid codes). "
+            "No status — total leads count."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
@@ -173,6 +226,22 @@ TOOLS: dict[str, ToolSpec] = {
             },
         },
         "handler": get_leads_count,
+    },
+    "get_lead_status_breakdown": {
+        "description": (
+            "Return count of leads for EVERY status from LeadStatusLabel "
+            "(label_ru, code, count, is_terminal, is_carry_over). "
+            "Use this for questions about lead distribution by status — "
+            "never invent statuses like 'new/contacted/sold/lost'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "period": {"type": "string", "enum": ["day", "week", "month"]},
+                "operator_id": {"type": "integer"},
+            },
+        },
+        "handler": get_lead_status_breakdown,
     },
     "get_sales_summary": {
         "description": "Sales total + count for the given period.",
