@@ -1,6 +1,8 @@
 from django.urls import path
 
 from .apis import (
+    DistributeNowApi,
+    DistributionStatusApi,
     LeadConvertToSaleApi,
     LeadDetailApi,
     LeadListCreateApi,
@@ -23,10 +25,12 @@ from .apis import (
 urlpatterns = [
     path("", LeadListCreateApi.as_view()),
     path("my/", LeadMyListApi.as_view()),
-    # Static paths ставим ПЕРЕД <int:pk>/, чтобы `orphans` / `bulk-reassign`
-    # не матчились как ID.
+    # Static paths ставим ПЕРЕД <int:pk>/, чтобы `orphans` / `bulk-reassign` /
+    # `distribution-status` / `distribute-now` не матчились как ID.
     path("orphans/", OrphanLeadsApi.as_view()),
     path("bulk-reassign/", LeadsBulkReassignApi.as_view()),
+    path("distribution-status/", DistributionStatusApi.as_view()),
+    path("distribute-now/", DistributeNowApi.as_view()),
     path("<int:pk>/", LeadDetailApi.as_view()),
     path("<int:pk>/reassign/", LeadReassignApi.as_view()),
     path("<int:pk>/status/", LeadStatusApi.as_view()),

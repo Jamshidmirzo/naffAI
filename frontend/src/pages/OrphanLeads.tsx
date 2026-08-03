@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Shuffle, Users, X } from "lucide-react";
+import { Shuffle, Split, Users, X } from "lucide-react";
 import { api } from "../lib/api";
 import { apiErrorMessage } from "../lib/api-types";
 import { type Lead } from "../lib/leads";
@@ -28,6 +28,24 @@ interface SheetSource {
   id: number;
   name: string;
   active: boolean;
+}
+
+interface DistributionOperatorRow {
+  id: number;
+  full_name: string;
+  status: string;
+  working_count: number;
+  postponed_count: number;
+  eligible: boolean;
+  reason: string;
+}
+
+interface DistributionStatusResponse {
+  auto_distribution_enabled: boolean;
+  rr_batch_size: number;
+  orphans_count: number;
+  orphans_oldest: string | null;
+  operators: DistributionOperatorRow[];
 }
 
 const PAGE_SIZE = 50;
@@ -106,6 +124,37 @@ export default function OrphanLeads() {
     refetchInterval: 60_000,
   });
 
+  const distStatusQ = useQuery({
+    queryKey: ["distribution-status"],
+    queryFn: async (): Promise<DistributionStatusResponse> => {
+      const { data } = await api.get<DistributionStatusResponse>(
+        "/leads/distribution-status/",
+      );
+      return data;
+    },
+    refetchInterval: 60_000,
+  });
+
+  const distributeNowMut = useMutation({
+    mutationFn: () =>
+      api.post<{ total: number; assigned: Record<string, number> }>(
+        "/leads/distribute-now/",
+      ),
+    onSuccess: (r) => {
+      const total = r.data.total;
+      qc.invalidateQueries({ queryKey: ["orphan-leads"] });
+      qc.invalidateQueries({ queryKey: ["orphan-leads-count"] });
+      qc.invalidateQueries({ queryKey: ["distribution-status"] });
+      qc.invalidateQueries({ queryKey: ["leads"] });
+      if (total === 0) {
+        toast("Раздавать нечего — пул пуст");
+      } else {
+        toast.success(`Раздано лидов: ${total}`);
+      }
+    },
+    onError: (err: unknown) => toast.error(apiErrorMessage(err)),
+  });
+
   const rows = orphansQ.data?.results || [];
   const totalCount = orphansQ.data?.count || 0;
   const countsBySource = orphansQ.data?.counts_by_source || {};
@@ -140,6 +189,7 @@ export default function OrphanLeads() {
       setAssignOpen(false);
       qc.invalidateQueries({ queryKey: ["orphan-leads"] });
       qc.invalidateQueries({ queryKey: ["orphan-leads-count"] });
+      qc.invalidateQueries({ queryKey: ["distribution-status"] });
       qc.invalidateQueries({ queryKey: ["leads"] });
       toast.success(`Раздано: ${total}`);
     },
@@ -153,8 +203,24 @@ export default function OrphanLeads() {
 
   const sourceChips = useMemo(() => sheetSourcesQ.data ?? [], [sheetSourcesQ.data]);
 
+  const distData = distStatusQ.data;
+  const canDistributeNow =
+    !!distData &&
+    distData.auto_distribution_enabled &&
+    distData.orphans_count > 0 &&
+    !distributeNowMut.isPending;
+
   return (
     <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
+      {/* Диагностическая панель: статус распределения */}
+      <DistributionStatusPanel
+        data={distData}
+        loading={distStatusQ.isLoading}
+        canDistribute={canDistributeNow}
+        onDistribute={() => distributeNowMut.mutate()}
+        distributing={distributeNowMut.isPending}
+      />
+
       {/* Топ-бар: метрики */}
       <section className="nf-card p-5 animate-nfFadeUp">
         <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
@@ -349,6 +415,162 @@ export default function OrphanLeads() {
     </div>
   );
 }
+
+function DistributionStatusPanel({
+  data,
+  loading,
+  canDistribute,
+  onDistribute,
+  distributing,
+}: {
+  data: DistributionStatusResponse | undefined;
+  loading: boolean;
+  canDistribute: boolean;
+  onDistribute: () => void;
+  distributing: boolean;
+}) {
+  if (loading && !data) {
+    return (
+      <section className="nf-card p-5 animate-nfFadeUp text-[13px] text-muted">
+        Загружаем статус распределения…
+      </section>
+    );
+  }
+  if (!data) return null;
+
+  const eligibleCount = data.operators.filter((o) => o.eligible).length;
+  const totalOps = data.operators.length;
+
+  const badgeFor = (row: DistributionOperatorRow) => {
+    if (row.eligible) return { tone: "hot" as const, label: "ок" };
+    if (row.reason.startsWith("Квота"))
+      return { tone: "neutral" as const, label: "квота" };
+    if (row.reason.includes("morning-gate"))
+      return { tone: "danger" as const, label: "gate" };
+    if (row.reason.includes("не в статусе"))
+      return { tone: "danger" as const, label: "выключен" };
+    return { tone: "neutral" as const, label: "—" };
+  };
+
+  return (
+    <section className="nf-card p-5 animate-nfFadeUp">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-[15px] font-semibold tracking-tight">
+            Статус распределения
+          </div>
+          <div className="text-[12.5px] text-muted mt-1">
+            RR_BATCH_SIZE = <b className="text-text tabular-nums">{data.rr_batch_size}</b>{" "}
+            · авто-раздача{" "}
+            <b
+              className="text-text"
+              style={{
+                color: data.auto_distribution_enabled
+                  ? "var(--accent, #16a34a)"
+                  : "var(--danger)",
+              }}
+            >
+              {data.auto_distribution_enabled ? "ВКЛ" : "ВЫКЛ"}
+            </b>{" "}
+            · получают лиды сейчас:{" "}
+            <b className="text-text tabular-nums">
+              {eligibleCount}/{totalOps}
+            </b>
+          </div>
+        </div>
+        <div className="shrink-0 flex items-center gap-2">
+          <Button
+            variant="secondary"
+            disabled={!canDistribute}
+            onClick={onDistribute}
+            title={
+              !data.auto_distribution_enabled
+                ? "Сначала включите авто-распределение в /settings"
+                : data.orphans_count === 0
+                ? "Пул сирот пуст"
+                : "Раздать всех сирот поровну активным операторам"
+            }
+          >
+            <Split className="w-3.5 h-3.5" />
+            {distributing
+              ? "Раздаём…"
+              : `Раздать все ${data.orphans_count} сейчас поровну`}
+          </Button>
+        </div>
+      </div>
+
+      {!data.auto_distribution_enabled && (
+        <div
+          className="mt-4 rounded-xl px-3.5 py-2.5 text-[12.5px]"
+          style={{
+            background: "rgba(220,60,40,.08)",
+            color: "var(--danger)",
+            border: "1px solid rgba(220,60,40,.2)",
+          }}
+        >
+          Авто-раздача выключена в /settings. Пока не включите — новые
+          лиды не будут уходить операторам автоматически.
+        </div>
+      )}
+
+      {totalOps === 0 ? (
+        <div className="mt-4 text-[13px] text-muted">
+          Нет активных операторов. Пока не активируете хотя бы одного —
+          RR некуда раздавать.
+        </div>
+      ) : (
+        <div className="mt-4 overflow-hidden">
+          <div
+            className="grid gap-2 px-3 pb-2 nf-col items-center text-[11px] uppercase tracking-wide"
+            style={{ gridTemplateColumns: "1.4fr .5fr .5fr .6fr 1.5fr" }}
+          >
+            <div>Оператор</div>
+            <div className="text-right">Работает</div>
+            <div className="text-right">Отложено</div>
+            <div>Статус</div>
+            <div>Почему</div>
+          </div>
+          <div>
+            {data.operators.map((row) => {
+              const b = badgeFor(row);
+              return (
+                <div
+                  key={row.id}
+                  className="grid gap-2 items-center py-2.5 px-3 border-t text-[13px]"
+                  style={{
+                    gridTemplateColumns: "1.4fr .5fr .5fr .6fr 1.5fr",
+                    borderColor: "var(--border, rgba(0,0,0,.06))",
+                    background: row.eligible ? undefined : "var(--faint, rgba(0,0,0,.02))",
+                  }}
+                >
+                  <div className="font-medium truncate">{row.full_name}</div>
+                  <div className="text-right tabular-nums">{row.working_count}</div>
+                  <div
+                    className="text-right tabular-nums"
+                    style={{ color: row.postponed_count ? undefined : "var(--muted)" }}
+                  >
+                    {row.postponed_count || "—"}
+                  </div>
+                  <div>
+                    <StatusBadge tone={b.tone}>{b.label}</StatusBadge>
+                  </div>
+                  <div
+                    className="text-[12.5px] truncate"
+                    style={{ color: row.eligible ? "var(--muted)" : "var(--text)" }}
+                    title={row.reason}
+                  >
+                    {row.reason}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 
 function AssignModal({
   open,

@@ -42,6 +42,7 @@ from .selectors import (
     operator_is_blocked_by_overdue_callbacks,
     operator_open_callbacks_count,
     operator_yesterday_backlog_count,
+    operators_distribution_status,
     orphan_leads,
     telegram_link_for_phone,
 )
@@ -53,6 +54,7 @@ from .services import (
     lead_unpostpone,
     lead_update_status,
     leads_bulk_reassign,
+    morning_distribute_leads,
     operator_alias_upsert,
     sheet_source_upsert,
     telegram_link_upsert,
@@ -610,6 +612,78 @@ class LeadsBulkReassignApi(APIView):
         except ApplicationError as exc:
             return Response({"detail": exc.message, **exc.extra}, status=400)
         return Response(result)
+
+
+# ---- Distribution-status panel (менеджерский диагностический виджет) ----
+
+
+class DistributionStatusApi(APIView):
+    """
+    GET /api/leads/distribution-status/
+
+    Диагностический ответ для менеджера: почему каждый активный оператор
+    сейчас (не) получает новых лидов автоматически. Плюс размер пула
+    сирот и глобальный тумблер `auto_distribution_enabled`.
+    """
+
+    permission_classes = [IsManager]
+
+    def get(self, request):
+        from django.conf import settings
+
+        from apps.system_settings.selectors import auto_distribution_enabled
+
+        rows = operators_distribution_status()
+
+        orphans_qs = orphan_leads()
+        orphans_count = orphans_qs.count()
+        oldest = orphans_qs.order_by("created_at").values_list(
+            "created_at", flat=True
+        ).first()
+
+        return Response(
+            {
+                "auto_distribution_enabled": auto_distribution_enabled(),
+                "rr_batch_size": int(getattr(settings, "RR_BATCH_SIZE", 5)),
+                "orphans_count": orphans_count,
+                "orphans_oldest": oldest.isoformat() if oldest else None,
+                "operators": rows,
+            }
+        )
+
+
+class DistributeNowApi(APIView):
+    """
+    POST /api/leads/distribute-now/
+
+    Ручной триггер утренней раздачи из UI. Использует тот же сервис, что
+    и cron `morning_distribute_leads`. Уважает killswitch — если
+    `auto_distribution_enabled=False`, возвращает 400.
+    """
+
+    permission_classes = [IsManager]
+
+    def post(self, request):
+        from apps.system_settings.selectors import auto_distribution_enabled
+
+        if not auto_distribution_enabled():
+            return Response(
+                {
+                    "detail": (
+                        "Авто-распределение выключено. Включите его в "
+                        "настройках, чтобы раздать лиды."
+                    )
+                },
+                status=400,
+            )
+        counts = morning_distribute_leads()
+        total = sum(counts.values())
+        return Response(
+            {
+                "assigned": {str(op_id): n for op_id, n in counts.items() if n > 0},
+                "total": total,
+            }
+        )
 
 
 # ---- Sheet configuration CRUD -------------------------------------------

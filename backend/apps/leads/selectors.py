@@ -420,6 +420,89 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
     return qs.exclude(pk__in=cb_blocked)
 
 
+def operators_distribution_status() -> list[dict]:
+    """
+    Диагностическая сводка для менеджера: по каждому оператору со
+    `status=ACTIVE` — сколько сейчас лидов на плечах и почему он
+    (не) участвует в круге раздачи `operators_eligible_for_new_leads()`.
+
+    Порядок: сначала eligible (по working_count ASC, ties — id ASC),
+    потом non-eligible (по working_count DESC, ties — id ASC), чтобы
+    менеджер сразу видел «кто перегружен».
+
+    Возвращает список словарей с полями:
+      - id, full_name, status
+      - working_count   (то же, что `operator_working_lead_count`)
+      - postponed_count
+      - eligible        (bool)
+      - reason          (str, RU) — «ок» если eligible, иначе причина
+    """
+    batch = _rr_batch_size()
+    morning_gate = _morning_gate_enabled()
+
+    terminal = set(terminal_lead_status_codes())
+    workable = list(set(active_lead_status_codes()) - terminal)
+
+    ops = list(
+        Operator.objects.filter(status=OperatorStatus.ACTIVE)
+        .annotate(
+            _working_count=Count(
+                "leads",
+                filter=Q(
+                    leads__status__in=workable,
+                    leads__postponed_at__isnull=True,
+                ),
+            ),
+            _postponed_count=Count(
+                "leads",
+                filter=Q(
+                    leads__status__in=workable,
+                    leads__postponed_at__isnull=False,
+                ),
+            ),
+        )
+        .order_by("id")
+    )
+
+    rows: list[dict] = []
+    for op in ops:
+        working = op._working_count  # type: ignore[attr-defined]
+        postponed = op._postponed_count  # type: ignore[attr-defined]
+
+        reasons: list[str] = []
+        if working >= batch:
+            reasons.append(
+                f"Квота: {working}/{batch} — освободите слот, закрыв лид"
+            )
+        if morning_gate and operator_has_open_callbacks(op):
+            reasons.append("morning-gate: есть просроченный callback")
+        if morning_gate and operator_yesterday_backlog_count(op) > 0:
+            reasons.append("morning-gate: блокирующий статус на лиде")
+
+        eligible = not reasons
+        rows.append(
+            {
+                "id": op.id,
+                "full_name": op.full_name,
+                "status": op.status,
+                "working_count": working,
+                "postponed_count": postponed,
+                "eligible": eligible,
+                "reason": "ок — участвует в RR" if eligible else "; ".join(reasons),
+            }
+        )
+
+    # Eligible сверху (по working ASC), затем non-eligible (по working DESC).
+    rows.sort(
+        key=lambda r: (
+            0 if r["eligible"] else 1,
+            r["working_count"] if r["eligible"] else -r["working_count"],
+            r["id"],
+        )
+    )
+    return rows
+
+
 def next_operator_for_round_robin() -> Operator | None:
     """
     Deterministic-ish round-robin: pick the eligible operator with the
