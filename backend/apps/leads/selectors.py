@@ -172,23 +172,17 @@ def leads_for_operator(
 
     if view == "active":
         qs = qs.filter(postponed_at__isnull=True)
-        today_start = timezone.localtime().replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
         carry_codes = carry_over_status_codes()
+        if not carry_codes:
+            return qs.order_by("-updated_at")
         qs = qs.annotate(
             _carry=Case(
                 When(status__in=carry_codes, then=Value(0)),
                 default=Value(1),
                 output_field=IntegerField(),
             ),
-            _morning=Case(
-                When(created_at__lt=today_start, then=Value(1)),
-                default=Value(0),
-                output_field=IntegerField(),
-            ),
         )
-        return qs.order_by("_carry", "_morning", "-updated_at")
+        return qs.order_by("_carry", "-updated_at")
     if view == "postponed":
         qs = qs.filter(postponed_at__isnull=False)
         return qs.order_by("-postponed_at")
@@ -310,13 +304,23 @@ def carry_over_status_codes() -> list[str]:
     Codes flagged as «спец-лиды» — оставшиеся в работе с прошлого дня.
     Показываются первыми в /my active: no_answer, phone_on,
     callback_scheduled, contacted_telegram и т.п.
+
+    Кэш 60с — набор редко меняется (только через админ), а вызывается
+    на каждом GET /api/leads/my/.
     """
+    from django.core.cache import cache
+
     from .models import LeadStatusLabel
 
-    return list(
+    cached = cache.get("carry_over_status_codes")
+    if cached is not None:
+        return cached
+    codes = list(
         LeadStatusLabel.objects.filter(is_active=True, carry_over_next_day=True)
         .values_list("code", flat=True)
     )
+    cache.set("carry_over_status_codes", codes, 60)
+    return codes
 
 
 def operator_working_lead_count(operator: Operator) -> int:
