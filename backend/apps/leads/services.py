@@ -1276,6 +1276,71 @@ def lead_qimmatlik_retry(lead: Lead) -> Operator | None:
     return candidate
 
 
+def leads_auto_close_stale(*, dry_run: bool = False) -> dict[int, int]:
+    """
+    Ночной cron: закрывает как `LOST` non-carry активные лиды операторов,
+    у которых `updated_at < сегодня 00:00` (Asia/Tashkent). См.
+    `stale_leads_for_auto_close` — там правило отбора.
+
+    Каждый лид проходит через `lead_update_status(..., status=LOST)`, чтобы:
+      - писался единый audit-лог,
+      - триггерился sheet writeback,
+      - срабатывал refill-по-N (если оператор становится пустым).
+
+    Уважает killswitch `SystemSetting.auto_distribution_enabled`: если
+    менеджер вырубил авто-раздачу, экшн пустой — не бьём никого.
+
+    Возвращает `{operator_id: closed_count}`. При `dry_run=True` в БД
+    ничего не пишем, только собираем сколько по кому будет.
+    """
+    from apps.system_settings.selectors import auto_distribution_enabled
+
+    from .selectors import stale_leads_for_auto_close
+
+    if not auto_distribution_enabled():
+        return {}
+
+    if dry_run:
+        counts: dict[int, int] = {}
+        for lead in stale_leads_for_auto_close():
+            counts[lead.operator_id] = counts.get(lead.operator_id, 0) + 1
+        return counts
+
+    counts_out: dict[int, int] = {}
+    # Забираем список id заранее, чтобы после каждого update не пересчитывать
+    # queryset (иначе, как только статус меняется на LOST, лид выпадает из
+    # `stale_leads_for_auto_close` и итерация оборвётся).
+    with transaction.atomic():
+        stale_ids = list(
+            stale_leads_for_auto_close()
+            .select_for_update(skip_locked=True)
+            .values_list("id", flat=True)
+        )
+
+    if not stale_ids:
+        return {}
+
+    for lead_id in stale_ids:
+        try:
+            with transaction.atomic():
+                lead = Lead.objects.select_for_update().filter(pk=lead_id).first()
+                if lead is None or lead.operator_id is None:
+                    continue
+                if lead.status == LeadStatus.LOST:
+                    continue
+                op_id = lead.operator_id
+                lead_update_status(
+                    lead=lead,
+                    status=LeadStatus.LOST,
+                    user=None,
+                    comment="Автозакрытие: не обработан вручную",
+                )
+                counts_out[op_id] = counts_out.get(op_id, 0) + 1
+        except Exception:
+            logger.exception("auto-close failed lead=%s", lead_id)
+    return counts_out
+
+
 @transaction.atomic
 def lead_convert_to_sale(*, lead: Lead, user=None, sale_data: dict):
     """

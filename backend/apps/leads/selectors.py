@@ -350,6 +350,37 @@ def carry_over_status_codes() -> list[str]:
     return codes
 
 
+def stale_leads_for_auto_close() -> QuerySet[Lead]:
+    """
+    Non-carry лиды у активных операторов, где `updated_at < сегодня 00:00`
+    (Asia/Tashkent) и статус — активный, но НЕ carry-over и НЕ untouched
+    (new/assigned). Утренний cron (`auto_close_stale_leads`) переводит их
+    в `LOST`, чтобы мёртвые хвосты `has_debt`/`shunchaki_qiziqdi`/… не
+    копились на плечах оператора.
+
+    Идея: сегодня оператор что-то сделал с лидом (updated_at обновился),
+    завтра либо это carry (специально продолжает работать), либо
+    закрывается автоматически как LOST.
+
+    Свежие лиды (`new`, `assigned`) не трогаем — они просто ждут первого
+    контакта. Postponed — оператор явно попросил отложить, тоже мимо.
+    """
+    today_start = _today_start_local()
+    active = set(active_lead_status_codes())
+    carry = set(carry_over_status_codes())
+    stale_codes = [
+        c for c in active if c not in carry and c not in UNTOUCHED_LEAD_STATUSES
+    ]
+    if not stale_codes:
+        return Lead.objects.none()
+    return Lead.objects.filter(
+        status__in=stale_codes,
+        updated_at__lt=today_start,
+        operator__isnull=False,
+        postponed_at__isnull=True,
+    ).select_related("operator")
+
+
 def operator_working_lead_count(operator: Operator) -> int:
     """
     Count of «leads still on operator's plate for today»: active status,

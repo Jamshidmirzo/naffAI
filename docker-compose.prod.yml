@@ -193,6 +193,40 @@ services:
           sleep 300
         done
 
+  # Auto-closer — раз в сутки в 00:30 Asia/Tashkent (19:30 UTC).
+  # Закрывает как LOST вчерашние non-carry активные лиды оператора,
+  # которые он тронул вчера или раньше, но так и не завершил. Запускаем
+  # ЗА 8 часов до утренней раздачи (08:30 TSH), чтобы освободить плечи
+  # оператора и morning-splitter мог им долить свежих. См.
+  # `apps/leads/management/commands/auto_close_stale_leads.py`.
+  auto-closer:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          now_epoch=$$(date -u +%s)
+          today_target=$$(date -u -d 'today 19:30' +%s 2>/dev/null || python -c "import datetime,calendar; d=datetime.datetime.utcnow().replace(hour=19,minute=30,second=0,microsecond=0); print(calendar.timegm(d.timetuple()))")
+          if [ "$$now_epoch" -ge "$$today_target" ]; then
+            tomorrow_target=$$((today_target + 86400))
+            sleep_sec=$$((tomorrow_target - now_epoch))
+          else
+            sleep_sec=$$((today_target - now_epoch))
+          fi
+          echo "[$$(date +%FT%T%z)] auto-closer sleep $$sleep_sec s (until 00:30 Tashkent)"
+          sleep "$$sleep_sec"
+          echo "[$$(date +%FT%T%z)] auto_close_stale_leads"
+          python manage.py auto_close_stale_leads || echo "auto_close_stale_leads rc=$$?"
+        done
+
   # Sheet sync — pull new leads from Google Sheets every 5 minutes.
   # Kept separate from `scheduler` so an analyze/LLM stall never blocks
   # inbound leads (or vice versa). Every iteration logs via docker logs.
