@@ -15,10 +15,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.common.exceptions import ApplicationError
+from apps.common.pagination import DefaultPagination
 from apps.common.validators import normalize_uz_phone
 from apps.operators.selectors import operator_get
 from apps.users.permissions import (
     IsAuthenticatedAnyRole,
+    IsManager,
     IsOperator,
     IsTeamLead,
     IsTeamLeadOrManagerReadOnly,
@@ -37,10 +39,10 @@ from .selectors import (
     lead_list,
     leads_for_operator,
     operator_has_open_backlog,
-    operator_has_open_callbacks,
     operator_is_blocked_by_overdue_callbacks,
     operator_open_callbacks_count,
     operator_yesterday_backlog_count,
+    orphan_leads,
     telegram_link_for_phone,
 )
 from .services import (
@@ -50,6 +52,7 @@ from .services import (
     lead_reassign,
     lead_unpostpone,
     lead_update_status,
+    leads_bulk_reassign,
     operator_alias_upsert,
     sheet_source_upsert,
     telegram_link_upsert,
@@ -243,7 +246,6 @@ def _notify_backlog_once(operator, open_cb: int, backlog: int) -> None:
     calendar day. Rendered in the bell menu so they see the reminder
     even if the /my banner scrolls off-screen.
     """
-    import datetime as dt
     from django.utils import timezone
 
     from apps.notifications.models import Notification, NotificationKind
@@ -517,6 +519,97 @@ class LeadConvertToSaleApi(APIView):
             {"lead_id": lead.id, "sale_id": sale.id, "status": lead.status},
             status=status.HTTP_201_CREATED,
         )
+
+
+# ---- Orphan leads + bulk reassign (менеджерский виджет) ----------------
+
+
+class OrphanLeadsApi(APIView):
+    """
+    GET /api/leads/orphans/ — пул свободных лидов для менеджера.
+    Фильтры: sheet_source, status, created_from, created_to.
+    Ответ: results + count + counts_by_source + counts_by_status.
+    """
+
+    permission_classes = [IsManager]
+
+    def get(self, request):
+        qp = request.query_params
+        sheet_source_id = int(qp["sheet_source"]) if qp.get("sheet_source") else None
+
+        raw_statuses = qp.get("status")
+        statuses = None
+        if raw_statuses:
+            statuses = [s.strip() for s in raw_statuses.split(",") if s.strip()]
+
+        created_from = _parse_dt(qp.get("created_from"))
+        created_to = _parse_dt(qp.get("created_to"))
+
+        qs = orphan_leads(
+            sheet_source_id=sheet_source_id,
+            statuses=statuses,
+            created_from=created_from,
+            created_to=created_to,
+        )
+
+        # Aggregates for the top bar. Cheap — same base queryset, one groupby each.
+        from django.db.models import Count
+
+        by_source_rows = (
+            qs.values("sheet_source_id", "sheet_source__name")
+            .annotate(n=Count("id"))
+            .order_by("-n")
+        )
+        counts_by_source = {
+            (r["sheet_source__name"] or "—"): r["n"] for r in by_source_rows
+        }
+
+        by_status_rows = qs.values("status").annotate(n=Count("id")).order_by("-n")
+        counts_by_status = {r["status"]: r["n"] for r in by_status_rows}
+
+        paginator = DefaultPagination()
+        page = paginator.paginate_queryset(qs, request)
+        data = LeadSerializer(page, many=True).data
+        resp = paginator.get_paginated_response(data)
+        # Расширяем стандартный envelope дополнительными полями,
+        # чтобы фронт мог отрисовать заголовок «N сирот, по источникам ...»
+        # одним запросом.
+        resp.data["counts_by_source"] = counts_by_source
+        resp.data["counts_by_status"] = counts_by_status
+        return resp
+
+
+class LeadsBulkReassignInputSerializer(serializers.Serializer):
+    lead_ids = serializers.ListField(
+        child=serializers.IntegerField(), allow_empty=False, max_length=500
+    )
+    operator_id = serializers.IntegerField(required=False)
+    mode = serializers.ChoiceField(choices=["round_robin"], required=False)
+
+    def validate(self, attrs):
+        if not attrs.get("operator_id") and not attrs.get("mode"):
+            raise serializers.ValidationError(
+                "Нужно указать operator_id или mode=round_robin"
+            )
+        return attrs
+
+
+class LeadsBulkReassignApi(APIView):
+    permission_classes = [IsManager]
+
+    def post(self, request):
+        ser = LeadsBulkReassignInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            result = leads_bulk_reassign(
+                lead_ids=ser.validated_data["lead_ids"],
+                operator_id=ser.validated_data.get("operator_id"),
+                mode=ser.validated_data.get("mode"),
+                user=request.user,
+            )
+        except ApplicationError as exc:
+            return Response({"detail": exc.message, **exc.extra}, status=400)
+        return Response(result)
 
 
 # ---- Sheet configuration CRUD -------------------------------------------

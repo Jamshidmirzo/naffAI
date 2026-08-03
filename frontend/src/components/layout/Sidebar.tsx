@@ -12,7 +12,7 @@ export interface SidebarItem {
   label: string;
   end?: boolean;
   external?: boolean;
-  badgeKey?: "leadsReview" | "notifs" | "lessonNew";
+  badgeKey?: "leadsReview" | "notifs" | "lessonNew" | "orphans";
 }
 
 export interface SidebarGroup {
@@ -60,6 +60,17 @@ function useBadges(role: "manager" | "operator") {
     enabled: role === "manager",
     refetchInterval: 30000,
   });
+  const orphansCount = useQuery({
+    queryKey: ["orphan-leads-count"],
+    queryFn: async () => {
+      const { data } = await api.get<{ count?: number }>(
+        "/leads/orphans/?limit=1",
+      );
+      return data.count || 0;
+    },
+    enabled: role === "manager",
+    refetchInterval: 60000,
+  });
   const lessonPeek = useQuery({
     queryKey: ["lessons", "today", "peek"],
     queryFn: () =>
@@ -81,6 +92,7 @@ function useBadges(role: "manager" | "operator") {
   });
   return {
     leadsReview: role === "manager" ? needsReview.data ?? 0 : 0,
+    orphans: role === "manager" ? orphansCount.data ?? 0 : 0,
     lessonNew: role === "operator" && lessonPeek.data && !lessonPeek.data.opened_at ? 1 : 0,
     notifs: unreadNotifs.data ?? 0,
   };
@@ -219,8 +231,16 @@ export function Sidebar({ groups, role }: Props) {
     nav("/login");
   };
 
+  const me = useQuery<{ operator_name: string | null }>({
+    queryKey: ["auth-me-sidebar"],
+    queryFn: () => api.get("/auth/me/").then((r) => r.data),
+    staleTime: 5 * 60_000,
+  });
+
   const initials = (auth.username || "?").slice(0, 2).toUpperCase();
   const roleLabel = role === "manager" ? t("role.manager") : t("role.operator");
+  const displayName = me.data?.operator_name?.trim();
+  const roleWithName = displayName ? `${roleLabel} ${displayName}` : roleLabel;
 
   return (
     <aside
@@ -250,7 +270,7 @@ export function Sidebar({ groups, role }: Props) {
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-[13px] font-medium truncate">{auth.username}</div>
-            <div className="text-[11px] text-muted">{roleLabel}</div>
+            <div className="text-[11px] text-muted truncate">{roleWithName}</div>
           </div>
         </div>
         <button

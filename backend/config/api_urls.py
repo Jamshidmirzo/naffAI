@@ -69,4 +69,6 @@ urlpatterns = [
     path("users/", include((users_urlpatterns, "users"))),
     # In-app notifications (senior users get pinged on sale/callback events).
     path("notifications/", include("apps.notifications.urls")),
+    # Global toggles (auto-distribution killswitch, etc.). Manager-only.
+    path("settings/", include("apps.system_settings.urls")),
 ]

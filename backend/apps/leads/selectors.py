@@ -11,12 +11,12 @@ from __future__ import annotations
 import datetime as dt
 
 from django.conf import settings
-from django.db.models import Count, Q, QuerySet
+from django.db.models import Case, Count, IntegerField, Q, QuerySet, Value, When
 from django.utils import timezone
 
 from apps.operators.models import Operator, OperatorStatus
 
-from .models import Lead, LeadStatus, OperatorSheetAlias, TelegramLink
+from .models import Lead, OperatorSheetAlias, TelegramLink
 
 # ---- Lead queries ---------------------------------------------------------
 
@@ -110,6 +110,42 @@ def lead_list(
     return qs
 
 
+def orphan_leads(
+    *,
+    sheet_source_id: int | None = None,
+    statuses: list[str] | None = None,
+    created_from: dt.datetime | None = None,
+    created_to: dt.datetime | None = None,
+) -> QuerySet[Lead]:
+    """
+    Пул «свободных» лидов: без оператора, валидный телефон, не на ревью,
+    статус — активный (не терминальный). Основа для менеджерского виджета
+    /leads/orphans/ и bulk-reassign.
+    """
+    workable = active_lead_status_codes()
+    if not workable:
+        return Lead.objects.none()
+    qs = Lead.objects.select_related("sheet_source").filter(
+        operator__isnull=True,
+        needs_review=False,
+        phone_invalid=False,
+        status__in=workable,
+    )
+    if statuses:
+        # Пересечение с активным набором — на случай, если менеджер
+        # прислал терминальный код (won/lost). Оставляем только
+        # действительно раздаваемые.
+        allowed = set(workable) & set(statuses)
+        qs = qs.filter(status__in=allowed) if allowed else qs.none()
+    if sheet_source_id:
+        qs = qs.filter(sheet_source_id=sheet_source_id)
+    if created_from:
+        qs = qs.filter(created_at__gte=created_from)
+    if created_to:
+        qs = qs.filter(created_at__lte=created_to)
+    return qs.order_by("created_at", "id")
+
+
 def leads_for_operator(
     operator: Operator,
     *,
@@ -136,7 +172,23 @@ def leads_for_operator(
 
     if view == "active":
         qs = qs.filter(postponed_at__isnull=True)
-        return qs.order_by("-updated_at")
+        today_start = timezone.localtime().replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        carry_codes = carry_over_status_codes()
+        qs = qs.annotate(
+            _carry=Case(
+                When(status__in=carry_codes, then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            ),
+            _morning=Case(
+                When(created_at__lt=today_start, then=Value(1)),
+                default=Value(0),
+                output_field=IntegerField(),
+            ),
+        )
+        return qs.order_by("_carry", "_morning", "-updated_at")
     if view == "postponed":
         qs = qs.filter(postponed_at__isnull=False)
         return qs.order_by("-postponed_at")
@@ -249,6 +301,20 @@ def terminal_lead_status_codes() -> list[str]:
 
     return list(
         LeadStatusLabel.objects.filter(is_active=True, is_terminal=True)
+        .values_list("code", flat=True)
+    )
+
+
+def carry_over_status_codes() -> list[str]:
+    """
+    Codes flagged as «спец-лиды» — оставшиеся в работе с прошлого дня.
+    Показываются первыми в /my active: no_answer, phone_on,
+    callback_scheduled, contacted_telegram и т.п.
+    """
+    from .models import LeadStatusLabel
+
+    return list(
+        LeadStatusLabel.objects.filter(is_active=True, carry_over_next_day=True)
         .values_list("code", flat=True)
     )
 

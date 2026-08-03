@@ -134,6 +134,65 @@ services:
           sleep 21600
         done
 
+  # Утренняя раздача — раз в сутки в 08:30 Asia/Tashkent (03:30 UTC).
+  # Сначала одноразово подтягиваем свежие строки из Google Sheets, потом
+  # раздаём все unassigned активные лиды поровну между активными операторами.
+  # sheet-sync параллельно продолжает крутиться каждые 5 минут — если он
+  # уже подтянул нужное, повторный вызов из morning-splitter идемпотентен.
+  morning-splitter:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          now_epoch=$(date -u +%s)
+          today_target=$(date -u -d 'today 03:30' +%s 2>/dev/null || python -c "import datetime,calendar; d=datetime.datetime.utcnow().replace(hour=3,minute=30,second=0,microsecond=0); print(calendar.timegm(d.timetuple()))")
+          if [ "$now_epoch" -ge "$today_target" ]; then
+            tomorrow_target=$((today_target + 86400))
+            sleep_sec=$((tomorrow_target - now_epoch))
+          else
+            sleep_sec=$((today_target - now_epoch))
+          fi
+          echo "[$(date +%FT%T%z)] morning-splitter sleep $sleep_sec s (until 08:30 Tashkent)"
+          sleep "$sleep_sec"
+          echo "[$(date +%FT%T%z)] sync_sheets_leads (одноразово, перед раздачей)"
+          python manage.py sync_sheets_leads || echo "sync_sheets_leads rc=$?"
+          echo "[$(date +%FT%T%z)] morning_distribute"
+          python manage.py morning_distribute || echo "morning_distribute rc=$?"
+        done
+
+  # Distribute-watcher — раз в минуту проходит по активным операторам,
+  # у кого working_count=0, и доливает им пачку из общего пула сирот.
+  # Дополняет `_run_refill_if_empty` (хук в lead_update_status): если
+  # оператор уже с 0 закрытыми, но пул был пуст, а потом sheet-sync
+  # притащил новые — оператор получит их без ожидания следующего close.
+  # Уважает SystemSetting.auto_distribution_enabled (killswitch в UI).
+  distribute-watcher:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          python manage.py refill_idle_operators || echo "refill_idle rc=$?"
+          sleep 60
+        done
+
   # Sheet sync — pull new leads from Google Sheets every 5 minutes.
   # Kept separate from `scheduler` so an analyze/LLM stall never blocks
   # inbound leads (or vice versa). Every iteration logs via docker logs.

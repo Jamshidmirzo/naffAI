@@ -673,6 +673,361 @@ def lead_auto_assign(*, lead: Lead, user=None) -> LeadAssignment:
     return assignment
 
 
+# ---- morning split + refill --------------------------------------------
+#
+# Two mechanics work together to replace the manual «сама раздача»:
+#
+# 1. Утренняя раздача (08:30 Asia/Tashkent, docker service morning-splitter):
+#    все unassigned активные лиды делятся поровну round-robin среди активных
+#    операторов. Уже назначенные — не трогаются, alias-резолвинг работает
+#    как раньше.
+#
+# 2. Refill-по-N (default 5): как только у активного оператора счётчик
+#    working-лидов падает до нуля (последний терминализовался), сервис
+#    берёт из общего пула следующие N сирот и назначает их этому оператору.
+#    Врезается в lead_update_status через transaction.on_commit.
+
+
+@transaction.atomic
+def refill_operator_leads(
+    *,
+    operator: Operator,
+    size: int | None = None,
+    user=None,
+) -> list[Lead]:
+    """
+    Долить пачку сирот-лидов оператору. Берётся до `size` штук из общего
+    пула (operator=NULL, статус активный, phone_invalid=False, needs_review=False)
+    в порядке created_at. Если в пуле меньше — возвращает сколько есть.
+
+    Уважает системный killswitch `auto_distribution_enabled`: если менеджер
+    выключил авто-раздачу в /settings/distribution/ — возвращает пустой
+    список и ничего не пишет.
+    """
+    from django.conf import settings
+
+    from apps.system_settings.selectors import auto_distribution_enabled
+
+    from .selectors import (
+        active_lead_status_codes,
+        terminal_lead_status_codes,
+    )
+
+    if not auto_distribution_enabled():
+        return []
+
+    size = size or int(getattr(settings, "RR_BATCH_SIZE", 5))
+    if size <= 0:
+        return []
+
+    active_codes = active_lead_status_codes()
+    terminal_codes = terminal_lead_status_codes()
+    workable = [c for c in active_codes if c not in set(terminal_codes)]
+    if not workable:
+        return []
+
+    pool_qs = (
+        Lead.objects.select_for_update(skip_locked=True)
+        .filter(
+            operator__isnull=True,
+            status__in=workable,
+            phone_invalid=False,
+            needs_review=False,
+        )
+        .order_by("created_at")[:size]
+    )
+    pool = list(pool_qs)
+    if not pool:
+        return []
+
+    now = timezone.now()
+    for lead in pool:
+        lead.operator = operator
+        lead.updated_at = now
+    Lead.objects.bulk_update(pool, ["operator", "updated_at"])
+
+    LeadAssignment.objects.bulk_create(
+        [
+            LeadAssignment(
+                lead=lead,
+                operator=operator,
+                source=LeadAssignmentSource.AUTO_REFILL,
+                active=True,
+                reason=f"Автопополнение до {size}",
+            )
+            for lead in pool
+        ]
+    )
+
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="leads.Lead",
+        entity_id=operator.id,
+        changes={
+            "refill": {
+                "operator_id": operator.id,
+                "operator_name": operator.full_name,
+                "size_requested": size,
+                "size_delivered": len(pool),
+                "lead_ids": [lead.id for lead in pool],
+            }
+        },
+        comment=f"Автопополнение пачки → {operator.full_name}",
+    )
+    return pool
+
+
+@transaction.atomic
+def morning_distribute_leads(
+    *,
+    dry_run: bool = False,
+    seed: int | None = None,
+    limit: int | None = None,
+) -> dict[int, int]:
+    """
+    Утренняя раздача: все unassigned активные лиды делятся поровну между
+    активными операторами (round-robin по shuffled(operators)).
+
+    Уже назначенные лиды — не трогаются (сохраняется carry-over: спец-лиды
+    остаются на том же операторе с прошлого дня).
+
+    Возвращает `{operator_id: count}`. При `dry_run=True` в БД ничего
+    не пишем, только считаем распределение.
+
+    Killswitch: если менеджер выключил авто-раздачу
+    (`SystemSetting.auto_distribution_enabled=False`) — возвращаем {}.
+    """
+    import random as _random
+
+    from apps.system_settings.selectors import auto_distribution_enabled
+
+    from .selectors import (
+        active_lead_status_codes,
+        terminal_lead_status_codes,
+    )
+
+    if not auto_distribution_enabled():
+        return {}
+
+    operators = list(
+        Operator.objects.filter(status=OperatorStatus.ACTIVE).order_by("id")
+    )
+    if not operators:
+        return {}
+
+    if seed is not None:
+        _random.Random(seed).shuffle(operators)
+    else:
+        _random.shuffle(operators)
+
+    active_codes = active_lead_status_codes()
+    terminal_codes = terminal_lead_status_codes()
+    workable = [c for c in active_codes if c not in set(terminal_codes)]
+    if not workable:
+        return {}
+
+    pool_qs = Lead.objects.select_for_update(skip_locked=True).filter(
+        operator__isnull=True,
+        status__in=workable,
+        phone_invalid=False,
+        needs_review=False,
+    ).order_by("created_at")
+    if limit is not None:
+        pool_qs = pool_qs[:limit]
+    pool = list(pool_qs)
+
+    if not pool:
+        return {}
+
+    k = len(operators)
+    counts: dict[int, int] = {op.id: 0 for op in operators}
+
+    if dry_run:
+        for i in range(len(pool)):
+            counts[operators[i % k].id] += 1
+        return counts
+
+    now = timezone.now()
+    for i, lead in enumerate(pool):
+        op = operators[i % k]
+        lead.operator = op
+        lead.updated_at = now
+        counts[op.id] += 1
+
+    Lead.objects.bulk_update(pool, ["operator", "updated_at"])
+
+    op_by_id = {op.id: op for op in operators}
+    LeadAssignment.objects.bulk_create(
+        [
+            LeadAssignment(
+                lead=lead,
+                operator=op_by_id[lead.operator_id],
+                source=LeadAssignmentSource.MORNING_SPLIT,
+                active=True,
+                reason="Утренняя раздача",
+            )
+            for lead in pool
+        ]
+    )
+
+    # Один аудит-лог на весь запуск — сводка «кому сколько ушло».
+    audit_log_create(
+        user=None,
+        action=AuditAction.UPDATE,
+        entity="leads.Lead",
+        entity_id=0,
+        changes={
+            "morning_split": {
+                str(op_id): n for op_id, n in counts.items() if n > 0
+            },
+            "total": len(pool),
+        },
+        comment="Утренняя раздача лидов",
+    )
+    return counts
+
+
+@transaction.atomic
+def leads_bulk_reassign(
+    *,
+    lead_ids: list[int],
+    operator_id: int | None = None,
+    mode: str | None = None,
+    user=None,
+) -> dict[str, Any]:
+    """
+    Массово раздать пачку сирот. Один из двух режимов:
+      - `operator_id`  — все на этого оператора
+      - `mode="round_robin"` — round-robin по shuffled активным операторам
+
+    Валидация: все lead_ids должны быть сиротами (operator IS NULL) и не
+    в терминальном статусе — иначе ApplicationError с deталями невалидных
+    id (400 у API).
+    """
+    import random as _random
+
+    if not lead_ids:
+        return {"assigned": {}, "total": 0}
+    if operator_id is None and mode != "round_robin":
+        raise ApplicationError(
+            "Нужно указать operator_id или mode=round_robin",
+            {"field": "operator_id"},
+        )
+
+    # Валидируем целевого оператора (если задан) до select_for_update:
+    # проще отбить 400 сразу, чем брать блокировку на пустую операцию.
+    single_op: Operator | None = None
+    if operator_id is not None:
+        single_op = Operator.objects.filter(pk=operator_id).first()
+        if single_op is None:
+            raise ApplicationError(
+                "Оператор не найден", {"field": "operator_id", "operator_id": operator_id}
+            )
+        if single_op.status != OperatorStatus.ACTIVE:
+            raise ApplicationError(
+                "Нельзя назначать неактивному оператору",
+                {"field": "operator_id", "operator_status": single_op.status},
+            )
+
+    # Блокируем строки — на случай гонки с morning-splitter / watcher.
+    locked = list(
+        Lead.objects.select_for_update(skip_locked=True)
+        .filter(pk__in=lead_ids)
+        .select_related("operator")
+    )
+    locked_ids = {lead.id for lead in locked}
+
+    missing_ids = sorted(set(lead_ids) - locked_ids)
+    not_orphan = [lead.id for lead in locked if lead.operator_id is not None]
+    if missing_ids or not_orphan:
+        raise ApplicationError(
+            "Некоторые лиды невалидны (уже назначены или не найдены)",
+            {
+                "missing_ids": missing_ids,
+                "already_assigned_ids": not_orphan,
+            },
+        )
+
+    # Список активных операторов для round-robin — фиксируем один раз,
+    # чтобы порядок был воспроизводим внутри вызова.
+    if mode == "round_robin":
+        active_ops = list(
+            Operator.objects.filter(status=OperatorStatus.ACTIVE).order_by("id")
+        )
+        if not active_ops:
+            raise ApplicationError(
+                "Нет активных операторов для round-robin",
+                {"reason": "no_active_operators"},
+            )
+        _random.shuffle(active_ops)
+    else:
+        active_ops = [single_op]  # type: ignore[list-item]
+
+    now = timezone.now()
+    op_count = len(active_ops)
+    counts: dict[int, int] = {op.id: 0 for op in active_ops}
+    op_by_lead: dict[int, Operator] = {}
+
+    for i, lead in enumerate(locked):
+        target = active_ops[i % op_count] if mode == "round_robin" else single_op
+        assert target is not None
+        lead.operator = target
+        lead.updated_at = now
+        # Сброс needs_review — если каким-то образом дошёл сюда с флагом.
+        lead.needs_review = False
+        if lead.status == LeadStatus.NEW:
+            lead.status = LeadStatus.ASSIGNED
+        counts[target.id] = counts.get(target.id, 0) + 1
+        op_by_lead[lead.id] = target
+
+    Lead.objects.bulk_update(
+        locked, ["operator", "needs_review", "status", "updated_at"]
+    )
+
+    reason = (
+        "Массовое переназначение менеджером (round-robin)"
+        if mode == "round_robin"
+        else f"Массовое переназначение менеджером → {single_op.full_name}"  # type: ignore[union-attr]
+        if single_op
+        else "Массовое переназначение менеджером"
+    )
+    LeadAssignment.objects.filter(lead_id__in=locked_ids, active=True).update(active=False)
+    LeadAssignment.objects.bulk_create(
+        [
+            LeadAssignment(
+                lead=lead,
+                operator=op_by_lead[lead.id],
+                source=LeadAssignmentSource.ADMIN_REASSIGN,
+                active=True,
+                reason=reason[:256],
+            )
+            for lead in locked
+        ]
+    )
+
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="leads.Lead",
+        entity_id=0,
+        changes={
+            "bulk_reassign": {
+                "mode": mode or "single",
+                "operator_id": operator_id,
+                "lead_ids": sorted(locked_ids),
+                "counts": {str(op_id): n for op_id, n in counts.items() if n > 0},
+                "total": len(locked),
+            }
+        },
+        comment=reason,
+    )
+    return {
+        "assigned": {str(op_id): n for op_id, n in counts.items() if n > 0},
+        "total": len(locked),
+    }
+
+
 @transaction.atomic
 def lead_reassign(
     *, lead: Lead, new_operator: Operator, user=None, reason: str = ""
@@ -798,6 +1153,18 @@ def lead_update_status(
         comment=comment,
     )
     _schedule_writeback(lead.id, comment=comment)
+
+    # Refill-по-N: если лид ушёл в терминал и у оператора больше нет
+    # working-лидов — тянем следующую пачку из общего пула. До
+    # qimmatlik-блока, чтобы qimmatlik-retry получил свой приоритет
+    # (он не зависит от общего пула).
+    if lead.operator_id:
+        from .selectors import terminal_lead_status_codes
+
+        if status in terminal_lead_status_codes():
+            op_id = lead.operator_id
+            transaction.on_commit(lambda: _run_refill_if_empty(op_id))
+
     # Qimmatlik → auto-reassign to a fresh operator (once). skip_retry
     # is the recursion-guard used by lead_qimmatlik_retry itself when it
     # decides to close as LOST.
@@ -805,6 +1172,26 @@ def lead_update_status(
         lead_id = lead.id
         transaction.on_commit(lambda: _run_qimmatlik_retry(lead_id))
     return lead
+
+
+def _run_refill_if_empty(operator_id: int) -> None:
+    """
+    Fresh-transaction wrapper: если у оператора работающих лидов больше
+    нет, тянем refill_operator_leads. Ошибки логируем, но не роняем
+    вызывающий поток.
+    """
+    try:
+        from .selectors import operator_working_lead_count
+
+        op = Operator.objects.filter(
+            pk=operator_id, status=OperatorStatus.ACTIVE
+        ).first()
+        if op is None:
+            return
+        if operator_working_lead_count(op) == 0:
+            refill_operator_leads(operator=op)
+    except Exception:
+        logger.exception("refill failed op=%s", operator_id)
 
 
 def _run_qimmatlik_retry(lead_id: int) -> None:

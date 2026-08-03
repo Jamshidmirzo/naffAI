@@ -31,6 +31,8 @@ import SalesToday from "./pages/SalesToday";
 import Reports from "./pages/Reports";
 import TgQueue from "./pages/TgQueue";
 import Users from "./pages/Users";
+import Settings from "./pages/Settings";
+import OrphanLeads from "./pages/OrphanLeads";
 import { useAuth } from "./store/auth";
 import { RoleGate, normaliseRole } from "./components/RoleGate";
 import { ToastHost } from "./components/ui";
@@ -69,6 +71,8 @@ export default function App() {
           <Route path="/lessons/today" element={<DailyLesson />} />
           <Route path="/lessons/history" element={<LessonsHistory />} />
           <Route path="/leads" element={<RoleGate allow={["manager"]}><Leads /></RoleGate>} />
+          <Route path="/leads/orphans" element={<RoleGate allow={["manager"]}><OrphanLeads /></RoleGate>} />
+          <Route path="/settings" element={<RoleGate allow={["manager"]}><Settings /></RoleGate>} />
           <Route path="/calls" element={<RoleGate allow={["manager"]}><Placeholder title="Звонки" /></RoleGate>} />
           <Route path="/reports" element={<RoleGate allow={["manager"]}><Reports /></RoleGate>} />
           <Route path="/catalog" element={<RoleGate allow={["manager"]}><Placeholder title="Каталог / TAC" /></RoleGate>} />

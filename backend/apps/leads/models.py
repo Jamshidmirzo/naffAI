@@ -91,6 +91,16 @@ class LeadStatusLabel(TimestampedModel):
             "before RR hands them a fresh number."
         ),
     )
+    carry_over_next_day = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text=(
+            "Показывать этот статус первым в списке оператора на следующий "
+            "день. Используется для «спец-лидов»: no_answer, phone_on, "
+            "callback_scheduled и т.п. — их нужно добить, поэтому они "
+            "всплывают наверх /my active раньше свежих."
+        ),
+    )
     is_terminal = models.BooleanField(
         default=False,
         help_text=(
@@ -382,6 +392,8 @@ class LeadAssignmentSource(models.TextChoices):
     AUTO_ROUND_ROBIN = "auto_round_robin", "Автоматически (RR)"
     ADMIN_REASSIGN = "admin_reassign", "Переназначение админом"
     QIMMATLIK_RETRY = "qimmatlik_retry", "Retry после qimmatlik"
+    MORNING_SPLIT = "morning_split", "Утренняя раздача"
+    AUTO_REFILL = "auto_refill", "Автопополнение пачки"
 
 
 class LeadAssignment(TimestampedModel):
