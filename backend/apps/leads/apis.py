@@ -346,6 +346,57 @@ class LeadMyListApi(APIView):
             return Response({"detail": "Оператор не найден"}, status=404)
 
         include_archived = request.query_params.get("include_archived") in ("1", "true")
+
+        # --- Chip-mode: `?status=<code>` -----------------------------------
+        # Оператор клик по chip (например «TG'га боғланди» = contacted_telegram)
+        # хочет видеть ВСЕ свои лиды с этим статусом за всё время, включая
+        # terminal (которые не входят в active_lead_status_codes() и потому
+        # исключены из view=active). Игнорируем view/postponed/carry-логику —
+        # плоская выборка по operator+status, sort -updated_at, пагинация.
+        # Envelope сохраняем идентичный основному, чтобы фронт не разветвлял
+        # обработку ответа: operator + counts + results + count.
+        status_filter = request.query_params.get("status", "").strip()
+        if status_filter:
+            qs = (
+                Lead.objects.select_related("operator", "sheet_source")
+                .filter(operator=operator, status=status_filter)
+                .order_by("-updated_at")
+            )
+            active_count = leads_for_operator(
+                operator, include_archived=include_archived, view="active"
+            ).count()
+            postponed_count = leads_for_operator(
+                operator, include_archived=include_archived, view="postponed"
+            ).count()
+            open_cb_count = operator_open_callbacks_count(operator)
+            yesterday_backlog = operator_yesterday_backlog_count(operator)
+            blocked = operator_has_open_backlog(operator)
+
+            total = qs.count()
+            paginator = DefaultPagination()
+            page_qs = paginator.paginate_queryset(qs, request) or []
+            return Response(
+                {
+                    "operator": {
+                        "id": operator.id,
+                        "full_name": operator.full_name,
+                        "status": operator.status,
+                        "blocked": blocked,
+                        "overdue_blocked": operator_is_blocked_by_overdue_callbacks(
+                            operator
+                        ),
+                        "open_callbacks": open_cb_count,
+                        "yesterday_backlog": yesterday_backlog,
+                    },
+                    "counts": {
+                        "active": active_count,
+                        "postponed": postponed_count,
+                    },
+                    "results": LeadSerializer(page_qs, many=True).data,
+                    "count": total,
+                }
+            )
+
         view = request.query_params.get("view", "active")
         if view not in ("active", "postponed", "all", "closed"):
             return Response(

@@ -219,6 +219,28 @@ export default function MyLeads() {
     refetchInterval: 60_000,
   });
 
+  // Chip-режим (view=active + chip !== "all"): отдельный запрос за ВСЕМИ
+  // лидами оператора с этим статусом за всё время (включая terminal —
+  // contacted_telegram, harid_qildi, lost и т.д., которых нет в
+  // active_lead_status_codes и потому нет в my.data.results). Без этого
+  // клик по chip показывает пустоту — оператор растерян: «Я ж поставил,
+  // куда пропал?!». Envelope тот же (operator + counts + results + count).
+  const isChipView = view === "active" && statusChip !== "all";
+  const PAGE_SIZE_CHIP = 50;
+  const myByStatus = useQuery({
+    queryKey: ["leads-my-by-status", statusChip, page],
+    queryFn: () => {
+      const offset = (page - 1) * PAGE_SIZE_CHIP;
+      return api
+        .get<MyResponse>(
+          `/leads/my/?status=${encodeURIComponent(statusChip)}&limit=${PAGE_SIZE_CHIP}&offset=${offset}`,
+        )
+        .then((r) => r.data);
+    },
+    enabled: isChipView,
+    refetchInterval: 60_000,
+  });
+
   // Диагностика для баннера «сначала закрой это». Тот же endpoint читает
   // sidebar-бейдж — react-query дедуплицирует. Обновляем чаще, чем список
   // лидов: цифры блокеров важнее, чем полный список.
@@ -329,6 +351,10 @@ export default function MyLeads() {
   const operator = my.data?.operator;
   const results = my.data?.results ?? [];
   const counts = my.data?.counts ?? { active: 0, postponed: 0 };
+  // Флат-список в chip-режиме (view=active + chip !== "all"). Пагинация
+  // приходит с бэка, count там — всего лидов оператора с этим статусом.
+  const chipResults = myByStatus.data?.results ?? [];
+  const chipTotal = myByStatus.data?.count ?? chipResults.length;
 
   const backlogCount =
     (operator?.open_callbacks ?? 0) + (operator?.yesterday_backlog ?? 0);
@@ -381,8 +407,10 @@ export default function MyLeads() {
 
   const visibleLeads = useMemo(() => {
     if (view !== "active" || statusChip === "all") return results;
-    return results.filter((l) => l.status === statusChip);
-  }, [results, view, statusChip]);
+    // Chip-режим — плоский список с бэка (includes terminal statuses).
+    // Не фильтруем локально: бэк уже вернул только нужный статус.
+    return chipResults;
+  }, [results, chipResults, view, statusChip]);
 
   // --- Секционирование /my active (2026-08 UX-fix) ---------------------
   // Разбиваем visibleLeads на три группы по правилам carry/recall/today,
@@ -439,6 +467,12 @@ export default function MyLeads() {
     if (view !== "active") {
       return { carry: [] as Lead[], recall: [] as Lead[], today: visibleLeads };
     }
+    // В chip-режиме секции carry/recall/today не имеют смысла — оператор
+    // смотрит исторический срез по статусу, а не «что работать сегодня».
+    // Возвращаем плоский список в `today`.
+    if (isChipView) {
+      return { carry: [] as Lead[], recall: [] as Lead[], today: visibleLeads };
+    }
     const carry: Lead[] = [];
     const recall: Lead[] = [];
     const todayList: Lead[] = [];
@@ -459,6 +493,7 @@ export default function MyLeads() {
   }, [
     visibleLeads,
     view,
+    isChipView,
     todayStartMs,
     lunchStartMs,
     recallActiveNow,
@@ -593,7 +628,7 @@ export default function MyLeads() {
       <section className="flex flex-wrap items-center justify-between gap-3 animate-nfFadeUp">
         <TabPill value={view} onChange={(v) => { setView(v); setPage(1); setStatusChip("all"); }} items={tabs} />
         <div className="text-[13px] text-muted">
-          {t("my.leads_count", { n: visibleLeads.length })}
+          {t("my.leads_count", { n: isChipView ? chipTotal : visibleLeads.length })}
           {overdueCount > 0 && (
             <>
               {" · "}
@@ -614,7 +649,10 @@ export default function MyLeads() {
             return (
               <button
                 key={chip.key}
-                onClick={() => setStatusChip(chip.key)}
+                onClick={() => {
+                  setStatusChip(chip.key);
+                  setPage(1);
+                }}
                 className="nf-chip"
                 style={{
                   padding: "6px 12px",
@@ -843,6 +881,32 @@ export default function MyLeads() {
         );
 
         if (visibleLeads.length === 0) {
+          // Chip-режим: «Пока нет лидов с этим статусом» — отдельное
+          // сообщение, потому что «Все лиды закрыты, новые придут» здесь
+          // сбивает с толку (у оператора может быть куча активных лидов
+          // других статусов).
+          if (isChipView) {
+            if (myByStatus.isLoading) {
+              return (
+                <div
+                  className="rounded-2xl py-12 text-center text-[13.5px] text-muted animate-nfFadeUp"
+                  style={{ border: "1.5px dashed var(--border)" }}
+                >
+                  {t("my.loading")}
+                </div>
+              );
+            }
+            return (
+              <div
+                className="rounded-2xl py-12 text-center animate-nfFadeUp"
+                style={{ border: "1.5px dashed var(--border)" }}
+              >
+                <div className="text-[16px] font-semibold">
+                  {t("my.empty.chip")}
+                </div>
+              </div>
+            );
+          }
           // Полностью пусто — оператор всё разобрал, ждём refill.
           const workingCount = myStatus.data?.working_count ?? 0;
           if (view === "active" && workingCount === 0) {
@@ -945,7 +1009,7 @@ export default function MyLeads() {
       <div className="flex justify-center">
         <Paginator
           page={page}
-          total={my.data?.count || results.length}
+          total={isChipView ? chipTotal : my.data?.count || results.length}
           pageSize={50}
           onChange={setPage}
         />
