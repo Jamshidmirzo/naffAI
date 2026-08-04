@@ -258,6 +258,8 @@ export default function MyLeads() {
           eligible_for_new: boolean;
           reason_ru: string;
           recall_active_now: boolean;
+          by_status: Record<string, number>;
+          total_leads: number;
         }>("/leads/my/status/")
         .then((r) => r.data),
     refetchInterval: 30_000,
@@ -396,14 +398,21 @@ export default function MyLeads() {
   const labelFor = (row: LeadStatusRow) =>
     lang === "uz" && row.label_uz ? row.label_uz : row.label_ru;
 
+  // Chip-бейджи считаются по `by_status` из /leads/my/status/ — это разрез по
+  // ВСЕМ лидам оператора за всё время, включая terminal (contacted_telegram,
+  // won, lost, …). Иначе terminal chip'ы всегда 0, потому что локальный
+  // `results` — это view=active и terminal туда не попадают. Пока `myStatus`
+  // не загрузился, показываем 0 (chip UX ждать 200 мс лучше, чем показать
+  // неправильную цифру от `results.length`).
   const statusChipCounts = useMemo(() => {
-    const c: Record<string, number> = { all: results.length };
-    for (const s of chipStatuses) c[s.code] = 0;
-    for (const l of results) {
-      if (c[l.status] !== undefined) c[l.status]++;
+    const byStatus = myStatus.data?.by_status ?? {};
+    const total = myStatus.data?.total_leads ?? results.length;
+    const c: Record<string, number> = { all: total };
+    for (const s of chipStatuses) {
+      c[s.code] = byStatus[s.code] ?? 0;
     }
     return c;
-  }, [results, chipStatuses]);
+  }, [myStatus.data, chipStatuses, results.length]);
 
   const visibleLeads = useMemo(() => {
     if (view !== "active" || statusChip === "all") return results;

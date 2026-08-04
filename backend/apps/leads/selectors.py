@@ -675,6 +675,22 @@ def my_status_for_operator(operator: Operator) -> dict:
             "Новые придут автоматически."
         )
 
+    # Общая разбивка «сколько лидов у оператора в каждом статусе за всё время»
+    # — нужна фронту для бейджей на chip-фильтрах. Chip показывает и terminal
+    # статусы (contacted_telegram, harid_qildi, …), которые оператору иначе
+    # никогда не покажутся в view=active — поэтому раньше count был 0 и
+    # оператор не жал на chip, думая что там пусто.
+    #
+    # Считаем одним запросом через values+annotate, чтобы не плодить N SELECT'ов
+    # по числу статусов. Возвращаем плоский dict {status_code: count} — фронту
+    # удобнее чем список. postponed / carry / recall остаются отдельными
+    # полями, здесь чистый разрез по status без времени/postponed_at.
+    by_status_qs = (
+        Lead.objects.filter(operator=operator).values("status").annotate(n=Count("id"))
+    )
+    by_status = {row["status"]: row["n"] for row in by_status_qs}
+    total_leads = sum(by_status.values())
+
     return {
         "working_count": working_count,
         "quota_limit": quota_limit,
@@ -685,6 +701,8 @@ def my_status_for_operator(operator: Operator) -> dict:
         "eligible_for_new": eligible_for_new,
         "reason_ru": reason_ru,
         "recall_active_now": recall_active_now,
+        "by_status": by_status,
+        "total_leads": total_leads,
     }
 
 
