@@ -268,9 +268,21 @@ export default function MyLeads() {
     retry: false,
   });
 
+  // Единый invalidator для всех query-keys, которые могут поменяться после
+  // любого действия оператора над лидом (статус, call-attempt, postpone,
+  // callback). Без этого chip-counts на баннере (`leads-my-status`) и
+  // chip-режим (`leads-my-by-status`) обновлялись только по
+  // refetchInterval и оператор думал «не сработало».
+  const invalidateAllLeadQueries = () => {
+    qc.invalidateQueries({ queryKey: ["leads-my"] });
+    qc.invalidateQueries({ queryKey: ["leads-my-status"] });
+    qc.invalidateQueries({ queryKey: ["leads-my-by-status"] });
+    qc.invalidateQueries({ queryKey: ["callbacks-mine-due"] });
+  };
+
   const unpostpone = useMutation({
     mutationFn: (lead: Lead) => api.post(`/leads/${lead.id}/unpostpone/`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["leads-my"] }),
+    onSuccess: () => invalidateAllLeadQueries(),
   });
 
   // Both mutations share an optimistic-update helper: we patch the lead's
@@ -292,6 +304,38 @@ export default function MyLeads() {
     return prev;
   };
 
+  // Оптимистично двигаем счётчики by_status в кэше `leads-my-status`,
+  // чтобы chip'ы («TG'га боғланди · N», etc.) и баннер обновлялись
+  // мгновенно при клике, не дожидаясь refetch'а. Возвращаем предыдущий
+  // snapshot для rollback'а в onError.
+  type MyStatusData = {
+    working_count: number;
+    quota_limit: number;
+    carry_count: number;
+    recall_afternoon_count: number;
+    today_fresh_count: number;
+    postponed_count: number;
+    eligible_for_new: boolean;
+    reason_ru: string;
+    recall_active_now: boolean;
+    by_status: Record<string, number>;
+    total_leads: number;
+  };
+  const applyOptimisticStatusCounts = (
+    oldStatus: string | null | undefined,
+    newStatus: string,
+  ): MyStatusData | undefined => {
+    const key = ["leads-my-status"];
+    const prev = qc.getQueryData<MyStatusData>(key);
+    if (!prev?.by_status || oldStatus === newStatus) return prev;
+    const oldCount = oldStatus ? prev.by_status[oldStatus] ?? 0 : 0;
+    const newCount = prev.by_status[newStatus] ?? 0;
+    const by_status = { ...prev.by_status, [newStatus]: newCount + 1 };
+    if (oldStatus) by_status[oldStatus] = Math.max(0, oldCount - 1);
+    qc.setQueryData<MyStatusData>(key, { ...prev, by_status });
+    return prev;
+  };
+
   const OUTCOME_TO_STATUS: Partial<Record<CallOutcome, LeadStatus>> = {
     talked_interested: "in_progress",
     no_answer: "no_answer",
@@ -304,18 +348,22 @@ export default function MyLeads() {
       api.post(`/leads/${lead.id}/call-attempts/`, { outcome, comment }),
     onMutate: async ({ lead, outcome }) => {
       await qc.cancelQueries({ queryKey: ["leads-my"] });
+      await qc.cancelQueries({ queryKey: ["leads-my-status"] });
       const next =
         outcome === "no_answer" && lead.status === "no_answer"
           ? "no_answer_2"
           : OUTCOME_TO_STATUS[outcome];
-      if (!next) return { prev: undefined };
-      return { prev: applyOptimisticStatus(lead.id, next as LeadStatus) };
+      if (!next) return { prev: undefined, prevStatusData: undefined };
+      const prev = applyOptimisticStatus(lead.id, next as LeadStatus);
+      const prevStatusData = applyOptimisticStatusCounts(lead.status, next);
+      return { prev, prevStatusData };
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(["leads-my", page, view], ctx.prev);
+      if (ctx?.prevStatusData) qc.setQueryData(["leads-my-status"], ctx.prevStatusData);
       toast.error(t("toast.error"));
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["leads-my"] }),
+    onSettled: () => invalidateAllLeadQueries(),
   });
 
   const setStatus = useMutation({
@@ -323,13 +371,17 @@ export default function MyLeads() {
       api.post(`/leads/${lead.id}/status/`, { status }),
     onMutate: async ({ lead, status }) => {
       await qc.cancelQueries({ queryKey: ["leads-my"] });
-      return { prev: applyOptimisticStatus(lead.id, status) };
+      await qc.cancelQueries({ queryKey: ["leads-my-status"] });
+      const prev = applyOptimisticStatus(lead.id, status);
+      const prevStatusData = applyOptimisticStatusCounts(lead.status, status);
+      return { prev, prevStatusData };
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(["leads-my", page, view], ctx.prev);
+      if (ctx?.prevStatusData) qc.setQueryData(["leads-my-status"], ctx.prevStatusData);
       toast.error(t("toast.error"));
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["leads-my"] }),
+    onSettled: () => invalidateAllLeadQueries(),
   });
 
   const watcher = useCallbackWatcher({ enabled: true });
@@ -350,7 +402,7 @@ export default function MyLeads() {
     window.location.href = TG_LINK_FALLBACK(lead.phone);
   };
 
-  const refetch = () => qc.invalidateQueries({ queryKey: ["leads-my"] });
+  const refetch = () => invalidateAllLeadQueries();
 
   const operator = my.data?.operator;
   const results = my.data?.results ?? [];
@@ -1765,6 +1817,8 @@ function ScheduleCallbackModal({
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["leads-my"] });
+      qc.invalidateQueries({ queryKey: ["leads-my-status"] });
+      qc.invalidateQueries({ queryKey: ["leads-my-by-status"] });
       qc.invalidateQueries({ queryKey: ["callbacks-mine-due"] });
       toast.success(t("my.callback_scheduled"));
       onDone();
@@ -1848,6 +1902,7 @@ function PostponeModal({
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const t = useT();
+  const qc = useQueryClient();
   const mut = useMutation({
     mutationFn: async () => {
       if (!lead) return;
@@ -1856,6 +1911,10 @@ function PostponeModal({
       });
     },
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["leads-my"] });
+      qc.invalidateQueries({ queryKey: ["leads-my-status"] });
+      qc.invalidateQueries({ queryKey: ["leads-my-by-status"] });
+      qc.invalidateQueries({ queryKey: ["callbacks-mine-due"] });
       toast.success(t("my.lead_postponed"));
       onDone();
     },
@@ -1921,6 +1980,8 @@ function CallbackDueModal({
     try {
       await api.post(`/callbacks/${cur.id}/done/`);
       qc.invalidateQueries({ queryKey: ["leads-my"] });
+      qc.invalidateQueries({ queryKey: ["leads-my-status"] });
+      qc.invalidateQueries({ queryKey: ["leads-my-by-status"] });
       qc.invalidateQueries({ queryKey: ["callbacks-mine-due"] });
       onDismiss(cur.id);
       onDone();
@@ -1935,6 +1996,8 @@ function CallbackDueModal({
     try {
       await api.post(`/callbacks/${cur.id}/snooze/`, { minutes });
       qc.invalidateQueries({ queryKey: ["leads-my"] });
+      qc.invalidateQueries({ queryKey: ["leads-my-status"] });
+      qc.invalidateQueries({ queryKey: ["leads-my-by-status"] });
       qc.invalidateQueries({ queryKey: ["callbacks-mine-due"] });
       onDismiss(cur.id);
       onDone();
