@@ -3,6 +3,108 @@
 @tailwind utilities;
 
 /* ============================================================
+   naffAI Phase 1 redesign tokens (handoff «design_handoff_naffai_simple»).
+   Эти переменные добавлены поверх легаси-токенов ниже: старые токены
+   (accent-grad/faint/surface/border/shadow/muted/hero/sidebar) остаются
+   для существующих компонентов (Sidebar, Hero, старые страницы).
+   Новые компоненты и рефакторимые страницы используют nf-tokens ниже.
+   ============================================================ */
+:root {
+  --bg-page: #EFEEEB;
+  --bg-surface: #FBFAF8;
+  --bg-card: #FFFFFF;
+  --bg-nested: #F6F4F0;
+  --bg-muted-block: #F1EFEA;
+
+  --text-primary: #17150F;
+  --text-secondary: #4A453D;
+  --text-muted: #6E685E;
+  --text-label: #8C867C;
+  --text-weak: #A8A29A;
+
+  --border-main: #E7E3DC;
+  --border-btn: #D9D4CB;
+  --border-row: #F1EFEA;
+
+  --accent: #E4571B;
+  --accent-hover: #C0430F;
+  --accent-shadow: rgba(228, 87, 27, 0.28);
+  --accent-pale-bg: #FFF4EC;
+  --accent-pale-border: #FBDCC6;
+  --accent-pale-text: #7A4519;
+  --accent-pale-text-strong: #A2531D;
+
+  --dark: #17150F;
+
+  --success: #4FBF6A;
+  --success-text: #1F6B34;
+  --success-text-strong: #2F7C45;
+  --success-bg: #E7F7EB;
+
+  --danger: #D63728;
+  --danger-hover: #B92C1F;
+  --danger-text: #8F2318;
+  --danger-text-strong: #B93526;
+  --danger-bg: #FDEBE9;
+  --danger-border: #F5C4BE;
+
+  --info-bg: #EDF2FD;
+  --info-text: #2B4C93;
+
+  --warn-dot: #E4A11B;
+}
+
+body {
+  font-family: 'Golos Text', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg-page);
+  color: var(--text-primary);
+}
+
+.nf-tnum { font-variant-numeric: tabular-nums; }
+
+@keyframes pulseRing {
+  0%   { box-shadow: 0 0 0 0 rgba(214, 55, 40, 0.4); }
+  100% { box-shadow: 0 0 0 18px rgba(214, 55, 40, 0); }
+}
+.nf-pulse-ring { animation: pulseRing 1.8s ease-out infinite; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.nf-fade-up { animation: fadeUp 0.32s cubic-bezier(.16, 1, .3, 1); }
+
+/* --- Primary button (handoff, 68px height, orange, tabular-nums shadow) --- */
+.nf-btn-primary {
+  height: 68px;
+  border-radius: 20px;
+  background: var(--accent);
+  color: #FFF;
+  font-size: 19px;
+  font-weight: 700;
+  box-shadow: 0 10px 24px var(--accent-shadow);
+  transition: transform .16s cubic-bezier(.16,1,.3,1), background .16s;
+  padding: 0 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  cursor: pointer;
+}
+.nf-btn-primary:hover { transform: translateY(-2px); background: var(--accent-hover); }
+.nf-btn-primary:active { transform: scale(.985); }
+.nf-btn-primary:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+/* Lead card hover per handoff §2.4: border darkens to primary text, lifts 2px,
+   soft shadow. Applied by /my list cards. */
+.nf-lead-card:hover {
+  border-color: var(--dark) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(23, 21, 15, 0.07);
+}
+
+/* ============================================================
    naffAI design tokens — handoff-compliant.
    Theme is switched via `data-nf="light" | "dark"` on <html>.
    ============================================================ */
@@ -326,15 +428,16 @@ html[data-nf="dark"] {
   }
 
   /* --- sidebar nav item ---------------------------------------- */
+  /* Phase 1 redesign: bumped to handoff-spec padding/radius/font. */
   .nf-nav-item {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 8px 10px;
-    border-radius: 11px;
+    gap: 11px;
+    padding: 10px 12px;
+    border-radius: 12px;
     color: var(--text);
-    font-size: 13.2px;
-    font-weight: 500;
+    font-size: 14px;
+    font-weight: 600;
     transition: all 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
     text-decoration: none;
   }

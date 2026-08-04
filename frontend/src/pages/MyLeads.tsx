@@ -6,7 +6,6 @@ import {
   MessageCircle,
   AlarmClock,
   CheckCircle2,
-  Info,
   Lock,
   PauseCircle,
   PlayCircle,
@@ -567,94 +566,123 @@ export default function MyLeads() {
         </section>
       )}
 
-      {/* --- Info-баннер статуса плеч ------------------------------------
-          Нейтральный/успешный тон. Carry больше НЕ блокирует новые
-          лиды (2026-08-04): у оператора всегда до 5 сегодняшних
-          non-carry, а carry-хвост живёт рядом и всплывёт завтра.
-          Цвет:
-            info (синий)  — есть carry-хвост или recall-после-обеда
-                            (информируем, не пугаем);
-            info (синий)  — квота полная (все 5 в работе);
-            success (зелёный) — есть свободные слоты.
-          Не рендерим в других вьюхах — там смысла нет. */}
+      {/* --- Баннер статуса плеч (Phase 1 redesign) --------------------
+          Три визуальных тона (design_handoff_naffai_simple):
+            🔴 red (danger)  — carry_count > 0 ИЛИ overdue callback:
+                                «Сначала закрой это» + пульсирующий круг;
+            🟠 orange (pale) — recall_active_now > 0 без carry:
+                                тот же layout, но без пульсации;
+            🟢 green (soft)  — всё в норме: мелкая плашка с ✓.
+          Carry больше НЕ блокирует выдачу (2026-08-04) — красный тон
+          здесь только визуальное напоминание, не gate. Строка reasonRu
+          приходит с /leads/my/status/. */}
       {view === "active" && myStatus.data && (() => {
         const s = myStatus.data;
         const {
-          working_count: working,
-          quota_limit: limit,
           carry_count: carry,
           recall_afternoon_count: recall,
-          eligible_for_new: eligible,
         } = s;
-        // Тон: info когда есть carry/recall/полная квота, success —
-        // когда есть свободные слоты и хвоста нет.
-        const hasHint = carry > 0 || (s.recall_active_now && recall > 0);
-        const tone: "info" | "success" = hasHint || !eligible ? "info" : "success";
+        const hasOverdue = overdueCount > 0;
+        const hasCarry = carry > 0;
+        const hasRecall = s.recall_active_now && recall > 0;
 
-        const bg =
-          tone === "info"
-            ? "rgba(59,130,246,0.08)"
-            : "rgba(16,185,129,0.10)";
-        const border =
-          tone === "info"
-            ? "rgba(59,130,246,0.35)"
-            : "rgba(16,185,129,0.45)";
-        const fg = tone === "info" ? "#1d4ed8" : "#047857";
-
-        // Готовим строку — предпочитаем i18n-варианты, чтобы работал uz.
-        const free = Math.max(0, limit - working);
-        let text = "";
-        if (carry > 0 && recall > 0 && s.recall_active_now) {
-          text = t("my.status.banner.carry_and_recall", {
-            working,
-            carry,
-            recall,
-            limit,
-          });
-        } else if (carry > 0 && working < limit) {
-          text = t("my.status.banner.carry_with_free_slots", {
-            working,
-            carry,
-            limit,
-            free,
-          });
-        } else if (carry > 0) {
-          text = t("my.status.banner.carry_full_quota", {
-            carry,
-            limit,
-          });
-        } else if (recall > 0 && s.recall_active_now) {
-          text = t("my.status.banner.recall_only", { working, recall, limit });
-        } else if (!eligible && working >= limit) {
-          text = t("my.status.banner.quota_full", { limit });
-        } else {
-          text = t("my.status.banner.ok", { free, limit });
+        // === Красный: carry или overdue callback (главный блокер). ===
+        if (hasCarry || hasOverdue) {
+          const num = carry + recall + overdueCount;
+          return (
+            <div
+              className="rounded-[20px] p-4 flex items-start gap-3 nf-fade-up"
+              style={{
+                background: "var(--danger-bg)",
+                border: "1.5px solid var(--danger-border)",
+              }}
+            >
+              <div
+                className="nf-pulse-ring grid place-items-center text-white font-bold shrink-0"
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 999,
+                  background: "var(--danger)",
+                  fontSize: 19,
+                }}
+              >
+                {num}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div
+                  className="text-[17px] font-bold leading-tight"
+                  style={{ color: "var(--danger-text)" }}
+                >
+                  Сначала закрой это
+                </div>
+                <div
+                  className="text-[14px] mt-0.5"
+                  style={{ color: "var(--danger-text-strong)" }}
+                >
+                  {s.reason_ru}
+                </div>
+              </div>
+            </div>
+          );
         }
 
+        // === Оранжевый: только recall-после-обеда, без carry. ===
+        if (hasRecall) {
+          return (
+            <div
+              className="rounded-[20px] p-4 flex items-start gap-3 nf-fade-up"
+              style={{
+                background: "var(--accent-pale-bg)",
+                border: "1.5px solid var(--accent-pale-border)",
+              }}
+            >
+              <div
+                className="grid place-items-center text-white font-bold shrink-0"
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 999,
+                  background: "var(--accent)",
+                  fontSize: 19,
+                }}
+              >
+                {recall}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div
+                  className="text-[17px] font-bold leading-tight"
+                  style={{ color: "var(--accent-pale-text)" }}
+                >
+                  Проверь дневные звонки
+                </div>
+                <div
+                  className="text-[14px] mt-0.5"
+                  style={{ color: "var(--accent-pale-text-strong)" }}
+                >
+                  {s.reason_ru}
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        // === Зелёный: всё под контролем. ===
         return (
           <div
-            className="rounded-2xl border px-4 py-3 flex items-start gap-3 animate-nfFadeUp"
-            style={{ background: bg, borderColor: border }}
+            className="rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 nf-fade-up"
+            style={{
+              background: "var(--success-bg)",
+              color: "var(--success-text-strong)",
+            }}
           >
-            <div
-              className="shrink-0 rounded-xl p-2"
-              style={{ background: bg, border: `1px solid ${border}` }}
-            >
-              {tone === "success" ? (
-                <CheckCircle2 className="w-5 h-5" style={{ color: fg }} />
-              ) : (
-                <Info className="w-5 h-5" style={{ color: fg }} />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-[14.5px] font-semibold" style={{ color: fg }}>
-                {text}
-              </div>
-              <div className="text-[12px] opacity-80 mt-0.5" style={{ color: fg }}>
-                {t("my.status.banner.progress", { working, limit })}
-                {carry > 0 ? ` · ${t("my.status.banner.carry_tail", { carry })}` : ""}
-              </div>
-            </div>
+            <CheckCircle2
+              className="w-4 h-4 shrink-0"
+              style={{ color: "var(--success)" }}
+            />
+            <span className="text-[13.5px] font-semibold">
+              {s.reason_ru}
+            </span>
           </div>
         );
       })()}
@@ -924,9 +952,8 @@ function ClosedLeadCard({
       style={{
         borderRadius: 18,
         padding: "14px 18px",
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        boxShadow: "var(--shadow)",
+        background: "var(--bg-card)",
+        border: "1.5px solid var(--border-main)",
         animationDelay: `${0.04 + index * 0.04}s`,
       }}
     >
@@ -1055,13 +1082,13 @@ function LeadCard({
   return (
     <div
       key={`card-${lead.id}`}
-      className="animate-nfFadeUp relative flex flex-wrap items-start gap-4"
+      className="animate-nfFadeUp nf-lead-card relative flex flex-wrap items-start gap-4"
       style={{
         borderRadius: 18,
         padding: "14px 18px",
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        boxShadow: "var(--shadow)",
+        background: "var(--bg-card)",
+        border: "1.5px solid var(--border-main)",
+        transition: "border-color .16s cubic-bezier(.16,1,.3,1), transform .16s cubic-bezier(.16,1,.3,1), box-shadow .16s cubic-bezier(.16,1,.3,1)",
         animationDelay: `${0.04 + index * 0.055}s`,
       }}
     >
