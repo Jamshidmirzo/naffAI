@@ -11,6 +11,8 @@ import {
   PlayCircle,
   ChevronDown,
   PhoneCall,
+  Plus,
+  XCircle,
 } from "lucide-react";
 import { Paginator } from "../components/Paginator";
 import { apiErrorMessage } from "../lib/api-types";
@@ -867,6 +869,11 @@ export default function MyLeads() {
               quickCall.mutate({ lead, outcome: "tg_only" });
               toast.success(t("my.toast_tg"));
             }}
+            statusButtons={buttonStatuses.map((s) => ({
+              code: s.code,
+              emoji: s.emoji,
+              label: labelFor(s),
+            }))}
             onStatus={(code) => {
               if (code === "no_answer") {
                 quickCall.mutate({ lead, outcome: "no_answer" });
@@ -1155,6 +1162,7 @@ interface LeadCardProps {
   onCall: () => void;
   onReject: () => void;
   onTg: () => void;
+  statusButtons: { code: string; emoji: string; label: string }[];
   onStatus: (code: string) => void;
   onSchedule: () => void;
   onPostpone: () => void;
@@ -1168,6 +1176,7 @@ function LeadCard({
   onCall,
   onReject,
   onTg,
+  statusButtons,
   onStatus,
   onSchedule,
   onPostpone,
@@ -1178,7 +1187,6 @@ function LeadCard({
   const [contactOpen, setContactOpen] = useState(false);
   const contactRef = useRef<HTMLDivElement | null>(null);
   const [flashKey, setFlashKey] = useState(0);
-  const [outcomeOpen, setOutcomeOpen] = useState<"no_answer" | "reject" | null>(null);
   const prevStatusRef = useRef(lead.status);
 
   // Whenever the lead's status changes (from optimistic update or refetch),
@@ -1441,148 +1449,120 @@ function LeadCard({
         )}
       </div>
 
-      {/* --- Phase 2 action stack --------------------------------------
-          Row 1 — big primary "Позвонить" (split → phone / TG).
-          Row 2 — 4 outcome tiles (Продажа / Перезвон / Не ответил /
-                    Не купит). Clicks open a reason popover.
-          Row 3 — small ghost utilities (postpone / unpostpone).
-          The old grid of 15 tiny status chips is gone; every status
-          is now routed via the outcome tiles + reason popover. */}
-      <div className="w-full flex flex-col gap-3">
+      {/* Action row — full-width on the second visual line so buttons
+          never eat into the text column. */}
+      <div className="flex flex-wrap gap-2 items-start w-full md:w-auto md:ml-auto md:justify-end">
         {called ? (
-          <div className="text-[13px] flex items-center gap-2 px-3 py-2" style={{ color: "var(--text-label)" }}>
-            <CheckCircle2 className="w-4 h-4" style={{ color: "var(--accent)" }} />
-            {t("my.call_marked_lower")} —
-            <span className="ml-1" style={{ color: "var(--text-primary)", fontWeight: 600 }}>
-              {t("my.pick_outcome_hint")}
-            </span>
+          <div className="text-[12.5px] text-muted flex items-center gap-1.5 px-3 py-2">
+            <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
+            {t("my.call_marked_lower")}
           </div>
         ) : (
-          <div className="flex flex-col gap-1.5">
-            <div className="relative w-full" ref={contactRef}>
+          <>
+            {/* Split-button: main "Bog'lanish" with dropdown for Call / TG */}
+            <div className="relative" ref={contactRef}>
               <button
                 type="button"
-                className="nf-btn-primary w-full"
-                style={{ minHeight: 56, height: 56, fontSize: 17 }}
+                className="nf-btn nf-btn--primary transition-transform active:scale-[.94]"
+                style={{ padding: "9px 14px", fontSize: 13, gap: 6 }}
                 onClick={() => setContactOpen((v) => !v)}
                 disabled={!lead.phone}
               >
-                <PhoneCall className="w-5 h-5" />
-                {t("my.call_action")}
-                <ChevronDown className="w-4 h-4 opacity-90" />
+                <PhoneCall className="w-3.5 h-3.5" />
+                {t("my.contact")}
+                <ChevronDown className="w-3 h-3 opacity-80" />
               </button>
               {contactOpen && (
                 <div
-                  className="absolute left-0 right-0 mt-1.5 z-30 rounded-xl overflow-hidden"
+                  className="absolute right-0 mt-1 z-30 min-w-[200px] rounded-xl overflow-hidden"
                   style={{
-                    background: "var(--bg-card)",
-                    border: "1.5px solid var(--border-main)",
-                    boxShadow: "0 18px 40px -18px rgba(23,21,15,.28)",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    boxShadow: "var(--shadow-lg, 0 12px 28px -12px rgba(0,0,0,.35))",
                   }}
                 >
                   <button
                     type="button"
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-[14px] transition-transform active:scale-[.98]"
-                    style={{ color: "var(--text-primary)" }}
+                    className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-[13px] hover:bg-[color:var(--faint)] transition-transform active:scale-[.98]"
                     onClick={wrap(chooseCall)}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-nested)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
-                    <Phone className="w-4 h-4" style={{ color: "var(--accent)" }} />
+                    <Phone className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
                     {t("my.opt_call")}
                   </button>
                   <button
                     type="button"
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-[14px] transition-transform active:scale-[.98]"
-                    style={{ color: "var(--text-primary)", borderTop: "1px solid var(--border-row)" }}
+                    className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-[13px] hover:bg-[color:var(--faint)] transition-transform active:scale-[.98]"
                     onClick={wrap(chooseTg)}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-nested)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
-                    <MessageCircle className="w-4 h-4" style={{ color: "var(--accent)" }} />
+                    <MessageCircle className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
                     {t("my.opt_tg")}
                   </button>
                 </div>
               )}
             </div>
-            <div
-              className="text-[13px] text-center mt-1"
-              style={{ color: "var(--text-weak)" }}
+
+            {statusButtons.map((btn) => (
+              <button
+                key={btn.code}
+                className="nf-btn nf-btn--ghost transition-transform active:scale-[.92]"
+                style={{ padding: "9px 12px", fontSize: 13 }}
+                onClick={wrap(() => onStatus(btn.code))}
+                title={btn.label}
+              >
+                {btn.emoji ? (
+                  <span aria-hidden style={{ fontSize: 14 }}>{btn.emoji}</span>
+                ) : null}
+                <span className="hidden md:inline ml-1">{btn.label}</span>
+              </button>
+            ))}
+            <button
+              className="nf-btn nf-btn--ghost transition-transform active:scale-[.94]"
+              style={{ padding: "9px 14px", fontSize: 13 }}
+              onClick={onSchedule}
             >
-              {t("my.after_call_hint")}
-            </div>
-          </div>
+              <AlarmClock className="w-3.5 h-3.5" /> Callback
+            </button>
+            {isPostponed ? (
+              <button
+                className="nf-btn nf-btn--ghost transition-transform active:scale-[.94]"
+                style={{ padding: "9px 14px", fontSize: 13, color: "var(--accent)" }}
+                onClick={wrap(onUnpostpone)}
+              >
+                <PlayCircle className="w-3.5 h-3.5" /> {t("my.return")}
+              </button>
+            ) : (
+              <button
+                className="nf-btn nf-btn--ghost transition-transform active:scale-[.94]"
+                style={{ padding: "9px 14px", fontSize: 13 }}
+                onClick={onPostpone}
+              >
+                <PauseCircle className="w-3.5 h-3.5" /> {t("my.postpone")}
+              </button>
+            )}
+            <button
+              className="nf-btn transition-transform active:scale-[.94]"
+              style={{
+                padding: "9px 14px",
+                fontSize: 13,
+                background: "rgba(242,86,11,.12)",
+                color: "var(--accent)",
+              }}
+              onClick={onConvert}
+            >
+              <Plus className="w-3.5 h-3.5" /> {t("my.to_sale")}
+            </button>
+            <button
+              className="nf-btn nf-btn--ghost transition-transform active:scale-[.92]"
+              style={{ padding: "9px 12px", fontSize: 13, color: "var(--danger)" }}
+              onClick={wrap(onReject)}
+              aria-label={t("my.reject")}
+              title={t("my.reject")}
+            >
+              <XCircle className="w-3.5 h-3.5" />
+            </button>
+          </>
         )}
-
-        {/* Outcome grid — 2×2 on mobile, 4×1 from md up. */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <OutcomeTile
-            emoji="🎉"
-            title={t("my.outcome.sale.title")}
-            hint={t("my.outcome.sale.hint")}
-            iconBg="var(--success-bg)"
-            onClick={wrap(onConvert)}
-          />
-          <OutcomeTile
-            emoji="⏰"
-            title={t("my.outcome.callback.title")}
-            hint={t("my.outcome.callback.hint")}
-            iconBg="var(--info-bg)"
-            onClick={wrap(onSchedule)}
-          />
-          <OutcomeTile
-            emoji="☎️"
-            title={t("my.outcome.no_answer.title")}
-            hint={t("my.outcome.no_answer.hint")}
-            iconBg="var(--bg-muted-block)"
-            onClick={() => setOutcomeOpen("no_answer")}
-          />
-          <OutcomeTile
-            emoji="❌"
-            title={t("my.outcome.reject.title")}
-            hint={t("my.outcome.reject.hint")}
-            iconBg="var(--danger-bg)"
-            onClick={() => setOutcomeOpen("reject")}
-          />
-        </div>
-
-        {/* Row 3 — small ghost utilities. */}
-        <div className="flex flex-wrap gap-2">
-          {isPostponed ? (
-            <button
-              className="nf-btn nf-btn--ghost transition-transform active:scale-[.94]"
-              style={{ padding: "8px 14px", fontSize: 12.5, color: "var(--accent)" }}
-              onClick={wrap(onUnpostpone)}
-            >
-              <PlayCircle className="w-3.5 h-3.5" /> {t("my.return")}
-            </button>
-          ) : (
-            <button
-              className="nf-btn nf-btn--ghost transition-transform active:scale-[.94]"
-              style={{ padding: "8px 14px", fontSize: 12.5 }}
-              onClick={onPostpone}
-            >
-              <PauseCircle className="w-3.5 h-3.5" /> {t("my.postpone")}
-            </button>
-          )}
-        </div>
       </div>
-
-      {/* Outcome reason picker (renders below via portal-like overlay). */}
-      <OutcomeReasonModal
-        open={outcomeOpen}
-        onClose={() => setOutcomeOpen(null)}
-        onPick={(code) => {
-          setOutcomeOpen(null);
-          if (code === "no_answer_lost_shortcut") {
-            // "Не купит" → «Купил в другом месте» pipes through onReject
-            // to reuse the existing quickCall(rejected) mutation.
-            onReject();
-          } else {
-            onStatus(code);
-          }
-        }}
-      />
     </div>
   );
 }
