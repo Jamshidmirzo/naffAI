@@ -38,6 +38,7 @@ from .selectors import (
     lead_get,
     lead_list,
     leads_for_operator,
+    my_status_for_operator,
     operator_has_open_backlog,
     operator_is_blocked_by_overdue_callbacks,
     operator_open_callbacks_count,
@@ -388,6 +389,34 @@ class LeadMyListApi(APIView):
                 "results": LeadSerializer(qs, many=True).data,
             }
         )
+
+
+class LeadMyStatusApi(APIView):
+    """
+    GET /api/leads/my/status/
+
+    Диагностика для баннера на странице «Мои лиды» и для sidebar-бейджа.
+    Отдаёт разбивку working_count по трём классам (carry / recall-after-lunch /
+    сегодняшние) + готовый `reason_ru` для fallback-текста баннера.
+
+    Отдельный endpoint (не расширение /my/), чтобы:
+    - Sidebar мог поллить статус (быстрый запрос без сериализации лидов).
+    - Баннер обновлялся чаще, чем полная перезагрузка списка (react-query
+      auto-dedup сложит оба запроса в один сетевой вызов на 30-60с окне).
+    """
+
+    permission_classes = [IsOperator]
+
+    def get(self, request):
+        op_id = _operator_for_request(request)
+        if not op_id:
+            return Response(
+                {"detail": "У пользователя не привязан оператор"}, status=400
+            )
+        operator = operator_get(op_id)
+        if not operator:
+            return Response({"detail": "Оператор не найден"}, status=404)
+        return Response(my_status_for_operator(operator))
 
 
 class LeadPostponeInputSerializer(serializers.Serializer):

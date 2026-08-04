@@ -1148,6 +1148,24 @@ const STRINGS: Lookup = {
     "my.toast_debt": "✓ Отмечено: Qarzi bor",
     "my.card_label": "карта",
 
+    // ------ my/status banner + sections (2026-08 UX fix) ------
+    "my.status.banner.carry_and_recall":
+      "У тебя {working} в работе: {carry} — вчерашние спец-лиды, {recall} — после обеда. Закрой их — новые придут автоматически.",
+    "my.status.banner.carry_only":
+      "У тебя {working} в работе, из них {carry} — вчерашние спец-лиды. Закрой их — новые придут автоматически.",
+    "my.status.banner.recall_only":
+      "У тебя {working} в работе, {recall} — после обеда, надо перезвонить. Закрой — придут новые.",
+    "my.status.banner.quota_full":
+      "Все {limit} слотов заняты сегодняшними. Закрой хотя бы один — придёт новый.",
+    "my.status.banner.ok":
+      "Свободно {free} из {limit} слотов. Новые придут автоматически.",
+    "my.status.banner.progress": "В работе · {working}/{limit}",
+    "my.section.carry": "🔴 Спец-лиды со вчера · {n}",
+    "my.section.recall": "🟠 После обеда — перезвонить · {n}",
+    "my.section.today": "🟢 Сегодняшние · {n}",
+    "my.empty.title": "Все лиды закрыты",
+    "my.empty.subtitle": "Новые придут автоматически — обычно в течение нескольких минут.",
+
     // ------ attendance.today (extra) ------
     "attendance.today.qr_title": "QR-код для отметки на входе",
     "attendance.today.qr_hint": "Распечатайте и повесьте у входа. Операторы отмечаются камерой телефона.",
@@ -2491,6 +2509,24 @@ const STRINGS: Lookup = {
     "my.toast_phone_on": "✓ Belgilandi: Telfoni ochiq",
     "my.toast_debt": "✓ Belgilandi: Qarzi bor",
     "my.card_label": "karta",
+
+    // ------ my/status banner + bo'limlar (2026-08 UX fix) ------
+    "my.status.banner.carry_and_recall":
+      "Sizda {working} ish jarayonida: {carry} — kechagi maxsus lidlar, {recall} — tushdan keyingi. Ularni yopib boring — yangilari avtomatik keladi.",
+    "my.status.banner.carry_only":
+      "Sizda {working} ish jarayonida, ulardan {carry} — kechagi maxsus lidlar. Yopib boring — yangilari avtomatik keladi.",
+    "my.status.banner.recall_only":
+      "Sizda {working} ish jarayonida, {recall} — tushdan keyingi qayta qo'ng'iroq. Yopib boring — yangilari keladi.",
+    "my.status.banner.quota_full":
+      "Barcha {limit} slotni bugungilar band qilgan. Kamida bittasini yoping — yangi keladi.",
+    "my.status.banner.ok":
+      "{limit} slotdan {free} bo'sh. Yangi lidlar avtomatik keladi.",
+    "my.status.banner.progress": "Ish jarayonida · {working}/{limit}",
+    "my.section.carry": "🔴 Kechagi maxsus lidlar · {n}",
+    "my.section.recall": "🟠 Tushdan keyin — qayta qo'ng'iroq · {n}",
+    "my.section.today": "🟢 Bugungilar · {n}",
+    "my.empty.title": "Barcha lidlar yopilgan",
+    "my.empty.subtitle": "Yangilari avtomatik keladi — odatda bir necha daqiqa ichida.",
 
     // ------ attendance.today (extra) ------
     "attendance.today.qr_title": "Kirishda belgilash uchun QR-kod",

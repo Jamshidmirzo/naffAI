@@ -139,6 +139,29 @@ export default function MyLeads() {
     refetchInterval: 60_000,
   });
 
+  // Диагностика для баннера «сначала закрой это». Тот же endpoint читает
+  // sidebar-бейдж — react-query дедуплицирует. Обновляем чаще, чем список
+  // лидов: цифры блокеров важнее, чем полный список.
+  const myStatus = useQuery({
+    queryKey: ["leads-my-status"],
+    queryFn: () =>
+      api
+        .get<{
+          working_count: number;
+          quota_limit: number;
+          carry_count: number;
+          recall_afternoon_count: number;
+          today_fresh_count: number;
+          postponed_count: number;
+          eligible_for_new: boolean;
+          reason_ru: string;
+          recall_active_now: boolean;
+        }>("/leads/my/status/")
+        .then((r) => r.data),
+    refetchInterval: 30_000,
+    retry: false,
+  });
+
   const unpostpone = useMutation({
     mutationFn: (lead: Lead) => api.post(`/leads/${lead.id}/unpostpone/`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["leads-my"] }),
@@ -279,6 +302,88 @@ export default function MyLeads() {
     if (view !== "active" || statusChip === "all") return results;
     return results.filter((l) => l.status === statusChip);
   }, [results, view, statusChip]);
+
+  // --- Секционирование /my active (2026-08 UX-fix) ---------------------
+  // Разбиваем visibleLeads на три группы по правилам carry/recall/today,
+  // чтобы оператор сразу видел «вчерашние спец-лиды» отдельно и не путал
+  // их с сегодняшними. Пороговые времена считаем в Asia/Tashkent, повторяя
+  // серверную логику `_active_today_filter`.
+  const { todayStartMs, lunchStartMs, recallActiveNow } = useMemo(() => {
+    // Полночь и 13:00 Ташкента сегодня, выраженные UTC-миллисекундами.
+    const now = new Date();
+    const partsInTashkent = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Tashkent",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(now);
+    const y = Number(partsInTashkent.find((p) => p.type === "year")!.value);
+    const m = Number(partsInTashkent.find((p) => p.type === "month")!.value);
+    const d = Number(partsInTashkent.find((p) => p.type === "day")!.value);
+    // Asia/Tashkent = UTC+5, без DST — фиксированное смещение.
+    // Полночь Ташкента = Date.UTC(y, m-1, d, 0, 0, 0) − 5h.
+    const TASHKENT_OFFSET_MS = 5 * 60 * 60 * 1000;
+    const today0 = Date.UTC(y, m - 1, d, 0, 0, 0) - TASHKENT_OFFSET_MS;
+    const lunch = today0 + 13 * 60 * 60 * 1000;
+    return {
+      todayStartMs: today0,
+      lunchStartMs: lunch,
+      recallActiveNow: now.getTime() >= lunch,
+    };
+  }, [
+    // Пересчитываем максимум раз в 30с — этого достаточно, чтобы после
+    // 13:00 recall-секция появилась без reload. `myStatus.dataUpdatedAt`
+    // сбрасывается с той же частотой, что и запрос статуса.
+    myStatus.dataUpdatedAt,
+  ]);
+
+  const CARRY_STATUSES = useMemo(
+    () =>
+      new Set([
+        "no_answer",
+        "no_answer_2",
+        "phone_on",
+        "callback_scheduled",
+        "contacted_telegram",
+        "dokonga_keladi",
+      ]),
+    [],
+  );
+  const RECALL_STATUSES = useMemo(
+    () => new Set(["no_answer", "phone_on"]),
+    [],
+  );
+
+  const sections = useMemo(() => {
+    if (view !== "active") {
+      return { carry: [] as Lead[], recall: [] as Lead[], today: visibleLeads };
+    }
+    const carry: Lead[] = [];
+    const recall: Lead[] = [];
+    const todayList: Lead[] = [];
+    for (const l of visibleLeads) {
+      const updatedMs = l.updated_at ? Date.parse(l.updated_at) : 0;
+      const isCarry =
+        CARRY_STATUSES.has(l.status) && updatedMs < todayStartMs;
+      const isRecall =
+        recallActiveNow &&
+        RECALL_STATUSES.has(l.status) &&
+        updatedMs >= todayStartMs &&
+        updatedMs < lunchStartMs;
+      if (isCarry) carry.push(l);
+      else if (isRecall) recall.push(l);
+      else todayList.push(l);
+    }
+    return { carry, recall, today: todayList };
+  }, [
+    visibleLeads,
+    view,
+    todayStartMs,
+    lunchStartMs,
+    recallActiveNow,
+    CARRY_STATUSES,
+    RECALL_STATUSES,
+  ]);
 
   const statusChips: { key: StatusChipKey; label: string; count: number }[] = [
     { key: "all", label: t("common.all"), count: statusChipCounts.all ?? results.length },
@@ -460,7 +565,88 @@ export default function MyLeads() {
         </section>
       )}
 
-      {/* --- Lead cards --- */}
+      {/* --- Приоритетный баннер «сначала закрой это» -------------------
+          Показываем всегда, когда есть carry или recall — это главное,
+          что оператор должен увидеть, открыв страницу. Цвет:
+            красный — есть carry (вчерашние спец-лиды);
+            оранжевый — есть только recall (после обеда);
+            зелёный — всё ок, слоты свободны.
+          Не рендерим в других вьюхах — там смысла нет. */}
+      {view === "active" && myStatus.data && (() => {
+        const s = myStatus.data;
+        const {
+          working_count: working,
+          quota_limit: limit,
+          carry_count: carry,
+          recall_afternoon_count: recall,
+          eligible_for_new: eligible,
+        } = s;
+        // Определяем цвет
+        let tone: "red" | "orange" | "green" = "green";
+        if (carry > 0) tone = "red";
+        else if (s.recall_active_now && recall > 0) tone = "orange";
+        else if (!eligible) tone = "orange";
+
+        const bg =
+          tone === "red"
+            ? "rgba(220,38,38,0.10)"
+            : tone === "orange"
+            ? "rgba(249,115,22,0.10)"
+            : "rgba(16,185,129,0.10)";
+        const border =
+          tone === "red"
+            ? "rgba(220,38,38,0.45)"
+            : tone === "orange"
+            ? "rgba(249,115,22,0.45)"
+            : "rgba(16,185,129,0.45)";
+        const fg =
+          tone === "red" ? "#dc2626" : tone === "orange" ? "#c2410c" : "#047857";
+
+        // Готовим строку — предпочитаем i18n-варианты, чтобы работал uz.
+        let text = "";
+        if (carry > 0 && recall > 0 && s.recall_active_now) {
+          text = t("my.status.banner.carry_and_recall", {
+            working,
+            carry,
+            recall,
+          });
+        } else if (carry > 0) {
+          text = t("my.status.banner.carry_only", { working, carry });
+        } else if (recall > 0 && s.recall_active_now) {
+          text = t("my.status.banner.recall_only", { working, recall });
+        } else if (!eligible && working >= limit) {
+          text = t("my.status.banner.quota_full", { limit });
+        } else {
+          text = t("my.status.banner.ok", {
+            free: Math.max(0, limit - working),
+            limit,
+          });
+        }
+
+        return (
+          <div
+            className="rounded-2xl border px-4 py-3 flex items-start gap-3 animate-nfFadeUp"
+            style={{ background: bg, borderColor: border }}
+          >
+            <div
+              className="shrink-0 rounded-xl p-2"
+              style={{ background: bg, border: `1px solid ${border}` }}
+            >
+              <Lock className="w-5 h-5" style={{ color: fg }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[14.5px] font-semibold" style={{ color: fg }}>
+                {text}
+              </div>
+              <div className="text-[12px] opacity-80 mt-0.5" style={{ color: fg }}>
+                {t("my.status.banner.progress", { working, limit })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* --- Legacy overdue-callback banner (morning-gate) -------------- */}
       {view === "active" && operator?.blocked && (
         <div
           className="sticky z-30 flex items-center gap-3 rounded-2xl border px-4 py-3 backdrop-blur-md shadow-lg"
@@ -491,60 +677,123 @@ export default function MyLeads() {
           </div>
         </div>
       )}
-      {visibleLeads.length === 0 ? (
-        <div
-          className="rounded-2xl py-12 text-center text-[13.5px] text-muted"
-          style={{ border: "1.5px dashed var(--border)" }}
-        >
-          {t("my.empty")}
-        </div>
-      ) : (
-        <section className="flex flex-col gap-[9px]">
-          {visibleLeads.map((lead, i) => (
-            <LeadCard
-              key={lead.id}
-              lead={lead}
-              index={i}
-              onCall={() => {
-                quickCall.mutate({ lead, outcome: "talked_interested" });
-                toast.success(t("my.toast_called"));
-              }}
-              onReject={() => {
-                quickCall.mutate({ lead, outcome: "rejected" });
-                toast.success(t("my.toast_rejected"));
-              }}
-              onTg={() => {
-                openTg(lead);
-                quickCall.mutate({ lead, outcome: "tg_only" });
-                toast.success(t("my.toast_tg"));
-              }}
-              statusButtons={buttonStatuses.map((s) => ({
-                code: s.code,
-                emoji: s.emoji,
-                label: labelFor(s),
-              }))}
-              onStatus={(code) => {
-                // no_answer keeps its escalate-to-2 flow via call_attempt_log;
-                // any other status (including custom ones) goes through the
-                // generic setStatus endpoint.
-                if (code === "no_answer") {
-                  quickCall.mutate({ lead, outcome: "no_answer" });
-                } else {
-                  setStatus.mutate({ lead, status: code });
-                }
-                const btn = buttonStatuses.find((s) => s.code === code);
-                toast.success(
-                  btn ? `✓ ${btn.emoji ? btn.emoji + " " : ""}${labelFor(btn)}` : "✓",
-                );
-              }}
-              onSchedule={() => setScheduleFor(lead)}
-              onPostpone={() => setPostponeFor(lead)}
-              onUnpostpone={() => unpostpone.mutate(lead)}
-              onConvert={() => nav(`/sales/new?lead=${lead.id}`)}
-            />
-          ))}
-        </section>
-      )}
+
+      {(() => {
+        // Общий helper для рендера карточки — используется секциями и в
+        // не-active вьюхе (там сплошным списком).
+        const renderCard = (lead: Lead, i: number) => (
+          <LeadCard
+            key={lead.id}
+            lead={lead}
+            index={i}
+            onCall={() => {
+              quickCall.mutate({ lead, outcome: "talked_interested" });
+              toast.success(t("my.toast_called"));
+            }}
+            onReject={() => {
+              quickCall.mutate({ lead, outcome: "rejected" });
+              toast.success(t("my.toast_rejected"));
+            }}
+            onTg={() => {
+              openTg(lead);
+              quickCall.mutate({ lead, outcome: "tg_only" });
+              toast.success(t("my.toast_tg"));
+            }}
+            statusButtons={buttonStatuses.map((s) => ({
+              code: s.code,
+              emoji: s.emoji,
+              label: labelFor(s),
+            }))}
+            onStatus={(code) => {
+              if (code === "no_answer") {
+                quickCall.mutate({ lead, outcome: "no_answer" });
+              } else {
+                setStatus.mutate({ lead, status: code });
+              }
+              const btn = buttonStatuses.find((s) => s.code === code);
+              toast.success(
+                btn ? `✓ ${btn.emoji ? btn.emoji + " " : ""}${labelFor(btn)}` : "✓",
+              );
+            }}
+            onSchedule={() => setScheduleFor(lead)}
+            onPostpone={() => setPostponeFor(lead)}
+            onUnpostpone={() => unpostpone.mutate(lead)}
+            onConvert={() => nav(`/sales/new?lead=${lead.id}`)}
+          />
+        );
+
+        if (visibleLeads.length === 0) {
+          // Полностью пусто — оператор всё разобрал, ждём refill.
+          const workingCount = myStatus.data?.working_count ?? 0;
+          if (view === "active" && workingCount === 0) {
+            return (
+              <div
+                className="rounded-2xl py-12 text-center animate-nfFadeUp"
+                style={{ border: "1.5px dashed var(--border)" }}
+              >
+                <div className="text-[36px] leading-none mb-2">✅</div>
+                <div className="text-[16px] font-semibold">
+                  {t("my.empty.title")}
+                </div>
+                <div className="text-[13px] text-muted mt-1.5 max-w-[420px] mx-auto px-4">
+                  {t("my.empty.subtitle")}
+                </div>
+              </div>
+            );
+          }
+          // Обычный empty (фильтр по чипу отсеял всё, или postponed-вью
+          // пустая).
+          return (
+            <div
+              className="rounded-2xl py-12 text-center text-[13.5px] text-muted"
+              style={{ border: "1.5px dashed var(--border)" }}
+            >
+              {t("my.empty")}
+            </div>
+          );
+        }
+
+        if (view !== "active") {
+          return (
+            <section className="flex flex-col gap-[9px]">
+              {visibleLeads.map(renderCard)}
+            </section>
+          );
+        }
+
+        // Секционный вид: 🔴 carry → 🟠 recall → 🟢 today. Пустые
+        // группы не рендерим.
+        const groups: {
+          key: "carry" | "recall" | "today";
+          leads: Lead[];
+          labelKey: string;
+        }[] = [
+          { key: "carry", leads: sections.carry, labelKey: "my.section.carry" },
+          { key: "recall", leads: sections.recall, labelKey: "my.section.recall" },
+          { key: "today", leads: sections.today, labelKey: "my.section.today" },
+        ];
+
+        return (
+          <>
+            {groups.map((g) =>
+              g.leads.length === 0 ? null : (
+                <section
+                  key={g.key}
+                  className="flex flex-col gap-[9px] animate-nfFadeUp"
+                >
+                  <div
+                    className="text-[12.5px] uppercase tracking-[.06em] font-semibold px-1"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    {t(g.labelKey, { n: g.leads.length })}
+                  </div>
+                  {g.leads.map(renderCard)}
+                </section>
+              ),
+            )}
+          </>
+        );
+      })()}
 
       <div className="flex justify-center">
         <Paginator

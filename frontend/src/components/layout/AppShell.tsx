@@ -79,7 +79,7 @@ function useOperatorGroups(t: (k: string) => string): SidebarGroup[] {
   return [
     {
       items: [
-        { to: "/my", label: t("nav.my_leads"), end: true },
+        { to: "/my", label: t("nav.my_leads"), end: true, badgeKey: "myBlockers" },
         { to: "/notifications", label: t("nav.notifications"), badgeKey: "notifs" },
         { to: "/lessons/today", label: t("nav.lesson_today"), badgeKey: "lessonNew" },
         { to: "/lessons/history", label: t("nav.lesson_history") },

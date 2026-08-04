@@ -12,7 +12,7 @@ export interface SidebarItem {
   label: string;
   end?: boolean;
   external?: boolean;
-  badgeKey?: "leadsReview" | "notifs" | "lessonNew" | "orphans";
+  badgeKey?: "leadsReview" | "notifs" | "lessonNew" | "orphans" | "myBlockers";
 }
 
 export interface SidebarGroup {
@@ -90,11 +90,33 @@ function useBadges(role: "manager" | "operator") {
     refetchInterval: 30000,
     retry: false,
   });
+  // Красное число на «Мои лиды»: carry + recall_afternoon — вчерашние
+  // и «застрявшие после обеда» лиды, которые оператор часто не замечает.
+  // Тот же endpoint /leads/my/status/ читает баннер на самой странице —
+  // react-query auto-dedup склеит вызовы в один сетевой запрос.
+  const myStatus = useQuery({
+    queryKey: ["leads-my-status"],
+    queryFn: () =>
+      api
+        .get<{
+          carry_count: number;
+          recall_afternoon_count: number;
+        }>("/leads/my/status/")
+        .then((r) => r.data),
+    enabled: role === "operator",
+    refetchInterval: 60000,
+    retry: false,
+  });
+  const myBlockers =
+    role === "operator" && myStatus.data
+      ? myStatus.data.carry_count + myStatus.data.recall_afternoon_count
+      : 0;
   return {
     leadsReview: role === "manager" ? needsReview.data ?? 0 : 0,
     orphans: role === "manager" ? orphansCount.data ?? 0 : 0,
     lessonNew: role === "operator" && lessonPeek.data && !lessonPeek.data.opened_at ? 1 : 0,
     notifs: unreadNotifs.data ?? 0,
+    myBlockers,
   };
 }
 

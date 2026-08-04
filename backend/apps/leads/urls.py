@@ -7,6 +7,7 @@ from .apis import (
     LeadDetailApi,
     LeadListCreateApi,
     LeadMyListApi,
+    LeadMyStatusApi,
     LeadPostponeApi,
     LeadReassignApi,
     LeadsBulkReassignApi,
@@ -24,6 +25,10 @@ from .apis import (
 
 urlpatterns = [
     path("", LeadListCreateApi.as_view()),
+    # `my/status/` должен матчиться раньше `my/` — Django берёт первое
+    # совпадение, но `my/` не жадный, так что порядок между ними
+    # безразличен. Главное — обе эти пути ПЕРЕД <int:pk>/.
+    path("my/status/", LeadMyStatusApi.as_view()),
     path("my/", LeadMyListApi.as_view()),
     # Static paths ставим ПЕРЕД <int:pk>/, чтобы `orphans` / `bulk-reassign` /
     # `distribution-status` / `distribute-now` не матчились как ID.

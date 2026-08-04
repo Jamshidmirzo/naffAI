@@ -522,6 +522,129 @@ def _rr_batch_size() -> int:
     return int(getattr(settings, "RR_BATCH_SIZE", 5))
 
 
+def my_status_for_operator(operator: Operator) -> dict:
+    """
+    Диагностика для страницы «Мои лиды» — что заблокировало приход новых
+    и почему у оператора висит N лидов. Отдаётся отдельным endpoint'ом,
+    чтобы frontend мог показать понятный оператору баннер + бейдж в
+    sidebar одним запросом (react-query auto-dedup).
+
+    Правила:
+      - `working_count` — то же, что `operator_working_lead_count(op)`:
+        активные, не терминальные, не отложенные, ещё не тронутые сегодня.
+      - `carry_count` — из working: лиды с carry-статусом (no_answer,
+        phone_on, callback_scheduled, contacted_telegram, dokonga_keladi,
+        …), у которых `updated_at < сегодняшнее 00:00 Ташкент`. Это
+        именно «вчерашние спец-лиды», которые оператор часто не
+        распознаёт как блокеры.
+      - `recall_afternoon_count` — из working: recall-статусы (no_answer,
+        phone_on), тронутые до обеда сегодня, всплывающие снова после
+        13:00. Возвращаем всегда, даже до 13:00 — но `recall_active_now`
+        подскажет фронту, показывать ли эту цифру.
+      - `today_fresh_count` = working - carry - recall_afternoon (не может
+        быть отрицательным — carry и recall дизъюнктны по updated_at).
+      - `postponed_count` — отложенные оператором лиды, не участвуют в
+        квоте, но полезно показать в баннере отдельной цифрой.
+      - `eligible_for_new` = `working_count < quota_limit`.
+      - `reason_ru` — готовая строка для баннера. Frontend может её
+        переиспользовать как fallback, но обычно рендерит собственные
+        i18n-варианты по числам.
+    """
+    from .models import Lead
+
+    quota_limit = _rr_batch_size()
+    working_count = operator_working_lead_count(operator)
+
+    today_start = _today_start_local()
+    now = timezone.localtime()
+    lunch_start = _today_lunch_start()
+    recall_active_now = now >= lunch_start
+
+    carry_codes = carry_over_status_codes()
+    recall_codes = recall_after_lunch_status_codes()
+
+    terminal = set(terminal_lead_status_codes())
+    workable = list(set(active_lead_status_codes()) - terminal)
+
+    # Общая база для carry/recall — те же лиды, что в working.
+    base = Lead.objects.filter(
+        operator=operator,
+        status__in=workable,
+        postponed_at__isnull=True,
+    ).filter(_active_today_filter())
+
+    carry_count = 0
+    if carry_codes:
+        carry_count = base.filter(
+            status__in=carry_codes,
+            updated_at__lt=today_start,
+        ).count()
+
+    recall_afternoon_count = 0
+    if recall_active_now and recall_codes:
+        # recall-лиды: тронуты сегодня до обеда — снова всплыли. Дизъюнктны
+        # с carry по updated_at (carry.updated_at < today_start < lunch_start).
+        recall_afternoon_count = base.filter(
+            status__in=recall_codes,
+            updated_at__gte=today_start,
+            updated_at__lt=lunch_start,
+        ).count()
+
+    today_fresh_count = max(0, working_count - carry_count - recall_afternoon_count)
+
+    postponed_count = Lead.objects.filter(
+        operator=operator,
+        status__in=workable,
+        postponed_at__isnull=False,
+    ).count()
+
+    eligible_for_new = working_count < quota_limit
+
+    # Русский текст для баннера — упрощённый язык, короткие фразы, всегда
+    # заканчивается «новые придут автоматически» / «получишь новый».
+    if working_count == 0:
+        reason_ru = "Всё закрыто. Новые придут автоматически."
+    elif carry_count > 0 and recall_afternoon_count > 0:
+        reason_ru = (
+            f"У тебя {working_count} в работе: {carry_count} — вчерашние "
+            f"спец-лиды, {recall_afternoon_count} — после обеда. "
+            "Закрой их — новые придут автоматически."
+        )
+    elif carry_count > 0:
+        reason_ru = (
+            f"У тебя {working_count} в работе, из них {carry_count} — "
+            "вчерашние спец-лиды. Закрой их — новые придут автоматически."
+        )
+    elif recall_afternoon_count > 0:
+        reason_ru = (
+            f"У тебя {working_count} в работе, {recall_afternoon_count} — "
+            "после обеда, надо перезвонить. Закрой их — новые придут."
+        )
+    elif working_count >= quota_limit:
+        reason_ru = (
+            f"Все {quota_limit} слотов заняты сегодняшними. Закрой хотя бы "
+            "один — придёт новый."
+        )
+    else:
+        free = quota_limit - working_count
+        reason_ru = (
+            f"Свободно {free} из {quota_limit} слотов. "
+            "Новые придут автоматически."
+        )
+
+    return {
+        "working_count": working_count,
+        "quota_limit": quota_limit,
+        "carry_count": carry_count,
+        "recall_afternoon_count": recall_afternoon_count,
+        "today_fresh_count": today_fresh_count,
+        "postponed_count": postponed_count,
+        "eligible_for_new": eligible_for_new,
+        "reason_ru": reason_ru,
+        "recall_active_now": recall_active_now,
+    }
+
+
 def operator_yesterday_backlog_count(operator: Operator) -> int:
     """
     Count of leads holding the operator: any lead in a
