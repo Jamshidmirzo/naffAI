@@ -54,6 +54,47 @@
   --warn-dot: #E4A11B;
 }
 
+/* ============================================================
+   Dark theme override for Phase-1 tokens (2026-08-04, Phase 2).
+   Triggered by <html data-nf="dark"> (see store/theme.ts). Only
+   Phase-1 vars are inverted — legacy tokens keep their own dark
+   block below.
+   ============================================================ */
+html[data-nf="dark"] {
+  --bg-page: #17150F;
+  --bg-surface: #1F1D17;
+  --bg-card: #2A2723;
+  --bg-nested: #23211C;
+  --bg-muted-block: #2A2723;
+
+  --text-primary: #FBFAF8;
+  --text-secondary: #DAD5CC;
+  --text-muted: #A8A29A;
+  --text-label: #8C867C;
+  --text-weak: #6E685E;
+
+  --border-main: #3A362F;
+  --border-btn: #4A453D;
+  --border-row: #2A2723;
+
+  --accent-pale-bg: #3A2A18;
+  --accent-pale-border: #5A4020;
+  --accent-pale-text: #FBDCC6;
+  --accent-pale-text-strong: #FFB57A;
+
+  --success-bg: #1A3520;
+  --success-text: #7ED89B;
+  --success-text-strong: #A5EEBB;
+
+  --danger-bg: #3A1F1B;
+  --danger-border: #5A2A24;
+  --danger-text: #F5B3AC;
+  --danger-text-strong: #FF8B7E;
+
+  --info-bg: #1F2A3F;
+  --info-text: #A5C0F5;
+}
+
 body {
   font-family: 'Golos Text', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg-page);
@@ -102,6 +143,112 @@ body {
   border-color: var(--dark) !important;
   transform: translateY(-2px);
   box-shadow: 0 10px 22px rgba(23, 21, 15, 0.07);
+}
+
+/* ============================================================
+   Outcome tiles (Phase 2 redesign, /my LeadCard).
+   Big 2×2 (mobile) / 4×1 (desktop) grid of decision buttons that
+   replaces the old ~15 tiny status chips. Each tile carries an
+   icon+title+hint stack so the operator can read the choice
+   without hunting through emoji.
+   ============================================================ */
+.nf-outcome {
+  min-height: 82px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border-main);
+  background: var(--bg-card);
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  cursor: pointer;
+  transition: border-color .16s cubic-bezier(.16,1,.3,1),
+              transform .16s cubic-bezier(.16,1,.3,1),
+              box-shadow .16s cubic-bezier(.16,1,.3,1);
+  text-align: left;
+}
+.nf-outcome:hover {
+  border-color: var(--dark);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(23, 21, 15, .08);
+}
+.nf-outcome:active { transform: scale(.985); }
+.nf-outcome__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  line-height: 1;
+}
+.nf-outcome__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+.nf-outcome__hint {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-label);
+  line-height: 1.25;
+}
+
+/* Reason picker rows inside the outcome modal — one row per
+   sub-status. Big enough to tap without accidentally hitting a
+   neighbour, radius matches the outcome tile family. */
+.nf-reason-row {
+  min-height: 62px;
+  border-radius: 17px;
+  border: 1.5px solid var(--border-main);
+  background: var(--bg-card);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: border-color .16s cubic-bezier(.16,1,.3,1),
+              transform .16s cubic-bezier(.16,1,.3,1),
+              background .16s cubic-bezier(.16,1,.3,1);
+  width: 100%;
+  text-align: left;
+}
+.nf-reason-row:hover {
+  border-color: var(--dark);
+  background: var(--bg-nested);
+}
+.nf-reason-row:active { transform: scale(.99); }
+.nf-reason-row__emoji { font-size: 19px; line-height: 1; }
+.nf-reason-row__label {
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+/* Quick-time chips inside ScheduleCallbackModal. */
+.nf-time-chip {
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border-main);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .14s cubic-bezier(.16,1,.3,1);
+  white-space: nowrap;
+}
+.nf-time-chip:hover {
+  border-color: var(--dark);
+  background: var(--bg-nested);
+}
+.nf-time-chip[data-selected="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 /* ============================================================
