@@ -499,28 +499,43 @@ def stale_leads_for_auto_close() -> QuerySet[Lead]:
 
 def operator_working_lead_count(operator: Operator) -> int:
     """
-    Count of «leads still on operator's plate for today»: active status,
-    not terminal, not postponed, и **лид ещё не тронут сегодня** —
-    иначе оператор мог обработать всю пачку и всё равно остался бы
-    «busy» до конца дня, и RR никогда бы его не долил.
+    Count of «сегодня-плеч» оператора — активных лидов, за которые он
+    отвечает СЕГОДНЯ и которые занимают его квоту RR.
 
-    Новое правило:
+    Правило (2026-08-04 обновление):
       lead in count ↔
-        status in active_lead_status_codes() minus terminal
+        status in active_lead_status_codes() minus terminal minus carry
         AND postponed_at IS NULL
-        AND (status in {new, assigned} OR updated_at < today_start)
+        AND (status in {new, assigned} OR updated_at < today_start
+             OR (после 13:00 AND status in recall_codes AND
+                 updated_at < lunch_start))
 
-    Тронутые сегодня carry-статусы (no_answer, phone_on, callback_scheduled,
-    contacted_telegram, dokonga_keladi, …) исчезают из «сегодня-плеч»
-    сразу после того, как оператор их выставил, но завтра снова всплывают
-    (updated_at < today_start новый), поэтому оператор снова получит их
-    в /my active первыми.
+    Ключевое отличие от предыдущей версии: **carry-статусы (no_answer,
+    no_answer_2, phone_on, callback_scheduled, contacted_telegram,
+    dokonga_keladi) НЕ входят в квоту**. Они хранятся у оператора как
+    отдельный хвост, всплывают завтра — но не блокируют refill сегодня.
+
+    Раньше при большом carry-хвосте (30+ лидов) working_count всегда
+    оставался >= RR_BATCH_SIZE, refill никогда не срабатывал → оператор
+    сидел без новых свежих лидов, ставил ещё carry, цикл замыкался.
+    Теперь: у каждого активного оператора всегда до RR_BATCH_SIZE (5)
+    non-carry сегодняшних лидов + N carry-хвоста рядом.
+
+    Recall-after-lunch-статусы (no_answer / phone_on) технически carry,
+    но intraday-life у них есть: `_active_today_filter` умеет их
+    возвращать после 13:00. Здесь мы всё равно их исключаем, потому что:
+      1. `blocks_new_leads`-логика в бизнесе просит НЕ считать carry в квоту.
+      2. Если оператор до обеда получил 5 свежих и все ушли в recall —
+         после 13:00 refill выдаст ещё 5 (уже не блокирован), и оператор
+         сможет параллельно добить утренние + новые. Это ожидаемое
+         поведение (5 non-carry всегда + carry-хвост поверх).
 
     Powers the batch=N gate: while this count >= N, RR skips the operator.
     """
     terminal = set(terminal_lead_status_codes())
+    carry = set(carry_over_status_codes())
     all_active = set(active_lead_status_codes())
-    workable = list(all_active - terminal)
+    workable = list(all_active - terminal - carry)
     if not workable:
         return 0
     return (
@@ -540,31 +555,30 @@ def _rr_batch_size() -> int:
 
 def my_status_for_operator(operator: Operator) -> dict:
     """
-    Диагностика для страницы «Мои лиды» — что заблокировало приход новых
-    и почему у оператора висит N лидов. Отдаётся отдельным endpoint'ом,
-    чтобы frontend мог показать понятный оператору баннер + бейдж в
-    sidebar одним запросом (react-query auto-dedup).
+    Диагностика для страницы «Мои лиды» — сколько лидов на плечах, сколько
+    из них carry-хвост (не в квоте), и куда идти оператору дальше.
+    Отдаётся отдельным endpoint'ом, чтобы frontend мог показать понятный
+    баннер + бейдж в sidebar одним запросом (react-query auto-dedup).
 
-    Правила:
-      - `working_count` — то же, что `operator_working_lead_count(op)`:
-        активные, не терминальные, не отложенные, ещё не тронутые сегодня.
-      - `carry_count` — из working: лиды с carry-статусом (no_answer,
-        phone_on, callback_scheduled, contacted_telegram, dokonga_keladi,
-        …), у которых `updated_at < сегодняшнее 00:00 Ташкент`. Это
-        именно «вчерашние спец-лиды», которые оператор часто не
-        распознаёт как блокеры.
-      - `recall_afternoon_count` — из working: recall-статусы (no_answer,
-        phone_on), тронутые до обеда сегодня, всплывающие снова после
-        13:00. Возвращаем всегда, даже до 13:00 — но `recall_active_now`
-        подскажет фронту, показывать ли эту цифру.
-      - `today_fresh_count` = working - carry - recall_afternoon (не может
-        быть отрицательным — carry и recall дизъюнктны по updated_at).
-      - `postponed_count` — отложенные оператором лиды, не участвуют в
-        квоте, но полезно показать в баннере отдельной цифрой.
+    Модель после 2026-08-04:
+      - `working_count` = `operator_working_lead_count(op)` = **только
+        сегодняшние non-carry в квоте** (макс. RR_BATCH_SIZE). Carry-лиды
+        (no_answer, phone_on, callback_scheduled, contacted_telegram,
+        dokonga_keladi, …) в квоту не входят и здесь не считаются.
+      - `carry_count` — вчерашние carry-лиды (updated_at < today_start),
+        которые оператор доработает завтра. Показываем отдельно как
+        «хвост», не как блокер.
+      - `recall_afternoon_count` — recall-статусы (no_answer, phone_on),
+        тронутые сегодня до 13:00; после 13:00 всплывают снова и требуют
+        повторного звонка. Возвращаем всегда, но `recall_active_now`
+        подскажет фронту, показывать ли цифру.
+      - `today_fresh_count` = working_count (алиас — все working сейчас
+        сегодняшние по определению). Оставлен для обратной совместимости
+        фронта, не переименовываем API-контракт без нужды.
+      - `postponed_count` — отложенные оператором лиды, отдельный счётчик.
       - `eligible_for_new` = `working_count < quota_limit`.
-      - `reason_ru` — готовая строка для баннера. Frontend может её
-        переиспользовать как fallback, но обычно рендерит собственные
-        i18n-варианты по числам.
+      - `reason_ru` — готовая строка для баннера. Frontend обычно рендерит
+        свои i18n-варианты по числам, но `reason_ru` — fallback.
     """
     from .models import Lead
 
@@ -580,69 +594,82 @@ def my_status_for_operator(operator: Operator) -> dict:
     recall_codes = recall_after_lunch_status_codes()
 
     terminal = set(terminal_lead_status_codes())
-    workable = list(set(active_lead_status_codes()) - terminal)
+    all_non_terminal = list(set(active_lead_status_codes()) - terminal)
 
-    # Общая база для carry/recall — те же лиды, что в working.
-    base = Lead.objects.filter(
-        operator=operator,
-        status__in=workable,
-        postponed_at__isnull=True,
-    ).filter(_active_today_filter())
-
+    # Carry-хвост: любой carry-статус у оператора, updated_at < today_start.
+    # Считается ВНЕ working_count (working теперь исключает carry-статусы).
+    # Postponed не учитываем — оператор явно попросил отложить, отдельная
+    # секция `postponed_count`.
     carry_count = 0
     if carry_codes:
-        carry_count = base.filter(
+        carry_count = Lead.objects.filter(
+            operator=operator,
             status__in=carry_codes,
+            postponed_at__isnull=True,
             updated_at__lt=today_start,
         ).count()
 
+    # Recall-after-lunch: сегодня утром поставил no_answer/phone_on, после
+    # 13:00 надо перезвонить. Технически recall-коды ⊂ carry-коды (флаги
+    # ортогональны на модели, но по seed данным пересекаются), поэтому
+    # эти лиды тоже вне working_count. Их отдельно показываем оператору
+    # чтобы он не забыл повторить контакт.
     recall_afternoon_count = 0
     if recall_active_now and recall_codes:
-        # recall-лиды: тронуты сегодня до обеда — снова всплыли. Дизъюнктны
-        # с carry по updated_at (carry.updated_at < today_start < lunch_start).
-        recall_afternoon_count = base.filter(
+        recall_afternoon_count = Lead.objects.filter(
+            operator=operator,
             status__in=recall_codes,
+            postponed_at__isnull=True,
             updated_at__gte=today_start,
             updated_at__lt=lunch_start,
         ).count()
 
-    today_fresh_count = max(0, working_count - carry_count - recall_afternoon_count)
+    # Все working сейчас non-carry сегодняшние — carry убран из квоты,
+    # а recall (когда viсит в active-today) — это только non-carry-recall,
+    # но recall-коды пересекаются с carry по seed'у, так что 0.
+    # Оставляем поле для API-контракта (фронт его читает).
+    today_fresh_count = working_count
 
     postponed_count = Lead.objects.filter(
         operator=operator,
-        status__in=workable,
+        status__in=all_non_terminal,
         postponed_at__isnull=False,
     ).count()
 
     eligible_for_new = working_count < quota_limit
 
-    # Русский текст для баннера — упрощённый язык, короткие фразы, всегда
-    # заканчивается «новые придут автоматически» / «получишь новый».
-    if working_count == 0:
-        reason_ru = "Всё закрыто. Новые придут автоматически."
+    # Русский текст для баннера — нейтральный тон, никаких «закрой чтобы
+    # получить». Carry больше НЕ блокирует новых → баннер стал info/success.
+    free = max(0, quota_limit - working_count)
+    if working_count == 0 and carry_count == 0 and recall_afternoon_count == 0:
+        reason_ru = "Свободно все слоты. Новые придут автоматически."
     elif carry_count > 0 and recall_afternoon_count > 0:
         reason_ru = (
-            f"У тебя {working_count} в работе: {carry_count} — вчерашние "
-            f"спец-лиды, {recall_afternoon_count} — после обеда. "
-            "Закрой их — новые придут автоматически."
+            f"В работе {working_count} из {quota_limit}. Отдельно: "
+            f"{carry_count} — вчерашние спец-лиды, "
+            f"{recall_afternoon_count} — надо перезвонить после обеда."
+        )
+    elif carry_count > 0 and working_count < quota_limit:
+        reason_ru = (
+            f"В работе {working_count} из {quota_limit} + {carry_count} "
+            "carry-хвост на завтра. Свободно "
+            f"{free} слот{'ов' if free != 1 else ''}. Новые придут автоматически."
         )
     elif carry_count > 0:
         reason_ru = (
-            f"У тебя {working_count} в работе, из них {carry_count} — "
-            "вчерашние спец-лиды. Закрой их — новые придут автоматически."
+            f"Все {quota_limit} слотов в работе + {carry_count} "
+            "carry-хвост на завтра. Закрой любой сегодняшний — придёт новый."
         )
     elif recall_afternoon_count > 0:
         reason_ru = (
-            f"У тебя {working_count} в работе, {recall_afternoon_count} — "
-            "после обеда, надо перезвонить. Закрой их — новые придут."
+            f"В работе {working_count} из {quota_limit}. "
+            f"{recall_afternoon_count} — надо перезвонить после обеда."
         )
     elif working_count >= quota_limit:
         reason_ru = (
-            f"Все {quota_limit} слотов заняты сегодняшними. Закрой хотя бы "
-            "один — придёт новый."
+            f"Все {quota_limit} слотов в работе. Закрой любой — придёт новый."
         )
     else:
-        free = quota_limit - working_count
         reason_ru = (
             f"Свободно {free} из {quota_limit} слотов. "
             "Новые придут автоматически."
@@ -703,7 +730,8 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
     from django.db.models import Count, Q
 
     terminal = set(terminal_lead_status_codes())
-    workable = list(set(active_lead_status_codes()) - terminal)
+    carry = set(carry_over_status_codes())
+    workable = list(set(active_lead_status_codes()) - terminal - carry)
     batch = _rr_batch_size()
     active_today = _leads_active_today_filter()
 
@@ -762,13 +790,19 @@ def operators_distribution_status() -> list[dict]:
     morning_gate = _morning_gate_enabled()
 
     terminal = set(terminal_lead_status_codes())
-    workable = list(set(active_lead_status_codes()) - terminal)
+    carry = set(carry_over_status_codes())
+    workable = list(set(active_lead_status_codes()) - terminal - carry)
+    # `_postponed_count` включает carry-в-postponed, ок — postponed
+    # дизъюнктен с working (у working NOT NULL исключён).
+    all_non_terminal = list(set(active_lead_status_codes()) - terminal)
     active_today = _leads_active_today_filter()
 
     ops = list(
         Operator.objects.filter(status=OperatorStatus.ACTIVE)
         .annotate(
-            # «сегодня-плечи»: активные, не отложенные, не тронутые сегодня.
+            # «сегодня-плечи»: активные (не carry), не отложенные,
+            # не тронутые сегодня. Carry-хвост исключён — он больше
+            # не блокирует квоту (см. `operator_working_lead_count`).
             _working_count=Count(
                 "leads",
                 filter=Q(
@@ -780,7 +814,7 @@ def operators_distribution_status() -> list[dict]:
             _postponed_count=Count(
                 "leads",
                 filter=Q(
-                    leads__status__in=workable,
+                    leads__status__in=all_non_terminal,
                     leads__postponed_at__isnull=False,
                 ),
             ),

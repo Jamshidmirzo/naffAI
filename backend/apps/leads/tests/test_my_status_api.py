@@ -83,15 +83,21 @@ def test_empty_operator_returns_all_zeros_and_eligible():
     assert body["postponed_count"] == 0
     assert body["eligible_for_new"] is True
     assert body["quota_limit"] >= 1
-    # При пустых плечах — всегда «Всё закрыто».
-    assert "закрыто" in body["reason_ru"].lower()
+    # При пустых плечах — «Свободно все слоты. Новые придут автоматически.»
+    assert "свободно" in body["reason_ru"].lower()
 
 
 # ---- Only carry (вчерашние спец-лиды) -------------------------------------
 
 
 @pytest.mark.django_db
-def test_only_carry_leads_reported_in_carry_bucket():
+def test_only_carry_leads_not_in_working_but_reported_in_carry(settings):
+    """
+    3 вчерашних carry-лида → working=0 (carry исключён из квоты),
+    carry_count=3, eligible_for_new=True (оператор получит новых 5),
+    reason подсвечивает carry-хвост.
+    """
+    settings.RR_BATCH_SIZE = 5
     op = _mk_op()
     # Утро (до обеда), чтобы recall не подмешался.
     with freeze_time("2026-08-05 05:00:00"):  # 10:00 Ташкент
@@ -107,12 +113,13 @@ def test_only_carry_leads_reported_in_carry_bucket():
         r = c.get("/api/leads/my/status/")
         assert r.status_code == 200
         body = r.data
-        assert body["working_count"] == 3
+        assert body["working_count"] == 0
         assert body["carry_count"] == 3
         assert body["recall_afternoon_count"] == 0
         assert body["today_fresh_count"] == 0
         assert body["recall_active_now"] is False
-        assert "вчерашние" in body["reason_ru"]
+        assert body["eligible_for_new"] is True
+        assert "carry" in body["reason_ru"].lower() or "хвост" in body["reason_ru"].lower()
 
 
 # ---- Only recall (после обеда) --------------------------------------------
@@ -121,8 +128,8 @@ def test_only_carry_leads_reported_in_carry_bucket():
 @pytest.mark.django_db
 def test_after_lunch_recall_bucket_populated():
     """
-    14:00 Ташкент — no_answer, тронутый утром в 09:00, должен всплыть как
-    recall_afternoon.
+    14:00 Ташкент — no_answer, тронутый утром в 09:00, показан в
+    recall_afternoon_count. Не в working_count (carry исключён из квоты).
     """
     op = _mk_op()
     with freeze_time("2026-08-05 09:00:00"):  # 14:00 Ташкент
@@ -136,11 +143,12 @@ def test_after_lunch_recall_bucket_populated():
         r = c.get("/api/leads/my/status/")
         assert r.status_code == 200
         body = r.data
-        assert body["working_count"] == 1
+        assert body["working_count"] == 0
         assert body["carry_count"] == 0
         assert body["recall_afternoon_count"] == 1
         assert body["today_fresh_count"] == 0
         assert body["recall_active_now"] is True
+        assert body["eligible_for_new"] is True
         assert "после обеда" in body["reason_ru"].lower()
 
 
@@ -168,6 +176,7 @@ def test_quota_full_marks_ineligible_and_says_close_one(settings):
         assert body["recall_afternoon_count"] == 0
         assert body["today_fresh_count"] == 5
         assert body["eligible_for_new"] is False
+        # «Все 5 слотов в работе. Закрой любой — придёт новый.»
         assert "закрой" in body["reason_ru"].lower()
 
 
@@ -177,9 +186,17 @@ def test_quota_full_marks_ineligible_and_says_close_one(settings):
 @pytest.mark.django_db
 def test_mixed_case_carry_recall_and_today(settings):
     """
-    Симулируем боль: 8 лидов — 4 вчерашних carry, 2 утренних recall, 2
-    сегодняшних свежих. После 13:00. quota=5 → eligible=False, но
-    reason подсвечивает и carry, и recall.
+    Реалистичный кейс после 2026-08-04: 8 лидов — 4 вчерашних carry,
+    2 утренних recall (тоже carry-код), 2 сегодняшних assigned. После
+    13:00. quota=5.
+
+    Новая модель:
+      - working_count = 2 (только сегодняшние assigned, carry вне квоты)
+      - carry_count = 4 (вчерашние no_answer)
+      - recall_afternoon_count = 2 (утренние no_answer/phone_on)
+      - today_fresh_count = 2 (= working_count)
+      - eligible_for_new = True (working=2 < quota=5)
+      - reason содержит и carry, и recall
     """
     settings.RR_BATCH_SIZE = 5
     op = _mk_op()
@@ -196,9 +213,6 @@ def test_mixed_case_carry_recall_and_today(settings):
         # 2 утренних recall (сегодня, до 13:00)
         _mk_lead(op, 100, status=LeadStatus.PHONE_ON, updated_at=morning)
         _mk_lead(op, 101, status=LeadStatus.NO_ANSWER, updated_at=morning)
-        # Нужен второй recall с другим статусом, но у нас no_answer уже
-        # использован — использованный лид имеет уникальный phone, статус
-        # может повторяться, ок.
 
         # 2 свежих assigned (только что раздали, updated=сейчас)
         _mk_lead(op, 200, status=LeadStatus.ASSIGNED, updated_at=now)
@@ -209,12 +223,12 @@ def test_mixed_case_carry_recall_and_today(settings):
         r = c.get("/api/leads/my/status/")
         assert r.status_code == 200
         body = r.data
-        assert body["working_count"] == 8
+        assert body["working_count"] == 2
         assert body["carry_count"] == 4
         assert body["recall_afternoon_count"] == 2
         assert body["today_fresh_count"] == 2
-        assert body["eligible_for_new"] is False
-        # Оба класса упомянуты
+        assert body["eligible_for_new"] is True
+        # Оба класса упомянуты в reason
         assert "вчерашние" in body["reason_ru"]
         assert "после обеда" in body["reason_ru"].lower()
 

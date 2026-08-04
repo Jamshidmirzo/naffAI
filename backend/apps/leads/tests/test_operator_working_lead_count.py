@@ -1,15 +1,18 @@
 """
 `operator_working_lead_count(op)` — «сегодня-плечи» оператора: активные,
-не терминальные, не отложенные лиды, **которые он ещё не тронул сегодня**.
+не терминальные, **не carry-статус**, не отложенные лиды, ещё не
+тронутые сегодня.
 
-Правило: как только оператор поставил любой статус (включая carry_over
-типа no_answer/phone_on/dokonga_keladi) — лид «отработан на сегодня» и
-из счётчика уходит. Завтра `updated_at < today_start` → лид снова в счёте.
+Правила (2026-08-04 обновление):
+  1. Untouched (new / assigned) — всегда в счёте.
+  2. Тронут сегодня → из счёта уходит (по правилу «сегодня-плечи»).
+  3. **Carry-статус (no_answer / phone_on / callback_scheduled / …) —
+     из счёта уходит НАВСЕГДА**, потому что carry-лиды хранятся в
+     отдельном хвосте (всплывут завтра), не блокируют квоту RR.
 
-Это правило фидит квоту RR: `operators_eligible_for_new_leads` считает
-именно `_working_count < RR_BATCH_SIZE`, поэтому если Bonu утром закрыла
-пачку 5 — вечером её счётчик всё ещё будет 0 (все 5 «тронуты сегодня»)
-и RR может долить свежих.
+Это фидит квоту: `operators_eligible_for_new_leads` считает
+`_working_count < RR_BATCH_SIZE`. Если у Bonu 30 no_answer'ов (carry) —
+её working=0, RR доливает 5 свежих. Carry-лиды видны отдельно на /my.
 """
 
 from __future__ import annotations
@@ -74,8 +77,9 @@ def test_new_status_today_counts():
 @pytest.mark.django_db
 def test_touched_today_carry_status_not_counted():
     """
-    Ключевое: оператор сегодня поставил no_answer → лид «отработан»,
-    из счётчика уходит. Завтра всплывёт обратно.
+    Оператор сегодня поставил no_answer → carry, не в счёте.
+    (После 2026-08-04 работает по двум причинам: и «carry excluded»,
+    и «тронут сегодня». Раньше — только по второй.)
     """
     op = _mk_op()
     _mk_lead(op, 1, status=LeadStatus.NO_ANSWER, updated_days_ago=0)
@@ -83,28 +87,57 @@ def test_touched_today_carry_status_not_counted():
 
 
 @pytest.mark.django_db
-def test_touched_yesterday_carry_status_counts():
-    """Вчера поставил no_answer — сегодня утром снова в счёте (carry-over)."""
+def test_touched_yesterday_carry_status_not_counted():
+    """
+    Новое правило: carry-статус (no_answer) НЕ входит в квоту, никогда.
+    Ни сегодня-тронутый, ни вчерашний — они хранятся отдельно.
+    Оператор увидит их на /my (в carry-хвосте), но working=0.
+    """
     op = _mk_op()
     _mk_lead(op, 1, status=LeadStatus.NO_ANSWER, updated_days_ago=1)
-    assert operator_working_lead_count(op) == 1
+    assert operator_working_lead_count(op) == 0
 
 
 @pytest.mark.django_db
 def test_mixed_case_docstring_example():
     """
     3 лида у оператора:
-      - 1 assigned, updated сегодня → в счёте (untouched)
-      - 1 no_answer, updated вчера → в счёте (carry, не тронут сегодня)
-      - 1 no_answer, updated сегодня → НЕ в счёте (тронут сегодня)
-    Ожидание: working = 2.
+      - 1 assigned, updated сегодня → в счёте (untouched, non-carry)
+      - 1 no_answer, updated вчера → НЕ в счёте (carry-хвост, не блокирует)
+      - 1 no_answer, updated сегодня → НЕ в счёте (carry-хвост)
+    Ожидание: working = 1.
     """
     op = _mk_op()
     _mk_lead(op, 1, status=LeadStatus.ASSIGNED, updated_days_ago=0)
     _mk_lead(op, 2, status=LeadStatus.NO_ANSWER, updated_days_ago=1)
     _mk_lead(op, 3, status=LeadStatus.NO_ANSWER, updated_days_ago=0)
 
-    assert operator_working_lead_count(op) == 2
+    assert operator_working_lead_count(op) == 1
+
+
+@pytest.mark.django_db
+def test_all_carry_yields_zero_working():
+    """
+    Реалистичный «залипший» кейс из прода: у оператора 30+ carry-лидов
+    и ноль свежих. Раньше working≥30 → RR никогда не доливал, оператор
+    сидел без работы. Теперь: working=0, оператор eligible на 5 новых.
+    """
+    op = _mk_op()
+    for i in range(30):
+        _mk_lead(op, i, status=LeadStatus.NO_ANSWER, updated_days_ago=1)
+    for i in range(30, 35):
+        _mk_lead(op, i, status=LeadStatus.PHONE_ON, updated_days_ago=2)
+    for i in range(35, 40):
+        _mk_lead(op, i, status=LeadStatus.CALLBACK_SCHEDULED, updated_days_ago=1)
+    assert operator_working_lead_count(op) == 0
+
+
+@pytest.mark.django_db
+def test_carry_touched_today_still_not_counted():
+    """Сегодня поставил no_answer — carry, не в счёте (тронут ИЛИ carry)."""
+    op = _mk_op()
+    _mk_lead(op, 1, status=LeadStatus.NO_ANSWER, updated_days_ago=0)
+    assert operator_working_lead_count(op) == 0
 
 
 @pytest.mark.django_db

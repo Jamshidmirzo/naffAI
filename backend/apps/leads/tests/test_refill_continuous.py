@@ -155,3 +155,118 @@ def test_refill_does_not_fire_when_still_at_target_after_close():
         ).count()
         == 0
     )
+
+
+# ---- Carry-transition triggers refill (2026-08-04) -----------------------
+
+
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
+def test_refill_fires_on_carry_transition_no_answer():
+    """
+    Оператор с 5 assigned. Ставит `no_answer` (carry, не терминал) на
+    один из них → carry-статус исключён из квоты → working падает до 4
+    → need=1 → refill доливает 1 свежий.
+
+    Раньше carry-transition НЕ триггерил refill (только terminal), и лид
+    висел на плечах, забивая квоту. Теперь оператор моментально получает
+    замену.
+    """
+    op = Operator.objects.create(full_name="OP", status=OperatorStatus.ACTIVE)
+    leads = [_mk_assigned(op, i) for i in range(5)]
+    for i in range(20):
+        _mk_orphan(i + 300)
+
+    lead_update_status(lead=leads[0], status=LeadStatus.NO_ANSWER)
+
+    # 5 assigned изначально + 1 refill - 0 закрытых = 6 non-terminal.
+    # (no_answer тоже non-terminal, просто carry.)
+    assert (
+        LeadAssignment.objects.filter(
+            operator=op, source=LeadAssignmentSource.AUTO_REFILL
+        ).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
+def test_refill_fires_on_carry_transition_callback_scheduled():
+    """
+    То же для `callback_scheduled`: carry → освобождает слот → refill.
+    """
+    op = Operator.objects.create(full_name="OP", status=OperatorStatus.ACTIVE)
+    leads = [_mk_assigned(op, i) for i in range(5)]
+    for i in range(20):
+        _mk_orphan(i + 400)
+
+    lead_update_status(lead=leads[0], status=LeadStatus.CALLBACK_SCHEDULED)
+
+    assert (
+        LeadAssignment.objects.filter(
+            operator=op, source=LeadAssignmentSource.AUTO_REFILL
+        ).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
+def test_refill_does_not_fire_on_non_carry_non_terminal_transition():
+    """
+    Оператор ставит `has_debt` (non-carry, non-terminal): лид остаётся
+    в квоте (has_debt считается в working — non-carry). Working не
+    падает → refill не срабатывает.
+
+    Важное отличие от carry: has_debt держит клиента, «жду зарплату» —
+    занимает слот, потому что бизнес хочет чтобы у оператора не копилось
+    больше 5 «висяков-долгов».
+    """
+    op = Operator.objects.create(full_name="OP", status=OperatorStatus.ACTIVE)
+    leads = [_mk_assigned(op, i) for i in range(5)]
+    for i in range(20):
+        _mk_orphan(i + 500)
+
+    lead_update_status(lead=leads[0], status="has_debt")
+
+    assert (
+        LeadAssignment.objects.filter(
+            operator=op, source=LeadAssignmentSource.AUTO_REFILL
+        ).count()
+        == 0
+    )
+
+
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
+def test_carry_transition_from_full_carry_operator_still_gets_new():
+    """
+    Реалистичный «залипший» сценарий: у оператора 30 carry-лидов, 0
+    non-carry. Он ставит ЕЩЁ carry (no_answer на одном из старых
+    no_answer-лидов) — working всё равно 0, refill долит до 5.
+
+    Проверяет что refill корректно работает и когда working уже был 0.
+    """
+    op = Operator.objects.create(full_name="OP", status=OperatorStatus.ACTIVE)
+    carry_leads = []
+    for i in range(30):
+        lead = Lead.objects.create(
+            full_name=f"C-{i}",
+            phone=f"+99899{i:07d}",
+            status=LeadStatus.NO_ANSWER,
+            operator=op,
+        )
+        carry_leads.append(lead)
+    for i in range(20):
+        _mk_orphan(i + 600)
+
+    # Оператор снова ставит no_answer на один из них — это уже no-op
+    # (статус тот же), lead_update_status ранний return.
+    # Поэтому эмулируем реальный сценарий: сначала assign → потом carry.
+    l = _mk_assigned(op, 999)
+    lead_update_status(lead=l, status=LeadStatus.NO_ANSWER)
+
+    # 30 старых carry + 1 assigned-стал-carry + N refill. Working=0 после,
+    # need=5, доливает 5.
+    assert (
+        LeadAssignment.objects.filter(
+            operator=op, source=LeadAssignmentSource.AUTO_REFILL
+        ).count()
+        == 5
+    )

@@ -6,6 +6,7 @@ import {
   MessageCircle,
   AlarmClock,
   CheckCircle2,
+  Info,
   Lock,
   PauseCircle,
   PlayCircle,
@@ -566,12 +567,15 @@ export default function MyLeads() {
         </section>
       )}
 
-      {/* --- Приоритетный баннер «сначала закрой это» -------------------
-          Показываем всегда, когда есть carry или recall — это главное,
-          что оператор должен увидеть, открыв страницу. Цвет:
-            красный — есть carry (вчерашние спец-лиды);
-            оранжевый — есть только recall (после обеда);
-            зелёный — всё ок, слоты свободны.
+      {/* --- Info-баннер статуса плеч ------------------------------------
+          Нейтральный/успешный тон. Carry больше НЕ блокирует новые
+          лиды (2026-08-04): у оператора всегда до 5 сегодняшних
+          non-carry, а carry-хвост живёт рядом и всплывёт завтра.
+          Цвет:
+            info (синий)  — есть carry-хвост или recall-после-обеда
+                            (информируем, не пугаем);
+            info (синий)  — квота полная (все 5 в работе);
+            success (зелёный) — есть свободные слоты.
           Не рендерим в других вьюхах — там смысла нет. */}
       {view === "active" && myStatus.data && (() => {
         const s = myStatus.data;
@@ -582,46 +586,49 @@ export default function MyLeads() {
           recall_afternoon_count: recall,
           eligible_for_new: eligible,
         } = s;
-        // Определяем цвет
-        let tone: "red" | "orange" | "green" = "green";
-        if (carry > 0) tone = "red";
-        else if (s.recall_active_now && recall > 0) tone = "orange";
-        else if (!eligible) tone = "orange";
+        // Тон: info когда есть carry/recall/полная квота, success —
+        // когда есть свободные слоты и хвоста нет.
+        const hasHint = carry > 0 || (s.recall_active_now && recall > 0);
+        const tone: "info" | "success" = hasHint || !eligible ? "info" : "success";
 
         const bg =
-          tone === "red"
-            ? "rgba(220,38,38,0.10)"
-            : tone === "orange"
-            ? "rgba(249,115,22,0.10)"
+          tone === "info"
+            ? "rgba(59,130,246,0.08)"
             : "rgba(16,185,129,0.10)";
         const border =
-          tone === "red"
-            ? "rgba(220,38,38,0.45)"
-            : tone === "orange"
-            ? "rgba(249,115,22,0.45)"
+          tone === "info"
+            ? "rgba(59,130,246,0.35)"
             : "rgba(16,185,129,0.45)";
-        const fg =
-          tone === "red" ? "#dc2626" : tone === "orange" ? "#c2410c" : "#047857";
+        const fg = tone === "info" ? "#1d4ed8" : "#047857";
 
         // Готовим строку — предпочитаем i18n-варианты, чтобы работал uz.
+        const free = Math.max(0, limit - working);
         let text = "";
         if (carry > 0 && recall > 0 && s.recall_active_now) {
           text = t("my.status.banner.carry_and_recall", {
             working,
             carry,
             recall,
+            limit,
+          });
+        } else if (carry > 0 && working < limit) {
+          text = t("my.status.banner.carry_with_free_slots", {
+            working,
+            carry,
+            limit,
+            free,
           });
         } else if (carry > 0) {
-          text = t("my.status.banner.carry_only", { working, carry });
+          text = t("my.status.banner.carry_full_quota", {
+            carry,
+            limit,
+          });
         } else if (recall > 0 && s.recall_active_now) {
-          text = t("my.status.banner.recall_only", { working, recall });
+          text = t("my.status.banner.recall_only", { working, recall, limit });
         } else if (!eligible && working >= limit) {
           text = t("my.status.banner.quota_full", { limit });
         } else {
-          text = t("my.status.banner.ok", {
-            free: Math.max(0, limit - working),
-            limit,
-          });
+          text = t("my.status.banner.ok", { free, limit });
         }
 
         return (
@@ -633,7 +640,11 @@ export default function MyLeads() {
               className="shrink-0 rounded-xl p-2"
               style={{ background: bg, border: `1px solid ${border}` }}
             >
-              <Lock className="w-5 h-5" style={{ color: fg }} />
+              {tone === "success" ? (
+                <CheckCircle2 className="w-5 h-5" style={{ color: fg }} />
+              ) : (
+                <Info className="w-5 h-5" style={{ color: fg }} />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-[14.5px] font-semibold" style={{ color: fg }}>
@@ -641,6 +652,7 @@ export default function MyLeads() {
               </div>
               <div className="text-[12px] opacity-80 mt-0.5" style={{ color: fg }}>
                 {t("my.status.banner.progress", { working, limit })}
+                {carry > 0 ? ` · ${t("my.status.banner.carry_tail", { carry })}` : ""}
               </div>
             </div>
           </div>

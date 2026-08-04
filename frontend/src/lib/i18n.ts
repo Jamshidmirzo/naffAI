@@ -1150,17 +1150,22 @@ const STRINGS: Lookup = {
     "my.card_label": "карта",
 
     // ------ my/status banner + sections (2026-08 UX fix) ------
+    // Carry-хвост больше НЕ блокирует новые лиды — операторы всегда
+    // получают до {limit} свежих сегодняшних, carry живёт рядом.
     "my.status.banner.carry_and_recall":
-      "У тебя {working} в работе: {carry} — вчерашние спец-лиды, {recall} — после обеда. Закрой их — новые придут автоматически.",
-    "my.status.banner.carry_only":
-      "У тебя {working} в работе, из них {carry} — вчерашние спец-лиды. Закрой их — новые придут автоматически.",
+      "В работе {working} из {limit}. Отдельно: {carry} — вчерашние спец-лиды, {recall} — надо перезвонить после обеда.",
+    "my.status.banner.carry_with_free_slots":
+      "В работе {working} из {limit} + {carry} carry-хвост на завтра. Свободно {free} — новые придут автоматически.",
+    "my.status.banner.carry_full_quota":
+      "Все {limit} слотов в работе + {carry} carry-хвост на завтра. Закрой любой сегодняшний — придёт новый.",
     "my.status.banner.recall_only":
-      "У тебя {working} в работе, {recall} — после обеда, надо перезвонить. Закрой — придут новые.",
+      "В работе {working} из {limit}. {recall} — надо перезвонить после обеда.",
     "my.status.banner.quota_full":
-      "Все {limit} слотов заняты сегодняшними. Закрой хотя бы один — придёт новый.",
+      "Все {limit} слотов в работе. Закрой любой — придёт новый.",
     "my.status.banner.ok":
       "Свободно {free} из {limit} слотов. Новые придут автоматически.",
     "my.status.banner.progress": "В работе · {working}/{limit}",
+    "my.status.banner.carry_tail": "хвост {carry}",
     "my.section.carry": "🔴 Спец-лиды со вчера · {n}",
     "my.section.recall": "🟠 После обеда — перезвонить · {n}",
     "my.section.today": "🟢 Сегодняшние · {n}",
@@ -2517,17 +2522,22 @@ const STRINGS: Lookup = {
     "my.card_label": "karta",
 
     // ------ my/status banner + bo'limlar (2026-08 UX fix) ------
+    // Carry-quyruq endi yangi lidlarni bloklamaydi — operator har doim
+    // {limit} tagacha yangi bugungilarni oladi, carry yonida yashaydi.
     "my.status.banner.carry_and_recall":
-      "Sizda {working} ish jarayonida: {carry} — kechagi maxsus lidlar, {recall} — tushdan keyingi. Ularni yopib boring — yangilari avtomatik keladi.",
-    "my.status.banner.carry_only":
-      "Sizda {working} ish jarayonida, ulardan {carry} — kechagi maxsus lidlar. Yopib boring — yangilari avtomatik keladi.",
+      "Ish jarayonida {working}/{limit}. Alohida: {carry} — kechagi maxsus lidlar, {recall} — tushdan keyin qayta qo'ng'iroq.",
+    "my.status.banner.carry_with_free_slots":
+      "Ish jarayonida {working}/{limit} + {carry} carry-quyruq ertaga uchun. {free} bo'sh — yangi lidlar avtomatik keladi.",
+    "my.status.banner.carry_full_quota":
+      "Barcha {limit} slot band + {carry} carry-quyruq ertaga uchun. Bugungi biror lidni yoping — yangi keladi.",
     "my.status.banner.recall_only":
-      "Sizda {working} ish jarayonida, {recall} — tushdan keyingi qayta qo'ng'iroq. Yopib boring — yangilari keladi.",
+      "Ish jarayonida {working}/{limit}. {recall} — tushdan keyin qayta qo'ng'iroq qilish kerak.",
     "my.status.banner.quota_full":
-      "Barcha {limit} slotni bugungilar band qilgan. Kamida bittasini yoping — yangi keladi.",
+      "Barcha {limit} slot band. Biror lidni yoping — yangi keladi.",
     "my.status.banner.ok":
       "{limit} slotdan {free} bo'sh. Yangi lidlar avtomatik keladi.",
     "my.status.banner.progress": "Ish jarayonida · {working}/{limit}",
+    "my.status.banner.carry_tail": "quyruq {carry}",
     "my.section.carry": "🔴 Kechagi maxsus lidlar · {n}",
     "my.section.recall": "🟠 Tushdan keyin — qayta qo'ng'iroq · {n}",
     "my.section.today": "🟢 Bugungilar · {n}",

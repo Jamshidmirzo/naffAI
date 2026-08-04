@@ -1,9 +1,14 @@
 """
 Правило `recall_after_lunch`: после 13:00 Asia/Tashkent лид с recall-
 статусом (`no_answer` / `phone_on`), выставленным до обеда, снова
-считается активным для сегодня и всплывает наверх в /my active как
-intraday-carry. Если оператор повторно тронул статус ПОСЛЕ обеда —
-уходит до завтра по общему правилу «updated_at сегодня».
+всплывает в /my active как intraday-carry. Если оператор повторно
+тронул статус ПОСЛЕ обеда — уходит до завтра по общему правилу.
+
+**Важно (2026-08-04)**: `operator_working_lead_count` НЕ считает
+carry-статусы (включая recall-коды — они ⊂ carry). Поэтому «висит в
+/my active» и «попадает в квоту working» — теперь разные вещи. Тесты
+здесь проверяют ВИДИМОСТЬ в /my active (via `leads_for_operator`),
+не считают carry в working.
 
 Поверяем через freeze_time + backdate `updated_at`, чтобы не зависеть
 от текущего времени CI-раннера.
@@ -94,10 +99,11 @@ def test_before_lunch_touched_today_hidden(op):
 
 
 @pytest.mark.django_db
-def test_after_lunch_touched_before_lunch_visible_and_counted(op):
+def test_after_lunch_touched_before_lunch_visible_but_not_counted(op):
     """
-    14:00 — no_answer поставлен в 09:00 (до обеда) → снова активен,
-    working=1, виден в /my active первым (топ-группа).
+    14:00 — no_answer поставлен в 09:00 (до обеда) → снова активен и
+    ВИДЕН в /my active первым (топ-группа), но НЕ в квоте working
+    (carry-статус исключён из квоты).
     """
     with freeze_time("2026-08-04 09:00:00"):  # 14:00 Asia/Tashkent
         lunch = timezone.localtime().replace(
@@ -107,7 +113,9 @@ def test_after_lunch_touched_before_lunch_visible_and_counted(op):
         lead = _mk_lead(
             op, 1, status=LeadStatus.NO_ANSWER, updated_at=morning_update
         )
-        assert operator_working_lead_count(op) == 1
+        # carry исключён из working квоты
+        assert operator_working_lead_count(op) == 0
+        # но виден оператору
         visible = list(
             leads_for_operator(op, view="active").values_list("id", flat=True)
         )
@@ -116,14 +124,14 @@ def test_after_lunch_touched_before_lunch_visible_and_counted(op):
 
 @pytest.mark.django_db
 def test_after_lunch_touched_before_lunch_phone_on_also_recalls(op):
-    """phone_on ведёт себя так же — тоже в recall_after_lunch по умолчанию."""
+    """phone_on ведёт себя так же — виден в /my active, не в working квоте."""
     with freeze_time("2026-08-04 09:00:00"):
         lunch = timezone.localtime().replace(
             hour=13, minute=0, second=0, microsecond=0
         )
         morning = lunch - dt.timedelta(hours=3)  # 10:00 local
         lead = _mk_lead(op, 1, status=LeadStatus.PHONE_ON, updated_at=morning)
-        assert operator_working_lead_count(op) == 1
+        assert operator_working_lead_count(op) == 0
         assert lead.id in list(
             leads_for_operator(op, view="active").values_list("id", flat=True)
         )
@@ -230,10 +238,10 @@ def test_after_lunch_recall_at_top_alongside_carry(op):
 
 
 @pytest.mark.django_db
-def test_next_day_recall_lead_behaves_as_carry(op):
+def test_next_day_recall_lead_visible_but_not_in_quota(op):
     """
-    Существующее поведение carry_over_next_day не должно сломаться:
-    вчерашний no_answer сегодня утром (10:00) — carry, виден первым.
+    Вчерашний no_answer сегодня утром (10:00) — виден оператору первым
+    (carry-сортировка), но НЕ в квоте working (carry исключён).
     """
     # Создаём лид «вчера в 15:00 Ташкент» относительно замороженного времени.
     with freeze_time("2026-08-04 05:00:00"):  # 10:00 Asia/Tashkent
@@ -243,7 +251,7 @@ def test_next_day_recall_lead_behaves_as_carry(op):
         lead = _mk_lead(
             op, 1, status=LeadStatus.NO_ANSWER, updated_at=yesterday_15
         )
-        assert operator_working_lead_count(op) == 1
+        assert operator_working_lead_count(op) == 0
         visible = list(
             leads_for_operator(op, view="active").values_list("id", flat=True)
         )

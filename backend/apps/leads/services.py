@@ -1154,15 +1154,29 @@ def lead_update_status(
     )
     _schedule_writeback(lead.id, comment=comment)
 
-    # Continuous refill до RR_BATCH_SIZE: как только лид ушёл в терминал,
-    # доливаем оператору столько лидов, сколько не хватает до цели
-    # (target - working). Обычно 1, если только что закрыл 1 лид.
+    # Continuous refill до RR_BATCH_SIZE: доливаем оператору столько
+    # лидов, сколько не хватает до цели (target - working). Обычно 1,
+    # если только что закрыл 1 лид.
+    #
+    # Триггеры:
+    #   1. Terminal (won / lost / archived / needs_review) — лид ушёл
+    #      с плеч полностью.
+    #   2. Carry-transition (no_answer / phone_on / callback_scheduled /
+    #      contacted_telegram / dokonga_keladi / …) — лид уехал в
+    #      carry-хвост и больше не занимает квоту (см.
+    #      `operator_working_lead_count`). Оператор должен получить
+    #      свежий на его место сегодня же, а carry всплывёт завтра.
+    #
     # До qimmatlik-блока, чтобы qimmatlik-retry получил свой приоритет
     # (он не зависит от общего пула).
     if lead.operator_id:
-        from .selectors import terminal_lead_status_codes
+        from .selectors import carry_over_status_codes, terminal_lead_status_codes
 
-        if status in terminal_lead_status_codes():
+        vacates_slot = (
+            status in terminal_lead_status_codes()
+            or status in carry_over_status_codes()
+        )
+        if vacates_slot:
             op_id = lead.operator_id
             transaction.on_commit(lambda: _run_refill_to_target(op_id))
 
