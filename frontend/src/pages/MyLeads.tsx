@@ -85,6 +85,88 @@ function isOverdue(iso: string | null | undefined) {
   }
 }
 
+// --- Hint plate helpers (2026-08-04) ------------------------------------
+// Форматируем `updated_at` относительно «сегодня» в Asia/Tashkent, чтобы
+// оператор сразу читал «Сегодня 14:32» / «Вчера 10:00» / «02.08 в 09:15».
+// Даём t-функцию снаружи, чтобы helper оставался вне React-контекста.
+type TFn = (key: string, params?: Record<string, string | number>) => string;
+
+// Парсим Y/M/D/HH/MM в Asia/Tashkent через Intl.DateTimeFormat (no DST).
+function tashkentParts(d: Date): {
+  y: number; m: number; day: number; hh: string; mm: string;
+} {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tashkent",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(d);
+  const g = (k: string) => parts.find((p) => p.type === k)!.value;
+  // Intl может отдать «24» вместо «00» для полуночи — нормализуем.
+  const hourRaw = g("hour");
+  const hh = hourRaw === "24" ? "00" : hourRaw;
+  return {
+    y: Number(g("year")),
+    m: Number(g("month")),
+    day: Number(g("day")),
+    hh,
+    mm: g("minute"),
+  };
+}
+
+function daysDiffTashkent(then: Date, now: Date): number {
+  const a = tashkentParts(then);
+  const b = tashkentParts(now);
+  // Считаем разницу дат как целое число дней между Y-M-D (без часов).
+  const ta = Date.UTC(a.y, a.m - 1, a.day);
+  const tb = Date.UTC(b.y, b.m - 1, b.day);
+  return Math.round((tb - ta) / 86_400_000);
+}
+
+function formatHintWhen(iso: string | null | undefined, t: TFn): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  const p = tashkentParts(d);
+  const time = `${p.hh}:${p.mm}`;
+  const diff = daysDiffTashkent(d, now);
+  if (diff <= 0) return t("my.hist.today", { time });
+  if (diff === 1) return t("my.hist.yesterday", { time });
+  if (diff === 2) return t("my.hist.day_before", { time });
+  const date = `${String(p.day).padStart(2, "0")}.${String(p.m).padStart(2, "0")}`;
+  return t("my.hist.date_at", { date, time });
+}
+
+// Ручной маппинг статус-кодов → короткий человеческий хвост подсказки.
+// Кастомные статусы, которых нет в этом словаре, покажутся через
+// LeadStatusLabel.label из useLeadStatusInfo как fallback.
+const HINT_STATUS_KEY: Record<string, string> = {
+  no_answer: "my.hint.no_answer",
+  no_answer_2: "my.hint.no_answer_2",
+  phone_on: "my.hint.phone_on",
+  callback_scheduled: "my.hint.callback_scheduled",
+  contacted_telegram: "my.hint.contacted_telegram",
+  dokonga_keladi: "my.hint.dokonga_keladi",
+};
+
+// Статусы, для которых плашка «после обеда — надо перезвонить» тоже
+// уместна (сегодняшний no_answer/phone_on до обеда). Совпадает с
+// RECALL_STATUSES внутри MyLeads.
+const RECALL_HINT_STATUSES = new Set(["no_answer", "phone_on"]);
+const CARRY_HINT_STATUSES = new Set([
+  "no_answer",
+  "no_answer_2",
+  "phone_on",
+  "callback_scheduled",
+  "contacted_telegram",
+  "dokonga_keladi",
+]);
+
 function LeadStatusBadge({
   code,
   overdue = false,
@@ -1068,6 +1150,53 @@ function LeadCard({
     return updated < t0.getTime();
   }, [lead.status, lead.updated_at]);
 
+  // --- Hint plate (2026-08-04) ---------------------------------------
+  // Плашка с конкретной подсказкой «когда и что было» — расшифровка
+  // бейджа «Звонили вчера» + также помогает по recall-after-lunch
+  // (сегодняшний no_answer/phone_on до 13:00). Условия:
+  //   1) carry-status и updated_at < сегодняшняя полуночь (совпадает с
+  //      wasYesterday выше), ИЛИ
+  //   2) recall-status (no_answer / phone_on) и сейчас >= 13:00 Ташкента,
+  //      и updated_at был сегодня в первой половине дня.
+  const statusInfo = useLeadStatusInfo(lead.status);
+  const hint = useMemo(() => {
+    if (!lead.updated_at) return null;
+    const upd = new Date(lead.updated_at).getTime();
+    if (Number.isNaN(upd) || upd <= 0) return null;
+
+    // Локальная полночь + 13:00 Ташкента (повторяем логику MyLeads).
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Tashkent",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(now);
+    const y = Number(parts.find((p) => p.type === "year")!.value);
+    const mo = Number(parts.find((p) => p.type === "month")!.value);
+    const dy = Number(parts.find((p) => p.type === "day")!.value);
+    const TASHKENT_OFFSET_MS = 5 * 60 * 60 * 1000;
+    const todayStartMs = Date.UTC(y, mo - 1, dy, 0, 0, 0) - TASHKENT_OFFSET_MS;
+    const lunchMs = todayStartMs + 13 * 60 * 60 * 1000;
+    const isCarry = CARRY_HINT_STATUSES.has(lead.status) && upd < todayStartMs;
+    const isRecall =
+      now.getTime() >= lunchMs &&
+      RECALL_HINT_STATUSES.has(lead.status) &&
+      upd >= todayStartMs &&
+      upd < lunchMs;
+    if (!isCarry && !isRecall) return null;
+    const key = HINT_STATUS_KEY[lead.status];
+    const statusText = key
+      ? t(key)
+      : (statusInfo.label || lead.status).toLowerCase();
+    return {
+      whenLabel: formatHintWhen(lead.updated_at, t),
+      statusHint: statusText,
+    };
+    // statusInfo.label может обновиться, когда придёт /lead-statuses/;
+    // держим его в зависимостях, чтобы fallback перестроился.
+  }, [lead.status, lead.updated_at, statusInfo.label, t]);
+
   useEffect(() => {
     if (!contactOpen) return;
     const onDoc = (e: MouseEvent) => {
@@ -1197,6 +1326,23 @@ function LeadCard({
           >
             <span>📅</span>
             {t("my.carry_yesterday_badge")}
+          </div>
+        )}
+        {hint && (
+          <div
+            className="mt-1.5 rounded-[12px] px-3 py-2 flex items-start gap-2"
+            style={{
+              background: "var(--accent-pale-bg)",
+              border: "1px solid var(--accent-pale-border)",
+              color: "var(--accent-pale-text)",
+            }}
+          >
+            <span style={{ fontSize: 14, lineHeight: 1 }}>💡</span>
+            <div className="flex-1 min-w-0 text-[13px] leading-tight">
+              <span className="font-medium">{hint.whenLabel}</span>
+              {" — "}
+              <span>{hint.statusHint}</span>
+            </div>
           </div>
         )}
         {callbackAt && overdue && (

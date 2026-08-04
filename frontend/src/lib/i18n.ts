@@ -1182,6 +1182,20 @@ const STRINGS: Lookup = {
     "my.quick.tomorrow_morning": "Завтра утром 09:30",
     "my.carry_yesterday_badge": "Звонили вчера",
 
+    // ------ history hint plate (2026-08-04) ------
+    // Подсказка «что было в прошлый раз» — рендерится под бейджем
+    // «Звонили вчера» на carry- и recall-after-lunch лидах.
+    "my.hist.today": "Сегодня {time}",
+    "my.hist.yesterday": "Вчера {time}",
+    "my.hist.day_before": "Позавчера {time}",
+    "my.hist.date_at": "{date} в {time}",
+    "my.hint.no_answer": "не взял трубку",
+    "my.hint.no_answer_2": "второй раз не ответил",
+    "my.hint.phone_on": "телефон включён",
+    "my.hint.callback_scheduled": "обещал перезвонить",
+    "my.hint.contacted_telegram": "писали в Telegram",
+    "my.hint.dokonga_keladi": "обещал прийти в магазин",
+
     // ------ my/status banner + sections (2026-08 UX fix) ------
     // Carry-хвост больше НЕ блокирует новые лиды — операторы всегда
     // получают до {limit} свежих сегодняшних, carry живёт рядом.
@@ -2586,6 +2600,20 @@ const STRINGS: Lookup = {
     "my.quick.evening": "Kechqurun 19:00",
     "my.quick.tomorrow_morning": "Ertaga ertalab 09:30",
     "my.carry_yesterday_badge": "Kecha qo'ng'iroq qilingan",
+
+    // ------ tarix eslatmasi (2026-08-04) ------
+    // Carry va tushdan keyingi qayta qo'ng'iroq lidlari uchun
+    // «o'tgan safar nima bo'lgan» eslatmasi.
+    "my.hist.today": "Bugun {time}",
+    "my.hist.yesterday": "Kecha {time}",
+    "my.hist.day_before": "Avvalgi kun {time}",
+    "my.hist.date_at": "{date} soat {time}",
+    "my.hint.no_answer": "telefon ko'tarmadi",
+    "my.hint.no_answer_2": "ikkinchi marta ham ko'tarmadi",
+    "my.hint.phone_on": "telefon yoqilgan",
+    "my.hint.callback_scheduled": "qayta qo'ng'iroq qilishga va'da berdi",
+    "my.hint.contacted_telegram": "Telegramda yozildi",
+    "my.hint.dokonga_keladi": "do'konga kelishga va'da berdi",
 
     // ------ my/status banner + bo'limlar (2026-08 UX fix) ------
     // Carry-quyruq endi yangi lidlarni bloklamaydi — operator har doim
