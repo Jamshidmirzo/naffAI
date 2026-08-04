@@ -1154,16 +1154,17 @@ def lead_update_status(
     )
     _schedule_writeback(lead.id, comment=comment)
 
-    # Refill-по-N: если лид ушёл в терминал и у оператора больше нет
-    # working-лидов — тянем следующую пачку из общего пула. До
-    # qimmatlik-блока, чтобы qimmatlik-retry получил свой приоритет
+    # Continuous refill до RR_BATCH_SIZE: как только лид ушёл в терминал,
+    # доливаем оператору столько лидов, сколько не хватает до цели
+    # (target - working). Обычно 1, если только что закрыл 1 лид.
+    # До qimmatlik-блока, чтобы qimmatlik-retry получил свой приоритет
     # (он не зависит от общего пула).
     if lead.operator_id:
         from .selectors import terminal_lead_status_codes
 
         if status in terminal_lead_status_codes():
             op_id = lead.operator_id
-            transaction.on_commit(lambda: _run_refill_if_empty(op_id))
+            transaction.on_commit(lambda: _run_refill_to_target(op_id))
 
     # Qimmatlik → auto-reassign to a fresh operator (once). skip_retry
     # is the recursion-guard used by lead_qimmatlik_retry itself when it
@@ -1174,13 +1175,21 @@ def lead_update_status(
     return lead
 
 
-def _run_refill_if_empty(operator_id: int) -> None:
+def _run_refill_to_target(operator_id: int) -> None:
     """
-    Fresh-transaction wrapper: если у оператора работающих лидов больше
-    нет, тянем refill_operator_leads. Ошибки логируем, но не роняем
-    вызывающий поток.
+    Continuous refill: держим у оператора working_count == RR_BATCH_SIZE.
+
+    Считаем `need = target - working`. Если > 0 — доливаем `need` лидов
+    из общего пула. Работает и когда working=0 (полная пачка), и когда
+    working=4 (доливаем 1 после закрытия одного лида).
+
+    Fresh transaction wrapper — вызывается из `transaction.on_commit`,
+    чтобы working_count посчитался по уже закоммиченному изменению
+    статуса. Ошибки логируем, вызывающий поток не роняем.
     """
     try:
+        from django.conf import settings
+
         from .selectors import operator_working_lead_count
 
         op = Operator.objects.filter(
@@ -1188,8 +1197,12 @@ def _run_refill_if_empty(operator_id: int) -> None:
         ).first()
         if op is None:
             return
-        if operator_working_lead_count(op) == 0:
-            refill_operator_leads(operator=op)
+        target = int(getattr(settings, "RR_BATCH_SIZE", 5))
+        current = operator_working_lead_count(op)
+        need = target - current
+        if need <= 0:
+            return
+        refill_operator_leads(operator=op, size=need)
     except Exception:
         logger.exception("refill failed op=%s", operator_id)
 

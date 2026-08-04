@@ -1,7 +1,12 @@
 """
-Refill-по-N: как только у активного оператора счётчик working-лидов
-падает до нуля (последний терминализовался в won/lost/…), сервис берёт
-следующие N сирот из общего пула и назначает их оператору.
+Continuous refill: как только у активного оператора закрывается
+(терминализуется) хотя бы один лид, сервис доливает `RR_BATCH_SIZE
+- working_count` лидов из общего пула, чтобы держать пачку постоянно
+на 5.
+
+Old-style «refill только когда working=0» больше не работает — тесты
+здесь адаптированы под новую логику. Полный набор кейсов на рёбрах
+(частичное, полное, over-target) — в test_refill_continuous.py.
 """
 
 from __future__ import annotations
@@ -51,8 +56,12 @@ def test_refill_fires_when_last_lead_closes():
 
 
 @pytest.mark.django_db(transaction=True, serialized_rollback=True)
-def test_refill_does_not_fire_when_other_leads_still_active():
-    """Оператор с 2 активными → закрываем 1 → refill НЕ срабатывает."""
+def test_refill_tops_up_to_target_when_other_leads_still_active():
+    """
+    Continuous-refill: оператор с 2 активными → закрываем 1 → working=1 →
+    need=4 → в пуле 20 сирот → доливает 4 → working=5.
+    (Раньше здесь ожидалось refill=0; теперь всегда до target.)
+    """
     op = Operator.objects.create(full_name="OP", status=OperatorStatus.ACTIVE)
     a = _assign_lead(op, 1)
     _assign_lead(op, 2)  # остаётся активным
@@ -62,11 +71,12 @@ def test_refill_does_not_fire_when_other_leads_still_active():
 
     lead_update_status(lead=a, status=LeadStatus.WON)
 
-    # У оператора по-прежнему только 1 активный (второй, что не трогали).
-    assert Lead.objects.filter(operator=op, status=LeadStatus.ASSIGNED).count() == 1
+    # 1 старый assigned + 4 refill (new-статус сирот) = 5 не-терминальных.
+    active = Lead.objects.filter(operator=op).exclude(status=LeadStatus.WON)
+    assert active.count() == 5
     assert LeadAssignment.objects.filter(
         operator=op, source=LeadAssignmentSource.AUTO_REFILL
-    ).count() == 0
+    ).count() == 4
 
 
 @pytest.mark.django_db(transaction=True, serialized_rollback=True)

@@ -1,8 +1,10 @@
 """
-Watcher `refill_idle_operators`: раз в минуту доливает сирот
-активным операторам с working_count=0. Тесты:
-- idle оператор + пул → получил пачку
-- busy оператор → пропущен
+Watcher `refill_idle_operators` (continuous-mode): раз в минуту
+проходит по активным операторам и доливает КАЖДОМУ до
+RR_BATCH_SIZE = 5. Тесты:
+- idle оператор + пул → получил полную пачку (5)
+- частично загруженный (working<5) → доливает недостающее
+- на квоте (working>=5) → пропущен
 - inactive оператор → пропущен
 - killswitch (SystemSetting.auto_distribution_enabled=False) → 0 всем
 """
@@ -54,8 +56,11 @@ def test_refill_watcher_delivers_to_idle_operator():
 
 
 @pytest.mark.django_db
-def test_refill_watcher_skips_busy_operator():
-    """У оператора working_count=3 → пропускаем, не назначаем ничего."""
+def test_refill_watcher_tops_up_partially_loaded_operator():
+    """
+    working=3, target=5, need=2 → доливает 2 из пула. Continuous-mode:
+    старая логика «skip если working>0» больше не действует.
+    """
     op = Operator.objects.create(full_name="OP", status=OperatorStatus.ACTIVE)
     for i in range(3):
         _mk_lead_assigned(op, i)
@@ -64,8 +69,24 @@ def test_refill_watcher_skips_busy_operator():
 
     call_command("refill_idle_operators")
 
-    # У оператора по-прежнему только 3 своих (никаких новых).
-    assert Lead.objects.filter(operator=op).count() == 3
+    assert Lead.objects.filter(operator=op).count() == 5
+    assert LeadAssignment.objects.filter(
+        operator=op, source=LeadAssignmentSource.AUTO_REFILL
+    ).count() == 2
+
+
+@pytest.mark.django_db
+def test_refill_watcher_skips_operator_at_or_over_target():
+    """working==5 → need=0, пропускаем."""
+    op = Operator.objects.create(full_name="OP", status=OperatorStatus.ACTIVE)
+    for i in range(5):
+        _mk_lead_assigned(op, i)
+    for i in range(10):
+        _mk_orphan(i + 100)
+
+    call_command("refill_idle_operators")
+
+    assert Lead.objects.filter(operator=op).count() == 5
     assert LeadAssignment.objects.filter(
         operator=op, source=LeadAssignmentSource.AUTO_REFILL
     ).count() == 0
@@ -111,10 +132,16 @@ def test_refill_watcher_respects_kill_switch():
 
 @pytest.mark.django_db
 def test_refill_watcher_handles_multiple_operators():
-    """Два idle + один busy → idle-двое получают, busy — нет."""
+    """
+    Два idle + один частично загруженный → все дополняются до 5.
+    - op1: idle → +5 → total 5
+    - op2: idle → +5 → total 5
+    - op3: 1 старый + 4 refill → total 5
+    В пуле 20 сирот, всего раздано 14 → должно хватить.
+    """
     op1 = Operator.objects.create(full_name="OP1", status=OperatorStatus.ACTIVE)
     op2 = Operator.objects.create(full_name="OP2", status=OperatorStatus.ACTIVE)
-    op3 = Operator.objects.create(full_name="OP3-busy", status=OperatorStatus.ACTIVE)
+    op3 = Operator.objects.create(full_name="OP3-partial", status=OperatorStatus.ACTIVE)
     _mk_lead_assigned(op3, 999)
 
     for i in range(20):
@@ -122,10 +149,9 @@ def test_refill_watcher_handles_multiple_operators():
 
     call_command("refill_idle_operators")
 
-    # op1, op2 — по 5. op3 — только своя старая.
     assert Lead.objects.filter(operator=op1).count() == 5
     assert Lead.objects.filter(operator=op2).count() == 5
-    assert Lead.objects.filter(operator=op3).count() == 1
+    assert Lead.objects.filter(operator=op3).count() == 5
 
 
 @pytest.mark.django_db

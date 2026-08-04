@@ -158,11 +158,69 @@ def _today_start_local() -> dt.datetime:
     return day_start_local
 
 
+def _today_lunch_start() -> dt.datetime:
+    """
+    13:00 Asia/Tashkent сегодня — cutoff для правила `recall_after_lunch`.
+
+    Лид с recall-статусом (no_answer / phone_on), выставленным до этого
+    момента, после 13:00 снова считается «активным для сегодня» и
+    всплывает наверх /my (intraday-carry). Если оператор повторно тронул
+    его после обеда — обычная логика «updated_at сегодня» скроет его до
+    завтра.
+    """
+    now_local = timezone.localtime()
+    return now_local.replace(hour=13, minute=0, second=0, microsecond=0)
+
+
 # Статусы, при которых лид считается «нетронутым» — только что раздали,
 # оператор ещё не выставил ни один из бизнес-статусов. Такие лиды всегда
 # в «активных на сегодня», даже если updated_at свежее today_start
 # (RR-раздача обновляет updated_at).
 UNTOUCHED_LEAD_STATUSES = ("new", "assigned")
+
+
+def _active_today_filter(prefix: str = "") -> Q:
+    """
+    Q-выражение «лид активен для сегодня» — единый источник правды для
+    трёх мест: `operator_working_lead_count`, `leads_for_operator(view=active)`,
+    `operators_eligible_for_new_leads` / `operators_distribution_status`.
+
+    Правило:
+      1. Untouched (new / assigned) — всегда активен.
+      2. `updated_at < today_start` — не тронут сегодня, активен.
+      3. Recall-after-lunch: после 13:00 лид с recall-статусом (no_answer
+         / phone_on), тронутый до обеда (`updated_at < lunch_start`),
+         снова активен. Если тронут ПОСЛЕ обеда — уходит до завтра по
+         общему правилу.
+
+    `prefix` — Django lookup-префикс для join-запросов (например `leads__`
+    когда фильтруем Operator по связанным Lead). По умолчанию пусто (лид
+    в корне queryset'а).
+    """
+    today_start = _today_start_local()
+    now = timezone.localtime()
+    lunch_start = _today_lunch_start()
+    recall_active_now = now >= lunch_start
+
+    p = prefix
+    q = Q(**{f"{p}status__in": UNTOUCHED_LEAD_STATUSES}) | Q(
+        **{f"{p}updated_at__lt": today_start}
+    )
+    if recall_active_now:
+        recall_codes = recall_after_lunch_status_codes()
+        if recall_codes:
+            q |= Q(
+                **{
+                    f"{p}status__in": recall_codes,
+                    f"{p}updated_at__lt": lunch_start,
+                }
+            )
+    return q
+
+
+def _leads_active_today_filter() -> Q:
+    """Shortcut: `_active_today_filter(prefix="leads__")` — для аннотаций Operator."""
+    return _active_today_filter(prefix="leads__")
 
 
 def leads_for_operator(
@@ -195,21 +253,31 @@ def leads_for_operator(
 
     if view == "active":
         qs = qs.filter(postponed_at__isnull=True)
-        today_start = _today_start_local()
-        qs = qs.filter(
-            Q(status__in=UNTOUCHED_LEAD_STATUSES) | Q(updated_at__lt=today_start)
-        )
+        qs = qs.filter(_active_today_filter())
         carry_codes = carry_over_status_codes()
-        if not carry_codes:
+        now = timezone.localtime()
+        lunch_start = _today_lunch_start()
+        recall_active_now = now >= lunch_start
+        recall_codes = recall_after_lunch_status_codes() if recall_active_now else []
+        if not carry_codes and not recall_codes:
             return qs.order_by("-updated_at")
+        # Оба класса — carry и recall-after-lunch — идут в топе (значение 0).
+        # Внутри «топа» первенство даёт -updated_at (последний тронутый — выше).
+        cases: list[When] = []
+        if carry_codes:
+            cases.append(When(status__in=carry_codes, then=Value(0)))
+        if recall_codes:
+            cases.append(
+                When(
+                    status__in=recall_codes,
+                    updated_at__lt=lunch_start,
+                    then=Value(0),
+                )
+            )
         qs = qs.annotate(
-            _carry=Case(
-                When(status__in=carry_codes, then=Value(0)),
-                default=Value(1),
-                output_field=IntegerField(),
-            ),
+            _top=Case(*cases, default=Value(1), output_field=IntegerField()),
         )
-        return qs.order_by("_carry", "-updated_at")
+        return qs.order_by("_top", "-updated_at")
     if view == "postponed":
         qs = qs.filter(postponed_at__isnull=False)
         return qs.order_by("-postponed_at")
@@ -350,6 +418,29 @@ def carry_over_status_codes() -> list[str]:
     return codes
 
 
+def recall_after_lunch_status_codes() -> list[str]:
+    """
+    Codes с флагом `recall_after_lunch=True` — статусы, лиды с которыми
+    после 13:00 (Asia/Tashkent) снова становятся активными для сегодня
+    (intraday-carry). По умолчанию — no_answer, phone_on.
+
+    Кэш 60с — набор меняется только через админку.
+    """
+    from django.core.cache import cache
+
+    from .models import LeadStatusLabel
+
+    cached = cache.get("recall_after_lunch_status_codes")
+    if cached is not None:
+        return cached
+    codes = list(
+        LeadStatusLabel.objects.filter(is_active=True, recall_after_lunch=True)
+        .values_list("code", flat=True)
+    )
+    cache.set("recall_after_lunch_status_codes", codes, 60)
+    return codes
+
+
 def stale_leads_for_auto_close() -> QuerySet[Lead]:
     """
     Non-carry лиды у активных операторов, где `updated_at < сегодня 00:00`
@@ -368,8 +459,17 @@ def stale_leads_for_auto_close() -> QuerySet[Lead]:
     today_start = _today_start_local()
     active = set(active_lead_status_codes())
     carry = set(carry_over_status_codes())
+    recall = set(recall_after_lunch_status_codes())
+    # Recall-статусы (no_answer / phone_on) не auto-close'им: их
+    # lifecycle intraday (утром → recall после обеда), а на следующий
+    # день они уже carry (carry_over_next_day тоже стоит). Оставлять их
+    # в auto-close задвоило бы правило.
     stale_codes = [
-        c for c in active if c not in carry and c not in UNTOUCHED_LEAD_STATUSES
+        c
+        for c in active
+        if c not in carry
+        and c not in recall
+        and c not in UNTOUCHED_LEAD_STATUSES
     ]
     if not stale_codes:
         return Lead.objects.none()
@@ -407,16 +507,13 @@ def operator_working_lead_count(operator: Operator) -> int:
     workable = list(all_active - terminal)
     if not workable:
         return 0
-    today_start = _today_start_local()
     return (
         Lead.objects.filter(
             operator=operator,
             status__in=workable,
             postponed_at__isnull=True,
         )
-        .filter(
-            Q(status__in=UNTOUCHED_LEAD_STATUSES) | Q(updated_at__lt=today_start)
-        )
+        .filter(_active_today_filter())
         .count()
     )
 
@@ -469,7 +566,7 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
     terminal = set(terminal_lead_status_codes())
     workable = list(set(active_lead_status_codes()) - terminal)
     batch = _rr_batch_size()
-    today_start = _today_start_local()
+    active_today = _leads_active_today_filter()
 
     qs = (
         Operator.objects.filter(status=OperatorStatus.ACTIVE)
@@ -480,10 +577,7 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
                     leads__status__in=workable,
                     leads__postponed_at__isnull=True,
                 )
-                & (
-                    Q(leads__status__in=UNTOUCHED_LEAD_STATUSES)
-                    | Q(leads__updated_at__lt=today_start)
-                ),
+                & active_today,
             ),
         )
         .filter(_working_count__lt=batch)
@@ -530,7 +624,7 @@ def operators_distribution_status() -> list[dict]:
 
     terminal = set(terminal_lead_status_codes())
     workable = list(set(active_lead_status_codes()) - terminal)
-    today_start = _today_start_local()
+    active_today = _leads_active_today_filter()
 
     ops = list(
         Operator.objects.filter(status=OperatorStatus.ACTIVE)
@@ -542,10 +636,7 @@ def operators_distribution_status() -> list[dict]:
                     leads__status__in=workable,
                     leads__postponed_at__isnull=True,
                 )
-                & (
-                    Q(leads__status__in=UNTOUCHED_LEAD_STATUSES)
-                    | Q(leads__updated_at__lt=today_start)
-                ),
+                & active_today,
             ),
             _postponed_count=Count(
                 "leads",

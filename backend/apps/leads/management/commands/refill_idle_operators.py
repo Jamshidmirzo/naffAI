@@ -1,17 +1,20 @@
 """
-Раз в минуту: для каждого активного оператора с working_count=0
-вытягиваем следующую пачку сирот из общего пула. Дополняет
-`_run_refill_if_empty` (хук в lead_update_status) — тот срабатывает
-только при закрытии лида, а этот watcher забирает случаи, когда
-оператор уже пустой, а свежие лиды приходят «сбоку» (sheet-sync,
-release_stale_leads).
+Раз в минуту: для каждого активного оператора считаем
+`need = RR_BATCH_SIZE - working_count` и, если > 0, доливаем `need`
+сирот из общего пула. Дополняет continuous-refill хук в
+`lead_update_status`: тот срабатывает при закрытии, а этот watcher
+подхватывает случаи, когда:
+  - оператор пустой (только начал день, ничего не закрывал),
+  - working упало «сбоку» (release_stale_leads, ручное перекидывание),
+  - в пул подъехали новые сироты (sheet-sync) — доливаем каждому.
 
 Запускается docker-сервисом `distribute-watcher` в цикле `sleep 60`.
-Идемпотентна: если у оператора уже есть лиды или пул пуст — no-op.
+Идемпотентна: если у оператора working == target или пул пуст — no-op.
 """
 
 from __future__ import annotations
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from apps.leads.selectors import operator_working_lead_count
@@ -22,8 +25,8 @@ from apps.system_settings.selectors import auto_distribution_enabled
 
 class Command(BaseCommand):
     help = (
-        "Проходит по активным операторам с 0 работающих лидов и доливает "
-        "им следующую пачку из общего пула сирот."
+        "Проходит по активным операторам и доливает каждому лидов "
+        "до RR_BATCH_SIZE (по умолчанию 5) из общего пула сирот."
     )
 
     def add_arguments(self, parser):
@@ -49,6 +52,7 @@ class Command(BaseCommand):
 
         limit = opts.get("limit")
         verbose = bool(opts.get("verbose"))
+        target = int(getattr(settings, "RR_BATCH_SIZE", 5))
 
         qs = Operator.objects.filter(status=OperatorStatus.ACTIVE).order_by("id")
         processed = 0
@@ -59,13 +63,18 @@ class Command(BaseCommand):
                 break
             processed += 1
 
-            if operator_working_lead_count(op) > 0:
+            current = operator_working_lead_count(op)
+            need = target - current
+            if need <= 0:
                 if verbose:
-                    self.stdout.write(f"[refill] op={op.id} name={op.full_name} skip=busy")
+                    self.stdout.write(
+                        f"[refill] op={op.id} name={op.full_name} "
+                        f"skip=full working={current}/{target}"
+                    )
                 continue
 
             try:
-                leads = refill_operator_leads(operator=op)
+                leads = refill_operator_leads(operator=op, size=need)
             except Exception as exc:  # pragma: no cover — telemetry only
                 self.stderr.write(
                     f"[refill] op={op.id} name={op.full_name} error={exc!r}"
@@ -75,10 +84,14 @@ class Command(BaseCommand):
             if leads:
                 total_delivered += len(leads)
                 self.stdout.write(
-                    f"[refill] op={op.id} name={op.full_name} count={len(leads)}"
+                    f"[refill] op={op.id} name={op.full_name} "
+                    f"count={len(leads)} need={need} working={current}→{current + len(leads)}"
                 )
             elif verbose:
-                self.stdout.write(f"[refill] op={op.id} name={op.full_name} pool=empty")
+                self.stdout.write(
+                    f"[refill] op={op.id} name={op.full_name} "
+                    f"pool=empty need={need}"
+                )
 
         if total_delivered:
             self.stdout.write(
