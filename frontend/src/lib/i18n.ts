@@ -193,6 +193,7 @@ const STRINGS: Lookup = {
     "my.tab_active": "Активные",
     "my.tab_postponed": "Отложенные",
     "my.tab_all": "Все",
+    "my.tabs.closed": "Закрытые",
     "my.leads_count": "{n} лидов",
 
     // ------ common (extra) ------
@@ -1165,6 +1166,10 @@ const STRINGS: Lookup = {
     "my.section.today": "🟢 Сегодняшние · {n}",
     "my.empty.title": "Все лиды закрыты",
     "my.empty.subtitle": "Новые придут автоматически — обычно в течение нескольких минут.",
+    "my.empty.closed": "Пока нет закрытых лидов",
+    "my.closed.at": "Закрыт {date}",
+    "my.closed.today": "сегодня {time}",
+    "my.closed.yesterday": "вчера {time}",
 
     // ------ attendance.today (extra) ------
     "attendance.today.qr_title": "QR-код для отметки на входе",
@@ -1555,6 +1560,7 @@ const STRINGS: Lookup = {
     "my.tab_active": "Faol",
     "my.tab_postponed": "Kechiktirilgan",
     "my.tab_all": "Barchasi",
+    "my.tabs.closed": "Yopilgan",
     "my.leads_count": "{n} ta lid",
 
     // ------ common (extra) ------
@@ -2527,6 +2533,10 @@ const STRINGS: Lookup = {
     "my.section.today": "🟢 Bugungilar · {n}",
     "my.empty.title": "Barcha lidlar yopilgan",
     "my.empty.subtitle": "Yangilari avtomatik keladi — odatda bir necha daqiqa ichida.",
+    "my.empty.closed": "Hozircha yopilgan lidlar yo'q",
+    "my.closed.at": "Yopildi: {date}",
+    "my.closed.today": "bugun {time}",
+    "my.closed.yesterday": "kecha {time}",
 
     // ------ attendance.today (extra) ------
     "attendance.today.qr_title": "Kirishda belgilash uchun QR-kod",

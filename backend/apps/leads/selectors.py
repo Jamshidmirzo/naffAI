@@ -241,11 +241,27 @@ def leads_for_operator(
                     включая carry_over) — лид «отработан на сегодня» и
                     исчезает из активной вкладки; завтра снова появится.
       - "postponed": only lead where postponed_at IS NOT NULL
+      - "closed":    terminal-статусы (won / lost / archived / needs_review /
+                    kartsi_yoq / harid_qildi / sms_jonatildi / has_debt /
+                    contacted_telegram / qimmatlik_qildi / waiting_salary /
+                    notogri_raqam …). История работы оператора — только для
+                    чтения, никаких контрол-кнопок в UI. Сортировка по
+                    `-updated_at` (последнее закрытое сверху).
       - "all":       no postpone filter
     """
     qs = Lead.objects.select_related("operator", "sheet_source").filter(
         operator=operator
     )
+
+    # `closed` — история терминальных лидов. Обходим общий active-filter
+    # ниже, потому что include_archived/status там сузили бы выборку до
+    # активных кодов (у terminal-лидов другая семантика — они и так
+    # закрыты, оператор их только смотрит).
+    if view == "closed":
+        return qs.filter(status__in=terminal_lead_status_codes()).order_by(
+            "-updated_at"
+        )
+
     if status:
         qs = qs.filter(status=status)
     elif not include_archived:

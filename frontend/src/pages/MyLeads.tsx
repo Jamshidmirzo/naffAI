@@ -44,7 +44,7 @@ import { usePageHeader } from "../store/page";
 import { useT, useLangValue } from "../lib/i18n";
 import { GaugeScene } from "../components/three/GaugeScene";
 
-type MyLeadsView = "active" | "postponed" | "all";
+type MyLeadsView = "active" | "postponed" | "all" | "closed";
 // Chip filter key = LeadStatusLabel.code OR the sentinel "all".
 type StatusChipKey = string;
 
@@ -260,6 +260,7 @@ export default function MyLeads() {
       danger: backlogCount > 0,
     },
     { value: "postponed", label: t("my.tab_postponed"), count: counts.postponed },
+    { value: "closed", label: t("my.tabs.closed") },
     { value: "all", label: t("my.tab_all") },
   ];
 
@@ -741,6 +742,17 @@ export default function MyLeads() {
               </div>
             );
           }
+          // Специальный empty для «Закрытых» — новичок, ничего не закрыл.
+          if (view === "closed") {
+            return (
+              <div
+                className="rounded-2xl py-12 text-center text-[13.5px] text-muted"
+                style={{ border: "1.5px dashed var(--border)" }}
+              >
+                {t("my.empty.closed")}
+              </div>
+            );
+          }
           // Обычный empty (фильтр по чипу отсеял всё, или postponed-вью
           // пустая).
           return (
@@ -750,6 +762,22 @@ export default function MyLeads() {
             >
               {t("my.empty")}
             </div>
+          );
+        }
+
+        // Closed = read-only история: простая карточка (имя, телефон,
+        // статус-badge, дата закрытия). Никаких кнопок «позвонить /
+        // статус / отложить» — оператор смотрит, не работает. Клик по
+        // карточке ничего не делает: детальная страница лида пока
+        // доступна только менеджеру (`/leads` под RoleGate=manager),
+        // так что перевод оператора туда дал бы 403.
+        if (view === "closed") {
+          return (
+            <section className="flex flex-col gap-[9px]">
+              {visibleLeads.map((lead, i) => (
+                <ClosedLeadCard key={lead.id} lead={lead} index={i} />
+              ))}
+            </section>
           );
         }
 
@@ -828,6 +856,102 @@ export default function MyLeads() {
         onDismiss={watcher.dismiss}
         onDone={refetch}
       />
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------------
+
+/**
+ * Простая карточка для вкладки «Закрытые» на /my.
+ * Только read-only отображение — оператор смотрит историю, не работает.
+ * Дата закрытия форматируется как «сегодня 14:32» / «вчера 09:15» /
+ * «02.08 11:00», чтобы недавние закрытия читались моментально.
+ */
+function fmtClosedAt(iso: string | null | undefined, t: (k: string, p?: Record<string, string | number>) => string): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    const now = new Date();
+    const isSameDay = (a: Date, b: Date) =>
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const time = d.toLocaleTimeString("ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    if (isSameDay(d, now)) return t("my.closed.today", { time });
+    if (isSameDay(d, yesterday)) return t("my.closed.yesterday", { time });
+    return d.toLocaleString("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
+function ClosedLeadCard({
+  lead,
+  index,
+}: {
+  lead: Lead;
+  index: number;
+}) {
+  const t = useT();
+  const closedAt = fmtClosedAt(lead.updated_at, t);
+
+  return (
+    <div
+      className="animate-nfFadeUp flex items-center gap-4 w-full"
+      style={{
+        borderRadius: 18,
+        padding: "14px 18px",
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        boxShadow: "var(--shadow)",
+        animationDelay: `${0.04 + index * 0.04}s`,
+      }}
+    >
+      <div
+        className="grid place-items-center text-white text-[13px] font-semibold shrink-0"
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 12,
+          // Для закрытых — серый градиент, чтобы визуально отличалось
+          // от активных «оранжевых» карточек.
+          background: "linear-gradient(145deg, #9aa3af, #6b7280)",
+          opacity: 0.9,
+        }}
+      >
+        {initials(lead.full_name || lead.phone || "?")}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="text-[14.5px] font-medium truncate">
+            {lead.full_name || t("my.no_name")}
+          </div>
+          <LeadStatusBadge code={lead.status} />
+        </div>
+        <div
+          className="mt-1 tabular-nums font-mono truncate"
+          style={{ fontSize: 14, fontWeight: 500 }}
+        >
+          {lead.phone || t("leads.no_phone")}
+        </div>
+        {closedAt && (
+          <div className="text-[12px] text-muted mt-0.5">
+            {t("my.closed.at", { date: closedAt })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

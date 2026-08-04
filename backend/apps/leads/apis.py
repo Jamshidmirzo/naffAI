@@ -347,9 +347,10 @@ class LeadMyListApi(APIView):
 
         include_archived = request.query_params.get("include_archived") in ("1", "true")
         view = request.query_params.get("view", "active")
-        if view not in ("active", "postponed", "all"):
+        if view not in ("active", "postponed", "all", "closed"):
             return Response(
-                {"detail": "view must be one of: active, postponed, all"}, status=400
+                {"detail": "view must be one of: active, postponed, all, closed"},
+                status=400,
             )
 
         qs = leads_for_operator(
