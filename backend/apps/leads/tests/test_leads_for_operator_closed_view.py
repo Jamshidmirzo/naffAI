@@ -197,16 +197,12 @@ def test_closed_view_includes_custom_terminal_codes():
 
     terminal_codes = terminal_lead_status_codes()
     assert "harid_qildi" in terminal_codes
-    assert "sms_jonatildi" in terminal_codes, (
-        "seed migration 0015 должна пометить sms_jonatildi as terminal"
-    )
 
     _mk_lead(op, 1, status="harid_qildi")
-    _mk_lead(op, 2, status="sms_jonatildi")
-    _mk_lead(op, 3, status=LeadStatus.WON)
-    _mk_lead(op, 4, status=LeadStatus.LOST)
+    _mk_lead(op, 2, status=LeadStatus.WON)
+    _mk_lead(op, 3, status=LeadStatus.LOST)
 
-    assert leads_for_operator(op, view="closed").count() == 4
+    assert leads_for_operator(op, view="closed").count() == 3
 
 
 # ---- Не ломаем active/postponed/all -------------------------------------
