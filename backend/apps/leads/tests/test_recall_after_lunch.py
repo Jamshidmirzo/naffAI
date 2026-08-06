@@ -83,16 +83,16 @@ def test_recall_after_lunch_seed_contains_no_answer_and_phone_on():
 
 
 @pytest.mark.django_db
-def test_before_lunch_touched_today_hidden(op):
-    """10:00 — no_answer поставлен в 09:00 → лид «тронут сегодня», скрыт."""
+def test_before_lunch_touched_today_visible(op):
+    """10:00 — no_answer поставлен в 09:00 → лид тронут сегодня, но остаётся виден в /my active."""
     with freeze_time("2026-08-04 05:00:00"):  # 10:00 Asia/Tashkent
         updated = timezone.now() - dt.timedelta(hours=1)  # 09:00 локально
-        _mk_lead(op, 1, status=LeadStatus.NO_ANSWER, updated_at=updated)
+        lead = _mk_lead(op, 1, status=LeadStatus.NO_ANSWER, updated_at=updated)
         assert operator_working_lead_count(op) == 0
         visible = list(
             leads_for_operator(op, view="active").values_list("id", flat=True)
         )
-        assert visible == []
+        assert visible == [lead.id]
 
 
 # ---- После обеда: recall-лиды с утренним updated снова активны -------------
@@ -137,27 +137,26 @@ def test_after_lunch_touched_before_lunch_phone_on_also_recalls(op):
         )
 
 
-# ---- После обеда: recall-лид, тронутый после 13:00, скрыт ------------------
+# ---- После обеда: recall-лид, тронутый после 13:00 ------------------
 
 
 @pytest.mark.django_db
-def test_after_lunch_touched_after_lunch_hidden(op):
+def test_after_lunch_touched_after_lunch_stays_visible(op):
     """
-    14:00 — no_answer поставлен в 13:30 (уже после обеда) → лид «тронут
-    сегодня-после-обеда», не подпадает под recall (updated > lunch_start),
-    скрыт до завтра.
+    14:00 — no_answer поставлен в 13:30 (уже после обеда) → лид тронут сегодня,
+    но остаётся виден в /my active.
     """
     with freeze_time("2026-08-04 09:00:00"):  # 14:00 local
         lunch = timezone.localtime().replace(
             hour=13, minute=0, second=0, microsecond=0
         )
         after_lunch = lunch + dt.timedelta(minutes=30)  # 13:30 local
-        _mk_lead(op, 1, status=LeadStatus.NO_ANSWER, updated_at=after_lunch)
+        lead = _mk_lead(op, 1, status=LeadStatus.NO_ANSWER, updated_at=after_lunch)
         assert operator_working_lead_count(op) == 0
         visible = list(
             leads_for_operator(op, view="active").values_list("id", flat=True)
         )
-        assert visible == []
+        assert visible == [lead.id]
 
 
 # ---- Non-recall статусы ведут себя как раньше (has_debt) -------------------

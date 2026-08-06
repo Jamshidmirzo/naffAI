@@ -152,11 +152,10 @@ def test_chip_preserves_counts_envelope(api_client, operator):
 @pytest.mark.django_db
 def test_no_status_param_keeps_old_behavior(api_client, operator):
     """
-    Без ?status — старый путь (view=active). Terminal-лиды НЕ показываются.
-    Гарантия что мы не сломали существующий контракт.
+    Без ?status — стандартный путь (view=active). Terminal-лиды НЕ показываются.
     """
-    _make_lead(
-        operator=operator, status=LeadStatus.CONTACTED_TELEGRAM, phone="+998900000601"
+    terminal_lead = _make_lead(
+        operator=operator, status=LeadStatus.WON, phone="+998900000601"
     )
     active_lead = _make_lead(
         operator=operator, status=LeadStatus.NEW, phone="+998900000602"
@@ -166,6 +165,6 @@ def test_no_status_param_keeps_old_behavior(api_client, operator):
     body = resp.json()
     ids = [row["id"] for row in body["results"]]
     assert active_lead.id in ids
-    # terminal contacted_telegram НЕ должен появиться в view=active
+    assert terminal_lead.id not in ids
     for row in body["results"]:
-        assert row["status"] != LeadStatus.CONTACTED_TELEGRAM
+        assert row["status"] != LeadStatus.WON

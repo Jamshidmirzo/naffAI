@@ -269,7 +269,8 @@ def leads_for_operator(
 
     if view == "active":
         qs = qs.filter(postponed_at__isnull=True)
-        qs = qs.filter(_active_today_filter())
+        # Note: We intentionally do NOT filter out leads updated today, so that active leads
+        # remain in the operator's active workstation tab ("Faol") always after processing.
         carry_codes = carry_over_status_codes()
         now = timezone.localtime()
         lunch_start = _today_lunch_start()
