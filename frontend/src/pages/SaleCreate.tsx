@@ -230,22 +230,25 @@ export default function SaleCreate() {
 
   if (isEdit && saleQ.isLoading) {
     return (
-      <div className="flex items-center justify-center py-20 text-gray-500 dark:text-slate-400">
+      <div className="flex items-center justify-center py-20 text-muted">
         {t("common.loading")}
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl">
-      <h1 className="text-2xl font-semibold mb-6">
-        {isEdit ? t("sale_create.title_edit") : t("sale_create.title_new")}
-      </h1>
-      <form onSubmit={onSubmit} className="card p-6 space-y-5">
+    <div className="max-w-3xl mx-auto">
+      <div className="mb-6">
+        <div className="nf-eyebrow mb-2">{isEdit ? "EDIT" : "NEW"}</div>
+        <h1 className="text-[32px] leading-tight font-semibold tracking-tight">
+          {isEdit ? t("sale_create.title_edit") : t("sale_create.title_new")}
+        </h1>
+      </div>
+      <form onSubmit={onSubmit} className="nf-card p-6 md:p-7 space-y-6">
         <div>
-          <label className="label">{t("sale_create.imei_label")}</label>
+          <label className="nf-col mb-1.5 block">{t("sale_create.imei_label")}</label>
           <input
-            className="input font-mono"
+            className="nf-input font-mono tracking-wide"
             value={imei}
             onChange={(e) => setImei(e.target.value.replace(/\D/g, ""))}
             minLength={6}
@@ -254,7 +257,7 @@ export default function SaleCreate() {
             required
           />
           {imei.length >= 6 && (
-            <div className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+            <div className="text-xs text-muted mt-1">
               {imei.length === 15 && model
                 ? t("sale_create.imei_arrow", { model })
                 : imei.length === 15
@@ -266,9 +269,9 @@ export default function SaleCreate() {
 
         <div className="grid grid-cols-1 md:grid-cols-[1fr_8rem] gap-4">
           <div>
-            <label className="label">{t("sale_create.phone_model")}</label>
+            <label className="nf-col mb-1.5 block">{t("sale_create.phone_model")}</label>
             <input
-              className="input"
+              className="nf-input"
               list="phone-models-list"
               value={model}
               onChange={(e) => setModel(e.target.value)}
@@ -282,9 +285,9 @@ export default function SaleCreate() {
             </datalist>
           </div>
           <div>
-            <label className="label">{t("sale_create.quantity_label")}</label>
+            <label className="nf-col mb-1.5 block">{t("sale_create.quantity_label")}</label>
             <input
-              className="input"
+              className="nf-input"
               inputMode="numeric"
               value={quantity}
               onChange={(e) => {
@@ -294,7 +297,7 @@ export default function SaleCreate() {
               }}
               placeholder="1"
             />
-            <div className="text-[11px] text-gray-500 dark:text-slate-500 mt-1">
+            <div className="text-[11px] text-muted mt-1">
               {t("sale_create.quantity_hint")}
             </div>
           </div>
@@ -302,18 +305,18 @@ export default function SaleCreate() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="label">{t("sale_create.client_name")}</label>
+            <label className="nf-col mb-1.5 block">{t("sale_create.client_name")}</label>
             <input
-              className="input"
+              className="nf-input"
               value={clientName}
               onChange={(e) => setClientName(e.target.value)}
               placeholder={t("sale_create.client_name_ph")}
             />
           </div>
           <div>
-            <label className="label">{t("sale_create.client_phone")}</label>
+            <label className="nf-col mb-1.5 block">{t("sale_create.client_phone")}</label>
             <input
-              className="input"
+              className="nf-input"
               value={clientPhone}
               onChange={(e) => setClientPhone(e.target.value)}
               placeholder={t("sale_create.client_phone_ph")}
@@ -356,44 +359,40 @@ export default function SaleCreate() {
         />
 
         <div
-          className={`rounded-lg border p-3 text-sm ${
-            mismatch || discountTooBig
-              ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700/40"
-              : "bg-gray-50 dark:bg-slate-800/40 border-gray-200 dark:border-slate-700"
+          className={`nf-tile p-4 text-[13.5px] ${
+            mismatch || discountTooBig ? "ring-1 ring-amber-500/40" : ""
           }`}
         >
-          <div className="flex justify-between">
-            <span className="text-gray-600 dark:text-slate-400">{t("sale_create.sum_by_operators")}</span>
-            <span className="font-medium">{formatNumber(opTotal)} сум</span>
+          <div className="flex justify-between items-baseline">
+            <span className="text-muted">{t("sale_create.sum_by_operators")}</span>
+            <span className="font-medium tabular-nums">{formatNumber(opTotal)} сум</span>
           </div>
-          <div className="flex justify-between mt-1">
-            <span className="text-gray-600 dark:text-slate-400">{t("sale_create.sum_by_partners")}</span>
-            <span className="font-medium">{formatNumber(partnerTotal)} сум</span>
+          <div className="flex justify-between items-baseline mt-1.5">
+            <span className="text-muted">{t("sale_create.sum_by_partners")}</span>
+            <span className="font-medium tabular-nums">{formatNumber(partnerTotal)} сум</span>
           </div>
           {mismatch && (
-            <div className="mt-2 text-xs text-amber-800 dark:text-amber-300">
+            <div className="mt-2 text-[12px] text-amber-500">
               {t("sale_create.sums_mismatch", { n: formatNumber(Math.abs(opTotal - partnerTotal)) })}
             </div>
           )}
-          <div className="border-t border-gray-200 dark:border-slate-700 mt-2 pt-2 flex justify-between">
-            <span className="text-gray-700 dark:text-slate-300 font-medium">{t("sale_create.grand_total")}</span>
-            <span className="text-lg font-semibold">{formatNumber(total)} сум</span>
+          <div className="border-t border-[var(--border)] mt-3 pt-3 flex justify-between items-baseline">
+            <span className="font-medium">{t("sale_create.grand_total")}</span>
+            <span className="text-[20px] font-semibold tabular-nums">{formatNumber(total)} сум</span>
           </div>
           {discountNum > 0 && (
             <>
-              <div className="flex justify-between mt-1 text-red-600 dark:text-red-400">
+              <div className="flex justify-between items-baseline mt-2 text-red-500">
                 <span>{t("sale_create.discount_line")}</span>
-                <span>{t("sale_create.discount_neg_line", { n: formatNumber(discountNum) })}</span>
+                <span className="tabular-nums">{t("sale_create.discount_neg_line", { n: formatNumber(discountNum) })}</span>
               </div>
-              <div className="flex justify-between mt-1">
-                <span className="text-gray-700 dark:text-slate-300 font-medium">
-                  {t("sale_create.net_total")}
-                </span>
-                <span className="text-lg font-semibold text-emerald-700 dark:text-emerald-400">
+              <div className="flex justify-between items-baseline mt-1">
+                <span className="font-medium">{t("sale_create.net_total")}</span>
+                <span className="text-[18px] font-semibold text-emerald-500 tabular-nums">
                   {formatNumber(netTotal)} сум
                 </span>
               </div>
-              <div className="text-[11px] text-gray-500 dark:text-slate-500 mt-1">
+              <div className="text-[11.5px] text-muted mt-1.5">
                 {t("sale_create.discount_operators_hint")}
               </div>
             </>
@@ -401,21 +400,21 @@ export default function SaleCreate() {
         </div>
 
         <div>
-          <label className="label">{t("sale_create.discount_optional")}</label>
+          <label className="nf-col mb-1.5 block">{t("sale_create.discount_optional")}</label>
           <NumericInput
-            className={`input ${discountTooBig ? "is-invalid" : ""}`}
+            className={`nf-input ${discountTooBig ? "is-invalid" : ""}`}
             placeholder="0"
             value={discount}
             onChange={setDiscount}
           />
-          <div className="text-[11px] text-gray-500 dark:text-slate-500 mt-1">
+          <div className="text-[11px] text-muted mt-1">
             {t("sale_create.discount_hint")}
           </div>
         </div>
 
         <div>
-          <label className="label">{t("sale_create.comment_label")}</label>
-          <textarea className="input" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
+          <label className="nf-col mb-1.5 block">{t("sale_create.comment_label")}</label>
+          <textarea className="nf-input" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
         </div>
 
         <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: "var(--border)" }}>
@@ -430,7 +429,7 @@ export default function SaleCreate() {
           {hasBonus && (
             <>
               <textarea
-                className="input"
+                className="nf-input"
                 rows={2}
                 value={bonusNote}
                 onChange={(e) => setBonusNote(e.target.value)}
@@ -445,12 +444,12 @@ export default function SaleCreate() {
         </div>
 
         {allowDup && (
-          <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 p-3 space-y-2">
-            <div className="text-sm text-amber-800 dark:text-amber-300">
+          <div className="nf-tile p-4 space-y-2 ring-1 ring-amber-500/40">
+            <div className="text-[13px] text-amber-500">
               {t("sale_create.dup_hint")}
             </div>
             <input
-              className="input"
+              className="nf-input"
               placeholder={t("sale_create.dup_reason_ph")}
               value={dupComment}
               onChange={(e) => setDupComment(e.target.value)}
@@ -458,12 +457,16 @@ export default function SaleCreate() {
           </div>
         )}
 
-        {error && <div className="text-sm text-red-600 dark:text-red-400">{error}</div>}
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" className="btn-ghost" onClick={() => nav(-1)}>
+        {error && (
+          <div className="text-[13px] text-red-500 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-2.5">
+            {error}
+          </div>
+        )}
+        <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border)]">
+          <button type="button" className="nf-btn nf-btn--ghost" onClick={() => nav(-1)}>
             {t("common.cancel")}
           </button>
-          <button className="btn-primary" type="submit">
+          <button className="nf-btn nf-btn--primary" type="submit">
             {isEdit ? t("sale_create.save_changes") : t("common.save")}
           </button>
         </div>
@@ -489,14 +492,14 @@ function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
   const { title, lines, setLines, options, getId, getName, setLine, empty, idKey, nameKey } = props;
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
-        <label className="label">{title}</label>
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="text-[15px] font-semibold tracking-tight">{title}</div>
         <button
           type="button"
-          className="btn-ghost text-xs"
+          className="nf-btn nf-btn--ghost text-[12px] !py-1.5 !px-3"
           onClick={() => setLines([...lines, empty()])}
         >
-          <Plus className="w-3 h-3" /> добавить
+          <Plus className="w-3.5 h-3.5" /> добавить
         </button>
       </div>
       <div className="space-y-2">
@@ -534,7 +537,7 @@ function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
                 return (
                   <div className="w-48 flex-shrink-0">
                     <NumericInput
-                      className={`input ${invalid ? "is-invalid" : ""}`}
+                      className={`nf-input ${invalid ? "is-invalid" : ""}`}
                       placeholder="Сумма"
                       value={line.amount}
                       onChange={(raw) => {
@@ -544,7 +547,7 @@ function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
                       }}
                     />
                     {invalid && line.amount !== "" && (
-                      <div className="text-[10px] text-red-600 dark:text-red-400 mt-0.5 text-right">
+                      <div className="text-[10px] text-red-500 mt-0.5 text-right">
                         мин 1 000
                       </div>
                     )}
@@ -554,7 +557,7 @@ function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
               {lines.length > 1 && (
                 <button
                   type="button"
-                  className="btn-ghost flex-shrink-0"
+                  className="nf-btn nf-btn--ghost flex-shrink-0 !p-2.5"
                   onClick={() => setLines(lines.filter((_, j) => j !== i))}
                 >
                   <Trash2 className="w-4 h-4" />
@@ -564,7 +567,7 @@ function LineEditor<L extends { amount: string }>(props: LineEditorProps<L>) {
           );
         })}
       </div>
-      <div className="text-xs text-gray-500 dark:text-slate-400 mt-2">
+      <div className="text-xs text-muted mt-2">
         {lines.filter((l) => !getId(l) && getName(l).trim()).length > 0 &&
           "Новые имена добавятся автоматически при сохранении."}
       </div>
