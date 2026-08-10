@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Download, Filter, Plus, RotateCcw, Search } from "lucide-react";
 import { api } from "../lib/api";
 import { formatDate, formatUZS } from "../lib/format";
 import { MultiSelectPopover } from "../components/MultiSelectPopover";
 import { Button, Chip, StatusBadge } from "../components/ui";
-import { SalesFormModal } from "../components/sales/SalesFormModal";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
 
@@ -43,11 +42,9 @@ function paramsToObject(sp: URLSearchParams): Record<string, string | string[]> 
 
 export default function Sales() {
   const nav = useNavigate();
-  const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [downloading, setDownloading] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
 
   const t = useT();
   usePageHeader({ title: t("sales.title"), subtitle: t("sales.subtitle") }, [t("sales.title")]);
@@ -228,20 +225,11 @@ export default function Sales() {
           <Button variant="secondary" onClick={downloadExcel} disabled={downloading}>
             <Download className="w-3.5 h-3.5" /> {downloading ? "…" : "Excel"}
           </Button>
-          <Button onClick={() => setCreateOpen(true)}>
+          <Link to="/sales/new" className="nf-btn nf-btn--primary">
             <Plus className="w-3.5 h-3.5" /> Новая продажа
-          </Button>
+          </Link>
         </div>
       </section>
-
-      <SalesFormModal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onSaved={(newId) => {
-          qc.invalidateQueries({ queryKey: ["sales"] });
-          if (newId) nav(`/sales/${newId}`);
-        }}
-      />
 
       {filtersOpen && (
         <section className="nf-card p-5 flex flex-wrap gap-4 items-end animate-nfFadeUp">

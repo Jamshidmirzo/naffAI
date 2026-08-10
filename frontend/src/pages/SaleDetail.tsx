@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw, Sparkles, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
@@ -12,7 +12,6 @@ import {
   toast,
 } from "../components/ui";
 import { usePageHeader } from "../store/page";
-import { SalesFormModal } from "../components/sales/SalesFormModal";
 import { useT } from "../lib/i18n";
 
 interface OperatorLine {
@@ -189,7 +188,6 @@ export default function SaleDetail() {
   const [returnReason, setReturnReason] = useState("");
   const [showReturn, setShowReturn] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
 
   const q = useQuery({
     queryKey: ["sale", id],
@@ -449,7 +447,7 @@ export default function SaleDetail() {
 
             {!isDeleted && (
               <div className="mt-6 flex flex-wrap gap-2">
-                <Button onClick={() => setEditOpen(true)}>{t("common.edit")}</Button>
+                <Link to={`/sales/${id}/edit`} className="nf-btn nf-btn--primary">{t("common.edit")}</Link>
                 {!isReturned && (
                   <Button variant="secondary" onClick={() => setShowReturn(true)}>
                     <RotateCcw className="w-3.5 h-3.5" /> {t("sale_detail.return_modal_title")}
@@ -503,16 +501,6 @@ export default function SaleDetail() {
           <AiPanel saleId={id} />
         </div>
       </div>
-
-      {/* Edit modal */}
-      <SalesFormModal
-        open={editOpen}
-        onClose={() => setEditOpen(false)}
-        editingId={id}
-        onSaved={() => {
-          qc.invalidateQueries({ queryKey: ["sale", id] });
-        }}
-      />
 
       {/* Return modal */}
       <Modal

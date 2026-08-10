@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { formatUZS } from "../lib/format";
 import { Button, Eyebrow, TabPill, type TabItem } from "../components/ui";
@@ -8,7 +8,6 @@ import { DashKpiCard } from "../components/dashboard/KpiCard";
 import { DashChart } from "../components/dashboard/DashChart";
 import { TopOperators } from "../components/dashboard/TopOperators";
 import { SalesFeed } from "../components/dashboard/SalesFeed";
-import { SalesFormModal } from "../components/sales/SalesFormModal";
 import { BarsScene } from "../components/three/BarsScene";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
@@ -27,10 +26,8 @@ function millionsFormat(n: number) {
 
 export default function Dashboard() {
   const nav = useNavigate();
-  const qc = useQueryClient();
   const t = useT();
   const [range, setRange] = useState<Range>("week");
-  const [createOpen, setCreateOpen] = useState(false);
 
   usePageHeader(
     {
@@ -123,9 +120,9 @@ export default function Dashboard() {
               {t("dash.operators_online", { n: operatorsActive })}
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Button size="lg" onClick={() => setCreateOpen(true)}>
+              <Link to="/sales/new" className="nf-btn nf-btn--primary px-6 py-3.5 text-[15px]">
                 {t("dash.new_sale")}
-              </Button>
+              </Link>
               <Button variant="secondary" size="lg" onClick={() => window.open("/screen", "_blank")}>
                 {t("dash.open_screen")}
               </Button>
@@ -204,18 +201,6 @@ export default function Dashboard() {
 
       {/* --- SALES FEED --- */}
       <SalesFeed sales={recent.data?.results || []} />
-
-      <SalesFormModal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onSaved={(newId) => {
-          qc.invalidateQueries({ queryKey: ["kpi-dash"] });
-          qc.invalidateQueries({ queryKey: ["ts-dash"] });
-          qc.invalidateQueries({ queryKey: ["lb-dash"] });
-          qc.invalidateQueries({ queryKey: ["recent-sales-dash"] });
-          if (newId) nav(`/sales/${newId}`);
-        }}
-      />
     </div>
   );
 }
