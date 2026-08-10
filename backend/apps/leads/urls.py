@@ -8,6 +8,7 @@ from .apis import (
     LeadListCreateApi,
     LeadMyListApi,
     LeadMyStatusApi,
+    LeadPhoneSearchApi,
     LeadPostponeApi,
     LeadReassignApi,
     LeadsBulkReassignApi,
@@ -33,6 +34,7 @@ urlpatterns = [
     # Static paths ставим ПЕРЕД <int:pk>/, чтобы `orphans` / `bulk-reassign` /
     # `distribution-status` / `distribute-now` не матчились как ID.
     path("orphans/", OrphanLeadsApi.as_view()),
+    path("phone-search/", LeadPhoneSearchApi.as_view()),
     path("bulk-reassign/", LeadsBulkReassignApi.as_view()),
     path("distribution-status/", DistributionStatusApi.as_view()),
     path("distribute-now/", DistributeNowApi.as_view()),

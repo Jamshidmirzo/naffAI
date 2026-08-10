@@ -154,6 +154,10 @@ class SaleCreateInputSerializer(serializers.Serializer):
     duplicate_override_comment = serializers.CharField(required=False, allow_blank=True, default="")
     bonus_note = serializers.CharField(required=False, allow_blank=True, default="")
     sheet_source_id = serializers.IntegerField(required=False, allow_null=True)
+    # Optional — when the operator matched a lead by client_phone in the
+    # SaleCreate form, we pass its id so the backend links sale.lead and
+    # (unless the lead is already in a terminal status) flips it to WON.
+    lead_id = serializers.IntegerField(required=False, allow_null=True)
 
     def to_internal_value(self, data):
         if isinstance(data, dict):

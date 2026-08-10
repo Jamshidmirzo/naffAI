@@ -110,6 +110,22 @@ def lead_list(
     return qs
 
 
+def leads_by_phone_search(q_digits: str, *, limit: int = 10) -> QuerySet[Lead]:
+    """
+    Substring search on `phone` (normalized `+998…`) and `phone_raw`
+    (original sheet value) — used by the SaleCreate phone autocomplete.
+    Accepts already-stripped digits; the caller normalizes.
+    """
+    q_digits = (q_digits or "").strip()
+    if len(q_digits) < 4:
+        return Lead.objects.none()
+    return (
+        Lead.objects.select_related("operator")
+        .filter(Q(phone__icontains=q_digits) | Q(phone_raw__icontains=q_digits))
+        .order_by("-updated_at")[:limit]
+    )
+
+
 def orphan_leads(
     *,
     sheet_source_id: int | None = None,

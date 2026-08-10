@@ -37,6 +37,7 @@ from .models import (
 from .selectors import (
     lead_get,
     lead_list,
+    leads_by_phone_search,
     leads_for_operator,
     my_status_for_operator,
     operator_has_open_backlog,
@@ -581,6 +582,46 @@ class LeadStatusApi(APIView):
         except ApplicationError as exc:
             return Response({"detail": exc.message, **exc.extra}, status=400)
         return Response(LeadSerializer(lead).data)
+
+
+class LeadPhoneSearchApi(APIView):
+    """
+    GET /api/leads/phone-search/?q=<digits>
+
+    Lightweight autocomplete used by the SaleCreate form: as the operator
+    types the client phone, we look up matching leads so the sale can be
+    linked (and, if the lead is not terminal, auto-flipped to WON on save).
+
+    Any authenticated app-user (operator / team_lead / manager) can call.
+    Returns at most 10 rows, sorted by -updated_at.
+    """
+
+    permission_classes = [IsAuthenticatedAnyRole]
+
+    def get(self, request):
+        raw = (request.query_params.get("q") or "").strip()
+        # Keep only digits — operators may paste "+998 90 123 45 67" or "901234567".
+        digits = "".join(ch for ch in raw if ch.isdigit())
+        if len(digits) < 4:
+            return Response({"results": []})
+        # Match against last 9+ digits — Uz phones are stored as `+998XXXXXXXXX`,
+        # so if the operator typed >= 9 chars we substring-search the tail.
+        needle = digits[-9:] if len(digits) >= 9 else digits
+        qs = leads_by_phone_search(needle, limit=10)
+        results = [
+            {
+                "id": lead.id,
+                "full_name": lead.full_name,
+                "phone": lead.phone,
+                "phone_raw": lead.phone_raw,
+                "status": lead.status,
+                "product_hint": lead.product_hint,
+                "operator_name": lead.operator.full_name if lead.operator else "",
+                "updated_at": lead.updated_at.isoformat(),
+            }
+            for lead in qs
+        ]
+        return Response({"results": results})
 
 
 class LeadConvertToSaleApi(APIView):

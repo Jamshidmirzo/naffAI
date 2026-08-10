@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from collections.abc import Iterable
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+
+logger = logging.getLogger(__name__)
 
 from django.db import transaction
 from django.utils import timezone
@@ -164,6 +167,7 @@ def sale_create(
     duplicate_override_comment: str = "",
     bonus_note: str = "",
     sheet_source_id: int | None = None,
+    lead_id: int | None = None,
 ) -> Sale:
     """
     Create a sale.
@@ -290,8 +294,50 @@ def sale_create(
         comment=duplicate_override_comment if duplicates else "",
     )
 
+    if lead_id is not None:
+        _link_sale_to_lead_and_mark_won(sale=sale, lead_id=lead_id, user=user)
+
     _broadcast_new_sale(sale, primary_op, credited_operator_lines, total)
     return sale
+
+
+def _link_sale_to_lead_and_mark_won(*, sale: Sale, lead_id: int, user) -> None:
+    """
+    When an operator creates a sale after finding a matching lead by phone
+    (SaleCreate → phone-search → pick), we:
+      1. Attach `sale.lead = lead` (and copy `sheet_source` if the sale had
+         none — mirrors the invariant in `lead_convert_to_sale`).
+      2. If the lead's current status is not terminal (won/lost/archived/
+         needs_review + any manager-flagged terminal label), flip it to WON
+         through `lead_update_status` so audit + refill fire correctly.
+
+    Any failure is logged but must NOT abort the sale — the sale is already
+    saved, the linkage is best-effort. Same connection/transaction as
+    sale_create (the outer @transaction.atomic wraps this call).
+    """
+    from apps.leads.models import Lead, LeadStatus
+    from apps.leads.selectors import terminal_lead_status_codes
+    from apps.leads.services import lead_update_status
+
+    try:
+        lead = Lead.objects.select_for_update().filter(pk=lead_id).first()
+        if lead is None:
+            return
+        sale.lead = lead
+        update_fields = ["lead"]
+        if lead.sheet_source_id and not sale.sheet_source_id:
+            sale.sheet_source_id = lead.sheet_source_id
+            update_fields.append("sheet_source")
+        sale.save(update_fields=update_fields)
+        if lead.status not in terminal_lead_status_codes():
+            lead_update_status(
+                lead=lead,
+                status=LeadStatus.WON,
+                user=user,
+                comment=f"Продажа №{sale.id}: авто-конвертация по phone-match",
+            )
+    except Exception:
+        logger.exception("link_sale_to_lead failed sale=%s lead_id=%s", sale.id, lead_id)
 
 
 def _broadcast_new_sale(sale, primary_op, operator_lines, total) -> None:

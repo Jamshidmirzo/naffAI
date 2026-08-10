@@ -1,15 +1,27 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, X } from "lucide-react";
 import { api } from "../lib/api";
 import { SingleSelectCombobox } from "../components/SingleSelectCombobox";
 import NumericInput from "../components/NumericInput";
 import { useT } from "../lib/i18n";
 import { formatNumber } from "../lib/format";
+import { LEAD_STATUS_BADGE, LEAD_STATUS_LABEL } from "../lib/leads";
 
 type OpLine = { operator_id?: number; operator_name?: string; amount: string };
 type PLine = { partner_id?: number; partner_name?: string; amount: string };
+
+type LeadMatch = {
+  id: number;
+  full_name: string;
+  phone: string;
+  phone_raw?: string;
+  status: string;
+  product_hint?: string;
+  operator_name?: string;
+  updated_at?: string;
+};
 
 export default function SaleCreate() {
   const t = useT();
@@ -17,6 +29,8 @@ export default function SaleCreate() {
   const isEdit = !!id;
   const nav = useNavigate();
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const preloadLeadId = searchParams.get("lead");
 
   const [imei, setImei] = useState("");
   const [model, setModel] = useState("");
@@ -36,6 +50,15 @@ export default function SaleCreate() {
   const [loaded, setLoaded] = useState(false);
   const [hasBonus, setHasBonus] = useState(false);
   const [bonusNote, setBonusNote] = useState("");
+  // Phone-to-lead linkage: when the operator picks a matching lead from
+  // the phone-search dropdown, we remember its id and send it in the
+  // POST body. Backend then attaches sale.lead and (unless the lead is
+  // in a terminal status) flips it to WON.
+  const [leadId, setLeadId] = useState<number | null>(null);
+  const [matchedLead, setMatchedLead] = useState<LeadMatch | null>(null);
+  const [phoneMatches, setPhoneMatches] = useState<LeadMatch[]>([]);
+  const [phoneDropdownOpen, setPhoneDropdownOpen] = useState(false);
+  const phoneWrapRef = useRef<HTMLDivElement | null>(null);
 
   const saleQ = useQuery({
     queryKey: ["sale", id],
@@ -116,6 +139,87 @@ export default function SaleCreate() {
         .catch(() => {});
     }
   }, [imei, isEdit]);
+
+  // Phone → lead autocomplete. Debounced 300 ms; triggered from 4 digits.
+  // If the user has already picked a lead (leadId != null) we suppress
+  // further lookups so re-editing the phone doesn't spawn a dropdown on
+  // top of the "linked" badge.
+  useEffect(() => {
+    if (leadId) return;
+    const digits = clientPhone.replace(/\D/g, "");
+    if (digits.length < 4) {
+      setPhoneMatches([]);
+      setPhoneDropdownOpen(false);
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      api
+        .get(`/leads/phone-search/`, { params: { q: digits } })
+        .then((r) => {
+          const rows: LeadMatch[] = r.data?.results || [];
+          setPhoneMatches(rows);
+          setPhoneDropdownOpen(rows.length > 0);
+        })
+        .catch(() => {
+          setPhoneMatches([]);
+        });
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [clientPhone, leadId]);
+
+  // Preload lead via `?lead=<id>` — used when the operator clicks
+  // "Konvertatsiya sotuvga" on MyLeads. One-shot on mount; skipped in edit mode.
+  useEffect(() => {
+    if (isEdit || !preloadLeadId) return;
+    const id = Number(preloadLeadId);
+    if (!Number.isFinite(id) || id <= 0) return;
+    api
+      .get(`/leads/${id}/`)
+      .then((r) => {
+        const lead = r.data;
+        if (!lead) return;
+        setLeadId(lead.id);
+        setMatchedLead({
+          id: lead.id,
+          full_name: lead.full_name || "",
+          phone: lead.phone || "",
+          phone_raw: lead.phone_raw,
+          status: lead.status,
+          product_hint: lead.product_hint,
+          operator_name: lead.operator_name,
+        });
+        setClientName(lead.full_name || "");
+        setClientPhone(lead.phone || "");
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Close dropdown on click outside the phone-wrapper.
+  useEffect(() => {
+    if (!phoneDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (phoneWrapRef.current && !phoneWrapRef.current.contains(e.target as Node)) {
+        setPhoneDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [phoneDropdownOpen]);
+
+  const pickLead = (lead: LeadMatch) => {
+    setLeadId(lead.id);
+    setMatchedLead(lead);
+    setClientName(lead.full_name || clientName);
+    setClientPhone(lead.phone || clientPhone);
+    setPhoneDropdownOpen(false);
+    setPhoneMatches([]);
+  };
+
+  const unlinkLead = () => {
+    setLeadId(null);
+    setMatchedLead(null);
+  };
 
   const opTotal = useMemo(
     () => operators.reduce((s, o) => s + (Number(o.amount) || 0), 0),
@@ -204,6 +308,7 @@ export default function SaleCreate() {
       allow_duplicate_imei: allowDup,
       duplicate_override_comment: dupComment,
       bonus_note: hasBonus ? bonusNote.trim() : "",
+      lead_id: leadId,
     };
 
     try {
@@ -313,14 +418,71 @@ export default function SaleCreate() {
               placeholder={t("sale_create.client_name_ph")}
             />
           </div>
-          <div>
+          <div ref={phoneWrapRef} className="relative">
             <label className="nf-col mb-1.5 block">{t("sale_create.client_phone")}</label>
-            <input
-              className="nf-input"
-              value={clientPhone}
-              onChange={(e) => setClientPhone(e.target.value)}
-              placeholder={t("sale_create.client_phone_ph")}
-            />
+            {matchedLead ? (
+              <div className="nf-input flex items-center justify-between gap-2 !py-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13.5px] font-medium truncate">
+                    {matchedLead.full_name || "—"}
+                    <span className="text-muted font-normal ml-2">{matchedLead.phone}</span>
+                  </div>
+                  <div className="text-[11px] text-muted mt-0.5 truncate">
+                    {t("sale_create.lead_linked_status", { status: statusLabel(matchedLead.status) })}
+                    {matchedLead.operator_name ? ` · ${matchedLead.operator_name}` : ""}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={unlinkLead}
+                  className="p-1 rounded-full hover:bg-[var(--faint2)] text-muted flex-shrink-0"
+                  title={t("common.remove")}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <input
+                className="nf-input"
+                value={clientPhone}
+                onChange={(e) => setClientPhone(e.target.value)}
+                onFocus={() => {
+                  if (phoneMatches.length > 0) setPhoneDropdownOpen(true);
+                }}
+                placeholder={t("sale_create.client_phone_ph")}
+                autoComplete="off"
+              />
+            )}
+            {phoneDropdownOpen && phoneMatches.length > 0 && !matchedLead && (
+              <div className="absolute top-full left-0 right-0 mt-1 z-30 nf-card overflow-hidden">
+                <div className="max-h-72 overflow-y-auto py-1">
+                  {phoneMatches.map((lead) => (
+                    <button
+                      key={lead.id}
+                      type="button"
+                      onClick={() => pickLead(lead)}
+                      className="w-full text-left px-3.5 py-2.5 hover:bg-[var(--faint)] transition"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[13.5px] font-medium truncate">
+                            {lead.full_name || t("sale_create.lead_no_name")}
+                          </div>
+                          <div className="text-[11.5px] text-muted truncate mt-0.5">
+                            {lead.phone}
+                            {lead.product_hint ? ` · ${lead.product_hint}` : ""}
+                            {lead.operator_name ? ` · ${lead.operator_name}` : ""}
+                          </div>
+                        </div>
+                        <span className={`text-[10.5px] px-2 py-0.5 rounded-full flex-shrink-0 ${leadStatusChipClass(lead.status)}`}>
+                          {statusLabel(lead.status)}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -473,6 +635,18 @@ export default function SaleCreate() {
       </form>
     </div>
   );
+}
+
+// Short label for the phone-search dropdown / linked-lead badge — uses the
+// shared LEAD_STATUS_LABEL map so the same wording appears everywhere in
+// the app (MyLeads chips, lead detail, etc.). Falls back to the raw code
+// for custom manager-created statuses.
+function statusLabel(code: string): string {
+  return LEAD_STATUS_LABEL[code] || code;
+}
+
+function leadStatusChipClass(code: string): string {
+  return LEAD_STATUS_BADGE[code] || "bg-[var(--faint2)] text-muted";
 }
 
 type LineEditorProps<L> = {
