@@ -95,6 +95,14 @@ export default function Operators() {
   });
 
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
+  const [editModal, setEditModal] = useState<{
+    id: number;
+    full_name: string;
+    phone: string;
+    hired_at: string;
+    note: string;
+    status: OperatorStatus;
+  } | null>(null);
   const [deleteError, setDeleteError] = useState("");
 
   const [planModal, setPlanModal] = useState<{ id: number; name: string; current: string | null } | null>(null);
@@ -158,6 +166,27 @@ export default function Operators() {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       const msg = typeof detail === "string" ? detail : t("operators.op_delete_failed");
       setDeleteError(msg);
+    },
+  });
+
+  const editOp = useMutation({
+    mutationFn: ({ id, ...body }: { id: number; full_name: string; phone: string; hired_at: string; note: string; status: OperatorStatus }) =>
+      api.patch(`/operators/${id}/`, {
+        full_name: body.full_name,
+        phone: body.phone || null,
+        hired_at: body.hired_at || null,
+        note: body.note || "",
+        status: body.status,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["operators"] });
+      qc.invalidateQueries({ queryKey: ["operators-list-all"] });
+      setEditModal(null);
+      toast.success(t("op_edit.saved"));
+    },
+    onError: (err: unknown) => {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : t("op_edit.save_failed"));
     },
   });
 
@@ -386,6 +415,21 @@ export default function Operators() {
                     </Button>
                     <Button
                       variant="secondary"
+                      onClick={() =>
+                        setEditModal({
+                          id: selected.id,
+                          full_name: selected.full_name,
+                          phone: selected.phone || "",
+                          hired_at: selected.hired_at || "",
+                          note: (selected as any).note || "",
+                          status: selected.status,
+                        })
+                      }
+                    >
+                      {t("common.edit")}
+                    </Button>
+                    <Button
+                      variant="secondary"
                       onClick={() => {
                         setPlanModal({
                           id: selected.id,
@@ -434,6 +478,79 @@ export default function Operators() {
           )}
         </div>
       </section>
+
+      {/* Edit operator modal */}
+      <Modal open={!!editModal} onClose={() => setEditModal(null)} width={480}>
+        {editModal && (
+          <div className="p-7 space-y-4">
+            <div className="text-[18px] font-semibold tracking-tight">
+              {t("op_edit.title")}
+            </div>
+            <div>
+              <div className="nf-col mb-1.5">{t("op_edit.full_name")}</div>
+              <input
+                className="nf-input"
+                value={editModal.full_name}
+                onChange={(e) => setEditModal({ ...editModal, full_name: e.target.value })}
+                autoFocus
+              />
+            </div>
+            <div>
+              <div className="nf-col mb-1.5">{t("op_edit.phone")}</div>
+              <input
+                className="nf-input"
+                value={editModal.phone}
+                onChange={(e) => setEditModal({ ...editModal, phone: e.target.value })}
+                placeholder="+998 90 123 45 67"
+                inputMode="tel"
+              />
+            </div>
+            <div>
+              <div className="nf-col mb-1.5">{t("op_edit.hired_at")}</div>
+              <input
+                type="date"
+                className="nf-input"
+                value={editModal.hired_at ? editModal.hired_at.slice(0, 10) : ""}
+                onChange={(e) => setEditModal({ ...editModal, hired_at: e.target.value })}
+              />
+            </div>
+            <div>
+              <div className="nf-col mb-1.5">{t("op_edit.status")}</div>
+              <select
+                className="nf-input"
+                value={editModal.status}
+                onChange={(e) =>
+                  setEditModal({ ...editModal, status: e.target.value as OperatorStatus })
+                }
+              >
+                <option value="active">{t("op_edit.status_active")}</option>
+                <option value="trainee">{t("op_edit.status_trainee")}</option>
+                <option value="inactive">{t("op_edit.status_inactive")}</option>
+              </select>
+            </div>
+            <div>
+              <div className="nf-col mb-1.5">{t("op_edit.note")}</div>
+              <textarea
+                className="nf-input"
+                rows={2}
+                value={editModal.note}
+                onChange={(e) => setEditModal({ ...editModal, note: e.target.value })}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={() => setEditModal(null)}>
+                {t("common.cancel")}
+              </Button>
+              <Button
+                onClick={() => editModal && editOp.mutate(editModal)}
+                disabled={editOp.isPending || !editModal.full_name.trim()}
+              >
+                {editOp.isPending ? t("common.loading") : t("common.save")}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Plan modal */}
       <Modal open={!!planModal} onClose={() => setPlanModal(null)} width={420}>

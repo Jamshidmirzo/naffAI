@@ -168,6 +168,7 @@ def sale_create(
     bonus_note: str = "",
     sheet_source_id: int | None = None,
     lead_id: int | None = None,
+    contract_photo=None,
 ) -> Sale:
     """
     Create a sale.
@@ -235,6 +236,14 @@ def sale_create(
     primary_partner = partner_lines[0][0]
 
     qty = max(1, int(quantity or 1))
+    # Pending sales from operators must have a contract photo — enforced
+    # at the service layer so any caller path (API, tests, tg-bot later)
+    # gets the same guarantee.
+    if status == SaleStatus.PENDING and not contract_photo:
+        raise ApplicationError(
+            "Для отправки продажи на подтверждение приложите фото договора.",
+            {"field": "contract_photo"},
+        )
     sale = Sale.objects.create(
         imei=imei,
         phone_model=phone_model[:128],
@@ -251,6 +260,7 @@ def sale_create(
         status=status,
         bonus_note=(bonus_note or "").strip(),
         sheet_source_id=sheet_source_id,
+        contract_photo=contract_photo,
     )
 
     SaleOperator.objects.bulk_create(
@@ -746,13 +756,84 @@ def sale_soft_delete(*, sale: Sale, user=None) -> Sale:
 def sale_confirm(*, sale: Sale, user=None) -> Sale:
     if sale.status == SaleStatus.CONFIRMED:
         return sale
+    old_status = sale.status
     sale.status = SaleStatus.CONFIRMED
-    sale.save(update_fields=["status", "updated_at"])
+    # Clear any prior rejection payload — manager may have rejected once
+    # then reconsidered after an edit + approve pass.
+    sale.rejection_reason = ""
+    sale.rejected_at = None
+    sale.save(update_fields=["status", "rejection_reason", "rejected_at", "updated_at"])
     audit_log_create(
         user=user,
         action=AuditAction.UPDATE,
         entity="sales.Sale",
         entity_id=sale.id,
-        changes={"status": "confirmed"},
+        changes={"status": {"old": old_status, "new": "confirmed"}},
     )
     return sale
+
+
+@transaction.atomic
+def sale_reject(*, sale: Sale, user, reason: str) -> Sale:
+    """
+    Manager rejects a pending sale. Requires a non-empty reason so the
+    operator sees actionable feedback (shown on their /my/sales pending
+    tab + in-app notification). Only PENDING sales can be rejected.
+    """
+    reason = (reason or "").strip()
+    if not reason:
+        raise ApplicationError(
+            "Причина отклонения обязательна.",
+            {"field": "reason"},
+        )
+    if sale.status != SaleStatus.PENDING:
+        raise ApplicationError(
+            "Отклонить можно только продажу на подтверждении.",
+            {"field": "status"},
+        )
+    sale.status = SaleStatus.REJECTED
+    sale.rejection_reason = reason
+    sale.rejected_at = timezone.now()
+    sale.save(
+        update_fields=["status", "rejection_reason", "rejected_at", "updated_at"]
+    )
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="sales.Sale",
+        entity_id=sale.id,
+        changes={
+            "status": {"old": "pending", "new": "rejected"},
+            "rejection_reason": reason,
+        },
+    )
+    _notify_operator_of_reject(sale=sale, reason=reason, user=user)
+    return sale
+
+
+def _notify_operator_of_reject(*, sale: Sale, reason: str, user) -> None:
+    """
+    In-app notification for the operator whose pending sale was rejected.
+    Best-effort — errors are swallowed so the reject itself succeeds even
+    if notifications app is down.
+    """
+    try:
+        from apps.notifications.models import NotificationKind
+        from apps.notifications.services import notification_broadcast
+
+        if not sale.created_by_id:
+            return
+        notification_broadcast(
+            kind=NotificationKind.SALE_REJECTED,
+            title="Продажа отклонена",
+            body=f"Продажа №{sale.id} ({sale.phone_model}) отклонена. Причина: {reason}",
+            link=f"/sales/{sale.id}",
+            recipient_ids=[sale.created_by_id],
+            metadata={"sale_id": sale.id, "reason": reason},
+        )
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "reject notification failed sale=%s", sale.id
+        )

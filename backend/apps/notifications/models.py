@@ -13,6 +13,7 @@ from apps.common.models import TimestampedModel
 class NotificationKind(models.TextChoices):
     SALE_CREATED = "sale_created", "Новая продажа"
     SALE_RETURNED = "sale_returned", "Возврат продажи"
+    SALE_REJECTED = "sale_rejected", "Продажа отклонена"
     CALLBACK_OVERDUE = "callback_overdue", "Просроченный колбэк"
     LEAD_ASSIGNED = "lead_assigned", "Новый лид"
     SYSTEM = "system", "Системное сообщение"

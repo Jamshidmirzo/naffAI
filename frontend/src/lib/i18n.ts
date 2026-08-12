@@ -63,6 +63,7 @@ const STRINGS: Lookup = {
     // ------ sidebar items ------
     "nav.dashboard": "Дашборд",
     "nav.sales": "Продажи",
+    "nav.sales_pending": "Ожидают подтверждения",
     "nav.leads": "Лиды",
     "nav.analytics": "Аналитика",
     "nav.leads_stats": "Статистика лидов",
@@ -1437,6 +1438,56 @@ const STRINGS: Lookup = {
     "orphans.dist.badge.gate": "gate",
     "orphans.dist.badge.disabled": "выключен",
     "orphans.dist.badge.dash": "—",
+
+    // ------ operator sale create (demo v3) ------
+    "op_sale.title_new": "Новая продажа",
+    "op_sale.subtitle": "Заполните и отправьте менеджеру на подтверждение",
+    "op_sale.amount": "Сумма",
+    "op_sale.channel_ph": "Выберите канал",
+    "op_sale.contract_photo": "Фото договора",
+    "op_sale.contract_photo_hint": "Обязательно. Можно вставить из буфера (Cmd/Ctrl+V) или выбрать файл.",
+    "op_sale.amount_summary": "К отправке:",
+    "op_sale.send_for_review": "Отправить менеджеру",
+    "op_sale.sent_for_review": "Отправлено на подтверждение",
+    "op_sale.save_failed": "Не удалось отправить. Проверьте поля.",
+    "op_sale.fill_all_fields": "Заполните все обязательные поля",
+
+    // ------ sales pending / approval ------
+    "sales_pending.title": "Ожидают подтверждения",
+    "sales_pending.subtitle": "Продажи, отправленные операторами",
+    "sales_pending.empty_title": "Нет продаж на подтверждении",
+    "sales_pending.empty_hint": "Все продажи операторов уже обработаны.",
+    "sale_pending.approve": "Одобрить",
+    "sale_pending.improve": "Исправить и одобрить",
+    "sale_pending.reject": "Отклонить",
+    "sale_pending.approve_done": "Продажа подтверждена",
+    "sale_pending.approve_failed": "Не удалось подтвердить",
+    "sale_pending.reject_done": "Продажа отклонена",
+    "sale_pending.reject_failed": "Не удалось отклонить",
+    "sale_pending.reject_modal_title": "Отклонить продажу",
+    "sale_pending.reject_hint": "Оператор увидит эту причину в уведомлении и на карточке продажи.",
+    "sale_pending.reason_label": "Причина",
+    "sale_pending.reason_ph": "Например: IMEI не совпадает с фото договора",
+    "sale_pending.contract_photo": "Договор",
+    "sale_pending.rejected_title": "Продажа отклонена. Причина:",
+
+    // ------ photo uploader ------
+    "photo.dropzone_title": "Перетащите или вставьте фото",
+    "photo.dropzone_hint": "Cmd/Ctrl+V из буфера, или drag-drop, или выберите файл. JPG/PNG до 20 МБ.",
+    "photo.pick_file": "Выбрать файл",
+
+    // ------ operator edit ------
+    "op_edit.title": "Редактировать оператора",
+    "op_edit.full_name": "Имя оператора",
+    "op_edit.phone": "Телефон",
+    "op_edit.hired_at": "Дата приёма",
+    "op_edit.status": "Статус",
+    "op_edit.status_active": "Активный",
+    "op_edit.status_trainee": "Стажёр",
+    "op_edit.status_inactive": "Неактивный",
+    "op_edit.note": "Заметка",
+    "op_edit.saved": "Оператор обновлён",
+    "op_edit.save_failed": "Не удалось сохранить",
   },
 
   uz: {
@@ -1486,6 +1537,7 @@ const STRINGS: Lookup = {
     // ------ sidebar items ------
     "nav.dashboard": "Boshqaruv paneli",
     "nav.sales": "Sotuvlar",
+    "nav.sales_pending": "Tasdiqlash kutmoqda",
     "nav.leads": "Lidlar",
     "nav.analytics": "Tahlil",
     "nav.leads_stats": "Lid statistikasi",
@@ -2860,6 +2912,56 @@ const STRINGS: Lookup = {
     "orphans.dist.badge.gate": "gate",
     "orphans.dist.badge.disabled": "o'chirilgan",
     "orphans.dist.badge.dash": "—",
+
+    // ------ operator sale create (demo v3) ------
+    "op_sale.title_new": "Yangi sotuv",
+    "op_sale.subtitle": "To'ldiring va menejerga tasdiqlashga yuboring",
+    "op_sale.amount": "Summa",
+    "op_sale.channel_ph": "Kanalni tanlang",
+    "op_sale.contract_photo": "Shartnoma surati",
+    "op_sale.contract_photo_hint": "Majburiy. Buferdan (Cmd/Ctrl+V) yopishtiring yoki faylni tanlang.",
+    "op_sale.amount_summary": "Yuborishga:",
+    "op_sale.send_for_review": "Menejerga yuborish",
+    "op_sale.sent_for_review": "Tasdiqlashga yuborildi",
+    "op_sale.save_failed": "Yuborib bo'lmadi. Maydonlarni tekshiring.",
+    "op_sale.fill_all_fields": "Barcha majburiy maydonlarni to'ldiring",
+
+    // ------ sales pending / approval ------
+    "sales_pending.title": "Tasdiqlash kutmoqda",
+    "sales_pending.subtitle": "Operatorlar tomonidan yuborilgan sotuvlar",
+    "sales_pending.empty_title": "Kutayotgan sotuvlar yo'q",
+    "sales_pending.empty_hint": "Operatorlarning barcha sotuvlari ko'rib chiqilgan.",
+    "sale_pending.approve": "Tasdiqlash",
+    "sale_pending.improve": "Tuzatib tasdiqlash",
+    "sale_pending.reject": "Rad etish",
+    "sale_pending.approve_done": "Sotuv tasdiqlandi",
+    "sale_pending.approve_failed": "Tasdiqlab bo'lmadi",
+    "sale_pending.reject_done": "Sotuv rad etildi",
+    "sale_pending.reject_failed": "Rad etib bo'lmadi",
+    "sale_pending.reject_modal_title": "Sotuvni rad etish",
+    "sale_pending.reject_hint": "Operator sababni bildirishnomada va sotuv kartochkasida ko'radi.",
+    "sale_pending.reason_label": "Sabab",
+    "sale_pending.reason_ph": "Masalan: IMEI shartnoma surati bilan mos kelmayapti",
+    "sale_pending.contract_photo": "Shartnoma",
+    "sale_pending.rejected_title": "Sotuv rad etildi. Sabab:",
+
+    // ------ photo uploader ------
+    "photo.dropzone_title": "Surat sudrab tashlang yoki yopishtiring",
+    "photo.dropzone_hint": "Cmd/Ctrl+V buferdan yoki drag-drop yoki faylni tanlang. JPG/PNG, 20 MB gacha.",
+    "photo.pick_file": "Faylni tanlash",
+
+    // ------ operator edit ------
+    "op_edit.title": "Operatorni tahrirlash",
+    "op_edit.full_name": "Operator ismi",
+    "op_edit.phone": "Telefon",
+    "op_edit.hired_at": "Ish boshlangan sana",
+    "op_edit.status": "Status",
+    "op_edit.status_active": "Faol",
+    "op_edit.status_trainee": "Stajyor",
+    "op_edit.status_inactive": "Nofaol",
+    "op_edit.note": "Izoh",
+    "op_edit.saved": "Operator yangilandi",
+    "op_edit.save_failed": "Saqlab bo'lmadi",
   },
 };
 

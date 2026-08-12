@@ -5,15 +5,19 @@ from django.db.models import F
 from django.utils.dateparse import parse_datetime
 from rest_framework import serializers, status
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.common.exceptions import ApplicationError
-from apps.users.permissions import IsTeamLead, IsTeamLeadOrManagerReadOnly
+from apps.users.permissions import (
+    IsAuthenticatedAnyRole,
+    IsTeamLead,
+    IsTeamLeadOrManagerReadOnly,
+)
 
 from .imports.excel_importer import import_file
-from .models import GiftItem, Sale, SaleOperator, SalePartner
+from .models import GiftItem, Sale, SaleOperator, SalePartner, SaleStatus
 from .selectors import sale_get, sale_list
 from .services import (
     sale_confirm,
@@ -21,6 +25,7 @@ from .services import (
     sale_full_update,
     sale_mark_returned,
     sale_partial_update,
+    sale_reject,
     sale_soft_delete,
 )
 
@@ -91,6 +96,9 @@ class SaleSerializer(serializers.ModelSerializer):
             "return_reason",
             "is_deleted",
             "gifts",
+            "contract_photo",
+            "rejection_reason",
+            "rejected_at",
             "created_at",
             "updated_at",
         ]
@@ -107,6 +115,9 @@ class SaleSerializer(serializers.ModelSerializer):
             "is_returned",
             "returned_at",
             "return_reason",
+            "contract_photo",
+            "rejection_reason",
+            "rejected_at",
             "created_at",
             "updated_at",
         ]
@@ -158,6 +169,16 @@ class SaleCreateInputSerializer(serializers.Serializer):
     # SaleCreate form, we pass its id so the backend links sale.lead and
     # (unless the lead is already in a terminal status) flips it to WON.
     lead_id = serializers.IntegerField(required=False, allow_null=True)
+    # Explicit status — usually server-forced (operator→pending, manager→
+    # confirmed by default), but manager can pass "pending" too if they
+    # want to review before publishing.
+    status = serializers.ChoiceField(
+        choices=[SaleStatus.PENDING, SaleStatus.CONFIRMED],
+        required=False,
+    )
+    # Attached contract photo (multipart upload). Required by service layer
+    # when status=pending; otherwise optional.
+    contract_photo = serializers.ImageField(required=False, allow_null=True)
 
     def to_internal_value(self, data):
         if isinstance(data, dict):
@@ -258,8 +279,19 @@ class SaleListFilterSerializer(serializers.Serializer):
 
 
 class SaleListCreateApi(ListCreateAPIView):
-    permission_classes = [IsTeamLeadOrManagerReadOnly]
+    # GET: managers only (through IsTeamLeadOrManagerReadOnly, i.e. seniors
+    # RO + team_lead full). POST: any authenticated app-user — operators
+    # can submit their own sales but the create() method below forces
+    # status=pending and requires a contract_photo for them.
+    permission_classes = [IsAuthenticatedAnyRole]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     serializer_class = SaleSerializer
+
+    def get_permissions(self):
+        # Read side (GET) still restricted to managers/team_lead.
+        if self.request.method == "GET":
+            return [IsTeamLeadOrManagerReadOnly()]
+        return [IsAuthenticatedAnyRole()]
 
     def get_queryset(self):
         # DRF's `request.query_params` is a QueryDict — `getlist` is the
@@ -301,8 +333,27 @@ class SaleListCreateApi(ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         input_ser = SaleCreateInputSerializer(data=request.data)
         input_ser.is_valid(raise_exception=True)
+        payload = dict(input_ser.validated_data)
+
+        # Role gate: operators can only submit pending sales, and always
+        # as the sole seller (their own operator record). Managers/team_leads
+        # keep full control (default status=confirmed, arbitrary allocations).
+        profile = getattr(request.user, "profile", None)
+        role = getattr(profile, "role", None)
+        if role == "operator":
+            payload["status"] = SaleStatus.PENDING
+            # Force self-allocation: single-op line = the operator's own id.
+            op_id = getattr(profile, "operator_id", None)
+            if not op_id:
+                return Response(
+                    {"detail": "У пользователя не привязан оператор"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            payload["operator_id"] = op_id
+            payload["operators"] = []  # no multi-allocation for operators
+
         try:
-            sale = sale_create(user=request.user, **input_ser.validated_data)
+            sale = sale_create(user=request.user, **payload)
         except ApplicationError as exc:
             return Response(
                 {"detail": exc.message, **exc.extra}, status=status.HTTP_400_BAD_REQUEST
@@ -311,15 +362,31 @@ class SaleListCreateApi(ListCreateAPIView):
 
 
 class SaleDetailApi(RetrieveUpdateDestroyAPIView):
-    permission_classes = [IsTeamLead]
+    # GET: any authenticated app-user (operators see only sales they created,
+    # enforced in get_queryset below). PATCH/PUT/DELETE: managers only —
+    # guarded in update()/perform_destroy() via _guard_writes().
+    permission_classes = [IsAuthenticatedAnyRole]
     serializer_class = SaleSerializer
 
     def get_queryset(self):
-        return (
+        qs = (
             Sale.objects.select_related("operator", "channel")
             .prefetch_related("gifts", "operator_lines__operator", "partner_lines__partner")
             .annotate(total_price=F("amount") - F("discount"))
         )
+        profile = getattr(self.request.user, "profile", None)
+        if getattr(profile, "role", None) == "operator":
+            # Operators can only see sales they themselves created (their own
+            # pending/rejected/confirmed items). Prevents peeking at colleagues.
+            return qs.filter(created_by=self.request.user)
+        return qs
+
+    def _guard_writes(self):
+        profile = getattr(self.request.user, "profile", None)
+        if getattr(profile, "role", None) == "operator":
+            from rest_framework.exceptions import PermissionDenied
+
+            raise PermissionDenied("Operators cannot modify sales.")
 
     def update(self, request, *args, **kwargs):
         """
@@ -329,6 +396,7 @@ class SaleDetailApi(RetrieveUpdateDestroyAPIView):
         Both are exposed on the same URL so existing inline-edit callers
         (`PATCH /sales/{id}/` with just `sold_at`) keep working.
         """
+        self._guard_writes()
         sale = self.get_object()
         partial = bool(kwargs.get("partial", False))
 
@@ -356,6 +424,7 @@ class SaleDetailApi(RetrieveUpdateDestroyAPIView):
         return Response(SaleSerializer(updated).data)
 
     def perform_destroy(self, instance):
+        self._guard_writes()
         sale_soft_delete(sale=instance, user=self.request.user)
 
 
@@ -380,6 +449,52 @@ class SaleConfirmApi(APIView):
             return Response({"detail": "Not found"}, status=404)
         sale_confirm(sale=sale, user=request.user)
         return Response(SaleSerializer(sale).data)
+
+
+class SaleRejectApi(APIView):
+    permission_classes = [IsTeamLead]
+
+    def post(self, request, pk: int):
+        sale = sale_get(pk)
+        if not sale:
+            return Response({"detail": "Not found"}, status=404)
+        reason = (request.data or {}).get("reason", "")
+        try:
+            sale_reject(sale=sale, user=request.user, reason=reason)
+        except ApplicationError as exc:
+            return Response(
+                {"detail": exc.message, **exc.extra}, status=status.HTTP_400_BAD_REQUEST
+            )
+        return Response(SaleSerializer(sale).data)
+
+
+class SalePendingListApi(APIView):
+    """
+    GET /api/sales/pending/ — все продажи со status=pending, свежие сверху.
+    Показывается менеджеру в /sales/pending. Photo URLs — абсолютные,
+    чтобы фронт мог рендерить `<img src>` напрямую.
+    """
+
+    permission_classes = [IsTeamLead]
+
+    def get(self, request):
+        qs = (
+            Sale.objects.filter(status=SaleStatus.PENDING, is_deleted=False)
+            .select_related("operator", "channel", "created_by")
+            .prefetch_related(
+                "operator_lines__operator", "partner_lines__partner", "gifts"
+            )
+            .annotate(total_price=F("amount") - F("discount"))
+            .order_by("-created_at")
+        )
+        return Response(
+            {
+                "results": SaleSerializer(
+                    qs, many=True, context={"request": request}
+                ).data,
+                "count": qs.count(),
+            }
+        )
 
 
 class SaleImportExcelApi(APIView):

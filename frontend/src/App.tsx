@@ -33,6 +33,8 @@ import TgQueue from "./pages/TgQueue";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
 import OrphanLeads from "./pages/OrphanLeads";
+import OperatorSaleCreate from "./pages/OperatorSaleCreate";
+import SalesPending from "./pages/SalesPending";
 import { useAuth } from "./store/auth";
 import { RoleGate, normaliseRole } from "./components/RoleGate";
 import { ToastHost } from "./components/ui";
@@ -66,6 +68,8 @@ export default function App() {
         >
           <Route path="/" element={<RoleAwareHome />} />
           <Route path="/my" element={<MyLeads />} />
+          <Route path="/my/sale-new" element={<RoleGate allow={["operator"]}><OperatorSaleCreate /></RoleGate>} />
+          <Route path="/sales/pending" element={<RoleGate allow={["manager"]}><SalesPending /></RoleGate>} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/lessons/today" element={<DailyLesson />} />
@@ -84,7 +88,7 @@ export default function App() {
           <Route path="/statuses" element={<RoleGate allow={["manager"]}><LeadStatuses /></RoleGate>} />
           <Route path="/sales" element={<RoleGate allow={["manager"]}><Sales /></RoleGate>} />
           <Route path="/sales/new" element={<RoleGate allow={["manager"]}><SaleCreate /></RoleGate>} />
-          <Route path="/sales/:id" element={<RoleGate allow={["manager"]}><SaleDetail /></RoleGate>} />
+          <Route path="/sales/:id" element={<SaleDetail />} />
           <Route path="/sales/:id/edit" element={<RoleGate allow={["manager"]}><SaleCreate /></RoleGate>} />
           <Route path="/operators" element={<RoleGate allow={["manager"]}><Operators /></RoleGate>} />
           <Route path="/operators/:id" element={<RoleGate allow={["manager"]}><OperatorDetail /></RoleGate>} />

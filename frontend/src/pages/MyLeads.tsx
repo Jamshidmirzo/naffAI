@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Phone,
   MessageCircle,
@@ -665,6 +665,11 @@ export default function MyLeads() {
               {operator?.full_name} · {t("my.daily_plan_hint", { n: dailyPlan })}
               {counts.postponed > 0 && <> {t("my.postponed_hint", { n: counts.postponed })}</>}
             </p>
+            <div className="mt-5">
+              <Link to="/my/sale-new" className="nf-btn nf-btn--primary">
+                + {t("dash.new_sale")}
+              </Link>
+            </div>
           </div>
           <div
             className="hidden md:block rounded-2xl relative overflow-hidden"

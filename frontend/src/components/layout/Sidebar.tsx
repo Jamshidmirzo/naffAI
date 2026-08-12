@@ -12,7 +12,7 @@ export interface SidebarItem {
   label: string;
   end?: boolean;
   external?: boolean;
-  badgeKey?: "leadsReview" | "notifs" | "lessonNew" | "orphans" | "myBlockers";
+  badgeKey?: "leadsReview" | "notifs" | "lessonNew" | "orphans" | "myBlockers" | "salesPending";
 }
 
 export interface SidebarGroup {
@@ -71,6 +71,16 @@ function useBadges(role: "manager" | "operator") {
     enabled: role === "manager",
     refetchInterval: 60000,
   });
+  const salesPending = useQuery({
+    queryKey: ["sales-pending-count"],
+    queryFn: async () => {
+      const { data } = await api.get<{ count?: number }>("/sales/pending/");
+      return data.count || 0;
+    },
+    enabled: role === "manager",
+    refetchInterval: 30000,
+    retry: false,
+  });
   const lessonPeek = useQuery({
     queryKey: ["lessons", "today", "peek"],
     queryFn: () =>
@@ -114,6 +124,7 @@ function useBadges(role: "manager" | "operator") {
   return {
     leadsReview: role === "manager" ? needsReview.data ?? 0 : 0,
     orphans: role === "manager" ? orphansCount.data ?? 0 : 0,
+    salesPending: role === "manager" ? salesPending.data ?? 0 : 0,
     lessonNew: role === "operator" && lessonPeek.data && !lessonPeek.data.opened_at ? 1 : 0,
     notifs: unreadNotifs.data ?? 0,
     myBlockers,

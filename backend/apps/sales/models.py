@@ -7,6 +7,7 @@ from apps.common.models import TimestampedModel
 class SaleStatus(models.TextChoices):
     PENDING = "pending", "На подтверждении"
     CONFIRMED = "confirmed", "Подтверждена"
+    REJECTED = "rejected", "Отклонена"
 
 
 class Sale(TimestampedModel):
@@ -95,6 +96,20 @@ class Sale(TimestampedModel):
     # the operator wants to flag to the manager. Separate from `comment`
     # so aggregations / notifications can pick it up cleanly.
     bonus_note = models.TextField(blank=True, default="")
+
+    # Attached contract photo — usually uploaded by the operator when creating
+    # a pending sale (paste-from-clipboard or file picker). Nullable because
+    # historical / manager-created sales don't have one.
+    contract_photo = models.ImageField(
+        upload_to="sales/contracts/%Y/%m/",
+        null=True,
+        blank=True,
+        help_text="Фото договора, приложенное оператором при создании pending-продажи.",
+    )
+
+    # Manager's rejection payload (only meaningful when status == REJECTED).
+    rejection_reason = models.TextField(blank=True, default="")
+    rejected_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-sold_at"]

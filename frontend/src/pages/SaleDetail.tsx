@@ -13,6 +13,8 @@ import {
 } from "../components/ui";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
+import { useAuth } from "../store/auth";
+import { normaliseRole } from "../components/RoleGate";
 
 interface OperatorLine {
   operator: number;
@@ -185,9 +187,14 @@ export default function SaleDetail() {
   const nav = useNavigate();
   const qc = useQueryClient();
 
+  const role = normaliseRole(useAuth((s) => s.role));
+  const isManager = role === "manager";
   const [returnReason, setReturnReason] = useState("");
   const [showReturn, setShowReturn] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [showReject, setShowReject] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [showPhotoFull, setShowPhotoFull] = useState(false);
 
   const q = useQuery({
     queryKey: ["sale", id],
@@ -223,6 +230,30 @@ export default function SaleDetail() {
       nav("/sales");
     },
     onError: () => toast.error(t("sale_detail.delete_failed")),
+  });
+
+  const approveMut = useMutation({
+    mutationFn: () => api.post(`/sales/${id}/confirm/`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sale", id] });
+      qc.invalidateQueries({ queryKey: ["sales-pending"] });
+      qc.invalidateQueries({ queryKey: ["sales-pending-count"] });
+      toast.success(t("sale_pending.approve_done"));
+    },
+    onError: () => toast.error(t("sale_pending.approve_failed")),
+  });
+
+  const rejectMut = useMutation({
+    mutationFn: (reason: string) => api.post(`/sales/${id}/reject/`, { reason }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sale", id] });
+      qc.invalidateQueries({ queryKey: ["sales-pending"] });
+      qc.invalidateQueries({ queryKey: ["sales-pending-count"] });
+      setShowReject(false);
+      setRejectReason("");
+      toast.success(t("sale_pending.reject_done"));
+    },
+    onError: () => toast.error(t("sale_pending.reject_failed")),
   });
 
   const s = q.data;
@@ -445,7 +476,58 @@ export default function SaleDetail() {
               </div>
             )}
 
-            {!isDeleted && (
+            {s.contract_photo && (
+              <div className="mt-5">
+                <div className="nf-col mb-1.5">{t("sale_pending.contract_photo")}</div>
+                <button
+                  type="button"
+                  onClick={() => setShowPhotoFull(true)}
+                  className="block w-full max-w-sm rounded-2xl overflow-hidden border border-[var(--border)] hover:border-[var(--accent)] transition"
+                >
+                  <img
+                    src={s.contract_photo}
+                    alt="contract"
+                    className="w-full max-h-[280px] object-contain bg-[var(--surface2)]"
+                  />
+                </button>
+              </div>
+            )}
+
+            {s.status === "rejected" && s.rejection_reason && (
+              <div className="mt-5 rounded-2xl border border-red-500/30 bg-red-500/10 p-4">
+                <div className="text-[12.5px] font-semibold text-red-500 mb-1">
+                  {t("sale_pending.rejected_title")}
+                </div>
+                <div className="text-[13px] text-text whitespace-pre-wrap">
+                  {s.rejection_reason}
+                </div>
+              </div>
+            )}
+
+            {isPending && isManager && !isDeleted && (
+              <div className="mt-6 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="nf-btn nf-btn--primary"
+                  onClick={() => approveMut.mutate()}
+                  disabled={approveMut.isPending}
+                >
+                  {approveMut.isPending ? t("common.loading") : t("sale_pending.approve")}
+                </button>
+                <Link to={`/sales/${id}/edit`} className="nf-btn nf-btn--secondary">
+                  {t("sale_pending.improve")}
+                </Link>
+                <button
+                  type="button"
+                  className="nf-btn nf-btn--danger"
+                  onClick={() => setShowReject(true)}
+                >
+                  {t("sale_pending.reject")}
+                </button>
+              </div>
+            )}
+
+            {!isDeleted && !isPending && isManager && (
               <div className="mt-6 flex flex-wrap gap-2">
                 <Link to={`/sales/${id}/edit`} className="nf-btn nf-btn--primary">{t("common.edit")}</Link>
                 {!isReturned && (
@@ -501,6 +583,59 @@ export default function SaleDetail() {
           <AiPanel saleId={id} />
         </div>
       </div>
+
+      {/* Reject modal */}
+      <Modal open={showReject} onClose={() => setShowReject(false)} width={440}>
+        <div className="p-7">
+          <div className="text-[18px] font-semibold tracking-tight">
+            {t("sale_pending.reject_modal_title")}
+          </div>
+          <div className="text-[13px] text-muted mt-1">
+            {t("sale_pending.reject_hint")}
+          </div>
+          <div className="mt-5">
+            <div className="nf-col mb-1.5">{t("sale_pending.reason_label")}</div>
+            <textarea
+              className="nf-input min-h-[100px]"
+              rows={4}
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder={t("sale_pending.reason_ph")}
+              autoFocus
+            />
+          </div>
+          <div className="mt-5 flex justify-end gap-2">
+            <button
+              type="button"
+              className="nf-btn nf-btn--ghost"
+              onClick={() => setShowReject(false)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="nf-btn nf-btn--danger"
+              onClick={() => rejectMut.mutate(rejectReason)}
+              disabled={rejectMut.isPending || !rejectReason.trim()}
+            >
+              {rejectMut.isPending ? t("common.loading") : t("sale_pending.reject")}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Photo fullscreen */}
+      {s.contract_photo && (
+        <Modal open={showPhotoFull} onClose={() => setShowPhotoFull(false)} width={900}>
+          <div className="p-2">
+            <img
+              src={s.contract_photo}
+              alt="contract"
+              className="w-full max-h-[85vh] object-contain rounded-xl"
+            />
+          </div>
+        </Modal>
+      )}
 
       {/* Return modal */}
       <Modal

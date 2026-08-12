@@ -18,6 +18,7 @@ function useManagerGroups(t: (k: string) => string): SidebarGroup[] {
       items: [
         { to: "/", label: t("nav.dashboard"), end: true },
         { to: "/sales", label: t("nav.sales") },
+        { to: "/sales/pending", label: t("nav.sales_pending"), badgeKey: "salesPending" },
         { to: "/leads", label: t("nav.leads"), badgeKey: "leadsReview" },
         { to: "/leads/orphans", label: t("nav.orphans"), badgeKey: "orphans" },
       ],
