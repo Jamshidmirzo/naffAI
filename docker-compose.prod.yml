@@ -172,6 +172,28 @@ services:
           python manage.py morning_distribute || echo "morning_distribute rc=$$?"
         done
 
+  # Bot reports scheduler — раз в минуту проходит по BotReport(enabled=True),
+  # рассылает те, чей schedule_time наступил + last_sent_at != today.
+  # Идемпотентно (guard в scheduler.report_should_fire) — при рестарте
+  # контейнера в течение того же дня повторной рассылки не будет.
+  reports-scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          python manage.py send_scheduled_reports || echo "send_scheduled_reports rc=$$?"
+          sleep 60
+        done
+
   # Distribute-watcher — раз в минуту проходит по активным операторам,
   # у кого working_count=0, и доливает им пачку из общего пула сирот.
   # Дополняет `_run_refill_if_empty` (хук в lead_update_status): если

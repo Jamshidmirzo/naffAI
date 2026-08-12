@@ -35,6 +35,7 @@ import Settings from "./pages/Settings";
 import OrphanLeads from "./pages/OrphanLeads";
 import OperatorSaleCreate from "./pages/OperatorSaleCreate";
 import SalesPending from "./pages/SalesPending";
+import BotConfig from "./pages/BotConfig";
 import { useAuth } from "./store/auth";
 import { RoleGate, normaliseRole } from "./components/RoleGate";
 import { ToastHost } from "./components/ui";
@@ -70,6 +71,7 @@ export default function App() {
           <Route path="/my" element={<MyLeads />} />
           <Route path="/my/sale-new" element={<RoleGate allow={["operator"]}><OperatorSaleCreate /></RoleGate>} />
           <Route path="/sales/pending" element={<RoleGate allow={["manager"]}><SalesPending /></RoleGate>} />
+          <Route path="/bot" element={<RoleGate allow={["manager"]}><BotConfig /></RoleGate>} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/lessons/today" element={<DailyLesson />} />

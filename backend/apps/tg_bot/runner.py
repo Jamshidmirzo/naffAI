@@ -117,6 +117,19 @@ async def main() -> None:
     bot = Bot(token=token)
     dp = Dispatcher(storage=MemoryStorage())
 
+    # v2 middlewares: audit every update + refresh BotChat registry + attach role.
+    # Ordering matters: ChatRegistry first (so BotChat exists), then RBAC
+    # (reads that chat's role), then Audit (which shouldn't fail the pipeline).
+    from apps.tg_bot.middlewares import (
+        AuditMiddleware,
+        ChatRegistryMiddleware,
+        RBACMiddleware,
+    )
+
+    dp.update.outer_middleware(ChatRegistryMiddleware())
+    dp.update.outer_middleware(AuditMiddleware())
+    dp.update.outer_middleware(RBACMiddleware())
+
     # ---------- helpers ----------
 
     async def lang_for(msg_or_cb) -> str:
@@ -351,10 +364,16 @@ async def main() -> None:
         await cb.answer()
 
     @dp.message(Command("subscribe"))
-    async def cmd_subscribe(msg: Message) -> None:
+    async def cmd_subscribe(msg: Message, **data) -> None:
+        from apps.tg_bot.middlewares import require_role
         from apps.tg_bot.models import BotSubscription
 
         lang = await lang_for(msg)
+        if not await require_role(
+            data, msg, needed="manager",
+            deny_message="⛔ Эта команда только для менеджеров. Настройте отчёты через веб-панель.",
+        ):
+            return
 
         def _sub():
             obj, _ = BotSubscription.objects.get_or_create(chat_id=msg.chat.id)
@@ -1042,6 +1061,42 @@ async def main() -> None:
                 )
             except Exception:
                 pass
+
+    # v2: react to bot being added / removed from a chat so BotChat stays
+    # in sync. Aiogram receives `my_chat_member` on chat-membership changes.
+    @dp.my_chat_member()
+    async def on_my_chat_member(event) -> None:
+        from apps.tg_bot.middlewares import _upsert_chat
+        from apps.tg_bot.models import BotChat
+        from asgiref.sync import sync_to_async
+
+        chat = event.chat
+        new_status = event.new_chat_member.status
+        try:
+            await sync_to_async(_upsert_chat)(chat)
+            if new_status in ("left", "kicked"):
+                # Deactivate — cron will skip.
+                def _deact():
+                    BotChat.objects.filter(chat_id=chat.id).update(is_active=False)
+
+                await sync_to_async(_deact)()
+            elif new_status in ("member", "administrator") and chat.type in (
+                "group",
+                "supergroup",
+            ):
+                # Greet the group once — silent otherwise (we don't reply
+                # on every /start there to avoid noise).
+                try:
+                    await bot.send_message(
+                        chat.id,
+                        "👋 <b>NaffAI-bot</b> добавлен в чат.\n"
+                        "Менеджер увидит эту группу в веб-настройках и настроит рассылку отчётов.",
+                        parse_mode="HTML",
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            logger.exception("my_chat_member handling failed chat_id=%s", chat.id)
 
     logger.info("Bot started — polling…")
     asyncio.create_task(daily_report_scheduler())

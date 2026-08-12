@@ -64,6 +64,7 @@ function useManagerGroups(t: (k: string) => string): SidebarGroup[] {
       items: [
         { to: "/ai-chat", label: t("nav.ai_chat") },
         { to: "/tg-queue", label: t("nav.tg_queue") },
+        { to: "/bot", label: t("nav.bot") },
         { to: "/marketing", label: t("nav.marketing") },
       ],
     },

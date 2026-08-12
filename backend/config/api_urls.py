@@ -63,6 +63,8 @@ urlpatterns = [
     path("ai-chat/", include("apps.ai_chat.urls")),
     # F3.B Marketing analyst insights
     path("marketing/", include("apps.marketing.urls")),
+    # Bot v2: configurable scheduled reports + chat registry + audit log.
+    path("bot/", include("apps.tg_bot.urls")),
     path("lessons/", include("apps.lessons.urls")),
     path("attendance/", include("apps.attendance.urls")),
     # Manager-only user management (web accounts, not operators).
