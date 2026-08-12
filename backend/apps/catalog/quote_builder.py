@@ -91,7 +91,8 @@ def build_phone_quote(phone: PhoneModel, language: str = "uz") -> str:
     rows = installment_rows(phone)
     if rows:
         lines.append("")
-        lines.append(f"📊 {_tr('Рассрочка', \"Bo'lib-bo'lib to'lash\", lang)}:")
+        installments_label = _tr("Рассрочка", "Bo'lib-bo'lib to'lash", lang)
+        lines.append(f"📊 {installments_label}:")
         for r in rows:
             month_word = _tr("мес", "oy", lang)
             per_month = _tr("/ мес", "/oy", lang)
@@ -105,6 +106,7 @@ def build_phone_quote(phone: PhoneModel, language: str = "uz") -> str:
         lines.append(phone.description.strip())
 
     lines.append("")
-    lines.append(f"📞 {_tr('Свяжитесь для оформления', 'Buyurtma uchun bog''laning', lang)}")
+    contact_call = _tr("Свяжитесь для оформления", "Buyurtma uchun bog'laning", lang)
+    lines.append(f"📞 {contact_call}")
 
     return "\n".join(lines)
