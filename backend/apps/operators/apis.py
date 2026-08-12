@@ -141,8 +141,8 @@ class OperatorDeleteApi(APIView):
         op = operator_get(operator_id)
         if not op:
             return Response({"detail": "Not found"}, status=404)
-        operator_delete(operator=op, user=request.user)
-        return Response(status=204)
+        deleted_related = operator_delete(operator=op, user=request.user)
+        return Response({"deleted_related": deleted_related}, status=200)
 
 
 class OperatorPlanApi(APIView):

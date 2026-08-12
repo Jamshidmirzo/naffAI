@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from django.db import transaction
-from rest_framework.exceptions import ValidationError
+from django.db.models import Count
+from django.utils import timezone
 
 from apps.audit.services import AuditAction, audit_diff, audit_log_create
 
@@ -289,31 +290,32 @@ def operator_reactivate(*, operator: Operator, user=None) -> Operator:
 
 
 @transaction.atomic
-def operator_delete(*, operator: Operator, user=None) -> None:
+def operator_delete(*, operator: Operator, user=None) -> dict:
     """
-    Hard-delete an operator.
+    Hard-delete an operator, cleaning up their attached sales:
+      - Sales where this operator was the ONLY seller (`operator_lines.count()==1`
+        AND not already soft-deleted) → soft-delete (`is_deleted=True`,
+        `deleted_at=now()`). Their total drops out of dashboard KPI, per-op
+        analytics, and payroll.
+      - Sales where this operator was ONE OF SEVERAL → drop only their
+        `SaleOperator` line and append a note into `sale.comment` recording
+        the deleted operator + their share, so the manager can later trace
+        why the remaining sellers' amounts don't sum to `sale.amount`.
+        `sale.amount` stays untouched (the customer still paid this money).
 
-    Business rule (per user decision, restored in Wave 1.8): delete is
-    refused if the operator has any *active* (not soft-deleted) Sale
-    attached. Callers must either deactivate the operator instead or
-    soft-delete the sales first. Soft-deleted history rows do NOT block
-    the deletion — otherwise operators would become undeletable after
-    even a single cleanup.
+    Legacy single-FK `Sale.operator` is nulled to `SET_NULL`-equivalent via
+    UPDATE (the FK is defined as PROTECT to guard against accidental
+    `.delete()`, so we sidestep it explicitly).
 
-    All other side-effect rows (SaleOperator allocation lines, Profile
-    links, PayrollRule) are detached in-place and counted into a single
-    audit entry so we can reconstruct what the delete touched.
+    All other side-effect rows (SaleOperator lines already handled above,
+    Profile links, PayrollRule) are detached in-place. Every count is
+    recorded in a single audit entry so we can reconstruct what the
+    delete touched. Returns the counts as a dict for the API layer.
     """
     # Local imports to avoid app-loading cycles.
     from apps.payroll.models import PayrollRule
     from apps.sales.models import Sale, SaleOperator
     from apps.users.models import Profile
-
-    if Sale.objects.filter(operator=operator, is_deleted=False).exists():
-        raise ValidationError(
-            "Удаление невозможно: у оператора есть активные продажи. "
-            "Используйте деактивацию или сначала удалите продажи."
-        )
 
     snapshot = {
         "id": operator.id,
@@ -322,9 +324,45 @@ def operator_delete(*, operator: Operator, user=None) -> None:
         "status": operator.status,
     }
 
-    # Detach in a fixed order so the counts we record match the DELETE
-    # sequence. SaleOperator lines are wiped (they're per-sale allocation
-    # rows, not history). Sale FK is nulled to preserve historical rows.
+    now = timezone.now()
+
+    # Split affected sales into "will become orphan after we drop this line"
+    # vs "still has other operators". Only consider not-yet-soft-deleted
+    # sales — historical soft-deleted ones we can leave untouched.
+    affected_sales = (
+        SaleOperator.objects.filter(operator=operator, sale__is_deleted=False)
+        .values("sale_id", "amount")
+        .annotate(total_lines=Count("sale__operator_lines"))
+    )
+    single_op_sale_ids: list[int] = []
+    multi_op_notes: list[dict] = []
+    for row in affected_sales:
+        if row["total_lines"] == 1:
+            single_op_sale_ids.append(row["sale_id"])
+        else:
+            multi_op_notes.append({"sale_id": row["sale_id"], "amount": row["amount"]})
+
+    # Multi-op: append a `[Удалён YYYY-MM-DD] Оператор X: доля N сум` note
+    # so the sale detail retains context for the shopkeeper reviewing later.
+    note_stem = f"[Удалён {now:%Y-%m-%d}] Оператор {operator.full_name}: доля"
+    for entry in multi_op_notes:
+        sale = Sale.objects.filter(pk=entry["sale_id"]).only("id", "comment").first()
+        if sale is None:
+            continue
+        share_fmt = f"{int(entry['amount']):,}".replace(",", " ")
+        line = f"{note_stem} {share_fmt} сум"
+        sale.comment = (sale.comment + "\n" + line).strip() if sale.comment else line
+        sale.save(update_fields=["comment"])
+
+    # Soft-delete single-operator sales.
+    sales_soft_deleted = 0
+    if single_op_sale_ids:
+        sales_soft_deleted = Sale.objects.filter(pk__in=single_op_sale_ids).update(
+            is_deleted=True, deleted_at=now
+        )
+
+    # Now drop the SaleOperator lines (both single-op orphaned and multi-op share)
+    # and detach the legacy single-FK on any remaining Sale rows.
     sale_operator_rows_deleted = SaleOperator.objects.filter(
         operator=operator
     ).delete()[0]
@@ -335,6 +373,17 @@ def operator_delete(*, operator: Operator, user=None) -> None:
     operator_id = operator.id
     operator.delete()
 
+    deleted_related = {
+        "sale_operator_rows_deleted": sale_operator_rows_deleted,
+        "sales_soft_deleted_count": sales_soft_deleted,
+        "sales_soft_deleted_ids": single_op_sale_ids,
+        "sales_annotated_count": len(multi_op_notes),
+        "sales_annotated_ids": [e["sale_id"] for e in multi_op_notes],
+        "sales_unlinked": sales_unlinked,
+        "profiles_unlinked": profiles_unlinked,
+        "payroll_rules_deleted": payroll_rules_deleted,
+    }
+
     audit_log_create(
         user=user,
         action=AuditAction.DELETE,
@@ -342,14 +391,10 @@ def operator_delete(*, operator: Operator, user=None) -> None:
         entity_id=operator_id,
         changes={
             "snapshot": snapshot,
-            "deleted_related": {
-                "sale_operator_rows_deleted": sale_operator_rows_deleted,
-                "sales_unlinked": sales_unlinked,
-                "profiles_unlinked": profiles_unlinked,
-                "payroll_rules_deleted": payroll_rules_deleted,
-            },
+            "deleted_related": deleted_related,
         },
     )
+    return deleted_related
 
 
 @transaction.atomic
