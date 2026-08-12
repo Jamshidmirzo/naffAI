@@ -95,7 +95,9 @@ def test_render_report_produces_html_with_header(a_sale):
 
 @pytest.mark.django_db
 def test_render_report_strips_manager_blocks_for_group(a_sale):
-    chat = BotChat.objects.create(chat_id=-100, kind="group", title="Ops group")
+    # chat.language overrides report.language per-recipient, so set the
+    # chat itself to ru to make assertions readable.
+    chat = BotChat.objects.create(chat_id=-100, kind="group", title="Ops group", language="ru")
     report = BotReport.objects.create(
         name="Test",
         schedule_time=dt.time(9, 0),
