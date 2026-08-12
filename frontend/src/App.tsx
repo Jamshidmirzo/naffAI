@@ -36,6 +36,8 @@ import OrphanLeads from "./pages/OrphanLeads";
 import OperatorSaleCreate from "./pages/OperatorSaleCreate";
 import SalesPending from "./pages/SalesPending";
 import BotConfig from "./pages/BotConfig";
+import Catalog from "./pages/Catalog";
+import CatalogBanks from "./pages/CatalogBanks";
 import { useAuth } from "./store/auth";
 import { RoleGate, normaliseRole } from "./components/RoleGate";
 import { ToastHost } from "./components/ui";
@@ -81,7 +83,8 @@ export default function App() {
           <Route path="/settings" element={<RoleGate allow={["manager"]}><Settings /></RoleGate>} />
           <Route path="/calls" element={<RoleGate allow={["manager"]}><Placeholder title="Звонки" /></RoleGate>} />
           <Route path="/reports" element={<RoleGate allow={["manager"]}><Reports /></RoleGate>} />
-          <Route path="/catalog" element={<RoleGate allow={["manager"]}><Placeholder title="Каталог / TAC" /></RoleGate>} />
+          <Route path="/catalog" element={<RoleGate allow={["manager"]}><Catalog /></RoleGate>} />
+          <Route path="/catalog/banks" element={<RoleGate allow={["manager"]}><CatalogBanks /></RoleGate>} />
           <Route path="/stickers" element={<RoleGate allow={["manager"]}><Placeholder title="Стикеры" /></RoleGate>} />
           <Route path="/users" element={<RoleGate allow={["manager"]}><Users /></RoleGate>} />
           <Route path="/sales-today" element={<RoleGate allow={["manager"]}><SalesToday /></RoleGate>} />

@@ -1,0 +1,148 @@
+"""
+Phone catalog API — CRUD for PhoneModel + PhoneColor + quote endpoint.
+
+GET (list/detail/quote) is open to any authenticated user (operators
+need read access to send offers to clients). Writes are team-lead only.
+"""
+
+from __future__ import annotations
+
+from rest_framework import serializers, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.permissions import BasePermission
+from rest_framework.response import Response
+
+from apps.users.permissions import IsAuthenticatedAnyRole, IsTeamLead
+
+from .models import PhoneColor, PhoneModel
+from .quote_builder import build_phone_quote, installment_rows
+
+
+class WritesTeamLead(BasePermission):
+    def has_permission(self, request, view):
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return IsAuthenticatedAnyRole().has_permission(request, view)
+        return IsTeamLead().has_permission(request, view)
+
+
+class PhoneColorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PhoneColor
+        fields = ["id", "name", "hex_code", "price_override", "is_available", "sort_order"]
+
+
+class PhoneModelSerializer(serializers.ModelSerializer):
+    colors = PhoneColorSerializer(many=True, required=False)
+    cover_image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PhoneModel
+        fields = [
+            "id",
+            "brand",
+            "model_name",
+            "storage_gb",
+            "ram_gb",
+            "price",
+            "cover_image",
+            "cover_image_url",
+            "description",
+            "stock_status",
+            "is_active",
+            "sort_order",
+            "colors",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["cover_image_url", "created_at", "updated_at"]
+        extra_kwargs = {
+            "cover_image": {"write_only": True, "required": False, "allow_null": True},
+        }
+
+    def get_cover_image_url(self, obj: PhoneModel) -> str | None:
+        if not obj.cover_image:
+            return None
+        request = self.context.get("request")
+        url = obj.cover_image.url
+        return request.build_absolute_uri(url) if request else url
+
+    def create(self, validated_data):
+        colors_data = validated_data.pop("colors", None) or []
+        phone = PhoneModel.objects.create(**validated_data)
+        for c in colors_data:
+            PhoneColor.objects.create(phone=phone, **c)
+        return phone
+
+    def update(self, instance, validated_data):
+        colors_data = validated_data.pop("colors", None)
+        for k, v in validated_data.items():
+            setattr(instance, k, v)
+        instance.save()
+        if colors_data is not None:
+            # Full replace on PATCH — simpler than diffing incoming ids.
+            instance.colors.all().delete()
+            for c in colors_data:
+                PhoneColor.objects.create(phone=instance, **c)
+        return instance
+
+
+class PhoneModelViewSet(viewsets.ModelViewSet):
+    permission_classes = [WritesTeamLead]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
+    serializer_class = PhoneModelSerializer
+
+    def get_queryset(self):
+        qs = PhoneModel.objects.all().prefetch_related("colors")
+        params = self.request.query_params
+        if params.get("search"):
+            q = params["search"].strip()
+            from django.db.models import Q
+
+            qs = qs.filter(Q(brand__icontains=q) | Q(model_name__icontains=q))
+        if params.get("brand"):
+            qs = qs.filter(brand__iexact=params["brand"])
+        if params.get("stock"):
+            qs = qs.filter(stock_status=params["stock"])
+        if params.get("only_active") in ("1", "true"):
+            qs = qs.filter(is_active=True)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    @action(detail=True, methods=["get"])
+    def quote(self, request, pk=None):
+        phone = self.get_object()
+        lang = request.query_params.get("lang", "uz")
+        text = build_phone_quote(phone, language=lang)
+        cover_url = None
+        if phone.cover_image:
+            cover_url = request.build_absolute_uri(phone.cover_image.url)
+        return Response(
+            {
+                "text": text,
+                "cover_image_url": cover_url,
+                "installments": [
+                    {
+                        "bank": r["bank"],
+                        "bank_icon": r["bank_icon"],
+                        "term_months": r["term_months"],
+                        "monthly": str(r["monthly"]),
+                        "total": str(r["total"]),
+                        "overpay": str(r["overpay"]),
+                    }
+                    for r in installment_rows(phone)
+                ],
+            }
+        )
+
+    @action(detail=True, methods=["post"])
+    def upload_photo(self, request, pk=None):
+        phone = self.get_object()
+        f = request.FILES.get("cover_image") or request.FILES.get("file")
+        if not f:
+            return Response({"detail": "cover_image file is required"}, status=400)
+        phone.cover_image = f
+        phone.save(update_fields=["cover_image", "updated_at"])
+        return Response(PhoneModelSerializer(phone, context={"request": request}).data)
