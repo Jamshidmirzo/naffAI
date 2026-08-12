@@ -26,7 +26,10 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
-      - media-data:/app/media
+      # Host bind so nginx (www-data) can serve /media/* directly.
+      # `/var/lib/docker/volumes/` has mode 710 root:root and blocks www-data
+      # even with the intermediate mode 701 dirs — hence the direct host path.
+      - /var/www/naffai-media:/app/media
     command: ["/app/scripts/entrypoint.sh"]
 
   bot:
@@ -260,4 +263,3 @@ services:
 
 volumes:
   postgres-data:
-  media-data:
