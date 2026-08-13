@@ -11,6 +11,8 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  Image as ImageIcon,
+  Type,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
@@ -18,7 +20,11 @@ import { useT } from "../lib/i18n";
 import { usePageHeader } from "../store/page";
 import { Modal } from "../components/ui";
 import PhoneEditor, { type PhoneDraft } from "../components/PhoneEditor";
-import { copyPhoneToClipboard } from "../components/CopyPhoneButton";
+import {
+  copyPhoneToClipboard,
+  copyPhoneTextOnly,
+  copyPhoneImageOnly,
+} from "../components/CopyPhoneButton";
 import InstallmentPanel from "../components/InstallmentPanel";
 
 export type Phone = {
@@ -75,7 +81,10 @@ export default function Catalog() {
   const [stockFilter, setStockFilter] = useState<"" | "available" | "on_order" | "out">("");
   const [editing, setEditing] = useState<PhoneDraft | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [copyingId, setCopyingId] = useState<number | null>(null);
+  const [copying, setCopying] = useState<{
+    id: number;
+    mode: "text" | "photo" | "both";
+  } | null>(null);
 
   const phones = useQuery({
     queryKey: ["catalog-phones", search, stockFilter],
@@ -145,21 +154,43 @@ export default function Catalog() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["catalog-phones"] }),
   });
 
-  const handleCopy = async (phone: Phone) => {
-    if (copyingId !== null) return;
-    setCopyingId(phone.id);
+  const handleCopy = async (phone: Phone, mode: "text" | "photo" | "both") => {
+    if (copying !== null) return;
+    setCopying({ id: phone.id, mode });
     try {
       const r = await api.get<{ text: string; cover_image_url: string | null }>(
         `/catalog/phones/${phone.id}/quote/?lang=uz`,
       );
+      if (mode === "text") {
+        await copyPhoneTextOnly(r.data);
+        toast.success(t("catalog.copied_text_only"));
+        return;
+      }
+      if (mode === "photo") {
+        if (!r.data.cover_image_url) {
+          toast.error(t("catalog.no_photo"));
+          return;
+        }
+        try {
+          await copyPhoneImageOnly(r.data);
+          toast.success(t("catalog.photo_copied"));
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error("[copy] photo-only failed:", err);
+          toast.error(`${t("catalog.copy_failed")}: ${msg}`);
+        }
+        return;
+      }
+      // mode === "both"
       const outcome = await copyPhoneToClipboard(r.data);
       if (outcome === "full") toast.success(t("catalog.copied_full"));
       else if (r.data.cover_image_url) toast.success(t("catalog.copied_text_no_photo"));
       else toast.success(t("catalog.copied_text_only"));
-    } catch {
+    } catch (err) {
+      console.error("[copy] handler error:", err);
       toast.error(t("catalog.copy_failed"));
     } finally {
-      setCopyingId(null);
+      setCopying(null);
     }
   };
 
@@ -240,6 +271,7 @@ export default function Catalog() {
                 <img
                   src={p.cover_image_url}
                   alt={p.model_name}
+                  crossOrigin="anonymous"
                   className="w-full h-full object-contain"
                 />
               ) : (
@@ -286,46 +318,79 @@ export default function Catalog() {
               <InstallmentPanel phoneId={p.id} />
 
               <div className="flex-1" />
-              <div className="mt-3 flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  className="nf-btn nf-btn--primary flex-1"
-                  onClick={() => handleCopy(p)}
-                  disabled={copyingId === p.id}
-                >
-                  {copyingId === p.id ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}{" "}
-                  {copyingId === p.id ? t("catalog.copying") : t("catalog.copy")}
-                </button>
-                <button
-                  type="button"
-                  className="nf-btn nf-btn--ghost !p-2"
-                  onClick={() => openEdit(p)}
-                  title={t("common.edit")}
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  className="nf-btn nf-btn--ghost !p-2"
-                  onClick={() => toggleActive.mutate({ id: p.id, is_active: !p.is_active })}
-                  title={p.is_active ? t("catalog.hide") : t("catalog.show")}
-                >
-                  {p.is_active ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                </button>
-                <button
-                  type="button"
-                  className="nf-btn nf-btn--ghost !p-2 text-red-500"
-                  onClick={() => {
-                    if (confirm(t("catalog.confirm_delete", { name: p.model_name })))
-                      remove.mutate(p.id);
-                  }}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+              <div className="mt-3 space-y-2">
+                <div className="grid grid-cols-3 gap-1.5">
+                  <button
+                    type="button"
+                    className="nf-btn nf-btn--secondary !px-2 !text-[12px]"
+                    onClick={() => handleCopy(p, "text")}
+                    disabled={copying !== null}
+                    title={t("catalog.copy_text")}
+                  >
+                    {copying?.id === p.id && copying?.mode === "text" ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Type className="w-3.5 h-3.5" />
+                    )}{" "}
+                    {t("catalog.copy_text")}
+                  </button>
+                  <button
+                    type="button"
+                    className="nf-btn nf-btn--secondary !px-2 !text-[12px]"
+                    onClick={() => handleCopy(p, "photo")}
+                    disabled={copying !== null || !p.cover_image_url}
+                    title={t("catalog.copy_photo")}
+                  >
+                    {copying?.id === p.id && copying?.mode === "photo" ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <ImageIcon className="w-3.5 h-3.5" />
+                    )}{" "}
+                    {t("catalog.copy_photo")}
+                  </button>
+                  <button
+                    type="button"
+                    className="nf-btn nf-btn--primary !px-2 !text-[12px]"
+                    onClick={() => handleCopy(p, "both")}
+                    disabled={copying !== null}
+                    title={t("catalog.copy_both")}
+                  >
+                    {copying?.id === p.id && copying?.mode === "both" ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}{" "}
+                    {t("catalog.copy_both")}
+                  </button>
+                </div>
+                <div className="flex items-center justify-end gap-1.5">
+                  <button
+                    type="button"
+                    className="nf-btn nf-btn--ghost !p-2"
+                    onClick={() => openEdit(p)}
+                    title={t("common.edit")}
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    className="nf-btn nf-btn--ghost !p-2"
+                    onClick={() => toggleActive.mutate({ id: p.id, is_active: !p.is_active })}
+                    title={p.is_active ? t("catalog.hide") : t("catalog.show")}
+                  >
+                    {p.is_active ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                  </button>
+                  <button
+                    type="button"
+                    className="nf-btn nf-btn--ghost !p-2 text-red-500"
+                    onClick={() => {
+                      if (confirm(t("catalog.confirm_delete", { name: p.model_name })))
+                        remove.mutate(p.id);
+                    }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
