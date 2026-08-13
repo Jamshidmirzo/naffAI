@@ -1,12 +1,24 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, MessageSquare, Users, Zap, Plus, Play, Trash2, Edit3 } from "lucide-react";
+import {
+  Bot,
+  MessageSquare,
+  Users,
+  Zap,
+  Plus,
+  Play,
+  Trash2,
+  Edit3,
+  AlertTriangle,
+  Sparkles,
+} from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { useT } from "../lib/i18n";
 import { usePageHeader } from "../store/page";
 import { Modal } from "../components/ui";
 import BotReportEditor, { type BotReportDraft } from "../components/BotReportEditor";
+import BotTemplateGallery from "../components/BotTemplateGallery";
 
 type Tab = "reports" | "chats" | "audit";
 
@@ -36,17 +48,32 @@ type BotReport = {
   last_send_error: string;
 };
 
-type BlockMeta = { slug: string; label_ru: string; label_uz: string; sensitive: boolean };
+type BlockMeta = {
+  slug: string;
+  label_ru: string;
+  label_uz: string;
+  category: string;
+  sensitive: boolean;
+};
 type PeriodMeta = { slug: string; label: string };
+
+const CATEGORY_ICON: Record<string, string> = {
+  sales: "💰",
+  leads: "📊",
+  calls: "☎️",
+  operators: "👥",
+  catalog: "📱",
+  ops: "📋",
+};
 
 const emptyDraft = (): BotReportDraft => ({
   name: "",
   enabled: true,
-  schedule_time: "20:00",
+  schedule_time: "20:00:00",
   schedule_days: [],
   recipient_ids: [],
   blocks: ["sales_total", "top_operators", "daily_quote"],
-  language: "uz",
+  language: "ru",
   period: "today",
   include_header: true,
 });
@@ -58,6 +85,7 @@ export default function BotConfig() {
   const [tab, setTab] = useState<Tab>("reports");
   const [editing, setEditing] = useState<BotReportDraft | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [galleryOpen, setGalleryOpen] = useState(false);
 
   const chats = useQuery({
     queryKey: ["bot-chats"],
@@ -65,21 +93,30 @@ export default function BotConfig() {
   });
   const reports = useQuery({
     queryKey: ["bot-reports"],
-    queryFn: () => api.get<{ results: BotReport[]; count?: number } | BotReport[]>("/bot/reports/").then((r) => {
-      const d = r.data as any;
-      return (d.results || d) as BotReport[];
-    }),
+    queryFn: () =>
+      api.get<{ results: BotReport[]; count?: number } | BotReport[]>("/bot/reports/").then((r) => {
+        const d = r.data as any;
+        return (d.results || d) as BotReport[];
+      }),
   });
   const blocks = useQuery({
     queryKey: ["bot-blocks"],
     queryFn: () =>
-      api.get<{ blocks: BlockMeta[]; periods: PeriodMeta[] }>("/bot/blocks/").then((r) => r.data),
+      api
+        .get<{ blocks: BlockMeta[]; periods: PeriodMeta[] }>("/bot/blocks/")
+        .then((r) => r.data),
   });
   const audit = useQuery({
     queryKey: ["bot-audit"],
     queryFn: () => api.get<{ results: any[] }>("/bot/audit/?days=7").then((r) => r.data.results || []),
     enabled: tab === "audit",
   });
+
+  const blocksBySlug = useMemo(() => {
+    const m: Record<string, BlockMeta> = {};
+    for (const b of blocks.data?.blocks || []) m[b.slug] = b;
+    return m;
+  }, [blocks.data]);
 
   const save = useMutation({
     mutationFn: (draft: BotReportDraft & { id?: number }) => {
@@ -88,10 +125,14 @@ export default function BotConfig() {
       if (draft.id) return api.patch(`/bot/reports/${draft.id}/`, body);
       return api.post(`/bot/reports/`, body);
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["bot-reports"] });
-      setEditing(null);
-      setEditingId(null);
+      // Post-save from a new draft: switch editor into "edit" mode so
+      // the test-send button (which requires an id) is available.
+      const created = (res?.data as any) || null;
+      if (!editingId && created?.id) {
+        setEditingId(created.id);
+      }
       toast.success(t("bot.reports.saved"));
     },
     onError: () => toast.error(t("bot.reports.save_failed")),
@@ -120,8 +161,8 @@ export default function BotConfig() {
 
   const openEdit = (r?: BotReport) => {
     if (!r) {
-      setEditing(emptyDraft());
-      setEditingId(null);
+      // For a fresh new-report, show the gallery first.
+      setGalleryOpen(true);
     } else {
       setEditing({
         name: r.name,
@@ -136,6 +177,26 @@ export default function BotConfig() {
       });
       setEditingId(r.id);
     }
+  };
+
+  const pickTemplate = (draft: BotReportDraft) => {
+    setEditing(draft);
+    setEditingId(null);
+    setGalleryOpen(false);
+  };
+
+  const skipTemplate = () => {
+    setEditing(emptyDraft());
+    setEditingId(null);
+    setGalleryOpen(false);
+  };
+
+  const renderBlockLabel = (slug: string, language: string): string => {
+    const meta = blocksBySlug[slug];
+    if (!meta) return slug;
+    const icon = CATEGORY_ICON[meta.category] || "";
+    const label = language === "uz" ? meta.label_uz : meta.label_ru;
+    return `${icon} ${label}`.trim();
   };
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
@@ -165,13 +226,22 @@ export default function BotConfig() {
 
       {tab === "reports" && (
         <div className="space-y-3">
-          <button
-            type="button"
-            className="nf-btn nf-btn--primary"
-            onClick={() => openEdit()}
-          >
-            <Plus className="w-4 h-4" /> {t("bot.reports.new")}
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="nf-btn nf-btn--primary"
+              onClick={() => openEdit()}
+            >
+              <Plus className="w-4 h-4" /> {t("bot.reports.new")}
+            </button>
+            <button
+              type="button"
+              className="nf-btn nf-btn--ghost"
+              onClick={() => setGalleryOpen(true)}
+            >
+              <Sparkles className="w-4 h-4" /> {t("bot.reports.from_template")}
+            </button>
+          </div>
           {reports.isLoading && <div className="text-muted">{t("common.loading")}</div>}
           {!reports.isLoading && (reports.data || []).length === 0 && (
             <div className="nf-card p-12 text-center">
@@ -186,23 +256,36 @@ export default function BotConfig() {
             {(reports.data || []).map((r) => (
               <div key={r.id} className="nf-card p-4 flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <div className="text-[15px] font-semibold">{r.name}</div>
                     {!r.enabled && (
                       <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-[var(--faint2)] text-muted">
                         {t("bot.reports.disabled")}
                       </span>
                     )}
+                    {r.last_send_error && (
+                      <span
+                        className="text-[10.5px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-600 flex items-center gap-1"
+                        title={r.last_send_error}
+                      >
+                        <AlertTriangle className="w-3 h-3" />
+                        {t("bot.reports.error_badge")}
+                      </span>
+                    )}
                   </div>
                   <div className="text-[12px] text-muted mt-1">
-                    ⏰ {r.schedule_time} ·{" "}
+                    ⏰ {r.schedule_time.slice(0, 5)} ·{" "}
                     {r.schedule_days.length === 0
                       ? t("bot.reports.every_day")
                       : r.schedule_days.map((d) => t(`bot.weekdays.${d}`)).join(", ")}{" "}
                     · {r.recipients.length} {t("bot.reports.recipients_short")}
                   </div>
-                  <div className="text-[11.5px] text-muted mt-1 truncate">
-                    {r.blocks.map((s) => s).join(" · ") || "—"}
+                  <div className="text-[11.5px] text-muted mt-1">
+                    {r.blocks.length === 0
+                      ? "—"
+                      : r.blocks
+                          .map((s) => renderBlockLabel(s, r.language))
+                          .join(" · ")}
                   </div>
                   {r.last_sent_at && (
                     <div className="text-[11px] text-muted mt-1">
@@ -336,13 +419,17 @@ export default function BotConfig() {
         </div>
       )}
 
+      <Modal open={galleryOpen} onClose={() => setGalleryOpen(false)} width={720}>
+        <BotTemplateGallery onPick={pickTemplate} onSkip={skipTemplate} />
+      </Modal>
+
       <Modal
         open={!!editing}
         onClose={() => {
           setEditing(null);
           setEditingId(null);
         }}
-        width={640}
+        width={1080}
       >
         {editing && blocks.data && (
           <BotReportEditor
@@ -351,6 +438,7 @@ export default function BotConfig() {
             chats={chats.data || []}
             blocks={blocks.data.blocks}
             periods={blocks.data.periods}
+            reportId={editingId}
             onSave={() => save.mutate({ ...editing, id: editingId ?? undefined } as any)}
             onCancel={() => {
               setEditing(null);

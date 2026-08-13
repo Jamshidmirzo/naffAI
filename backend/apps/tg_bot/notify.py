@@ -19,9 +19,9 @@ from __future__ import annotations
 
 import logging
 
+from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.utils import timezone
-from asgiref.sync import sync_to_async
 
 logger = logging.getLogger("tg_bot.notify")
 

@@ -1,5 +1,6 @@
 import pytest
 from django.utils import timezone
+
 from apps.tg_bot.models import BotSubscription
 from apps.tg_bot.selectors import subscriptions_ready_for_dm
 

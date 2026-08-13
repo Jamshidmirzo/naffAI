@@ -134,6 +134,55 @@ class BotReport(TimestampedModel):
         return f"{self.name} ({self.schedule_time})"
 
 
+class BotReportTemplate(TimestampedModel):
+    """
+    System-level preset that pre-fills the report editor. Not scheduled
+    on its own — clicking a template from the gallery just copies
+    `blocks` + `schedule_defaults` into a new BotReport draft in the UI.
+
+    Seeded via `python manage.py seed_bot_templates` — the command is
+    idempotent (upserts by `slug`).
+    """
+
+    CATEGORY_CHOICES = [
+        ("morning", "Утренняя"),
+        ("evening", "Вечерний"),
+        ("weekly", "Недельный"),
+        ("owner", "Владельцу"),
+        ("operator", "Операторам"),
+        ("custom", "Кастомный"),
+    ]
+
+    slug = models.SlugField(max_length=64, unique=True)
+    name = models.CharField(max_length=128)
+    description = models.CharField(max_length=280, blank=True, default="")
+    category = models.CharField(
+        max_length=32, choices=CATEGORY_CHOICES, default="custom"
+    )
+    blocks = models.JSONField(
+        default=list,
+        help_text="List of block slugs referenced from report_blocks.BLOCKS.",
+    )
+    schedule_defaults = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            'Suggested defaults: {"schedule_time": "09:00:00", '
+            '"schedule_days": ["mon","tue"], "period": "today", '
+            '"language": "ru", "include_header": true}. Client copies '
+            "these into the new-report form when the template is picked."
+        ),
+    )
+    sort_order = models.PositiveSmallIntegerField(default=100)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.name} ({self.slug})"
+
+
 class BotAuditLog(models.Model):
     """
     Append-only log of every bot interaction. Written by the aiogram

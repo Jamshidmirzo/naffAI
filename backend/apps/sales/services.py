@@ -412,6 +412,7 @@ def _broadcast_new_sale(sale, primary_op, operator_lines, total) -> None:
     if tg_ids:
         try:
             import asyncio
+
             from apps.tg_bot.notify import send_sale_created_dms
 
             asyncio.run(
@@ -794,6 +795,9 @@ def sale_reject(*, sale: Sale, user, reason: str) -> Sale:
     sale.status = SaleStatus.REJECTED
     sale.rejection_reason = reason
     sale.rejected_at = timezone.now()
+    # One-shot marker consumed by apps.tg_bot.signals — triggers a manager
+    # DM in the post_save handler without hard-coupling sales → tg_bot.
+    sale._naff_notify_reject = True
     sale.save(
         update_fields=["status", "rejection_reason", "rejected_at", "updated_at"]
     )

@@ -23,7 +23,7 @@ def _fmt_money(value, lang: str) -> str:
     cur = t("rep_currency", lang)
     try:
         return f"{int(Decimal(str(value or 0))):,}".replace(",", " ") + f" {cur}"
-    except Exception:  # noqa: BLE001
+    except Exception:
         return f"{value} {cur}"
 
 

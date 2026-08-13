@@ -243,6 +243,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "cmd_start": {"ru": "ℹ️ Запустить бота", "uz": "ℹ️ Botni ishga tushirish"},
     "cmd_language": {"ru": "🌍 Сменить язык", "uz": "🌍 Tilni almashtirish"},
+    "cmd_sales": {"ru": "💰 Быстрая сводка продаж", "uz": "💰 Sotuv qisqacha"},
+    "cmd_leads": {"ru": "📊 Воронка лидов", "uz": "📊 Lidlar voronkasi"},
+    "cmd_find": {"ru": "🔍 Поиск клиента", "uz": "🔍 Mijoz qidirish"},
 
     # --- daily report ---
     "rep_header": {"ru": "📊 *Отчёт за {date}*", "uz": "📊 *{date} hisoboti*"},

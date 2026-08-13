@@ -2,7 +2,8 @@
 DRF APIs for the v2 bot configuration UI (`/api/bot/*`).
 
 Manager-only. Serializes BotChat / BotReport / BotAuditLog + block
-metadata, exposes CRUD for reports, plus preview + send-now for the
+metadata, exposes CRUD for reports and read-only for templates, plus
+preview + send-now + test-send + preview-as (RBAC-simulated) for the
 "try before you save" workflow in the web editor.
 """
 
@@ -18,10 +19,10 @@ from rest_framework.views import APIView
 
 from apps.users.permissions import IsTeamLead
 
-from .models import BotAuditLog, BotChat, BotReport, BotReportPeriod
-from .renderer import render_report
-from .report_blocks import BLOCKS
-from .scheduler import send_report_now_sync
+from .models import BotAuditLog, BotChat, BotReport, BotReportPeriod, BotReportTemplate
+from .renderer import render_report_full
+from .report_blocks import BLOCKS, CATEGORIES
+from .scheduler import send_report_now_sync, send_report_to_chat_sync
 
 
 class BotChatSerializer(serializers.ModelSerializer):
@@ -84,6 +85,22 @@ class BotReportSerializer(serializers.ModelSerializer):
         read_only_fields = ["last_sent_at", "last_send_error", "created_at", "updated_at"]
 
 
+class BotReportTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BotReportTemplate
+        fields = [
+            "id",
+            "slug",
+            "name",
+            "description",
+            "category",
+            "blocks",
+            "schedule_defaults",
+            "sort_order",
+            "is_active",
+        ]
+
+
 class BotAuditPagination(PageNumberPagination):
     page_size = 50
     page_size_query_param = "page_size"
@@ -116,9 +133,7 @@ class BotChatListApi(APIView):
         kind = request.query_params.get("kind")
         if kind:
             qs = qs.filter(kind=kind)
-        return Response(
-            {"results": BotChatSerializer(qs, many=True).data, "count": qs.count()}
-        )
+        return Response({"results": BotChatSerializer(qs, many=True).data, "count": qs.count()})
 
 
 class BotChatDetailApi(APIView):
@@ -136,6 +151,25 @@ class BotChatDetailApi(APIView):
             chat.linked_profile_id = request.data["linked_profile"]
         chat.save()
         return Response(BotChatSerializer(chat).data)
+
+
+def _build_report_from_draft(data: dict) -> BotReport:
+    """
+    Build an unsaved BotReport instance from a POST body — used by
+    /preview_as/ so the caller can preview a draft that hasn't been
+    saved yet (or edits that are staged in the editor but not persisted).
+    """
+    report = BotReport(
+        name=data.get("name") or "preview",
+        enabled=data.get("enabled", True),
+        schedule_time=data.get("schedule_time") or "09:00:00",
+        schedule_days=data.get("schedule_days") or [],
+        blocks=data.get("blocks") or [],
+        language=data.get("language") or "uz",
+        period=data.get("period") or "today",
+        include_header=data.get("include_header", True),
+    )
+    return report
 
 
 class BotReportViewSet(viewsets.ModelViewSet):
@@ -159,30 +193,103 @@ class BotReportViewSet(viewsets.ModelViewSet):
             )
         return Response(result)
 
+    @action(detail=True, methods=["post"], url_path="test_send")
+    def test_send(self, request, pk=None):
+        """
+        Send THIS saved report to ONE arbitrary chat right now (bypass
+        schedule + last_sent_at). Body: `{"chat_id": <BotChat.id>}`.
+        """
+        report = self.get_object()
+        chat_id = request.data.get("chat_id")
+        if not chat_id:
+            return Response({"detail": "chat_id (BotChat.id) is required"}, status=400)
+        chat = BotChat.objects.filter(pk=chat_id).first()
+        if not chat:
+            return Response({"detail": "Chat not found"}, status=404)
+        try:
+            result = send_report_to_chat_sync(report, chat)
+        except Exception as exc:
+            return Response(
+                {"detail": f"Send failed: {exc}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response(result)
+
     @action(detail=True, methods=["post"])
     def preview(self, request, pk=None):
         """
-        Render the report against each recipient and return the HTML
-        (without actually sending). Useful for the editor's "preview" panel.
+        Render the SAVED report against each active recipient and return
+        the HTML (without actually sending). Kept for legacy editor use;
+        new UI uses `preview_as/`.
         """
         report = self.get_object()
         recipients = list(report.recipients.filter(is_active=True))
         if not recipients:
-            # Preview against a phantom "private" chat so the block-set is unfiltered.
             fake = BotChat(chat_id=0, kind="private", language=report.language, title="preview")
-            html = render_report(report, fake)
-            return Response({"previews": [{"chat_id": 0, "kind": "private", "html": html}]})
+            rendered = render_report_full(report, fake)
+            return Response(
+                {"previews": [{"chat_id": 0, "kind": "private", "html": rendered.html}]}
+            )
         previews = []
         for chat in recipients:
+            rendered = render_report_full(report, chat)
             previews.append(
                 {
                     "chat_id": chat.chat_id,
                     "kind": chat.kind,
                     "title": chat.title,
-                    "html": render_report(report, chat),
+                    "html": rendered.html,
+                    "buttons": [{"text": b.text, "url": b.url} for b in rendered.buttons],
                 }
             )
         return Response({"previews": previews})
+
+
+class BotReportPreviewAsApi(APIView):
+    """
+    POST /api/bot/reports/preview_as/
+
+    Body:
+        {
+            "draft": { ...BotReport payload without id... },
+            "chat_id": <BotChat.id | null>
+        }
+
+    Renders `draft` as it would be seen by that specific BotChat (RBAC
+    + sensitivity filtering applied for the chat's kind + language).
+    If `chat_id` is null / missing, uses a phantom private chat so
+    every block is shown (best for editor default preview).
+
+    Kept as a plain APIView instead of a ViewSet @action so the editor
+    can call it without knowing an existing report id (draft mode).
+    """
+
+    permission_classes = [IsTeamLead]
+
+    def post(self, request):
+        draft = request.data.get("draft") or {}
+        chat_id = request.data.get("chat_id")
+        report = _build_report_from_draft(draft)
+        chat: BotChat | None = None
+        if chat_id:
+            chat = BotChat.objects.filter(pk=chat_id).first()
+        if not chat:
+            chat = BotChat(
+                chat_id=0,
+                kind="private",
+                language=report.language,
+                title="preview",
+            )
+        rendered = render_report_full(report, chat)
+        return Response(
+            {
+                "html": rendered.html,
+                "buttons": [{"text": b.text, "url": b.url} for b in rendered.buttons],
+                "chat_kind": chat.kind,
+                "chat_title": chat.title,
+                "chat_language": chat.language,
+            }
+        )
 
 
 class BotBlocksApi(APIView):
@@ -198,13 +305,22 @@ class BotBlocksApi(APIView):
                     "slug": slug,
                     "label_ru": spec.label_ru,
                     "label_uz": spec.label_uz,
+                    "category": spec.category,
                     "sensitive": spec.sensitive,
                 }
             )
-        periods = [
-            {"slug": p.value, "label": p.label} for p in BotReportPeriod
-        ]
-        return Response({"blocks": data, "periods": periods})
+        periods = [{"slug": p.value, "label": p.label} for p in BotReportPeriod]
+        return Response({"blocks": data, "periods": periods, "categories": list(CATEGORIES)})
+
+
+class BotTemplateListApi(APIView):
+    """GET /api/bot/templates/ — read-only list for the gallery modal."""
+
+    permission_classes = [IsTeamLead]
+
+    def get(self, request):
+        qs = BotReportTemplate.objects.filter(is_active=True).order_by("sort_order", "id")
+        return Response({"results": BotReportTemplateSerializer(qs, many=True).data})
 
 
 class BotAuditListApi(APIView):
@@ -225,6 +341,4 @@ class BotAuditListApi(APIView):
             qs = qs.filter(at__gte=since)
         paginator = BotAuditPagination()
         page = paginator.paginate_queryset(qs.order_by("-at"), request)
-        return paginator.get_paginated_response(
-            BotAuditLogSerializer(page or [], many=True).data
-        )
+        return paginator.get_paginated_response(BotAuditLogSerializer(page or [], many=True).data)

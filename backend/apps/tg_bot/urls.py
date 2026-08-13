@@ -6,7 +6,9 @@ from .apis import (
     BotBlocksApi,
     BotChatDetailApi,
     BotChatListApi,
+    BotReportPreviewAsApi,
     BotReportViewSet,
+    BotTemplateListApi,
 )
 
 router = DefaultRouter()
@@ -16,6 +18,8 @@ urlpatterns = [
     path("chats/", BotChatListApi.as_view()),
     path("chats/<int:pk>/", BotChatDetailApi.as_view()),
     path("blocks/", BotBlocksApi.as_view()),
+    path("templates/", BotTemplateListApi.as_view()),
+    path("reports/preview_as/", BotReportPreviewAsApi.as_view()),
     path("audit/", BotAuditListApi.as_view()),
     path("", include(router.urls)),
 ]

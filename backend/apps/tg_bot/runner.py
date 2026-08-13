@@ -178,33 +178,64 @@ async def main() -> None:
             return str(value)
         return f"{num} {t('rep_currency', lang)}"
 
-    def operator_kb(ops: list[tuple[int, str]], picked_ids: set[int], lang: str) -> InlineKeyboardMarkup:
+    def operator_kb(
+        ops: list[tuple[int, str]], picked_ids: set[int], lang: str
+    ) -> InlineKeyboardMarkup:
         rows = []
         available = [(oid, name) for oid, name in ops if oid not in picked_ids]
         for i in range(0, len(available), 2):
             chunk = available[i : i + 2]
             rows.append(
-                [InlineKeyboardButton(text=name, callback_data=f"{OP_CALLBACK_PREFIX}{oid}") for oid, name in chunk]
+                [
+                    InlineKeyboardButton(text=name, callback_data=f"{OP_CALLBACK_PREFIX}{oid}")
+                    for oid, name in chunk
+                ]
             )
-        rows.append([InlineKeyboardButton(text=t("btn_type_op", lang), callback_data=f"{OP_CALLBACK_PREFIX}new")])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=t("btn_type_op", lang), callback_data=f"{OP_CALLBACK_PREFIX}new"
+                )
+            ]
+        )
         return InlineKeyboardMarkup(inline_keyboard=rows)
 
-    def partner_kb(partners: list[tuple[int, str]], picked_ids: set[int], lang: str) -> InlineKeyboardMarkup:
+    def partner_kb(
+        partners: list[tuple[int, str]], picked_ids: set[int], lang: str
+    ) -> InlineKeyboardMarkup:
         rows = []
         available = [(pid, name) for pid, name in partners if pid not in picked_ids]
         for i in range(0, len(available), 2):
             chunk = available[i : i + 2]
             rows.append(
-                [InlineKeyboardButton(text=name, callback_data=f"{PARTNER_CALLBACK_PREFIX}{pid}") for pid, name in chunk]
+                [
+                    InlineKeyboardButton(text=name, callback_data=f"{PARTNER_CALLBACK_PREFIX}{pid}")
+                    for pid, name in chunk
+                ]
             )
-        rows.append([InlineKeyboardButton(text=t("btn_type_partner", lang), callback_data=f"{PARTNER_CALLBACK_PREFIX}new")])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=t("btn_type_partner", lang), callback_data=f"{PARTNER_CALLBACK_PREFIX}new"
+                )
+            ]
+        )
         return InlineKeyboardMarkup(inline_keyboard=rows)
 
     def split_choice_kb(role: str, total_label: str, lang: str) -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text=t("btn_take_all", lang, label=total_label), callback_data=f"{role}-split:all")],
-                [InlineKeyboardButton(text=t("btn_split", lang), callback_data=f"{role}-split:split")],
+                [
+                    InlineKeyboardButton(
+                        text=t("btn_take_all", lang, label=total_label),
+                        callback_data=f"{role}-split:all",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text=t("btn_split", lang), callback_data=f"{role}-split:split"
+                    )
+                ],
             ]
         )
 
@@ -251,8 +282,12 @@ async def main() -> None:
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(text=t("btn_ru", "ru"), callback_data=f"{LANG_CALLBACK_PREFIX}ru"),
-                    InlineKeyboardButton(text=t("btn_uz", "uz"), callback_data=f"{LANG_CALLBACK_PREFIX}uz"),
+                    InlineKeyboardButton(
+                        text=t("btn_ru", "ru"), callback_data=f"{LANG_CALLBACK_PREFIX}ru"
+                    ),
+                    InlineKeyboardButton(
+                        text=t("btn_uz", "uz"), callback_data=f"{LANG_CALLBACK_PREFIX}uz"
+                    ),
                 ]
             ]
         )
@@ -282,8 +317,12 @@ async def main() -> None:
             await state.clear()
             return
         data = await state.get_data()
-        picked_ids = {o.get("operator_id") for o in data.get("op_lines", []) if o.get("operator_id")}
-        await target_msg.answer(t("ask_operator", lang), reply_markup=operator_kb(ops, picked_ids, lang))
+        picked_ids = {
+            o.get("operator_id") for o in data.get("op_lines", []) if o.get("operator_id")
+        }
+        await target_msg.answer(
+            t("ask_operator", lang), reply_markup=operator_kb(ops, picked_ids, lang)
+        )
         await state.set_state(NewSale.operator_pick)
 
     async def _ask_partner_picker(target_msg: Message, state: FSMContext, lang: str) -> None:
@@ -293,8 +332,12 @@ async def main() -> None:
             await state.clear()
             return
         data = await state.get_data()
-        picked_ids = {p.get("partner_id") for p in data.get("partner_lines", []) if p.get("partner_id")}
-        await target_msg.answer(t("ask_partner", lang), reply_markup=partner_kb(partners, picked_ids, lang))
+        picked_ids = {
+            p.get("partner_id") for p in data.get("partner_lines", []) if p.get("partner_id")
+        }
+        await target_msg.answer(
+            t("ask_partner", lang), reply_markup=partner_kb(partners, picked_ids, lang)
+        )
         await state.set_state(NewSale.partner_pick)
 
     async def _ask_date(target_msg: Message, state: FSMContext, lang: str) -> None:
@@ -370,7 +413,9 @@ async def main() -> None:
 
         lang = await lang_for(msg)
         if not await require_role(
-            data, msg, needed="manager",
+            data,
+            msg,
+            needed="manager",
             deny_message="⛔ Эта команда только для менеджеров. Настройте отчёты через веб-панель.",
         ):
             return
@@ -404,9 +449,77 @@ async def main() -> None:
 
     @dp.message(Command("report"))
     async def cmd_report(msg: Message) -> None:
+        """
+        /report                — list available preset slugs.
+        /report <preset_slug>  — render the preset on-demand and send it here.
+
+        Falls back to the legacy daily-report builder if `/report legacy`
+        is passed (keeps historical behaviour for one release).
+        """
+        parts = (msg.text or "").split(maxsplit=1)
+        arg = parts[1].strip().lower() if len(parts) > 1 else ""
         lang = await lang_for(msg)
-        text = await asyncio.to_thread(build_daily_report, None, lang)
-        await msg.answer(text, parse_mode="Markdown")
+
+        if not arg:
+            text = await asyncio.to_thread(_ondemand_list_templates, lang)
+            await msg.answer(text, parse_mode="HTML")
+            return
+        if arg == "legacy":
+            text = await asyncio.to_thread(build_daily_report, None, lang)
+            await msg.answer(text, parse_mode="Markdown")
+            return
+
+        result = await asyncio.to_thread(_ondemand_render_by_preset, arg, msg.chat.id)
+        if not result:
+            text = await asyncio.to_thread(_ondemand_list_templates, lang)
+            await msg.answer("Пресет не найден.\n\n" + text, parse_mode="HTML")
+            return
+
+        # result = (html, reply_markup_or_None)
+        html, kb = result
+        await msg.answer(html, parse_mode="HTML", disable_web_page_preview=True, reply_markup=kb)
+
+    @dp.message(Command("sales"))
+    async def cmd_sales(msg: Message) -> None:
+        """Quick sales summary. `/sales [today|week|month]` (default today)."""
+        parts = (msg.text or "").split(maxsplit=1)
+        period = parts[1].strip().lower() if len(parts) > 1 else "today"
+        if period not in ("today", "yesterday", "week", "month"):
+            period = "today"
+        result = await asyncio.to_thread(
+            _ondemand_render_adhoc,
+            ["sales_total", "top_operators", "wow_growth", "average_check"],
+            period,
+            msg.chat.id,
+        )
+        html, kb = result
+        await msg.answer(html, parse_mode="HTML", disable_web_page_preview=True, reply_markup=kb)
+
+    @dp.message(Command("leads"))
+    async def cmd_leads(msg: Message) -> None:
+        """Funnel snapshot for this week."""
+        result = await asyncio.to_thread(
+            _ondemand_render_adhoc,
+            ["funnel", "hot_leads", "stale_leads", "callback_backlog"],
+            "week",
+            msg.chat.id,
+        )
+        html, kb = result
+        await msg.answer(html, parse_mode="HTML", disable_web_page_preview=True, reply_markup=kb)
+
+    @dp.message(Command("find"))
+    async def cmd_find(msg: Message) -> None:
+        """Lookup client by phone / name across Leads + Sales."""
+        parts = (msg.text or "").split(maxsplit=1)
+        query = parts[1].strip() if len(parts) > 1 else ""
+        if not query:
+            await msg.answer(
+                "Использование: <code>/find телефон_или_имя</code>",
+                parse_mode="HTML",
+            )
+            return
+        text = await asyncio.to_thread(_ondemand_find, query)
+        await msg.answer(text, parse_mode="HTML", disable_web_page_preview=True)
 
     @dp.message(Command("link"))
     async def cmd_link(msg: Message) -> None:
@@ -424,8 +537,9 @@ async def main() -> None:
 
         def _bind() -> tuple[str, str | None]:
             from django.utils import timezone
-            from apps.users.models import Profile
+
             from apps.tg_bot.models import BotSubscription
+            from apps.users.models import Profile
 
             now = timezone.now()
             profile = (
@@ -438,9 +552,9 @@ async def main() -> None:
                 return ("bad", None)
 
             # If another profile is already linked to this chat, unlink it first.
-            Profile.objects.filter(telegram_user_id=msg.chat.id).exclude(
-                pk=profile.pk
-            ).update(telegram_user_id=None)
+            Profile.objects.filter(telegram_user_id=msg.chat.id).exclude(pk=profile.pk).update(
+                telegram_user_id=None
+            )
 
             profile.telegram_user_id = msg.chat.id
             profile.tg_link_code = ""
@@ -483,18 +597,13 @@ async def main() -> None:
         def _lookup():
             from apps.users.models import Profile
 
-            p = (
-                Profile.objects.filter(telegram_user_id=msg.chat.id)
-                .select_related("user")
-                .first()
-            )
+            p = Profile.objects.filter(telegram_user_id=msg.chat.id).select_related("user").first()
             return (p.user.username, p.role) if p else (None, None)
 
         username, role = await asyncio.to_thread(_lookup)
         if username:
             await msg.answer(
-                f"👤 Вы вошли как <b>{username}</b> ({role}).\n"
-                "Отвязать — /unlink",
+                f"👤 Вы вошли как <b>{username}</b> ({role}).\nОтвязать — /unlink",
                 parse_mode="HTML",
             )
         else:
@@ -569,7 +678,12 @@ async def main() -> None:
             await state.set_state(NewSale.operator_split_choice)
         else:
             await target_msg.answer(
-                t("ask_op_amount_rem", lang, label=op_lines[-1]["label"], rem=fmt_money(remaining, lang)),
+                t(
+                    "ask_op_amount_rem",
+                    lang,
+                    label=op_lines[-1]["label"],
+                    rem=fmt_money(remaining, lang),
+                ),
                 parse_mode="Markdown",
             )
             await state.set_state(NewSale.operator_split_amount)
@@ -653,16 +767,23 @@ async def main() -> None:
         allocated_before = _allocated(op_lines[:-1])
         max_for_current = total - allocated_before
         if amt > max_for_current:
-            await msg.answer(t("amount_too_big", lang, rem=fmt_money(max_for_current, lang)), parse_mode="Markdown")
+            await msg.answer(
+                t("amount_too_big", lang, rem=fmt_money(max_for_current, lang)),
+                parse_mode="Markdown",
+            )
             return
         op_lines[-1]["amount"] = str(amt)
         await state.update_data(op_lines=op_lines)
         new_rem = total - _allocated(op_lines)
         if new_rem == 0:
-            await msg.answer(t("ops_done", lang, summary=_lines_summary(op_lines, lang)), parse_mode="Markdown")
+            await msg.answer(
+                t("ops_done", lang, summary=_lines_summary(op_lines, lang)), parse_mode="Markdown"
+            )
             await _ask_partner_picker(msg, state, lang)
         else:
-            await msg.answer(t("remaining_to_whom", lang, rem=fmt_money(new_rem, lang)), parse_mode="Markdown")
+            await msg.answer(
+                t("remaining_to_whom", lang, rem=fmt_money(new_rem, lang)), parse_mode="Markdown"
+            )
             await _ask_operator_picker(msg, state, lang)
 
     async def _after_partner_picked(target_msg: Message, state: FSMContext, lang: str) -> None:
@@ -681,7 +802,12 @@ async def main() -> None:
             await state.set_state(NewSale.partner_split_choice)
         else:
             await target_msg.answer(
-                t("ask_partner_amount_rem", lang, label=partner_lines[-1]["label"], rem=fmt_money(remaining, lang)),
+                t(
+                    "ask_partner_amount_rem",
+                    lang,
+                    label=partner_lines[-1]["label"],
+                    rem=fmt_money(remaining, lang),
+                ),
                 parse_mode="Markdown",
             )
             await state.set_state(NewSale.partner_split_amount)
@@ -742,7 +868,8 @@ async def main() -> None:
         data = await state.get_data()
         partner_lines = data.get("partner_lines", [])
         await cb.message.answer(
-            t("ask_partner_amount_type", lang, label=partner_lines[-1]["label"]), parse_mode="Markdown"
+            t("ask_partner_amount_type", lang, label=partner_lines[-1]["label"]),
+            parse_mode="Markdown",
         )
         await state.set_state(NewSale.partner_split_amount)
         await cb.answer()
@@ -765,16 +892,24 @@ async def main() -> None:
         allocated_before = _allocated(partner_lines[:-1])
         max_for_current = total - allocated_before
         if amt > max_for_current:
-            await msg.answer(t("amount_too_big", lang, rem=fmt_money(max_for_current, lang)), parse_mode="Markdown")
+            await msg.answer(
+                t("amount_too_big", lang, rem=fmt_money(max_for_current, lang)),
+                parse_mode="Markdown",
+            )
             return
         partner_lines[-1]["amount"] = str(amt)
         await state.update_data(partner_lines=partner_lines)
         new_rem = total - _allocated(partner_lines)
         if new_rem == 0:
-            await msg.answer(t("partners_done", lang, summary=_lines_summary(partner_lines, lang)), parse_mode="Markdown")
+            await msg.answer(
+                t("partners_done", lang, summary=_lines_summary(partner_lines, lang)),
+                parse_mode="Markdown",
+            )
             await _ask_date(msg, state, lang)
         else:
-            await msg.answer(t("remaining_via_whom", lang, rem=fmt_money(new_rem, lang)), parse_mode="Markdown")
+            await msg.answer(
+                t("remaining_via_whom", lang, rem=fmt_money(new_rem, lang)), parse_mode="Markdown"
+            )
             await _ask_partner_picker(msg, state, lang)
 
     @dp.callback_query(F.data.startswith(DATE_CALLBACK_PREFIX), NewSale.date)
@@ -849,6 +984,7 @@ async def main() -> None:
 
             def _subs():
                 from django.db import close_old_connections
+
                 close_old_connections()
                 today = timezone.localdate()
                 return list(
@@ -859,7 +995,9 @@ async def main() -> None:
 
             def _mark_sent(sub_id: int):
                 from django.db import close_old_connections
+
                 from apps.tg_bot.models import BotSubscription
+
                 close_old_connections()
                 today = timezone.localdate()
                 BotSubscription.objects.filter(id=sub_id).update(last_daily_report_date=today)
@@ -872,6 +1010,7 @@ async def main() -> None:
 
             def _build_report(lang: str) -> str:
                 from django.db import close_old_connections
+
                 close_old_connections()
                 return build_daily_report(None, lang)
 
@@ -894,6 +1033,9 @@ async def main() -> None:
     common = [
         ("new", "cmd_new"),
         ("report", "cmd_report"),
+        ("sales", "cmd_sales"),
+        ("leads", "cmd_leads"),
+        ("find", "cmd_find"),
         ("subscribe", "cmd_subscribe"),
         ("unsubscribe", "cmd_unsubscribe"),
         ("language", "cmd_language"),
@@ -917,9 +1059,7 @@ async def main() -> None:
 
     @dp.message(Command("link_operator"))
     async def cmd_link_operator(msg: Message, state: FSMContext) -> None:
-        await msg.answer(
-            "Пришли номер, привязанный к твоему оператору (в формате +998...):"
-        )
+        await msg.answer("Пришли номер, привязанный к твоему оператору (в формате +998...):")
         await state.set_state(LinkOperator.phone)
 
     @dp.message(LinkOperator.phone)
@@ -1019,9 +1159,9 @@ async def main() -> None:
         else:
             await cb.answer("Не удалось")
             kb = InlineKeyboardMarkup(
-                inline_keyboard=[[
-                    InlineKeyboardButton(text="🔄 Повторить", callback_data=f"cb-done:{cb_id}")
-                ]]
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="🔄 Повторить", callback_data=f"cb-done:{cb_id}")]
+                ]
             )
             try:
                 await cb.message.edit_text(
@@ -1050,9 +1190,13 @@ async def main() -> None:
         else:
             await cb.answer("Не удалось")
             kb = InlineKeyboardMarkup(
-                inline_keyboard=[[
-                    InlineKeyboardButton(text="🔄 Повторить", callback_data=f"cb-snooze:{cb_id}:{minutes}")
-                ]]
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="🔄 Повторить", callback_data=f"cb-snooze:{cb_id}:{minutes}"
+                        )
+                    ]
+                ]
             )
             try:
                 await cb.message.edit_text(
@@ -1066,9 +1210,10 @@ async def main() -> None:
     # in sync. Aiogram receives `my_chat_member` on chat-membership changes.
     @dp.my_chat_member()
     async def on_my_chat_member(event) -> None:
+        from asgiref.sync import sync_to_async
+
         from apps.tg_bot.middlewares import _upsert_chat
         from apps.tg_bot.models import BotChat
-        from asgiref.sync import sync_to_async
 
         chat = event.chat
         new_status = event.new_chat_member.status
@@ -1197,13 +1342,13 @@ def _bot_snooze_callback(cb_id: int, minutes: int) -> bool:
 
 
 def _bot_attendance_checkin(tg_user_id: int, username: str) -> str:
-    from apps.users.models import Profile
+    from apps.attendance.selectors import open_log_for_operator
     from apps.attendance.services import (
-        process_attendance_event,
         ScanRateLimitError,
         TgCheckinDisabledError,
+        process_attendance_event,
     )
-    from apps.attendance.selectors import open_log_for_operator
+    from apps.users.models import Profile
 
     profile = Profile.objects.filter(telegram_user_id=tg_user_id).first()
     if not profile or not profile.operator:
@@ -1248,17 +1393,17 @@ def _bot_attendance_checkin(tg_user_id: int, username: str) -> str:
     except TgCheckinDisabledError:
         return "Отметка через Telegram отключена. Используйте QR на рабочей станции."
     except Exception as exc:
-        return f"Ошибка: {str(exc)}"
+        return f"Ошибка: {exc!s}"
 
 
 def _bot_attendance_checkout(tg_user_id: int, username: str) -> str:
-    from apps.users.models import Profile
+    from apps.attendance.selectors import open_log_for_operator
     from apps.attendance.services import (
-        process_attendance_event,
         ScanRateLimitError,
         TgCheckinDisabledError,
+        process_attendance_event,
     )
-    from apps.attendance.selectors import open_log_for_operator
+    from apps.users.models import Profile
 
     profile = Profile.objects.filter(telegram_user_id=tg_user_id).first()
     if not profile or not profile.operator:
@@ -1279,18 +1424,20 @@ def _bot_attendance_checkout(tg_user_id: int, username: str) -> str:
         chk_in_str = timezone.localtime(open_log.checked_in_at).strftime("%H:%M")
         chk_out_str = timezone.localtime(timezone.now()).strftime("%H:%M")
         duration = res.get("duration_min", 0)
-        return f"До завтра, {operator.full_name}. Смена: {chk_in_str}–{chk_out_str} ({duration} мин)."
+        return (
+            f"До завтра, {operator.full_name}. Смена: {chk_in_str}–{chk_out_str} ({duration} мин)."
+        )
     except ScanRateLimitError:
         return "Подождите 30 секунд."
     except TgCheckinDisabledError:
         return "Отметка через Telegram отключена. Используйте QR на рабочей станции."
     except Exception as exc:
-        return f"Ошибка: {str(exc)}"
+        return f"Ошибка: {exc!s}"
 
 
 def _bot_attendance_status(tg_user_id: int) -> str:
-    from apps.users.models import Profile
     from apps.attendance.selectors import open_log_for_operator
+    from apps.users.models import Profile
 
     profile = Profile.objects.filter(telegram_user_id=tg_user_id).first()
     if not profile or not profile.operator:
@@ -1309,9 +1456,9 @@ def _bot_attendance_status(tg_user_id: int) -> str:
 
 
 def _bot_auto_checkout_confirm(tg_user_id: int, log_id: int) -> dict:
-    from apps.users.models import Profile
     from apps.attendance.models import AttendanceLog
     from apps.attendance.services import process_attendance_event
+    from apps.users.models import Profile
 
     profile = Profile.objects.filter(telegram_user_id=tg_user_id).first()
     if not profile or not profile.operator:
@@ -1342,12 +1489,12 @@ def _bot_auto_checkout_confirm(tg_user_id: int, log_id: int) -> dict:
             "text": f"Хорошего вечера, {profile.operator.full_name}. Смена: {duration} мин.",
         }
     except Exception as exc:
-        return {"ok": False, "msg": f"Ошибка: {str(exc)}", "alert": True}
+        return {"ok": False, "msg": f"Ошибка: {exc!s}", "alert": True}
 
 
 def _bot_continue_working(tg_user_id: int, log_id: int) -> dict:
-    from apps.users.models import Profile
     from apps.attendance.models import AttendanceLog
+    from apps.users.models import Profile
 
     profile = Profile.objects.filter(telegram_user_id=tg_user_id).first()
     if not profile or not profile.operator:
@@ -1369,6 +1516,156 @@ def _bot_continue_working(tg_user_id: int, log_id: int) -> dict:
         "msg": "Продолжайте работу",
         "text": "Ок, продолжай. Повторно не побеспокою.",
     }
+
+
+# ---------------------------------------------------------------------------
+# On-demand /report /sales /leads /find helpers
+# ---------------------------------------------------------------------------
+
+
+def _ondemand_list_templates(language: str) -> str:
+    """
+    Pretty list of available report presets for `/report` with no args.
+    Reads BotReportTemplate — matches the gallery shown in the web UI.
+    """
+    from apps.tg_bot.models import BotReportTemplate
+
+    rows = list(
+        BotReportTemplate.objects.filter(is_active=True)
+        .order_by("sort_order", "id")
+        .values("slug", "name", "description")
+    )
+    if not rows:
+        return "Пресеты ещё не заданы. Обратитесь к менеджеру."
+    lines = ["📋 <b>Доступные пресеты отчётов:</b>", ""]
+    for r in rows:
+        lines.append(f"• <code>/report {r['slug']}</code> — {r['name']}")
+        if r["description"]:
+            lines.append(f"    <i>{r['description']}</i>")
+    lines.append("")
+    lines.append(
+        "Или используйте <code>/sales</code>, <code>/leads</code>, <code>/find телефон</code>."
+    )
+    return "\n".join(lines)
+
+
+def _resolve_chat(chat_id: int):
+    """Look up BotChat by chat_id (Telegram id) — required for RBAC + language."""
+    from apps.tg_bot.models import BotChat
+
+    return BotChat.objects.filter(chat_id=chat_id).first()
+
+
+def _ondemand_render_by_preset(preset_slug: str, chat_id: int):
+    """
+    Locate a BotReportTemplate by slug and render it against the chat.
+    Returns (html, InlineKeyboardMarkup | None) or None if slug unknown.
+    """
+    from apps.tg_bot.models import BotChat, BotReport, BotReportTemplate
+    from apps.tg_bot.renderer import render_report_full
+    from apps.tg_bot.scheduler import _build_kb
+
+    template = BotReportTemplate.objects.filter(slug=preset_slug, is_active=True).first()
+    if not template:
+        return None
+
+    chat = _resolve_chat(chat_id)
+    if not chat:
+        chat = BotChat(chat_id=chat_id, kind="private", language="ru", title="")
+
+    defaults = template.schedule_defaults or {}
+    report = BotReport(
+        name=template.name,
+        blocks=list(template.blocks or []),
+        language=defaults.get("language") or chat.language or "ru",
+        period=defaults.get("period") or "today",
+        include_header=defaults.get("include_header", True),
+        schedule_time=defaults.get("schedule_time") or "09:00:00",
+    )
+    rendered = render_report_full(report, chat)
+    return rendered.html, _build_kb(rendered)
+
+
+def _ondemand_render_adhoc(blocks: list, period: str, chat_id: int):
+    """Build a phantom BotReport with `blocks` + `period` and render for chat."""
+    from apps.tg_bot.models import BotChat, BotReport
+    from apps.tg_bot.renderer import render_report_full
+    from apps.tg_bot.scheduler import _build_kb
+
+    chat = _resolve_chat(chat_id)
+    if not chat:
+        chat = BotChat(chat_id=chat_id, kind="private", language="ru", title="")
+
+    report = BotReport(
+        name={
+            "today": "Сегодня",
+            "yesterday": "Вчера",
+            "week": "Эта неделя",
+            "month": "Этот месяц",
+        }.get(period, "Отчёт"),
+        blocks=blocks,
+        language=chat.language or "ru",
+        period=period,
+        include_header=True,
+        schedule_time="09:00:00",
+    )
+    rendered = render_report_full(report, chat)
+    return rendered.html, _build_kb(rendered)
+
+
+def _ondemand_find(query: str) -> str:
+    """
+    Search Lead + Sale by phone / name substring. Returns an HTML message
+    with up to 5 leads + 5 sales matched.
+    """
+    import re as _re
+
+    from django.db.models import Q
+
+    from apps.leads.models import Lead
+    from apps.sales.models import Sale
+
+    q = (query or "").strip()
+    digits = _re.sub(r"\D", "", q)
+
+    lead_qs = Lead.objects.select_related("operator")
+    if digits and len(digits) >= 4:
+        lead_qs = lead_qs.filter(
+            Q(phone__icontains=digits)
+            | Q(phone_raw__icontains=digits)
+            | Q(phone_alt__icontains=digits)
+        )
+    else:
+        lead_qs = lead_qs.filter(full_name__icontains=q)
+    leads = list(lead_qs.order_by("-updated_at")[:5])
+
+    sale_qs = Sale.objects.select_related("operator").filter(is_deleted=False)
+    if digits and len(digits) >= 4:
+        sale_qs = sale_qs.filter(Q(client_phone__icontains=digits) | Q(imei__icontains=digits))
+    else:
+        sale_qs = sale_qs.filter(client_name__icontains=q)
+    sales = list(sale_qs.order_by("-sold_at")[:5])
+
+    if not leads and not sales:
+        return f"🔍 По запросу «{query}» ничего не найдено."
+
+    lines = [f"🔍 <b>Поиск:</b> «{query}»"]
+    if leads:
+        lines.append(f"\n📋 <b>Лиды ({len(leads)}):</b>")
+        for lead in leads:
+            phone = lead.phone or lead.phone_raw or "?"
+            op = lead.operator.full_name if lead.operator else "—"
+            name = (lead.full_name or "(без имени)")[:32]
+            lines.append(f"  • <b>{name}</b> · <code>{phone}</code> · {lead.status} · {op}")
+    if sales:
+        lines.append(f"\n💰 <b>Продажи ({len(sales)}):</b>")
+        for sale in sales:
+            op = sale.operator.full_name if sale.operator else "—"
+            phone = sale.client_phone or "?"
+            date = sale.sold_at.strftime("%d.%m")
+            amount = f"{int(sale.amount):,}".replace(",", " ")
+            lines.append(f"  • #{sale.id} · {sale.phone_model[:24]} · {amount} · {op} · {date}")
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":
