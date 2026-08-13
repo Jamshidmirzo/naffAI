@@ -1,28 +1,18 @@
 /**
  * Clipboard helpers for a catalog phone card.
  *
- * We expose THREE flows because Telegram Desktop (and some other messengers)
- * silently drops the `image/*` payload when a `text/plain` payload sits in
- * the same ClipboardItem — they prioritise text on paste. Splitting the UX
- * into "text-only" and "image-only" buttons is the only reliable workaround
- * that works across every messenger we care about.
+ * We expose TWO flows because Telegram Desktop (and some other messengers)
+ * silently drops one of the payloads (image OR text) when both sit in the
+ * same `ClipboardItem` — which one gets dropped is unpredictable across TG
+ * versions and platforms. Splitting the UX into "text-only" and "image-only"
+ * buttons is the only reliable workaround.
  *
- * Outcomes:
- *   "full"      — text + image in a single ClipboardItem (works for
- *                 Preview.app / Finder / Word / most desktop apps; MAY be
- *                 stripped to text-only on paste into TG Desktop macOS).
- *   "text_only" — text alone in clipboard.
- *   "image_only"— image alone (no text/plain payload → TG will attach the
- *                 image on paste).
- *
- * Fetch strategy: we always use `cache: "reload"` when pulling the cover
- * image, because a previously cached `<img>` request may have been made
- * WITHOUT `crossOrigin="anonymous"` and therefore carries no CORS metadata
- * in the browser's http cache. A canvas painted from that cached image
- * would be tainted; `fetch` from that cache would look CORS-OK but produce
- * a stale/opaque blob depending on browser. `cache: "reload"` forces a
- * fresh network request with the proper `Origin` header so CORS is
- * evaluated correctly.
+ * Fetch strategy: we pull the cover image via `fetch(url, { mode: "cors" })`
+ * → `blob` → `createImageBitmap(blob)` → canvas → PNG blob → ClipboardItem.
+ * We never rely on a DOM `<img>` element for the copy path: a cached `<img>`
+ * response can lack CORS metadata and taint the canvas, and cross-origin
+ * `<img>` state is generally brittle. `cache: "reload"` forces a fresh
+ * network request so CORS is re-evaluated cleanly.
  */
 
 export type PhoneQuoteData = {
@@ -30,7 +20,7 @@ export type PhoneQuoteData = {
   cover_image_url: string | null;
 };
 
-export type CopyOutcome = "full" | "text_only" | "image_only";
+export type CopyOutcome = "text_only" | "image_only";
 
 type ClipboardItemCtor = new (items: Record<string, Blob>) => ClipboardItem;
 
@@ -41,48 +31,46 @@ function getClipboardItemCtor(): ClipboardItemCtor | undefined {
 }
 
 async function fetchImageAsPng(url: string): Promise<Blob> {
-  // `cache: "reload"` — bypass any prior `<img>`-triggered cache entry that
-  // may lack CORS metadata. `mode: "cors"` forces the browser to honour the
-  // Access-Control-Allow-Origin header; without it we'd get an opaque blob.
   console.info("[copy] fetch image", url);
   const resp = await fetch(url, {
     mode: "cors",
     credentials: "omit",
     cache: "reload",
   });
-  console.info("[copy] fetch status", resp.status, resp.type, resp.headers.get("content-type"));
+  console.info(
+    "[copy] fetch status",
+    resp.status,
+    resp.type,
+    resp.headers.get("content-type"),
+  );
   if (!resp.ok) throw new Error(`image http ${resp.status}`);
   const blob = await resp.blob();
   console.info("[copy] blob size", blob.size, "type", blob.type);
   if (blob.type === "image/png") return blob;
-  // Chrome/Safari only reliably accept image/png in navigator.clipboard.write,
-  // so we transcode JPEG/WEBP → PNG via canvas.
-  return await new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      console.info("[copy] image element loaded", img.width, "x", img.height);
-      const c = document.createElement("canvas");
-      c.width = img.width;
-      c.height = img.height;
-      const ctx = c.getContext("2d");
-      if (!ctx) {
-        reject(new Error("no canvas ctx"));
-        return;
-      }
-      ctx.drawImage(img, 0, 0);
-      c.toBlob((b) => {
-        if (b) {
-          console.info("[copy] canvas → png", b.size);
-          resolve(b);
-        } else {
-          reject(new Error("toBlob returned null"));
-        }
-      }, "image/png");
-    };
-    img.onerror = () => reject(new Error("image element failed to load"));
-    img.src = URL.createObjectURL(blob);
+
+  // Chrome/Safari only reliably accept `image/png` in `navigator.clipboard.write`,
+  // so we transcode JPEG/WEBP → PNG via canvas. We decode the blob with
+  // `createImageBitmap` (no DOM `<img>` involved, no CORS state to reason about).
+  const bitmap = await createImageBitmap(blob);
+  console.info("[copy] bitmap decoded", bitmap.width, "x", bitmap.height);
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    bitmap.close();
+    throw new Error("no canvas ctx");
+  }
+  ctx.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  const png: Blob = await new Promise((resolve, reject) => {
+    canvas.toBlob((b) => {
+      if (b) resolve(b);
+      else reject(new Error("toBlob returned null"));
+    }, "image/png");
   });
+  console.info("[copy] canvas → png", png.size);
+  return png;
 }
 
 /**
@@ -96,10 +84,9 @@ export async function copyPhoneTextOnly(
 }
 
 /**
- * Copy IMAGE ONLY (no text/plain payload in the ClipboardItem). Use this
- * when the operator plans to paste into Telegram — TG prefers text over
- * image when both are present, so a pure-image ClipboardItem is the only
- * way to guarantee the image actually attaches.
+ * Copy IMAGE ONLY (no text/plain payload in the ClipboardItem). The operator
+ * pastes the image into Telegram as an attachment, then pastes the text as a
+ * caption (or as a separate message).
  *
  * Throws on failure — caller should show a specific error message so the
  * operator understands why (CORS, network, missing image).
@@ -121,45 +108,4 @@ export async function copyPhoneImageOnly(
   ]);
   console.info("[copy] image-only write ok");
   return "image_only";
-}
-
-/**
- * Copy TEXT + IMAGE in a single ClipboardItem. Best for Preview.app / Word /
- * Finder. In Telegram Desktop macOS, image is likely to be dropped on paste
- * (TG chooses text). Falls back to text-only if the image cannot be fetched.
- */
-export async function copyPhoneToClipboard(
-  data: PhoneQuoteData,
-): Promise<CopyOutcome> {
-  const textBlob = new Blob([data.text], { type: "text/plain" });
-  const items: Record<string, Blob> = { "text/plain": textBlob };
-
-  if (data.cover_image_url) {
-    try {
-      items["image/png"] = await fetchImageAsPng(data.cover_image_url);
-    } catch (err) {
-      console.warn("[copy] image fetch failed, falling back to text-only:", err);
-    }
-  }
-
-  const hasImage = "image/png" in items;
-  const ClipboardItemCtor = getClipboardItemCtor();
-
-  if (hasImage && typeof ClipboardItemCtor === "function") {
-    try {
-      console.info("[copy] writing combined ClipboardItem (text+image)");
-      await navigator.clipboard.write([new ClipboardItemCtor(items)]);
-      console.info("[copy] combined write ok");
-      return "full";
-    } catch (err) {
-      console.warn("[copy] clipboard.write failed, falling back to text-only:", err);
-    }
-  }
-
-  try {
-    await navigator.clipboard.writeText(data.text);
-  } catch (err) {
-    console.warn("[copy] writeText fallback failed:", err);
-  }
-  return "text_only";
 }

@@ -5,7 +5,6 @@ import {
   Plus,
   Search,
   Settings2,
-  Copy,
   Trash2,
   Edit3,
   Eye,
@@ -21,7 +20,6 @@ import { usePageHeader } from "../store/page";
 import { Modal } from "../components/ui";
 import PhoneEditor, { type PhoneDraft } from "../components/PhoneEditor";
 import {
-  copyPhoneToClipboard,
   copyPhoneTextOnly,
   copyPhoneImageOnly,
 } from "../components/CopyPhoneButton";
@@ -83,7 +81,7 @@ export default function Catalog() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [copying, setCopying] = useState<{
     id: number;
-    mode: "text" | "photo" | "both";
+    mode: "text" | "photo";
   } | null>(null);
 
   const phones = useQuery({
@@ -154,7 +152,7 @@ export default function Catalog() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["catalog-phones"] }),
   });
 
-  const handleCopy = async (phone: Phone, mode: "text" | "photo" | "both") => {
+  const handleCopy = async (phone: Phone, mode: "text" | "photo") => {
     if (copying !== null) return;
     setCopying({ id: phone.id, mode });
     try {
@@ -166,26 +164,19 @@ export default function Catalog() {
         toast.success(t("catalog.copied_text_only"));
         return;
       }
-      if (mode === "photo") {
-        if (!r.data.cover_image_url) {
-          toast.error(t("catalog.no_photo"));
-          return;
-        }
-        try {
-          await copyPhoneImageOnly(r.data);
-          toast.success(t("catalog.photo_copied"));
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.error("[copy] photo-only failed:", err);
-          toast.error(`${t("catalog.copy_failed")}: ${msg}`);
-        }
+      // mode === "photo"
+      if (!r.data.cover_image_url) {
+        toast.error(t("catalog.no_photo"));
         return;
       }
-      // mode === "both"
-      const outcome = await copyPhoneToClipboard(r.data);
-      if (outcome === "full") toast.success(t("catalog.copied_full"));
-      else if (r.data.cover_image_url) toast.success(t("catalog.copied_text_no_photo"));
-      else toast.success(t("catalog.copied_text_only"));
+      try {
+        await copyPhoneImageOnly(r.data);
+        toast.success(t("catalog.photo_copied"));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[copy] photo-only failed:", err);
+        toast.error(`${t("catalog.copy_failed")}: ${msg}`);
+      }
     } catch (err) {
       console.error("[copy] handler error:", err);
       toast.error(t("catalog.copy_failed"));
@@ -271,7 +262,6 @@ export default function Catalog() {
                 <img
                   src={p.cover_image_url}
                   alt={p.model_name}
-                  crossOrigin="anonymous"
                   className="w-full h-full object-contain"
                 />
               ) : (
@@ -319,7 +309,7 @@ export default function Catalog() {
 
               <div className="flex-1" />
               <div className="mt-3 space-y-2">
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-2 gap-1.5">
                   <button
                     type="button"
                     className="nf-btn nf-btn--secondary !px-2 !text-[12px]"
@@ -347,20 +337,6 @@ export default function Catalog() {
                       <ImageIcon className="w-3.5 h-3.5" />
                     )}{" "}
                     {t("catalog.copy_photo")}
-                  </button>
-                  <button
-                    type="button"
-                    className="nf-btn nf-btn--primary !px-2 !text-[12px]"
-                    onClick={() => handleCopy(p, "both")}
-                    disabled={copying !== null}
-                    title={t("catalog.copy_both")}
-                  >
-                    {copying?.id === p.id && copying?.mode === "both" ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Copy className="w-3.5 h-3.5" />
-                    )}{" "}
-                    {t("catalog.copy_both")}
                   </button>
                 </div>
                 <div className="flex items-center justify-end gap-1.5">
