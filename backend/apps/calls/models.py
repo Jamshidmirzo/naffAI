@@ -31,8 +31,14 @@ class CallAttempt(TimestampedModel):
     )
     operator = models.ForeignKey(
         "operators.Operator",
-        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="call_attempts",
+        help_text=(
+            "NULL means the operator who made this call has since been deleted."
+            " Row is kept so lead history stays intact."
+        ),
     )
     outcome = models.CharField(max_length=32, choices=CallOutcome.choices)
     comment = models.TextField(blank=True, default="")
@@ -70,8 +76,14 @@ class CallbackReminder(TimestampedModel):
     )
     operator = models.ForeignKey(
         "operators.Operator",
-        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="callback_reminders",
+        help_text=(
+            "NULL means the assigned operator has since been deleted."
+            " The reminder is kept for history but won't DM anyone."
+        ),
     )
     remind_at = models.DateTimeField(db_index=True)
     status = models.CharField(

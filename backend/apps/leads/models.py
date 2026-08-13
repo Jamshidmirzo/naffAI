@@ -416,7 +416,15 @@ class LeadAssignment(TimestampedModel):
 
     lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name="assignments")
     operator = models.ForeignKey(
-        "operators.Operator", on_delete=models.PROTECT, related_name="lead_assignments"
+        "operators.Operator",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="lead_assignments",
+        help_text=(
+            "NULL means the operator this row assigned to has since been deleted."
+            " Row is preserved for lead-movement audit."
+        ),
     )
     source = models.CharField(
         max_length=32,

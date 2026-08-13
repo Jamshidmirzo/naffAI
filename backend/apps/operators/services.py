@@ -451,6 +451,17 @@ def operator_delete(*, operator: Operator, user=None) -> dict:
     profiles_unlinked = Profile.objects.filter(operator=operator).update(operator=None)
     payroll_rules_deleted = PayrollRule.objects.filter(operator=operator).delete()[0]
 
+    # Historic FKs (LeadAssignment / CallAttempt / CallbackReminder) are
+    # SET_NULL — Django's collector nullifies them inside operator.delete()
+    # so lead history and reminder trails survive the operator being gone.
+    # We snapshot the counts here for the audit entry.
+    from apps.calls.models import CallAttempt, CallbackReminder
+    from apps.leads.models import LeadAssignment
+
+    lead_assignments_detached = LeadAssignment.objects.filter(operator=operator).count()
+    call_attempts_detached = CallAttempt.objects.filter(operator=operator).count()
+    callback_reminders_detached = CallbackReminder.objects.filter(operator=operator).count()
+
     operator_id = operator.id
     operator.delete()
 
@@ -467,6 +478,9 @@ def operator_delete(*, operator: Operator, user=None) -> dict:
         "sales_unlinked": sales_unlinked,
         "profiles_unlinked": profiles_unlinked,
         "payroll_rules_deleted": payroll_rules_deleted,
+        "lead_assignments_detached": lead_assignments_detached,
+        "call_attempts_detached": call_attempts_detached,
+        "callback_reminders_detached": callback_reminders_detached,
     }
 
     audit_log_create(

@@ -4,7 +4,9 @@ import pytest
 from django.utils import timezone
 
 from apps.audit.models import AuditLog
+from apps.calls.models import CallAttempt, CallbackReminder
 from apps.catalog.models import Channel
+from apps.leads.models import Lead, LeadAssignment
 from apps.operators.models import Operator
 from apps.operators.services import operator_delete
 from apps.payroll.models import PayrollRule
@@ -264,3 +266,63 @@ def test_delete_operator_bulk_audit(operator, other_operator, channel):
     assert (active, soft) == (1, 1)
     remaining = Sale.objects.filter(is_deleted=False).first()
     assert remaining.amount == Decimal("2000000.00")
+
+
+@pytest.mark.django_db
+def test_delete_operator_with_historic_calls_and_assignments(operator):
+    """
+    Regression for prod-500 on 2026-08-13: real operators accumulate a
+    tail of LeadAssignment / CallAttempt / CallbackReminder rows over
+    time. Before 0003_alter_operator_set_null those FKs were PROTECT →
+    operator_delete() raised ProtectedError and rolled the whole
+    transaction back, so deletion just failed with a 500.
+
+    After the migration the historic rows survive the delete with
+    operator_id=NULL (so lead history and reminder trail stay
+    reconstructible for the manager). The audit entry records how many
+    rows were detached.
+    """
+    lead = Lead.objects.create(full_name="Client X", phone="+998900000001")
+    # Historic lead assignment (mimics a morning_split / round_robin row).
+    assignment = LeadAssignment.objects.create(
+        lead=lead, operator=operator, source="auto_round_robin", active=False
+    )
+    # Historic call attempt (no_answer — the noise that filled prod).
+    attempt = CallAttempt.objects.create(
+        lead=lead, operator=operator, outcome="no_answer"
+    )
+    # Historic callback reminder still marked as done.
+    reminder = CallbackReminder.objects.create(
+        lead=lead,
+        operator=operator,
+        remind_at=timezone.now(),
+        status="done",
+    )
+
+    op_id = operator.id
+    result = operator_delete(operator=operator, user=None)
+
+    # Operator is gone.
+    assert not Operator.objects.filter(pk=op_id).exists()
+
+    # But the historic rows survive with operator_id nulled.
+    assignment.refresh_from_db()
+    attempt.refresh_from_db()
+    reminder.refresh_from_db()
+    assert assignment.operator_id is None
+    assert attempt.operator_id is None
+    assert reminder.operator_id is None
+
+    # Counts reported for the audit entry.
+    assert result["lead_assignments_detached"] == 1
+    assert result["call_attempts_detached"] == 1
+    assert result["callback_reminders_detached"] == 1
+
+    # Audit log carries the same counts.
+    entry = AuditLog.objects.get(
+        entity="operators.Operator", entity_id=str(op_id), action="delete"
+    )
+    counts = entry.changes["deleted_related"]
+    assert counts["lead_assignments_detached"] == 1
+    assert counts["call_attempts_detached"] == 1
+    assert counts["callback_reminders_detached"] == 1
