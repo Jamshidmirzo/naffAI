@@ -1,7 +1,17 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Settings2, Copy, Trash2, Edit3, Eye, EyeOff } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Settings2,
+  Copy,
+  Trash2,
+  Edit3,
+  Eye,
+  EyeOff,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { useT } from "../lib/i18n";
@@ -65,6 +75,7 @@ export default function Catalog() {
   const [stockFilter, setStockFilter] = useState<"" | "available" | "on_order" | "out">("");
   const [editing, setEditing] = useState<PhoneDraft | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [copyingId, setCopyingId] = useState<number | null>(null);
 
   const phones = useQuery({
     queryKey: ["catalog-phones", search, stockFilter],
@@ -135,16 +146,20 @@ export default function Catalog() {
   });
 
   const handleCopy = async (phone: Phone) => {
+    if (copyingId !== null) return;
+    setCopyingId(phone.id);
     try {
       const r = await api.get<{ text: string; cover_image_url: string | null }>(
         `/catalog/phones/${phone.id}/quote/?lang=uz`,
       );
       const outcome = await copyPhoneToClipboard(r.data);
       if (outcome === "full") toast.success(t("catalog.copied_full"));
-      else if (outcome === "text_photo_opened") toast.success(t("catalog.copied_text_photo_opened"));
+      else if (r.data.cover_image_url) toast.success(t("catalog.copied_text_no_photo"));
       else toast.success(t("catalog.copied_text_only"));
     } catch {
       toast.error(t("catalog.copy_failed"));
+    } finally {
+      setCopyingId(null);
     }
   };
 
@@ -276,8 +291,14 @@ export default function Catalog() {
                   type="button"
                   className="nf-btn nf-btn--primary flex-1"
                   onClick={() => handleCopy(p)}
+                  disabled={copyingId === p.id}
                 >
-                  <Copy className="w-3.5 h-3.5" /> {t("catalog.copy")}
+                  {copyingId === p.id ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}{" "}
+                  {copyingId === p.id ? t("catalog.copying") : t("catalog.copy")}
                 </button>
                 <button
                   type="button"
