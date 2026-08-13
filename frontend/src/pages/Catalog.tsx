@@ -9,6 +9,7 @@ import { usePageHeader } from "../store/page";
 import { Modal } from "../components/ui";
 import PhoneEditor, { type PhoneDraft } from "../components/PhoneEditor";
 import { copyPhoneToClipboard } from "../components/CopyPhoneButton";
+import InstallmentPanel from "../components/InstallmentPanel";
 
 export type Phone = {
   id: number;
@@ -266,6 +267,8 @@ export default function Catalog() {
                   {t(`catalog.stock_${p.stock_status}`)}
                 </div>
               )}
+
+              <InstallmentPanel phoneId={p.id} />
 
               <div className="flex-1" />
               <div className="mt-3 flex items-center justify-between gap-2">

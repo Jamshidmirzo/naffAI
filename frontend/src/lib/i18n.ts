@@ -1596,6 +1596,12 @@ const STRINGS: Lookup = {
     "catalog.plan_overpay": "Переплата",
     "catalog.months": "мес",
     "catalog.add_plan": "План",
+    "catalog.installment": "Рассрочка",
+    "catalog.installment_bank": "Банк",
+    "catalog.installment_empty": "Банки рассрочки ещё не настроены",
+    "catalog.installment_failed": "Не удалось загрузить рассрочку",
+    "catalog.installment_overpay": "Переплата",
+    "catalog.per_month": "/ мес",
   },
 
   uz: {
@@ -3177,6 +3183,12 @@ const STRINGS: Lookup = {
     "catalog.plan_multiplier": "Koeffitsient",
     "catalog.plan_overpay": "Ustama",
     "catalog.months": "oy",
+    "catalog.installment": "Bo'lib to'lash",
+    "catalog.installment_bank": "Bank",
+    "catalog.installment_empty": "Bo'lib to'lash banklari hali sozlanmagan",
+    "catalog.installment_failed": "Bo'lib to'lashni yuklab bo'lmadi",
+    "catalog.installment_overpay": "Ustama",
+    "catalog.per_month": "/ oy",
     "catalog.add_plan": "Reja",
   },
 };
