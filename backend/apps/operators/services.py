@@ -293,29 +293,54 @@ def operator_reactivate(*, operator: Operator, user=None) -> Operator:
 def operator_delete(*, operator: Operator, user=None) -> dict:
     """
     Hard-delete an operator, cleaning up their attached sales:
-      - Sales where this operator was the ONLY seller (`operator_lines.count()==1`
-        AND not already soft-deleted) → soft-delete (`is_deleted=True`,
-        `deleted_at=now()`). Their total drops out of dashboard KPI, per-op
-        analytics, and payroll.
-      - Sales where this operator was ONE OF SEVERAL → drop only their
-        `SaleOperator` line and append a note into `sale.comment` recording
-        the deleted operator + their share, so the manager can later trace
-        why the remaining sellers' amounts don't sum to `sale.amount`.
-        `sale.amount` stays untouched (the customer still paid this money).
 
-    Legacy single-FK `Sale.operator` is nulled to `SET_NULL`-equivalent via
-    UPDATE (the FK is defined as PROTECT to guard against accidental
-    `.delete()`, so we sidestep it explicitly).
+      - Sales where this operator was the ONLY seller
+        (`operator_lines.count()==1` AND not already soft-deleted) →
+        soft-delete (`is_deleted=True`, `deleted_at=now()`). Their total
+        drops out of dashboard KPI, per-op analytics, and payroll.
 
-    All other side-effect rows (SaleOperator lines already handled above,
-    Profile links, PayrollRule) are detached in-place. Every count is
-    recorded in a single audit entry so we can reconstruct what the
-    delete touched. Returns the counts as a dict for the API layer.
+      - Sales where this operator was ONE OF SEVERAL → **subtract only
+        this operator's share** from the sale's gross amount and drop
+        their `SaleOperator` line. The sale stays visible; remaining
+        operators keep their credit; the store's reported revenue
+        (`amount − discount`) drops by exactly this operator's net
+        share. `SalePartner` lines are reduced proportionally to keep
+        `Σ partner.amount == sale.amount`. A note is appended to
+        `sale.comment` recording the operator + subtracted share so the
+        manager can trace the change later.
+
+    Math for the multi-op branch (money is `Decimal(14, 2)`):
+        gross         = sale.amount
+        discount      = sale.discount
+        net           = gross − discount
+        share_net     = SaleOperator.amount for the leaving operator
+        share_gross   = share_net × gross / net       (when net > 0)
+        share_disc    = share_gross − share_net
+        new_amount    = gross − share_gross
+        new_discount  = discount − share_disc
+    Rounding uses ROUND_HALF_UP to 0.01 with the remainder pushed onto
+    the last partner line so the invariants stay exact:
+        Σ SaleOperator.amount = new_amount − new_discount
+        Σ SalePartner.amount  = new_amount
+
+    Legacy single-FK `Sale.operator` is nulled via UPDATE (the FK is
+    defined as PROTECT to guard against accidental `.delete()`, so we
+    sidestep it explicitly).
+
+    All other side-effect rows (Profile links, PayrollRule) are
+    detached in-place. Every count is recorded in a single audit entry
+    so we can reconstruct what the delete touched. Returns the counts
+    as a dict for the API layer.
     """
     # Local imports to avoid app-loading cycles.
+    from decimal import ROUND_HALF_UP, Decimal
+
     from apps.payroll.models import PayrollRule
-    from apps.sales.models import Sale, SaleOperator
+    from apps.sales.models import Sale, SaleOperator, SalePartner
     from apps.users.models import Profile
+
+    _MONEY_Q = Decimal("0.01")
+    _ZERO = Decimal("0")
 
     snapshot = {
         "id": operator.id,
@@ -326,33 +351,88 @@ def operator_delete(*, operator: Operator, user=None) -> dict:
 
     now = timezone.now()
 
-    # Split affected sales into "will become orphan after we drop this line"
-    # vs "still has other operators". Only consider not-yet-soft-deleted
-    # sales — historical soft-deleted ones we can leave untouched.
+    # Split affected sales into "will become orphan after we drop this
+    # line" vs "still has other operators". Only consider not-yet-soft-
+    # deleted sales — historical soft-deleted ones we can leave alone.
     affected_sales = (
         SaleOperator.objects.filter(operator=operator, sale__is_deleted=False)
         .values("sale_id", "amount")
         .annotate(total_lines=Count("sale__operator_lines"))
     )
     single_op_sale_ids: list[int] = []
-    multi_op_notes: list[dict] = []
+    multi_op_entries: list[dict] = []
     for row in affected_sales:
         if row["total_lines"] == 1:
             single_op_sale_ids.append(row["sale_id"])
         else:
-            multi_op_notes.append({"sale_id": row["sale_id"], "amount": row["amount"]})
+            multi_op_entries.append({"sale_id": row["sale_id"], "share_net": row["amount"]})
 
-    # Multi-op: append a `[Удалён YYYY-MM-DD] Оператор X: доля N сум` note
-    # so the sale detail retains context for the shopkeeper reviewing later.
-    note_stem = f"[Удалён {now:%Y-%m-%d}] Оператор {operator.full_name}: доля"
-    for entry in multi_op_notes:
-        sale = Sale.objects.filter(pk=entry["sale_id"]).only("id", "comment").first()
+    # Multi-op: shrink the sale — subtract this operator's share from
+    # gross amount / discount / partner lines proportionally, then drop
+    # the operator's SaleOperator line and annotate the sale comment.
+    multi_op_adjustments: list[dict] = []
+    note_stem = f"[Удалён {now:%Y-%m-%d}] Оператор {operator.full_name}: списана доля"
+    for entry in multi_op_entries:
+        sale = Sale.objects.filter(pk=entry["sale_id"]).first()
         if sale is None:
             continue
-        share_fmt = f"{int(entry['amount']):,}".replace(",", " ")
-        line = f"{note_stem} {share_fmt} сум"
+        share_net: Decimal = Decimal(entry["share_net"])
+        gross: Decimal = Decimal(sale.amount)
+        discount: Decimal = Decimal(sale.discount)
+        net: Decimal = gross - discount
+
+        if net > 0:
+            share_gross = (share_net * gross / net).quantize(_MONEY_Q, rounding=ROUND_HALF_UP)
+        else:
+            # Degenerate: net=0 → share_net must also be 0. Nothing to shrink.
+            share_gross = _ZERO
+        share_disc = (share_gross - share_net).quantize(_MONEY_Q, rounding=ROUND_HALF_UP)
+
+        new_amount = (gross - share_gross).quantize(_MONEY_Q, rounding=ROUND_HALF_UP)
+        new_discount = (discount - share_disc).quantize(_MONEY_Q, rounding=ROUND_HALF_UP)
+        # Clamp against float dust; discount can never exceed amount.
+        if new_discount < 0:
+            new_discount = _ZERO
+        if new_discount > new_amount:
+            new_discount = new_amount
+
+        # Shrink partner lines proportionally so
+        # `Σ SalePartner.amount == new_amount` still holds. Last line
+        # absorbs the rounding remainder.
+        partner_lines = list(sale.partner_lines.all().order_by("id"))
+        if partner_lines and gross > 0 and new_amount != gross:
+            shrink_factor = new_amount / gross
+            running = _ZERO
+            for i, pl in enumerate(partner_lines):
+                if i == len(partner_lines) - 1:
+                    pl.amount = (new_amount - running).quantize(_MONEY_Q, rounding=ROUND_HALF_UP)
+                else:
+                    pl.amount = (Decimal(pl.amount) * shrink_factor).quantize(
+                        _MONEY_Q, rounding=ROUND_HALF_UP
+                    )
+                    running += pl.amount
+                pl.save(update_fields=["amount"])
+
+        # Append a human-readable note before updating amount.
+        share_fmt = f"{int(share_net):,}".replace(",", " ")
+        new_amount_fmt = f"{int(new_amount):,}".replace(",", " ")
+        line = f"{note_stem} {share_fmt} сум, новая сумма продажи {new_amount_fmt} сум"
         sale.comment = (sale.comment + "\n" + line).strip() if sale.comment else line
-        sale.save(update_fields=["comment"])
+        sale.amount = new_amount
+        sale.discount = new_discount
+        sale.save(update_fields=["amount", "discount", "comment"])
+
+        multi_op_adjustments.append(
+            {
+                "sale_id": sale.id,
+                "share_net": str(share_net),
+                "share_gross": str(share_gross),
+                "old_amount": str(gross),
+                "new_amount": str(new_amount),
+                "old_discount": str(discount),
+                "new_discount": str(new_discount),
+            }
+        )
 
     # Soft-delete single-operator sales.
     sales_soft_deleted = 0
@@ -361,8 +441,9 @@ def operator_delete(*, operator: Operator, user=None) -> dict:
             is_deleted=True, deleted_at=now
         )
 
-    # Now drop the SaleOperator lines (both single-op orphaned and multi-op share)
-    # and detach the legacy single-FK on any remaining Sale rows.
+    # Now drop the SaleOperator lines (both single-op orphaned and
+    # multi-op share) and detach the legacy single-FK on any remaining
+    # Sale rows.
     sale_operator_rows_deleted = SaleOperator.objects.filter(
         operator=operator
     ).delete()[0]
@@ -377,8 +458,12 @@ def operator_delete(*, operator: Operator, user=None) -> dict:
         "sale_operator_rows_deleted": sale_operator_rows_deleted,
         "sales_soft_deleted_count": sales_soft_deleted,
         "sales_soft_deleted_ids": single_op_sale_ids,
-        "sales_annotated_count": len(multi_op_notes),
-        "sales_annotated_ids": [e["sale_id"] for e in multi_op_notes],
+        "sales_shrunk_count": len(multi_op_adjustments),
+        "sales_shrunk_ids": [e["sale_id"] for e in multi_op_adjustments],
+        "sales_shrunk_details": multi_op_adjustments,
+        # Back-compat aliases kept so older audit-log readers keep working.
+        "sales_annotated_count": len(multi_op_adjustments),
+        "sales_annotated_ids": [e["sale_id"] for e in multi_op_adjustments],
         "sales_unlinked": sales_unlinked,
         "profiles_unlinked": profiles_unlinked,
         "payroll_rules_deleted": payroll_rules_deleted,
