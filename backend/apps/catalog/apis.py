@@ -4,7 +4,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.common.exceptions import ApplicationError
-from apps.users.permissions import IsTeamLead, IsTeamLeadOrManagerReadOnly
+from apps.users.permissions import (
+    IsAuthenticatedAnyRole,
+    IsTeamLead,
+    IsTeamLeadOrManagerReadOnly,
+)
+from apps.users.models import Role
 
 from .imei_service import imei_lookup
 from .models import Channel
@@ -26,11 +31,24 @@ class ChannelSerializer(serializers.ModelSerializer):
 
 
 class ChannelListCreateApi(ListCreateAPIView):
-    permission_classes = [IsTeamLeadOrManagerReadOnly]
+    # POST (create partner) — seniors only. GET (read partner catalogue) —
+    # any logged-in role, incl. operator: they need the dropdown on the
+    # "New sale" form. Non-senior reads are auto-narrowed to active only
+    # so an operator can't pick a deactivated partner.
     serializer_class = ChannelSerializer
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsAuthenticatedAnyRole()]
+        return [IsTeamLeadOrManagerReadOnly()]
 
     def get_queryset(self):
         active_only = self.request.query_params.get("active_only") == "1"
+        # Operator role never sees inactive partners — they should only be
+        # able to pick a live payment channel when submitting a sale.
+        profile = getattr(self.request.user, "profile", None)
+        if getattr(profile, "role", None) == Role.OPERATOR:
+            active_only = True
         return channel_list(active_only=active_only)
 
     def create(self, request, *args, **kwargs):
