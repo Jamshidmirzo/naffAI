@@ -586,3 +586,699 @@ def lead_stats_snapshot(
         "by_operator": by_operator,
         "daily": daily,
     }
+
+
+# ================================================================
+# ---- Marketing analytics selectors (rich data for LLM + FE) ----
+# ================================================================
+#
+# These selectors are the *raw material* the Marketing module feeds to the
+# LLM analyst. They deliberately don't skew towards any particular chart:
+# every metric relevant to a marketer (source performance, funnel,
+# time-patterns, cohort, rejection reasons, WoW dynamics) is available
+# so the LLM can compose evidence-heavy recommendations.
+#
+# All selectors:
+#   * Include BOT/MANUAL leads (grouping label = "Bot" / "Manual")
+#     alongside Google-Sheets sources — a real marketer cares about every
+#     acquisition channel, not only the paid ones.
+#   * Return plain JSON-serialisable dicts/lists (Decimal → str where
+#     needed, no Django objects) so the marketing service can json.dumps()
+#     the payload verbatim into the LLM prompt.
+#   * Are pure reads — no side effects, no mutations.
+
+
+def _source_label_from_lead(lead: dict) -> str:
+    """Group key for a Lead row. `sheet_source__name` wins, else source enum."""
+    sheet_name = lead.get("sheet_source__name")
+    if sheet_name:
+        return sheet_name
+    src = lead.get("source") or ""
+    if src == "bot":
+        return "Telegram-бот"
+    if src == "manual":
+        return "Ручной ввод"
+    return "Другое"
+
+
+def _prev_period(start: dt.datetime, end: dt.datetime) -> tuple[dt.datetime, dt.datetime]:
+    """Previous window of the same length, ending just before `start`."""
+    span = end - start
+    prev_end = start
+    prev_start = prev_end - span
+    return prev_start, prev_end
+
+
+def _decimal_str(v) -> str:
+    if v is None:
+        return "0"
+    return str(v)
+
+
+def _source_leads_qs(*, date_from, date_to):
+    """Leads created within [date_from, date_to]. Includes all sources."""
+    from apps.leads.models import Lead
+
+    qs = Lead.objects.all()
+    if date_from:
+        qs = qs.filter(created_at__gte=date_from)
+    if date_to:
+        qs = qs.filter(created_at__lte=date_to)
+    return qs
+
+
+def marketing_source_breakdown(
+    *,
+    date_from: dt.datetime,
+    date_to: dt.datetime,
+    top_lists_limit: int = 3,
+) -> list[dict]:
+    """
+    Per-source breakdown for the LLM/dashboard: leads, converted, conv_rate,
+    revenue, avg_check, top_products / top_operators, avg time-to-conv, WoW
+    delta, and (if AdSpend rows exist for this window / source) spend/CAC/
+    ROI/revenue-per-dollar. Includes BOT / MANUAL / SHEET-* alike.
+
+    A "conversion" is a Sale whose linked `lead.created_at` is within the
+    window AND whose `sheet_source_id` (denormalised on Sale) matches
+    the group. For BOT/MANUAL leads without a sheet_source, the match is by
+    `sale.lead.source`.
+    """
+    from apps.leads.models import Lead
+    from apps.marketing.models import AdSpend
+
+    # ---- Leads grouped by source label -----------------------------------
+    lead_rows = list(
+        _source_leads_qs(date_from=date_from, date_to=date_to)
+        .values("id", "source", "sheet_source_id", "sheet_source__name", "created_at", "status")
+    )
+
+    groups: dict[str, dict] = {}
+    lead_id_to_group: dict[int, str] = {}
+    for r in lead_rows:
+        label = _source_label_from_lead(r)
+        g = groups.setdefault(
+            label,
+            {
+                "source_name": label,
+                "sheet_source_id": r["sheet_source_id"],
+                "kind": (
+                    "sheet" if r["sheet_source_id"]
+                    else ("bot" if r["source"] == "bot" else "manual" if r["source"] == "manual" else "other")
+                ),
+                "lead_ids": [],
+                "leads": 0,
+            },
+        )
+        g["lead_ids"].append(r["id"])
+        g["leads"] += 1
+        lead_id_to_group[r["id"]] = label
+
+    # ---- Sales linked back to those leads --------------------------------
+    from apps.sales.models import Sale, SaleOperator
+
+    lead_ids = list(lead_id_to_group.keys())
+    sales_qs = Sale.objects.filter(
+        is_deleted=False,
+        is_returned=False,
+        status="confirmed",
+        lead_id__in=lead_ids,
+    ).values("id", "lead_id", "amount", "discount", "phone_model", "sold_at", "created_at")
+    sales_list = list(sales_qs)
+
+    # Per-group sales aggregation.
+    per_group_sales: dict[str, list[dict]] = {label: [] for label in groups}
+    for s in sales_list:
+        label = lead_id_to_group.get(s["lead_id"])
+        if label:
+            per_group_sales[label].append(s)
+
+    # Sale IDs per group → for top_operators aggregation.
+    sale_ids_by_group: dict[str, list[int]] = {
+        label: [s["id"] for s in per_group_sales.get(label, [])]
+        for label in groups
+    }
+    all_sale_ids = [sid for ids in sale_ids_by_group.values() for sid in ids]
+
+    op_rows = list(
+        SaleOperator.objects.filter(sale_id__in=all_sale_ids)
+        .values("sale_id", "operator_id", "operator__full_name", "amount")
+    )
+    op_by_sale: dict[int, list[dict]] = {}
+    for r in op_rows:
+        op_by_sale.setdefault(r["sale_id"], []).append(r)
+
+    # ---- Previous period for delta ---------------------------------------
+    prev_start, prev_end = _prev_period(date_from, date_to)
+    prev_lead_rows = list(
+        Lead.objects.filter(created_at__gte=prev_start, created_at__lte=prev_end)
+        .values("id", "source", "sheet_source_id", "sheet_source__name", "status")
+    )
+    prev_groups: dict[str, dict[str, int]] = {}
+    prev_lead_ids_by_group: dict[str, list[int]] = {}
+    for r in prev_lead_rows:
+        label = _source_label_from_lead(r)
+        g = prev_groups.setdefault(label, {"leads": 0, "converted": 0})
+        g["leads"] += 1
+        prev_lead_ids_by_group.setdefault(label, []).append(r["id"])
+    # Count previous-period conversions by lead → sale existence.
+    prev_all_lead_ids = [lid for ids in prev_lead_ids_by_group.values() for lid in ids]
+    prev_won_lead_ids = set(
+        Sale.objects.filter(
+            is_deleted=False, is_returned=False, status="confirmed",
+            lead_id__in=prev_all_lead_ids,
+        ).values_list("lead_id", flat=True)
+    )
+    for label, ids in prev_lead_ids_by_group.items():
+        prev_groups[label]["converted"] = sum(1 for lid in ids if lid in prev_won_lead_ids)
+
+    # ---- AdSpend for the period per source label ------------------------
+    ad_spend_map: dict[str, Decimal] = {}
+    try:
+        spend_qs = AdSpend.objects.filter(
+            period_start__lte=date_to.date(),
+            period_end__gte=date_from.date(),
+        ).values("source_id", "source__name", "source_label", "amount")
+        for r in spend_qs:
+            if r["source__name"]:
+                label = r["source__name"]
+            elif r["source_label"]:
+                label = r["source_label"]
+            else:
+                label = "Другое"
+            ad_spend_map[label] = ad_spend_map.get(label, Decimal("0")) + (r["amount"] or Decimal("0"))
+    except Exception:
+        # AdSpend model may not exist yet during migration ordering.
+        ad_spend_map = {}
+
+    # ---- Assemble per-group payload --------------------------------------
+    out: list[dict] = []
+    for label, g in groups.items():
+        sales_here = per_group_sales.get(label, [])
+        converted = len(sales_here)
+        leads = g["leads"]
+        conv_rate = round(converted * 100.0 / leads, 2) if leads else 0.0
+
+        # Net revenue = Σ (amount − discount).
+        revenue = sum(
+            (Decimal(str(s["amount"])) - Decimal(str(s.get("discount") or 0)))
+            for s in sales_here
+        ) if sales_here else Decimal("0")
+        avg_check = (revenue / converted) if converted else Decimal("0")
+
+        # Time-to-conversion (hours): sale.sold_at − lead.created_at
+        lead_created_map = {r["id"]: r["created_at"] for r in lead_rows}
+        deltas_hours: list[float] = []
+        for s in sales_here:
+            created = lead_created_map.get(s["lead_id"])
+            if created and s["sold_at"]:
+                deltas_hours.append((s["sold_at"] - created).total_seconds() / 3600.0)
+        avg_time = round(sum(deltas_hours) / len(deltas_hours), 1) if deltas_hours else None
+
+        # Top products.
+        prod_counts: dict[str, int] = {}
+        for s in sales_here:
+            key = s.get("phone_model") or "—"
+            prod_counts[key] = prod_counts.get(key, 0) + 1
+        top_products = [
+            {"name": k, "count": v}
+            for k, v in sorted(prod_counts.items(), key=lambda x: -x[1])[:top_lists_limit]
+        ]
+
+        # Top operators (net credited).
+        op_totals: dict[int, dict] = {}
+        for sid in sale_ids_by_group.get(label, []):
+            for line in op_by_sale.get(sid, []):
+                oid = line["operator_id"]
+                entry = op_totals.setdefault(
+                    oid, {"operator_id": oid, "name": line["operator__full_name"] or "—", "count": 0, "total": Decimal("0")}
+                )
+                entry["count"] += 1
+                entry["total"] += Decimal(str(line["amount"] or 0))
+        top_operators = [
+            {"operator_id": v["operator_id"], "name": v["name"], "count": v["count"], "total": _decimal_str(v["total"])}
+            for v in sorted(op_totals.values(), key=lambda x: -x["total"])[:top_lists_limit]
+        ]
+
+        # Previous period comparison.
+        prev = prev_groups.get(label, {"leads": 0, "converted": 0})
+        prev_conv_rate = round(prev["converted"] * 100.0 / prev["leads"], 2) if prev["leads"] else 0.0
+        delta_pp = round(conv_rate - prev_conv_rate, 2)
+        delta_leads = leads - prev["leads"]
+
+        # AdSpend / CAC / ROI.
+        spend = ad_spend_map.get(label, Decimal("0"))
+        cac = (spend / converted) if (spend and converted) else None
+        roi = ((revenue - spend) / spend * 100) if spend else None
+        rev_per_dollar = (revenue / spend) if spend else None
+
+        out.append({
+            "source_name": label,
+            "sheet_source_id": g["sheet_source_id"],
+            "kind": g["kind"],
+            "leads": leads,
+            "converted": converted,
+            "conv_rate": conv_rate,
+            "revenue": _decimal_str(revenue),
+            "avg_check": _decimal_str(avg_check.quantize(Decimal("1"))) if converted else "0",
+            "avg_time_to_conv_hours": avg_time,
+            "top_products": top_products,
+            "top_operators": top_operators,
+            "prev_period": {
+                "leads": prev["leads"],
+                "converted": prev["converted"],
+                "conv_rate": prev_conv_rate,
+            },
+            "delta_pp": delta_pp,
+            "delta_leads": delta_leads,
+            "adspend": {
+                "amount": _decimal_str(spend),
+                "cac": _decimal_str(cac.quantize(Decimal("1"))) if cac else None,
+                "roi_pct": _decimal_str(roi.quantize(Decimal("0.1"))) if roi else None,
+                "revenue_per_dollar": _decimal_str(rev_per_dollar.quantize(Decimal("0.01"))) if rev_per_dollar else None,
+            },
+        })
+
+    out.sort(key=lambda x: -x["leads"])
+    return out
+
+
+def funnel_by_source(*, date_from: dt.datetime, date_to: dt.datetime) -> list[dict]:
+    """
+    Per-source funnel: current-status distribution over the enum stages
+    + inter-stage pass-through percentages.
+    """
+    from apps.leads.models import Lead
+
+    lead_rows = list(
+        _source_leads_qs(date_from=date_from, date_to=date_to)
+        .values("source", "sheet_source_id", "sheet_source__name", "status")
+    )
+
+    STAGES = ("new", "assigned", "in_progress", "contacted_telegram",
+              "callback_scheduled", "no_answer", "won", "lost")
+
+    per_src: dict[str, dict] = {}
+    for r in lead_rows:
+        label = _source_label_from_lead(r)
+        entry = per_src.setdefault(
+            label,
+            {"source_name": label, **{s: 0 for s in STAGES}, "total": 0},
+        )
+        st = r["status"] or "new"
+        # Merge no_answer_2 into no_answer for funnel purposes.
+        if st == "no_answer_2":
+            st = "no_answer"
+        # Merge archived / needs_review into 'lost' bucket for funnel.
+        if st in ("archived", "needs_review", "phone_on", "has_debt"):
+            st = "lost" if st in ("archived", "needs_review") else st
+        if st in entry:
+            entry[st] += 1
+        entry["total"] += 1
+
+    out = []
+    for entry in per_src.values():
+        total = entry["total"] or 1
+        # % of source total per stage
+        stages_pct = {f"{s}_pct": round(entry[s] * 100.0 / total, 1) for s in STAGES}
+        entry.update(stages_pct)
+        out.append(entry)
+    out.sort(key=lambda x: -x["total"])
+    return out
+
+
+def time_pattern_by_source(
+    *,
+    date_from: dt.datetime,
+    date_to: dt.datetime,
+    top_sources: int = 4,
+) -> dict:
+    """
+    Hour-of-day pattern: for each of the top-`top_sources` sources (by leads),
+    a 24-slot vector of `{leads_created, sales_converted}` counts. Also a
+    global "all" row for the overall view.
+    """
+    from apps.leads.models import Lead
+    from apps.sales.models import Sale
+
+    lead_rows = list(
+        _source_leads_qs(date_from=date_from, date_to=date_to)
+        .values("id", "source", "sheet_source_id", "sheet_source__name", "created_at")
+    )
+    # Rank sources by leads → pick top-N (plus "all")
+    from collections import Counter
+    counts_by_src = Counter(_source_label_from_lead(r) for r in lead_rows)
+    top_labels = [name for name, _ in counts_by_src.most_common(top_sources)]
+
+    # Init structure: {source_name: [{"hour": h, "leads": 0, "sales": 0}, ...]}
+    def _blank_hours():
+        return [{"hour": h, "leads": 0, "sales": 0} for h in range(24)]
+
+    per_src: dict[str, list[dict]] = {label: _blank_hours() for label in top_labels}
+    per_src["Все источники"] = _blank_hours()
+
+    lead_to_label: dict[int, str] = {}
+    for r in lead_rows:
+        label = _source_label_from_lead(r)
+        lead_to_label[r["id"]] = label
+        hour = int(r["created_at"].hour)
+        per_src["Все источники"][hour]["leads"] += 1
+        if label in per_src:
+            per_src[label][hour]["leads"] += 1
+
+    # Sales attributed via lead → group.
+    lead_ids = [r["id"] for r in lead_rows]
+    sale_rows = list(
+        Sale.objects.filter(
+            is_deleted=False, is_returned=False, status="confirmed",
+            lead_id__in=lead_ids,
+        ).values("lead_id", "sold_at")
+    )
+    for s in sale_rows:
+        label = lead_to_label.get(s["lead_id"])
+        if not label or not s["sold_at"]:
+            continue
+        hour = int(s["sold_at"].hour)
+        per_src["Все источники"][hour]["sales"] += 1
+        if label in per_src:
+            per_src[label][hour]["sales"] += 1
+
+    return {
+        "sources": [
+            {"source_name": name, "hours": hours}
+            for name, hours in per_src.items()
+        ]
+    }
+
+
+def rejection_reasons_by_source(
+    *,
+    date_from: dt.datetime,
+    date_to: dt.datetime,
+    top_n: int = 5,
+) -> list[dict]:
+    """
+    Per-source top rejection reasons.
+
+    Order of preference for the "reason" text:
+      1. Sale.rejection_reason (managers can reject a submitted sale).
+      2. Lead.postpone_reason  (proxy — often "передумал / нет денег").
+      3. If none: lead status = 'lost' → generic "Потерян" bucket.
+
+    Returns [{source_name, total_lost, reasons: [{text, count, pct}]}].
+    """
+    from apps.leads.models import Lead
+    from apps.sales.models import Sale
+
+    # 1) Lost leads (status='lost' OR 'archived') in period.
+    lost_leads = list(
+        _source_leads_qs(date_from=date_from, date_to=date_to)
+        .filter(status__in=("lost", "archived"))
+        .values("id", "source", "sheet_source_id", "sheet_source__name",
+                "postpone_reason", "metadata")
+    )
+
+    per_src: dict[str, dict[str, int]] = {}
+    per_src_total: dict[str, int] = {}
+    for r in lost_leads:
+        label = _source_label_from_lead(r)
+        text = (r.get("postpone_reason") or "").strip()
+        if not text:
+            # Peek at metadata comment/IZOH for a hint.
+            meta = r.get("metadata") or {}
+            for k in ("IZOH", "izoh", "STATUS", "comment"):
+                v = str(meta.get(k, "") or "").strip()
+                if v:
+                    text = v[:120]
+                    break
+        if not text:
+            text = "Причина не указана"
+        per_src.setdefault(label, {}).setdefault(text, 0)
+        per_src[label][text] += 1
+        per_src_total[label] = per_src_total.get(label, 0) + 1
+
+    # 2) Rejected Sales (status='rejected') within period — attach to source.
+    rejected = list(
+        Sale.objects.filter(
+            status="rejected",
+            sold_at__gte=date_from,
+            sold_at__lte=date_to,
+        ).values("rejection_reason", "sheet_source_id", "sheet_source__name", "lead__source")
+    )
+    for r in rejected:
+        # Reuse the same grouping fn.
+        label = _source_label_from_lead({
+            "source": r.get("lead__source") or "",
+            "sheet_source_id": r.get("sheet_source_id"),
+            "sheet_source__name": r.get("sheet_source__name"),
+        })
+        text = (r.get("rejection_reason") or "Отклонена менеджером").strip()[:120]
+        per_src.setdefault(label, {}).setdefault(text, 0)
+        per_src[label][text] += 1
+        per_src_total[label] = per_src_total.get(label, 0) + 1
+
+    out = []
+    for label, reasons in per_src.items():
+        total = per_src_total[label] or 1
+        sorted_reasons = sorted(reasons.items(), key=lambda x: -x[1])[:top_n]
+        out.append({
+            "source_name": label,
+            "total_lost": per_src_total[label],
+            "reasons": [
+                {"text": text, "count": cnt, "pct": round(cnt * 100.0 / total, 1)}
+                for text, cnt in sorted_reasons
+            ],
+        })
+    out.sort(key=lambda x: -x["total_lost"])
+    return out
+
+
+def wow_delta(*, date_from: dt.datetime, date_to: dt.datetime) -> dict:
+    """
+    Compare current window totals against the previous equal-length window.
+    Returns absolute deltas + percentage change for leads/converted/revenue.
+    """
+    from apps.leads.models import Lead
+    from apps.sales.models import Sale
+
+    def _window(start, end):
+        leads = Lead.objects.filter(created_at__gte=start, created_at__lte=end).count()
+        # Conversions = sales whose linked lead was created in [start, end]
+        # AND the sale is confirmed & non-returned & non-deleted.
+        won = Sale.objects.filter(
+            is_deleted=False, is_returned=False, status="confirmed",
+            lead__created_at__gte=start, lead__created_at__lte=end,
+        ).count()
+        rev = (
+            _base_qs(date_from=start, date_to=end).aggregate(t=Sum(NET_AMOUNT))["t"]
+            or Decimal("0")
+        )
+        conv_rate = round(won * 100.0 / leads, 2) if leads else 0.0
+        return leads, won, rev, conv_rate
+
+    prev_start, prev_end = _prev_period(date_from, date_to)
+    cur_leads, cur_conv, cur_rev, cur_rate = _window(date_from, date_to)
+    prev_leads, prev_conv, prev_rev, prev_rate = _window(prev_start, prev_end)
+
+    def _pct(cur, prev):
+        if not prev:
+            return None
+        return round((cur - prev) * 100.0 / prev, 1)
+
+    return {
+        "current": {
+            "leads": cur_leads,
+            "converted": cur_conv,
+            "revenue": _decimal_str(cur_rev),
+            "conv_rate": cur_rate,
+        },
+        "previous": {
+            "leads": prev_leads,
+            "converted": prev_conv,
+            "revenue": _decimal_str(prev_rev),
+            "conv_rate": prev_rate,
+        },
+        "delta": {
+            "leads_pct": _pct(cur_leads, prev_leads),
+            "converted_pct": _pct(cur_conv, prev_conv),
+            "revenue_pct": _pct(float(cur_rev), float(prev_rev)),
+            "conv_rate_pp": round(cur_rate - prev_rate, 2),
+        },
+    }
+
+
+def channel_source_matrix(*, date_from: dt.datetime, date_to: dt.datetime) -> list[dict]:
+    """
+    Which payment partner dominates for each acquisition source.
+    Returns [{source_name, channels: [{name, count, share_pct}]}].
+    """
+    from apps.sales.models import Sale, SalePartner
+
+    # Sales in period + their lead's source group.
+    sale_rows = list(
+        Sale.objects.filter(
+            is_deleted=False, is_returned=False, status="confirmed",
+            sold_at__gte=date_from, sold_at__lte=date_to,
+        ).values(
+            "id", "lead__source", "sheet_source_id", "sheet_source__name",
+            "lead__sheet_source__name", "lead__sheet_source_id",
+        )
+    )
+    sale_id_to_label: dict[int, str] = {}
+    for r in sale_rows:
+        # Prefer sale.sheet_source (denormalised); fall back to lead's.
+        ss_name = r["sheet_source__name"] or r["lead__sheet_source__name"]
+        ss_id = r["sheet_source_id"] or r["lead__sheet_source_id"]
+        label = _source_label_from_lead({
+            "source": r.get("lead__source") or "",
+            "sheet_source_id": ss_id,
+            "sheet_source__name": ss_name,
+        })
+        sale_id_to_label[r["id"]] = label
+
+    sp_rows = list(
+        SalePartner.objects.filter(sale_id__in=list(sale_id_to_label.keys()))
+        .values("sale_id", "partner__name")
+    )
+
+    per_src_ch: dict[str, dict[str, int]] = {}
+    per_src_total: dict[str, int] = {}
+    for r in sp_rows:
+        label = sale_id_to_label.get(r["sale_id"])
+        name = r["partner__name"] or "Неизвестно"
+        if not label:
+            continue
+        per_src_ch.setdefault(label, {}).setdefault(name, 0)
+        per_src_ch[label][name] += 1
+        per_src_total[label] = per_src_total.get(label, 0) + 1
+
+    out = []
+    for label, channels in per_src_ch.items():
+        total = per_src_total[label] or 1
+        out.append({
+            "source_name": label,
+            "total_partner_lines": per_src_total[label],
+            "channels": [
+                {
+                    "name": name,
+                    "count": cnt,
+                    "share_pct": round(cnt * 100.0 / total, 1),
+                }
+                for name, cnt in sorted(channels.items(), key=lambda x: -x[1])
+            ],
+        })
+    out.sort(key=lambda x: -x["total_partner_lines"])
+    return out
+
+
+def cohort_conversion(*, weeks_back: int = 8) -> list[dict]:
+    """
+    Weekly cohort: leads bucketed by ISO week of their `created_at`.
+    For each cohort report:
+      - leads_count  — cohort size
+      - conv_7d      — # of leads that converted (Sale created) within 7d
+      - conv_30d     — same but 30d
+      - conv_rate_7d / _30d — pct
+    """
+    from apps.leads.models import Lead
+    from apps.sales.models import Sale
+    from django.db.models.functions import TruncWeek
+
+    now = timezone.now()
+    start = (now - dt.timedelta(weeks=weeks_back)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+    # Group leads by ISO week (via TruncWeek — Monday-anchored).
+    lead_rows = list(
+        Lead.objects.filter(created_at__gte=start)
+        .annotate(week=TruncWeek("created_at"))
+        .values("id", "created_at", "week")
+    )
+
+    # First-sale timestamp per lead.
+    lead_ids = [r["id"] for r in lead_rows]
+    sale_rows = list(
+        Sale.objects.filter(
+            is_deleted=False, is_returned=False, status="confirmed",
+            lead_id__in=lead_ids,
+        ).values("lead_id", "sold_at").order_by("sold_at")
+    )
+    first_sale: dict[int, dt.datetime] = {}
+    for s in sale_rows:
+        first_sale.setdefault(s["lead_id"], s["sold_at"])
+
+    cohorts: dict[dt.datetime, dict] = {}
+    for r in lead_rows:
+        week = r["week"]
+        entry = cohorts.setdefault(
+            week,
+            {
+                "week": week.strftime("%Y-W%V"),
+                "week_start": week.date().isoformat(),
+                "leads_count": 0,
+                "conv_7d": 0,
+                "conv_30d": 0,
+            },
+        )
+        entry["leads_count"] += 1
+        ss = first_sale.get(r["id"])
+        if ss:
+            hours = (ss - r["created_at"]).total_seconds() / 3600.0
+            if 0 <= hours <= 24 * 7:
+                entry["conv_7d"] += 1
+            if 0 <= hours <= 24 * 30:
+                entry["conv_30d"] += 1
+
+    out = []
+    for week, entry in sorted(cohorts.items()):
+        n = entry["leads_count"] or 1
+        entry["conv_rate_7d"] = round(entry["conv_7d"] * 100.0 / n, 1)
+        entry["conv_rate_30d"] = round(entry["conv_30d"] * 100.0 / n, 1)
+        out.append(entry)
+    return out
+
+
+def marketing_totals(*, date_from: dt.datetime, date_to: dt.datetime) -> dict:
+    """
+    Compact totals row for the Overview tab KPI cards.
+    """
+    from apps.leads.models import Lead
+    from apps.sales.models import Sale
+    from apps.marketing.models import AdSpend
+
+    leads = Lead.objects.filter(created_at__gte=date_from, created_at__lte=date_to).count()
+    converted = Sale.objects.filter(
+        is_deleted=False, is_returned=False, status="confirmed",
+        lead__created_at__gte=date_from, lead__created_at__lte=date_to,
+    ).count()
+    conv_rate = round(converted * 100.0 / leads, 2) if leads else 0.0
+
+    sales_agg = _base_qs(date_from=date_from, date_to=date_to).aggregate(
+        total=Sum(NET_AMOUNT), count=Count("id")
+    )
+    revenue = sales_agg["total"] or Decimal("0")
+    sales_count = sales_agg["count"] or 0
+    avg_check = (revenue / sales_count) if sales_count else Decimal("0")
+
+    try:
+        spend = AdSpend.objects.filter(
+            period_start__lte=date_to.date(),
+            period_end__gte=date_from.date(),
+        ).aggregate(t=Sum("amount"))["t"] or Decimal("0")
+    except Exception:
+        spend = Decimal("0")
+    cac = (spend / converted) if (spend and converted) else None
+    roi = ((revenue - spend) / spend * 100) if spend else None
+
+    return {
+        "leads": leads,
+        "converted": converted,
+        "conv_rate": conv_rate,
+        "sales_count": sales_count,
+        "revenue": _decimal_str(revenue),
+        "avg_check": _decimal_str(avg_check.quantize(Decimal("1"))) if sales_count else "0",
+        "spend": _decimal_str(spend),
+        "cac": _decimal_str(cac.quantize(Decimal("1"))) if cac else None,
+        "roi_pct": _decimal_str(roi.quantize(Decimal("0.1"))) if roi else None,
+    }

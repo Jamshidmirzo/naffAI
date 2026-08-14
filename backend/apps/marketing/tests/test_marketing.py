@@ -1,4 +1,8 @@
-"""F3.B — marketing analyst service tests."""
+"""Legacy marketing service tests — updated for the redesigned service.
+
+These preserve the intent of the original F3.B tests (upsert, LLM path,
+fallback path) but use the new `generate_content` interface.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +17,7 @@ from rest_framework.test import APIClient
 from apps.leads.models import Lead, LeadStatus, SheetSource
 from apps.marketing.models import MarketingInsight
 from apps.marketing.services import generate_marketing_insight
-from apps.tg_userclient.ai.provider import QuoteResult
+from apps.tg_userclient.ai.provider import LLMResponse
 from apps.users.models import Profile, Role
 
 User = get_user_model()
@@ -46,7 +50,9 @@ def test_generate_insight_upserts_row(sheet):
     assert insight.id is not None
     assert insight.period_start == period_start
     assert insight.period_end == period_end
-    assert isinstance(insight.targeting_recommendations, list)
+    # New structured field is populated (fallback or LLM).
+    assert isinstance(insight.structured_output, dict)
+    assert "summary" in insight.structured_output
     # Second call is idempotent — upserts the same row.
     insight2 = generate_marketing_insight(period_start=period_start, period_end=period_end)
     assert insight2.id == insight.id
@@ -58,20 +64,26 @@ def test_generate_insight_uses_llm_when_valid_json(sheet):
     Lead.objects.create(sheet_source=sheet, status=LeadStatus.NEW)
     end = timezone.localdate()
     start = end - dt.timedelta(days=6)
+    good_json = (
+        '{"summary": "Sheet A конвертит", '
+        '"highlights": [{"type": "win", "text": "лид/конв"}], '
+        '"recommendations": [{"priority": "high", "action": "Больше Sheet A", '
+        '"source": "Sheet A", "evidence": "high conv"}]}'
+    )
     with patch("apps.marketing.services.get_marketing_provider") as gp:
 
         class P:
-            def generate_quote(self, *, prompt):
-                return QuoteResult(
-                    text='{"recommendations": ["Больше Sheet A"], "summary": "Sheet A конвертит"}',
-                    model_version="test-model",
-                )
+            def generate_content(self, *, prompt, response_json=False):
+                return LLMResponse(text=good_json, model_used="test-model", provider="test")
 
         gp.return_value = P()
         insight = generate_marketing_insight(period_start=start, period_end=end)
-    assert insight.targeting_recommendations == ["Больше Sheet A"]
+
     assert insight.summary == "Sheet A конвертит"
     assert insight.model_version == "test-model"
+    assert insight.provider_used == "test"
+    # Legacy field derived from structured recommendations.
+    assert any("Больше Sheet A" in r for r in insight.targeting_recommendations)
 
 
 @pytest.mark.django_db
@@ -82,13 +94,14 @@ def test_generate_insight_falls_back_when_llm_fails(sheet):
     with patch("apps.marketing.services.get_marketing_provider") as gp:
 
         class P:
-            def generate_quote(self, *, prompt):
+            def generate_content(self, *, prompt, response_json=False):
                 raise RuntimeError("boom")
 
         gp.return_value = P()
         insight = generate_marketing_insight(period_start=start, period_end=end)
     assert insight.model_version == "fallback"
-    assert len(insight.targeting_recommendations) >= 1
+    assert isinstance(insight.structured_output, dict)
+    assert "summary" in insight.structured_output
 
 
 @pytest.mark.django_db
