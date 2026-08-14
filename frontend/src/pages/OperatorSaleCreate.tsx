@@ -100,14 +100,18 @@ export default function OperatorSaleCreate() {
   // red inline message disappears the moment the operator edits the field.
   // Also clears the shared error banner once no server errors remain so
   // the operator gets clean feedback that the fix landed.
-  const clearServerError = (f: FieldName) => {
-    setServerErrors((prev) => {
-      if (!prev[f]) return prev;
-      const next = { ...prev };
-      delete next[f];
-      if (Object.keys(next).length === 0) setError("");
-      return next;
-    });
+  //
+  // Historical note: we used to only clear the per-field entry, but if
+  // any handler forgot to call this (or a custom control's onChange path
+  // silently dropped it), the red inline would linger and the operator
+  // couldn't get rid of it without a full reload. As of 2026-08-14 we
+  // ALSO nuke the whole `serverErrors` map + banner on any keystroke so
+  // stale 400-response text can never outlive the value that triggered
+  // it. Backend re-validates on submit anyway, so worst case we surface
+  // the same error again with the same red outline.
+  const clearServerError = (_f: FieldName) => {
+    setServerErrors((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+    setError((prev) => (prev ? "" : prev));
   };
 
   // Keep the "+998 " prefix locked in — the operator types only local
@@ -208,17 +212,18 @@ export default function OperatorSaleCreate() {
 
   const showError = (f: FieldName): string | null => {
     // Client-side error wins if the current value is invalid RIGHT NOW —
-    // that's the freshest signal. A stale server-side error on a value
-    // that already passes client validation is misleading (the field is
-    // "green" as far as we can tell, and we'd otherwise show a red banner
-    // that only disappears once the operator re-touches the field).
+    // that's the freshest signal.
     if (errors[f]) {
       if (submitAttempted || touched[f]) return t(errors[f] as string);
       return null;
     }
-    // Client validation passes → surface any server-side error we still
-    // have on file. `onSubmit` wipes serverErrors before validating, so
-    // anything left here is from the *most recent* backend response.
+    // Client validation passes for this field. If a server-side error is
+    // still present for it (came from the most recent 400), surface it —
+    // but ONLY if the operator has not started editing anything since the
+    // response. `clearServerError` nukes the entire map on any keystroke,
+    // so by definition if `serverErrors[f]` is still here the operator
+    // has not touched the form since the last submit. This is the last
+    // useful signal we have before another submit re-validates.
     if (serverErrors[f]) return serverErrors[f] as string;
     return null;
   };
