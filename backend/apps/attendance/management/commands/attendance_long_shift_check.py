@@ -72,7 +72,7 @@ class Command(BaseCommand):
                     )
                 )
                 tl_profiles = Profile.objects.filter(
-                    role__in=[Role.TEAM_LEAD, Role.MANAGER],
+                    role__in=[Role.TEAM_LEAD, Role.MANAGER, Role.SUPERADMIN],
                     telegram_user_id__isnull=False,
                     telegram_user_id__in=_active_ids,
                 )

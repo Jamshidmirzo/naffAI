@@ -20,7 +20,7 @@ class IsSessionOwnerOrManager(BasePermission):
 
     def has_permission(self, request, view) -> bool:
         role = _role(request.user)
-        if role in (Role.TEAM_LEAD, Role.MANAGER):
+        if role in (Role.TEAM_LEAD, Role.MANAGER, Role.SUPERADMIN):
             return True
         if role == Role.OPERATOR:
             profile = getattr(request.user, "profile", None)
@@ -32,4 +32,4 @@ class IsManagerOrTeamLead(BasePermission):
     """Manager-only read endpoints for chats/messages/insights."""
 
     def has_permission(self, request, view) -> bool:
-        return _role(request.user) in (Role.TEAM_LEAD, Role.MANAGER)
+        return _role(request.user) in (Role.TEAM_LEAD, Role.MANAGER, Role.SUPERADMIN)

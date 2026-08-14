@@ -11,14 +11,22 @@ interface Props {
 
 /**
  * Normalise backend role strings to the two UI-facing roles.
- * Backend stores three internal roles (`team_lead`, `manager`, `operator`),
- * but the product only exposes two — `team_lead` is the "senior manager"
- * with full write access, so we collapse it into `manager` for the UI.
+ * Backend stores several internal roles (`team_lead`, `manager`, `operator`,
+ * `superadmin`), but the product exposes two — все senior-роли (team_lead /
+ * manager / superadmin) сворачиваются в `manager`, чтобы навигация и права
+ * в UI были одинаковые. Superadmin отличается только дополнительным
+ * пунктом «Фото сотрудников» — эта проверка идёт через `isSuperadmin()`.
  */
 export function normaliseRole(raw: string | null | undefined): Role | null {
   if (raw === "operator") return "operator";
-  if (raw === "manager" || raw === "team_lead") return "manager";
+  if (raw === "manager" || raw === "team_lead" || raw === "superadmin")
+    return "manager";
   return null;
+}
+
+/** True если raw-роль = "superadmin" (для показа фото-галереи в nav). */
+export function isSuperadmin(raw: string | null | undefined): boolean {
+  return raw === "superadmin";
 }
 
 export function RoleGate({ allow, children }: Props) {

@@ -25,6 +25,7 @@ import LessonsHistory from "./pages/LessonsHistory";
 import Scan from "./pages/Scan";
 import AttendanceToday from "./pages/AttendanceToday";
 import AttendanceReport from "./pages/AttendanceReport";
+import AttendancePhotos from "./pages/AttendancePhotos";
 import Placeholder from "./pages/Placeholder";
 import Notifications from "./pages/Notifications";
 import SalesToday from "./pages/SalesToday";
@@ -109,6 +110,7 @@ export default function App() {
           <Route path="/marketing" element={<RoleGate allow={["manager"]}><Marketing /></RoleGate>} />
           <Route path="/attendance/today" element={<RoleGate allow={["manager"]}><AttendanceToday /></RoleGate>} />
           <Route path="/attendance/report" element={<RoleGate allow={["manager"]}><AttendanceReport /></RoleGate>} />
+          <Route path="/attendance/photos" element={<RoleGate allow={["manager"]}><AttendancePhotos /></RoleGate>} />
         </Route>
       </Routes>
     </>

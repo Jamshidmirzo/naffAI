@@ -115,7 +115,7 @@ class Command(BaseCommand):
         text = _build_report(day)
         subs = list(
             BotSubscription.objects.filter(
-                user__profile__role__in=(Role.MANAGER, Role.TEAM_LEAD),
+                user__profile__role__in=(Role.MANAGER, Role.TEAM_LEAD, Role.SUPERADMIN),
                 blocked_at__isnull=True,
             ).exclude(chat_id__isnull=True)
         )

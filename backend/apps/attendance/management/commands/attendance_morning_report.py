@@ -54,7 +54,7 @@ class Command(BaseCommand):
             BotSubscription.objects.filter(is_active=True).values_list("chat_id", flat=True)
         )
         seniors = Profile.objects.filter(
-            role__in=[Role.TEAM_LEAD, Role.MANAGER],
+            role__in=[Role.TEAM_LEAD, Role.MANAGER, Role.SUPERADMIN],
             telegram_user_id__isnull=False,
             telegram_user_id__in=active_chat_ids,
         )

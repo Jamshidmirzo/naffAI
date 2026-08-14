@@ -1,6 +1,6 @@
 import { Outlet } from "react-router-dom";
 import { useAuth } from "../../store/auth";
-import { normaliseRole } from "../RoleGate";
+import { normaliseRole, isSuperadmin } from "../RoleGate";
 import { Sidebar, type SidebarGroup } from "./Sidebar";
 import { Header } from "./Header";
 import MorningGreeting from "../MorningGreeting";
@@ -12,7 +12,7 @@ import { useT } from "../../lib/i18n";
  * always-visible top-level entries. Section headers are purely visual;
  * clicking any leaf still routes normally.
  */
-function useManagerGroups(t: (k: string) => string): SidebarGroup[] {
+function useManagerGroups(t: (k: string) => string, showPhotos: boolean): SidebarGroup[] {
   return [
     {
       items: [
@@ -37,6 +37,12 @@ function useManagerGroups(t: (k: string) => string): SidebarGroup[] {
       items: [
         { to: "/attendance/today", label: t("nav.attendance_today") },
         { to: "/attendance/report", label: t("nav.attendance_report") },
+        // Только для роли `superadmin` — расширенная галерея всех
+        // фото check-in/out. Обычный менеджер видит фото inline на
+        // «Сегодня», ему выделенная страница не нужна.
+        ...(showPhotos
+          ? [{ to: "/attendance/photos", label: t("nav.attendance_photos") }]
+          : []),
       ],
     },
     {
@@ -93,8 +99,10 @@ function useOperatorGroups(t: (k: string) => string): SidebarGroup[] {
 
 export default function AppShell() {
   const t = useT();
-  const role = normaliseRole(useAuth((s) => s.role)) ?? "manager";
-  const managerGroups = useManagerGroups(t);
+  const rawRole = useAuth((s) => s.role);
+  const role = normaliseRole(rawRole) ?? "manager";
+  const showPhotos = isSuperadmin(rawRole);
+  const managerGroups = useManagerGroups(t, showPhotos);
   const operatorGroups = useOperatorGroups(t);
   const groups = role === "operator" ? operatorGroups : managerGroups;
 

@@ -21,7 +21,7 @@ class IsTeamLeadOrManager(BasePermission):
             return True
         profile = getattr(user, "profile", None)
         role = profile.role if profile else None
-        return role in {Role.TEAM_LEAD, Role.MANAGER}
+        return role in {Role.TEAM_LEAD, Role.MANAGER, Role.SUPERADMIN}
 
 from .models import MarketingInsight
 from .selectors import insights_list, latest_insight

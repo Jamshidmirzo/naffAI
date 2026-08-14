@@ -36,7 +36,7 @@ class IsTeamLeadOrManager(IsTeamLeadOrManagerReadOnly):
             return True
         profile = getattr(user, "profile", None)
         role = profile.role if profile else None
-        return role in {Role.TEAM_LEAD, Role.MANAGER}
+        return role in {Role.TEAM_LEAD, Role.MANAGER, Role.SUPERADMIN}
 
 from .selectors import rare_holder, sticker_for, taken_emojis
 from .services import (

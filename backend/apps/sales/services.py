@@ -386,7 +386,7 @@ def _broadcast_new_sale(sale, primary_op, operator_lines, total) -> None:
     body = " · ".join(body_parts)
 
     seniors = Profile.objects.filter(
-        role__in=[Role.TEAM_LEAD, Role.MANAGER]
+        role__in=[Role.TEAM_LEAD, Role.MANAGER, Role.SUPERADMIN]
     ).select_related("user")
     recipient_ids = [p.user_id for p in seniors if p.user_id]
     tg_ids = [p.telegram_user_id for p in seniors if p.telegram_user_id]

@@ -57,7 +57,7 @@ def _notify_managers_attendance(
         from apps.users.models import Role
 
         managers = User.objects.filter(
-            profile__role__in=(Role.MANAGER, Role.TEAM_LEAD),
+            profile__role__in=(Role.MANAGER, Role.TEAM_LEAD, Role.SUPERADMIN),
             is_active=True,
         )
         if not managers.exists():

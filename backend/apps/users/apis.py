@@ -322,7 +322,8 @@ class UserListCreateApi(APIView):
         username = serializers.CharField(max_length=150)
         password = serializers.CharField(required=False, allow_blank=True)
         role = serializers.ChoiceField(
-            choices=[Role.MANAGER, Role.TEAM_LEAD], default=Role.MANAGER
+            choices=[Role.MANAGER, Role.TEAM_LEAD, Role.SUPERADMIN],
+            default=Role.MANAGER,
         )
 
     def get(self, request):

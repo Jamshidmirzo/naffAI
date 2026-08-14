@@ -3,11 +3,14 @@ from rest_framework.permissions import BasePermission
 from .models import Role
 
 # Business rule: the UI only exposes two roles — `manager` and `operator`.
-# In the DB we still carry a third internal role, `team_lead`, but it is
-# treated as equivalent to `manager` for permissions (both are "senior"
-# with full write access). All senior-level permission classes below
-# therefore accept either.
-SENIOR_ROLES = {Role.TEAM_LEAD, Role.MANAGER}
+# In the DB we carry a few internal roles that all collapse to "senior":
+#   - `team_lead`  — исторический senior-роль (в UI показывается как менеджер)
+#   - `manager`    — обычный senior
+#   - `superadmin` — расширенный senior + доступ к галерее attendance-фото
+# Все senior-роли ниже трактуются одинаково для permission-classes;
+# `superadmin` — надмножество manager (+ фото-галерея).
+SENIOR_ROLES = {Role.TEAM_LEAD, Role.MANAGER, Role.SUPERADMIN}
+MANAGER_LEVEL_ROLES = SENIOR_ROLES  # публичный alias для внешних мест
 
 
 def _role(user) -> str | None:
@@ -21,6 +24,20 @@ def _role(user) -> str | None:
 
 def _is_senior(user) -> bool:
     return _role(user) in SENIOR_ROLES
+
+
+def is_manager_or_above(role: str | None) -> bool:
+    """
+    Хелпер для мест, которые фильтруют по `role in (...)` без permission
+    class'a (сервисы, management-команды, тесты). Возвращает True для
+    team_lead / manager / superadmin.
+    """
+    return role in SENIOR_ROLES
+
+
+def _is_superadmin(user) -> bool:
+    """True только для роли `superadmin` — привилегия галереи фото."""
+    return _role(user) == Role.SUPERADMIN
 
 
 class IsTeamLead(BasePermission):
@@ -72,3 +89,29 @@ class IsManager(BasePermission):
         if request.user and request.user.is_superuser:
             return True
         return _is_senior(request.user)
+
+
+class IsSuperadminOrManager(BasePermission):
+    """
+    Access permitted for senior roles (team_lead / manager / superadmin)
+    и Django superuser. Используется для attendance-фото-галереи и
+    других расширенных read-endpoint'ов, которые открыты всем менеджерам.
+    (На практике — эквивалент IsManager: и team_lead, и manager, и
+    superadmin все считаются "senior".)
+    """
+
+    def has_permission(self, request, view) -> bool:
+        if request.user and request.user.is_superuser:
+            return True
+        return _is_senior(request.user)
+
+
+class IsSuperadmin(BasePermission):
+    """Ужe жёсткая проверка на роль superadmin — не используется по
+    умолчанию (галерея открыта всем менеджерам), оставлено для
+    точечных superadmin-only endpoint'ов в будущем."""
+
+    def has_permission(self, request, view) -> bool:
+        if request.user and request.user.is_superuser:
+            return True
+        return _is_superadmin(request.user)

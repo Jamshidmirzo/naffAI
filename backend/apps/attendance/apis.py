@@ -11,7 +11,12 @@ from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
 from django.core.exceptions import ValidationError
 
 from apps.operators.models import Operator
-from apps.users.permissions import _role, IsTeamLead, IsAuthenticatedAnyRole
+from apps.users.permissions import (
+    _role,
+    IsTeamLead,
+    IsAuthenticatedAnyRole,
+    IsSuperadminOrManager,
+)
 from apps.users.models import Role
 from apps.common.pagination import DefaultPagination
 
@@ -30,6 +35,7 @@ from .services import (
 from .selectors import (
     attendance_settings_get,
     attendance_report,
+    attendance_photos_queryset,
     logs_for_operator,
     open_log_for_operator,
     operator_qr_png_bytes,
@@ -604,6 +610,99 @@ class SettingsAttendanceApi(APIView):
         settings_obj.updated_by = request.user
         settings_obj.save()
         return Response(self._serialize(settings_obj))
+
+
+class PhotosGalleryAttendanceApi(APIView):
+    """
+    GET /api/attendance/photos/ — постраничная лента check-in / check-out
+    фото по всем операторам.
+
+    Query params:
+      - `date_from` / `date_to` — YYYY-MM-DD (опц., по календарю Ташкента);
+      - `operator` (или `operator_id`) — фильтр по одному оператору;
+      - `limit` / `offset` — стандартная DRF-пагинация (DefaultPagination).
+
+    Доступ: `IsSuperadminOrManager` — оба senior-роли + superadmin. Оператор
+    получит 403.
+    """
+
+    permission_classes = [IsAuthenticated, IsSuperadminOrManager]
+
+    def get(self, request):
+        # Parse dates
+        date_from_str = request.query_params.get("date_from") or None
+        date_to_str = request.query_params.get("date_to") or None
+        operator_id_str = (
+            request.query_params.get("operator")
+            or request.query_params.get("operator_id")
+            or None
+        )
+
+        date_from = None
+        date_to = None
+        if date_from_str:
+            try:
+                date_from = dt.datetime.strptime(date_from_str, "%Y-%m-%d").date()
+            except ValueError:
+                return Response(
+                    {"error": "date_from: YYYY-MM-DD"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        if date_to_str:
+            try:
+                date_to = dt.datetime.strptime(date_to_str, "%Y-%m-%d").date()
+            except ValueError:
+                return Response(
+                    {"error": "date_to: YYYY-MM-DD"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        operator_id: int | None = None
+        if operator_id_str:
+            try:
+                operator_id = int(operator_id_str)
+            except (TypeError, ValueError):
+                return Response(
+                    {"error": "operator must be int"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        qs = attendance_photos_queryset(
+            date_from=date_from, date_to=date_to, operator_id=operator_id
+        )
+
+        paginator = DefaultPagination()
+        page = paginator.paginate_queryset(qs, request)
+
+        data = []
+        for log in page:
+            local_in = timezone.localtime(log.checked_in_at)
+            data.append({
+                "log_id": log.id,
+                "operator_id": log.operator_id,
+                "operator_name": log.operator.full_name,
+                "date": local_in.strftime("%Y-%m-%d"),
+                "checked_in_at": log.checked_in_at.isoformat(),
+                "checked_out_at": log.checked_out_at.isoformat()
+                if log.checked_out_at
+                else None,
+                "checkin_photo_url": log.checkin_photo.url if log.checkin_photo else None,
+                # Тумбы пока = сам URL (клиент рендерит <img> с CSS-thumbом).
+                # При появлении отдельного thumb-варианта достаточно поменять
+                # только это поле — контракт клиента не сломается.
+                "checkin_photo_thumb": log.checkin_photo.url if log.checkin_photo else None,
+                "checkout_photo_url": log.checkout_photo.url if log.checkout_photo else None,
+                "checkout_photo_thumb": log.checkout_photo.url if log.checkout_photo else None,
+                "was_late": log.was_late,
+                "auto_closed": log.auto_closed,
+                "manually_closed": log.manually_closed,
+                "source": log.source,
+                "duration_min": log.duration_seconds // 60
+                if log.duration_seconds is not None
+                else None,
+            })
+
+        return paginator.get_paginated_response(data)
 
 
 class ManualCloseAttendanceApi(APIView):

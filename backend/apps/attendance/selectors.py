@@ -134,6 +134,42 @@ def attendance_report(day: dt.date) -> dict:
     }
 
 
+def attendance_photos_queryset(
+    *,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
+    operator_id: int | None = None,
+) -> QuerySet:
+    """
+    QuerySet логов с фото (хотя бы одно из checkin_photo / checkout_photo).
+
+    Отфильтровано под галерею супер-админа/менеджера:
+      - только логи с непустым `checkin_photo` ИЛИ `checkout_photo`
+      - опционально по дате начала смены (Tashkent-календарь)
+      - опционально по конкретному оператору
+      - сортировка «свежее → старее» по `checked_in_at`
+    """
+    from django.db.models import Q
+
+    qs = AttendanceLog.objects.select_related("operator").filter(
+        ~Q(checkin_photo="") | ~Q(checkout_photo="")
+    )
+
+    if date_from is not None or date_to is not None:
+        tz = timezone.get_current_timezone()
+        if date_from is not None:
+            start_dt = dt.datetime.combine(date_from, dt.time.min).replace(tzinfo=tz)
+            qs = qs.filter(checked_in_at__gte=start_dt)
+        if date_to is not None:
+            end_dt = dt.datetime.combine(date_to, dt.time.max).replace(tzinfo=tz)
+            qs = qs.filter(checked_in_at__lte=end_dt)
+
+    if operator_id is not None:
+        qs = qs.filter(operator_id=operator_id)
+
+    return qs.order_by("-checked_in_at")
+
+
 def attendance_statistics_report(
     date_from: dt.date, date_to: dt.date, operator_ids: list[int] | None = None
 ) -> dict:
