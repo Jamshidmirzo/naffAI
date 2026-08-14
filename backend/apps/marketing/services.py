@@ -241,6 +241,71 @@ def _static_fallback(payload: dict) -> dict:
     }
 
 
+def _slim_payload_for_llm(payload: dict) -> dict:
+    """
+    Reduce the dashboard payload down to only the fields the LLM needs.
+
+    The full snapshot has ≥ 8 sections with per-source top_operators lists
+    and 24-slot heatmaps. Dumping it verbatim balloons the prompt past the
+    model's budget (GLM burns tokens on reasoning too). We keep the same
+    keys but truncate the fat lists — the LLM doesn't need 24 per-hour
+    dicts to spot a peak.
+    """
+    def _hours_peak(hours: list[dict], key: str) -> list[dict]:
+        # Keep only the top 5 hours by that metric.
+        return sorted(hours, key=lambda h: -h.get(key, 0))[:5]
+
+    slim_tp = []
+    for src in (payload.get("time_patterns", {}).get("sources") or []):
+        slim_tp.append({
+            "source_name": src["source_name"],
+            "peak_leads_hours": _hours_peak(src["hours"], "leads"),
+            "peak_sales_hours": _hours_peak(src["hours"], "sales"),
+        })
+
+    slim_sources = []
+    for s in (payload.get("sources") or [])[:10]:  # top-10 by volume
+        slim = {
+            "source_name": s["source_name"],
+            "kind": s["kind"],
+            "leads": s["leads"],
+            "converted": s["converted"],
+            "conv_rate": s["conv_rate"],
+            "revenue": s["revenue"],
+            "avg_check": s["avg_check"],
+            "avg_time_to_conv_hours": s.get("avg_time_to_conv_hours"),
+            "top_products": s.get("top_products", [])[:3],
+            "top_operators": [
+                {"name": o["name"], "count": o["count"], "total": o["total"]}
+                for o in s.get("top_operators", [])[:3]
+            ],
+            "prev_period": s["prev_period"],
+            "delta_pp": s["delta_pp"],
+            "delta_leads": s["delta_leads"],
+        }
+        if s.get("adspend", {}).get("amount") and s["adspend"]["amount"] != "0":
+            slim["adspend"] = s["adspend"]
+        slim_sources.append(slim)
+
+    slim_funnels = payload.get("funnels", [])[:8]
+    slim_rejection = payload.get("rejection_reasons", [])[:5]
+    slim_channels = payload.get("channels", [])[:5]
+    slim_cohorts = payload.get("cohorts", [])[-8:]
+
+    return {
+        "period": payload.get("period"),
+        "totals": payload.get("totals"),
+        "sources": slim_sources,
+        "funnels": slim_funnels,
+        "time_patterns": slim_tp,
+        "rejection_reasons": slim_rejection,
+        "channels": slim_channels,
+        "cohorts": slim_cohorts,
+        "wow": payload.get("wow"),
+        "adspend_summary": payload.get("adspend_summary"),
+    }
+
+
 def _run_llm(payload: dict) -> tuple[dict, str, str]:
     """
     Ask the LLM for the marketer-persona structured output.
@@ -253,28 +318,32 @@ def _run_llm(payload: dict) -> tuple[dict, str, str]:
         if payload.get("adspend_summary", {}).get("has_data")
         else ADSPEND_HINT_EMPTY
     )
+    slim = _slim_payload_for_llm(payload)
+    # Compact JSON — no indent, saves tokens.
     user_text = MARKETER_USER_TEMPLATE.format(
-        period_start=payload["period"]["start"],
-        period_end=payload["period"]["end"],
-        days=payload["period"]["days"],
-        totals_json=json.dumps(payload.get("totals"), ensure_ascii=False, indent=2),
-        sources_json=json.dumps(payload.get("sources"), ensure_ascii=False, indent=2),
-        funnels_json=json.dumps(payload.get("funnels"), ensure_ascii=False, indent=2),
-        time_patterns_json=json.dumps(payload.get("time_patterns"), ensure_ascii=False, indent=2),
-        rejection_reasons_json=json.dumps(payload.get("rejection_reasons"), ensure_ascii=False, indent=2),
-        channels_json=json.dumps(payload.get("channels"), ensure_ascii=False, indent=2),
-        cohorts_json=json.dumps(payload.get("cohorts"), ensure_ascii=False, indent=2),
-        wow_json=json.dumps(payload.get("wow"), ensure_ascii=False, indent=2),
+        period_start=slim["period"]["start"],
+        period_end=slim["period"]["end"],
+        days=slim["period"]["days"],
+        totals_json=json.dumps(slim["totals"], ensure_ascii=False),
+        sources_json=json.dumps(slim["sources"], ensure_ascii=False),
+        funnels_json=json.dumps(slim["funnels"], ensure_ascii=False),
+        time_patterns_json=json.dumps(slim["time_patterns"], ensure_ascii=False),
+        rejection_reasons_json=json.dumps(slim["rejection_reasons"], ensure_ascii=False),
+        channels_json=json.dumps(slim["channels"], ensure_ascii=False),
+        cohorts_json=json.dumps(slim["cohorts"], ensure_ascii=False),
+        wow_json=json.dumps(slim["wow"], ensure_ascii=False),
         adspend_hint=adspend_hint,
     )
     combined_prompt = f"{MARKETER_PERSONA_SYSTEM}\n\n{MARKETER_FEW_SHOT}\n\n---\n\n{user_text}"
+    logger.info("marketing LLM prompt size: %d chars", len(combined_prompt))
 
     try:
         provider = get_marketing_provider()
         # Marketing needs a longer completion budget than the default 2000
-        # — the marketer-persona output can easily reach 3-4KB.
+        # — the marketer-persona output can easily reach 3-4KB, and reasoning
+        # models (GLM) burn extra tokens on the internal reasoning trace.
         resp = provider.generate_content(
-            prompt=combined_prompt, response_json=True, max_tokens=4000,
+            prompt=combined_prompt, response_json=True, max_tokens=8000,
         )
         raw = (getattr(resp, "text", "") or "").strip()
         parsed = _parse_llm_json_loose(raw)
