@@ -4,20 +4,19 @@
 
 Пример:
     python manage.py create_superadmin \\
-        --phone +998955554727 --login opercoder --password opercoder
+        --phone +998955554727 --password opercoder --full-name 'Super Admin'
 
 Логика:
-  - если User с таким `--login` уже есть — сбрасывает пароль на
+  - `--phone` нормализуется в `+998XXXXXXXXX` и используется как
+    `User.username`. Логин superadmin'а === его телефон, чтобы работать
+    через тот же вход, что и операторы (LoginApi уже умеет phone→username
+    lookup через `normalize_uz_phone`).
+  - если User с таким username уже есть — сбрасывает пароль на
     указанный, поднимает роль до `superadmin`, восстанавливает
     is_active=True;
   - если пользователя нет — создаёт нового; Profile тоже создаётся
     или обновляется;
-  - `--phone` сохраняется в `Profile.telegram_user_id`? Нет — телефон
-    у нас не хранится на Profile; поле только в Operator. Superadmin
-    к Operator не привязан. Логин по `--login`, номер выводится
-    только в success-сообщение (передаётся для наглядности —
-    может использоваться менеджером как альтернативный "красивый"
-    идентификатор при рассылках/поддержке).
+  - `--full-name` пишется в `user.first_name` (для UI).
 
 Работает и локально, и внутри `docker compose exec web`.
 """
@@ -28,6 +27,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from apps.common.validators import normalize_uz_phone
 from apps.users.models import Profile, Role
 from apps.users.services import user_password_set
 
@@ -35,40 +35,42 @@ User = get_user_model()
 
 
 class Command(BaseCommand):
-    help = "Create or upsert a superadmin user (role=superadmin)"
+    help = "Create or upsert a superadmin user (role=superadmin). username == phone."
 
     def add_arguments(self, parser) -> None:
-        parser.add_argument("--login", required=True, help="username, e.g. opercoder")
-        parser.add_argument(
-            "--password", required=True, help="plaintext password (>=8 chars)"
-        )
         parser.add_argument(
             "--phone",
-            required=False,
-            default="",
-            help="справочный номер для логов/UI (не сохраняется в БД)",
+            required=True,
+            help="Номер в формате +998XXXXXXXXX. Используется как username.",
+        )
+        parser.add_argument(
+            "--password", required=True, help="plaintext password (>=8 chars)"
         )
         parser.add_argument(
             "--full-name",
             required=False,
             default="",
-            help="Опциональное первое имя / полное имя. Пишется в user.first_name.",
+            help="Опциональное полное имя. Пишется в user.first_name.",
         )
 
     @transaction.atomic
     def handle(self, *args, **opts) -> None:
-        login: str = opts["login"].strip()
+        raw_phone: str = (opts["phone"] or "").strip()
         password: str = opts["password"]
-        phone: str = (opts.get("phone") or "").strip()
         full_name: str = (opts.get("full_name") or "").strip()
 
-        if not login:
-            raise CommandError("--login required")
+        normalized, valid = normalize_uz_phone(raw_phone)
+        if not valid:
+            raise CommandError(
+                f"--phone {raw_phone!r} не валиден. Ожидается +998XXXXXXXXX."
+            )
         if len(password) < 8:
             raise CommandError("--password must be at least 8 chars")
 
+        username = normalized
+
         user, created = User.objects.get_or_create(
-            username=login,
+            username=username,
             defaults={"is_active": True, "first_name": full_name},
         )
 
@@ -96,8 +98,7 @@ class Command(BaseCommand):
         action = "created" if created else "updated"
         self.stdout.write(
             self.style.SUCCESS(
-                f"Superadmin {action}: username={login!r}"
-                + (f", phone={phone!r}" if phone else "")
-                + f", role={profile.role}"
+                f"Superadmin {action}: username={username!r} "
+                f"(phone), role={profile.role}"
             )
         )
