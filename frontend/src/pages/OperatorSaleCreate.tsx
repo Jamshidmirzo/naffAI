@@ -113,6 +113,13 @@ export default function OperatorSaleCreate() {
   // Keep the "+998 " prefix locked in — the operator types only local
   // digits. If they backspace into the prefix we snap it back so they
   // can't accidentally submit "998 XXX ..." or bare digits.
+  //
+  // Additionally: strip every non-digit from the *tail* so letters,
+  // punctuation, or paste-in "+998 90 abc 1234" all reduce to bare
+  // digits, then cap at 9 (the exact UZ local-number length). The cap
+  // matters because otherwise the operator would silently overshoot and
+  // hit the +998xxxxxxxxxxx server-side validator with no idea why.
+  const LOCAL_PHONE_MAX = 9;
   const handleClientPhoneChange = (raw: string) => {
     clearServerError("client_phone");
     let v = raw;
@@ -121,9 +128,11 @@ export default function OperatorSaleCreate() {
       const tail = v.replace(/^\+?9?9?8?\s*/, "");
       v = CLIENT_PHONE_PREFIX + tail;
     }
-    // Cap total length so the field can't grow unbounded.
-    if (v.length > 32) v = v.slice(0, 32);
-    setClientPhone(v);
+    const tail = v
+      .slice(CLIENT_PHONE_PREFIX.length)
+      .replace(/\D/g, "")
+      .slice(0, LOCAL_PHONE_MAX);
+    setClientPhone(CLIENT_PHONE_PREFIX + tail);
   };
 
   // Refs to jump to the first invalid field on submit.
@@ -415,13 +424,29 @@ export default function OperatorSaleCreate() {
           </label>
           <input
             ref={setRef("imei")}
+            type="text"
             className={`nf-input font-mono tracking-wide ${
               showError("imei") ? "border-red-500" : ""
             }`}
             value={imei}
             onChange={(e) => {
-              setImei(e.target.value.replace(/\D/g, ""));
+              // Strip non-digits AND cap at 15 — maxLength alone doesn't
+              // handle paste in every browser once we've disabled type=number.
+              setImei(e.target.value.replace(/\D/g, "").slice(0, 15));
               clearServerError("imei");
+            }}
+            onKeyDown={(e) => {
+              // Belt-and-braces: block letter keys at the source so mobile
+              // IMEs and fast typing can't sneak an "e"/"+"/"-" through.
+              if (
+                e.key.length === 1 &&
+                !/[0-9]/.test(e.key) &&
+                !e.ctrlKey &&
+                !e.metaKey &&
+                !e.altKey
+              ) {
+                e.preventDefault();
+              }
             }}
             onBlur={() => markTouched("imei")}
             maxLength={15}
@@ -491,6 +516,10 @@ export default function OperatorSaleCreate() {
                 if (!touched.amount && v) markTouched("amount");
               }}
               placeholder="5 000 000"
+              // Cap at 10 digits — 9 999 999 999 UZS covers any realistic
+              // single phone sale with room to spare; anything larger is
+              // almost certainly a typo/fat-fingered zero.
+              maxDigits={10}
             />
           </div>
           {showError("amount") && (
@@ -603,11 +632,26 @@ export default function OperatorSaleCreate() {
                   });
                 }
               }}
+              onKeyDown={(e) => {
+                // Block letter keys on the phone field too. Allow the
+                // control keys (backspace/arrows/etc are key.length > 1)
+                // and modifier combos so Ctrl+A / Cmd+V still work.
+                if (
+                  e.key.length === 1 &&
+                  !/[0-9]/.test(e.key) &&
+                  !e.ctrlKey &&
+                  !e.metaKey &&
+                  !e.altKey
+                ) {
+                  e.preventDefault();
+                }
+              }}
               onBlur={() => markTouched("client_phone")}
               placeholder={t("sale_create.client_phone_ph")}
               inputMode="tel"
               autoComplete="off"
-              maxLength={32}
+              // 5 chars for the "+998 " prefix + up to 9 local digits.
+              maxLength={CLIENT_PHONE_PREFIX.length + LOCAL_PHONE_MAX}
             />
           )}
           {!matchedLead && showError("client_phone") && (
