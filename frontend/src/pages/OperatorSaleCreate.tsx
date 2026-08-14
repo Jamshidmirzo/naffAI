@@ -198,12 +198,19 @@ export default function OperatorSaleCreate() {
   };
 
   const showError = (f: FieldName): string | null => {
-    // Server-side error wins — it's the freshest signal ("backend just
-    // rejected this exact value") and we want it visible immediately
-    // without waiting for touched/submitAttempted.
+    // Client-side error wins if the current value is invalid RIGHT NOW —
+    // that's the freshest signal. A stale server-side error on a value
+    // that already passes client validation is misleading (the field is
+    // "green" as far as we can tell, and we'd otherwise show a red banner
+    // that only disappears once the operator re-touches the field).
+    if (errors[f]) {
+      if (submitAttempted || touched[f]) return t(errors[f] as string);
+      return null;
+    }
+    // Client validation passes → surface any server-side error we still
+    // have on file. `onSubmit` wipes serverErrors before validating, so
+    // anything left here is from the *most recent* backend response.
     if (serverErrors[f]) return serverErrors[f] as string;
-    if (!errors[f]) return null;
-    if (submitAttempted || touched[f]) return t(errors[f] as string);
     return null;
   };
 
@@ -220,6 +227,13 @@ export default function OperatorSaleCreate() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitAttempted(true);
+    // Wipe previous server-side errors and banner: we're about to make a
+    // fresh POST, so any leftover red messages from an earlier attempt
+    // ("channel_id — не число", "amount — required") are guaranteed to
+    // be stale. If the new POST also fails we'll repopulate serverErrors
+    // from the response; if it succeeds we redirect away.
+    setServerErrors({});
+    setError("");
     if (!canSubmit) {
       // Find first invalid field and scroll into view.
       const order: FieldName[] = [
@@ -307,6 +321,16 @@ export default function OperatorSaleCreate() {
         if (!raw) continue;
         const first = Array.isArray(raw) ? raw[0] : raw;
         if (typeof first === "string") collected[f] = localizeMsg(first);
+      }
+      // Backend `ApplicationError` returns `{"detail": "...", "field": "amount"}`
+      // (single-field, not the DRF per-field dict). Route it into the same
+      // inline-error map so the operator gets a red message under the exact
+      // input instead of a vague top-banner.
+      if (typeof d.field === "string" && typeof d.detail === "string") {
+        const f = d.field as FieldName;
+        if (fields.includes(f) && !collected[f]) {
+          collected[f] = localizeMsg(d.detail);
+        }
       }
       if (Object.keys(collected).length > 0) {
         setServerErrors(collected);

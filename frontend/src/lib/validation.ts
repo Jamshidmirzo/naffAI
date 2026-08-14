@@ -85,8 +85,14 @@ export function validatePhoneModel(model: string): FieldError {
 }
 
 export function validateAmount(amount: string): FieldError {
-  if (!amount) return "validation.amount_required";
-  const n = Number(amount);
+  // Defensive: even though our `NumericInput` stores raw digits only, the
+  // form state could still receive a pasted "2 345 654" string in edit-mode
+  // or from a stale keydown handler. Strip whitespace before parsing so we
+  // never emit a "required numeric" error on what the operator sees as a
+  // perfectly-typed amount.
+  const clean = (amount || "").replace(/\s+/g, "");
+  if (!clean) return "validation.amount_required";
+  const n = Number(clean);
   if (!Number.isFinite(n) || n <= 0) return "validation.amount_positive";
   if (n < 1000) return "validation.amount_min";
   if (n > 1_000_000_000) return "validation.amount_max";
@@ -99,11 +105,21 @@ export function validateChannel(channelId: number | null): FieldError {
   return null;
 }
 
+// Any Unicode letter (Cyrillic / Latin / Uzbek diacritics). We match on
+// letter-*presence* rather than a strict pattern so users can freely mix
+// hyphens, apostrophes, and multi-part names ("O'zodbek", "Anna-Maria").
+// The RegExp uses the `u` flag + `\p{L}` — supported everywhere we ship
+// (Chrome ≥64, Safari ≥12, all modern mobile browsers).
+const HAS_LETTER_RE = /\p{L}/u;
+
 export function validateClientName(name: string): FieldError {
   const v = (name || "").trim();
   if (!v) return "validation.name_required";
   if (v.length < 2) return "validation.name_short";
   if (v.length > 128) return "validation.name_long";
+  // Reject names that are digits/punctuation only ("2345432fdsa" fails here
+  // because backend accepted it silently, letting garbage into leads).
+  if (!HAS_LETTER_RE.test(v)) return "validation.name_letters_required";
   return null;
 }
 
