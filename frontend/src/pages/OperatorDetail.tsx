@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { AlertTriangle, ChevronRight, Copy, Download, Eye, EyeOff, History, KeyRound, MessageCircle, QrCode, RefreshCw, ShieldOff, ShieldCheck, Target, Trash2, UserPlus } from "lucide-react";
+import { AlertTriangle, ChevronRight, Copy, Download, Eye, EyeOff, History, KeyRound, MessageCircle, Pencil, QrCode, RefreshCw, ShieldOff, ShieldCheck, Target, Trash2, UserPlus } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../store/auth";
 import { normaliseRole } from "../components/RoleGate";
@@ -100,8 +100,11 @@ interface OperatorDetail {
   personal_phone: string;
   status: string;
   hired_at: string | null;
+  note?: string;
   account: AccountState;
 }
+
+type OperatorStatusChoice = "active" | "trainee" | "inactive";
 
 interface Lesson {
   id: number;
@@ -138,6 +141,13 @@ export default function OperatorDetail() {
   const [phoneWork, setPhoneWork] = useState("");
   const [phonePersonal, setPhonePersonal] = useState("");
   const [stickerOpen, setStickerOpen] = useState(false);
+  const [editProfile, setEditProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState<{
+    full_name: string;
+    hired_at: string;
+    status: OperatorStatusChoice;
+    note: string;
+  }>({ full_name: "", hired_at: "", status: "active", note: "" });
 
   const isSpecific = choice.kind !== "current";
   const params = buildPeriodParams(period, choice);
@@ -281,6 +291,47 @@ export default function OperatorDetail() {
     setPhoneWork(detail.data?.phone ?? "");
     setPhonePersonal(detail.data?.personal_phone ?? "");
     setEditPhones(true);
+  };
+
+  const saveProfileMut = useMutation({
+    mutationFn: (payload: {
+      full_name: string;
+      hired_at: string | null;
+      status: OperatorStatusChoice;
+      note: string;
+    }) => api.patch(`/operators/${id}/`, payload),
+    onSuccess: () => {
+      invalidateAccount();
+      qc.invalidateQueries({ queryKey: ["operator-stats", id] });
+      qc.invalidateQueries({ queryKey: ["operators"] });
+      setEditProfile(false);
+      toast.success(t("op_edit.saved"));
+    },
+    onError: (err: unknown) => {
+      const data = (err as { response?: { data?: Record<string, unknown> } })?.response?.data;
+      const detailMsg = typeof data?.detail === "string" ? (data.detail as string) : undefined;
+      const firstFieldErr = (() => {
+        if (!data) return undefined;
+        for (const v of Object.values(data)) {
+          if (Array.isArray(v) && typeof v[0] === "string") return v[0] as string;
+        }
+        return undefined;
+      })();
+      toast.error(detailMsg || firstFieldErr || t("op_edit.save_failed"));
+    },
+  });
+
+  const openEditProfile = () => {
+    const d = detail.data;
+    const s = stats.data;
+    const status = (d?.status || s?.operator?.status || "active") as OperatorStatusChoice;
+    setProfileForm({
+      full_name: d?.full_name || s?.operator?.full_name || "",
+      hired_at: (d?.hired_at || s?.operator?.hired_at || "").slice(0, 10),
+      status,
+      note: d?.note || "",
+    });
+    setEditProfile(true);
   };
 
   const rotateQrMut = useMutation({
@@ -436,6 +487,18 @@ export default function OperatorDetail() {
               >
                 {s?.operator?.full_name || t("op_detail.default_name")}
               </div>
+              {isManager && (
+                <button
+                  type="button"
+                  onClick={openEditProfile}
+                  className="inline-grid place-items-center rounded-lg text-muted hover:text-text hover:bg-[var(--faint)] transition"
+                  style={{ width: 26, height: 26 }}
+                  title={t("op_edit.title")}
+                  aria-label={t("op_edit.title")}
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              )}
               {s?.operator?.status && (
                 <StatusBadge tone={toneForStatus(s.operator.status)}>
                   {statusLabel(t, s.operator.status)}
@@ -1444,6 +1507,95 @@ export default function OperatorDetail() {
               }
             >
               {savePhonesMut.isPending ? t("common.saving") : t("common.save")}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* --- Edit profile modal (name + hired_at + status + note) --- */}
+      <Modal
+        open={editProfile}
+        onClose={() => setEditProfile(false)}
+        width={480}
+      >
+        <div className="p-7 space-y-4">
+          <div className="text-[18px] font-semibold tracking-tight">
+            {t("op_edit.title")}
+          </div>
+          <div>
+            <div className="nf-col mb-1.5">{t("op_edit.full_name")}</div>
+            <input
+              className="nf-input"
+              value={profileForm.full_name}
+              onChange={(e) =>
+                setProfileForm({ ...profileForm, full_name: e.target.value })
+              }
+              autoFocus
+            />
+          </div>
+          <div>
+            <div className="nf-col mb-1.5">{t("op_edit.hired_at")}</div>
+            <input
+              type="date"
+              className="nf-input"
+              value={profileForm.hired_at}
+              onChange={(e) =>
+                setProfileForm({ ...profileForm, hired_at: e.target.value })
+              }
+            />
+          </div>
+          <div>
+            <div className="nf-col mb-1.5">{t("op_edit.status")}</div>
+            <select
+              className="nf-input"
+              value={profileForm.status}
+              onChange={(e) =>
+                setProfileForm({
+                  ...profileForm,
+                  status: e.target.value as OperatorStatusChoice,
+                })
+              }
+            >
+              <option value="active">{t("op_edit.status_active")}</option>
+              <option value="trainee">{t("op_edit.status_trainee")}</option>
+              <option value="inactive">{t("op_edit.status_inactive")}</option>
+            </select>
+          </div>
+          <div>
+            <div className="nf-col mb-1.5">{t("op_edit.note")}</div>
+            <textarea
+              className="nf-input"
+              rows={2}
+              value={profileForm.note}
+              onChange={(e) =>
+                setProfileForm({ ...profileForm, note: e.target.value })
+              }
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="ghost"
+              onClick={() => setEditProfile(false)}
+              disabled={saveProfileMut.isPending}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              onClick={() =>
+                saveProfileMut.mutate({
+                  full_name: profileForm.full_name.trim(),
+                  hired_at: profileForm.hired_at || null,
+                  status: profileForm.status,
+                  note: profileForm.note,
+                })
+              }
+              disabled={
+                saveProfileMut.isPending || !profileForm.full_name.trim()
+              }
+            >
+              {saveProfileMut.isPending
+                ? t("common.saving")
+                : t("common.save")}
             </Button>
           </div>
         </div>
