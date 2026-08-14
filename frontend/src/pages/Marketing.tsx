@@ -1,231 +1,253 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RefreshCcw } from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { api } from "../lib/api";
-import { apiErrorMessage } from "../lib/api-types";
-import { Button, Eyebrow, toast } from "../components/ui";
+import { Download, RefreshCcw } from "lucide-react";
+import { api, API_BASE_URL } from "../lib/api";
+import { Button, TabPill, toast, type TabItem } from "../components/ui";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
+import { toDateInputValue } from "../lib/format";
+import MarketingKpiCards from "../components/marketing/MarketingKpiCards";
+import MarketingSourceTable from "../components/marketing/MarketingSourceTable";
+import MarketingHeatmap from "../components/marketing/MarketingHeatmap";
+import MarketingTimeSeries from "../components/marketing/MarketingTimeSeries";
+import MarketingCohortTable from "../components/marketing/MarketingCohortTable";
+import MarketingRecommendations from "../components/marketing/MarketingRecommendations";
+import AdSpendEditor from "../components/marketing/AdSpendEditor";
+import type { DashboardPayload, InsightRecord } from "../components/marketing/types";
 
-interface SourceStat {
-  sheet_source_id: number;
-  source_name: string;
-  leads: number;
-  converted: number;
-  conversion_rate: number;
-}
+type Tab = "overview" | "sources" | "patterns" | "dynamics" | "ai" | "spend";
 
-interface Insight {
-  id: number;
-  period_start: string;
-  period_end: string;
-  lead_quality_by_source: Record<string, SourceStat>;
-  targeting_recommendations: string[];
-  top_products: { product: string; mentions: number }[];
-  summary: string;
-  model_version: string;
-  provider_used?: string;
-  created_at: string;
-}
+const RANGE_PRESETS: { value: number | "custom"; labelKey: string }[] = [
+  { value: 7, labelKey: "marketing.range.7d" },
+  { value: 14, labelKey: "marketing.range.14d" },
+  { value: 30, labelKey: "marketing.range.30d" },
+  { value: 90, labelKey: "marketing.range.90d" },
+];
 
-function providerLabel(insight: Insight): string {
-  const provider = insight.provider_used;
-  const model = insight.model_version;
-  if (!provider || provider === "fallback" || provider === "exhausted" || provider === "unknown") {
-    return model || provider || "";
-  }
-  return model ? `${provider} · ${model}` : provider;
+function subtractDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() - days);
+  return d;
 }
 
 export default function Marketing() {
-  const qc = useQueryClient();
-  const [error, setError] = useState<string | null>(null);
   const t = useT();
+  const qc = useQueryClient();
 
-  usePageHeader({ title: t("marketing.title"), subtitle: t("marketing.subtitle") });
+  usePageHeader({ title: t("marketing.title"), subtitle: t("marketing.subtitle_v2") });
 
-  const listQ = useQuery<Insight[]>({
-    queryKey: ["marketing", "insights"],
-    queryFn: async () => {
-      const r = await api.get("/marketing/insights/");
-      const data = r.data as Insight[] | { results: Insight[] };
-      return Array.isArray(data) ? data : data.results;
-    },
+  const [preset, setPreset] = useState<number | "custom">(30);
+  const today = useMemo(() => toDateInputValue(new Date()), []);
+  const initialFrom = useMemo(
+    () => toDateInputValue(subtractDays(new Date(), 29)),
+    [],
+  );
+  const [dateFrom, setDateFrom] = useState<string>(initialFrom);
+  const [dateTo, setDateTo] = useState<string>(today);
+  const [tab, setTab] = useState<Tab>("overview");
+
+  const applyPreset = (days: number) => {
+    const end = new Date();
+    const start = subtractDays(end, days - 1);
+    setDateFrom(toDateInputValue(start));
+    setDateTo(toDateInputValue(end));
+    setPreset(days);
+  };
+
+  const dashboardParams = { date_from: dateFrom, date_to: dateTo };
+  const dashKey = `${dateFrom}::${dateTo}`;
+
+  const dash = useQuery<DashboardPayload>({
+    queryKey: ["marketing", "dashboard", dashKey],
+    queryFn: async () =>
+      (await api.get<DashboardPayload>("/marketing/dashboard/", { params: dashboardParams })).data,
+    staleTime: 60_000,
   });
 
-  const insights = listQ.data ?? [];
-  const latest = insights[0];
+  const insightId = dash.data?.latest_insight_id;
+  const insightQ = useQuery<InsightRecord | null>({
+    queryKey: ["marketing", "insight", insightId],
+    queryFn: async () => {
+      if (!insightId) return null;
+      return (await api.get<InsightRecord>(`/marketing/insights/${insightId}/`)).data;
+    },
+    enabled: !!insightId,
+  });
 
   const generateMut = useMutation({
-    mutationFn: () => api.post<Insight>("/marketing/insights/generate/", { days: 7 }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["marketing", "insights"] });
-      setError(null);
+    mutationFn: async () => {
+      const days = Math.max(
+        1,
+        Math.round(
+          (new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / (1000 * 60 * 60 * 24),
+        ) + 1,
+      );
+      return api.post<InsightRecord>(`/marketing/insights/generate/?days=${days}`);
+    },
+    onSuccess: (resp) => {
+      qc.invalidateQueries({ queryKey: ["marketing", "dashboard"] });
+      qc.invalidateQueries({ queryKey: ["marketing", "insight"] });
+      qc.setQueryData(["marketing", "insight", resp.data.id], resp.data);
       toast.success(t("marketing.generated"));
     },
-    onError: (err) => setError(apiErrorMessage(err)),
+    onError: (err: any) =>
+      toast.error(err?.response?.data?.detail || t("marketing.generate_failed")),
   });
 
-  const sourceBars = latest
-    ? Object.values(latest.lead_quality_by_source).sort((a, b) => b.leads - a.leads)
-    : [];
+  const markDoneMut = useMutation({
+    mutationFn: async ({ id, index }: { id: number; index: number }) =>
+      api.post<InsightRecord>(`/marketing/insights/${id}/recommendations/${index}/mark_done/`),
+    onSuccess: (resp) => {
+      qc.setQueryData(["marketing", "insight", resp.data.id], resp.data);
+    },
+  });
+
+  const exportUrl = `${API_BASE_URL}/marketing/export.xlsx/?date_from=${dateFrom}&date_to=${dateTo}`;
+
+  const tabs: TabItem<Tab>[] = [
+    { value: "overview", label: t("marketing.tab.overview") },
+    { value: "sources", label: t("marketing.tab.sources"), count: dash.data?.sources.length },
+    { value: "patterns", label: t("marketing.tab.patterns") },
+    { value: "dynamics", label: t("marketing.tab.dynamics") },
+    { value: "ai", label: t("marketing.tab.ai") },
+    { value: "spend", label: t("marketing.tab.spend") },
+  ];
+
+  const dashData = dash.data;
 
   return (
-    <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
-      <div className="flex items-center justify-between gap-3 animate-nfFadeUp">
-        <div className="text-[13px] text-muted">
-          {insights.length > 0 ? t("marketing.total", { n: insights.length }) : t("marketing.none_yet")}
-        </div>
-        <Button onClick={() => generateMut.mutate()} disabled={generateMut.isPending}>
-          <RefreshCcw className="w-3.5 h-3.5" />
-          {generateMut.isPending ? t("marketing.calculating") : t("marketing.generate_7d")}
-        </Button>
-      </div>
-
-      {error && (
-        <div
-          className="text-[13px] rounded-xl px-3.5 py-2.5"
-          style={{
-            background: "rgba(220,60,40,.08)",
-            color: "var(--danger)",
-            border: "1px solid rgba(220,60,40,.2)",
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {!latest && !listQ.isLoading && (
-        <div
-          className="nf-card p-8 text-center text-[13.5px] text-muted animate-nfFadeUp"
-        >
-          {t("marketing.empty_hint")}
-        </div>
-      )}
-
-      {latest && (
-        <>
-          <section className="grid gap-[13px] lg:grid-cols-[2fr,1fr]">
-            <div
-              className="nf-card p-6 animate-nfFadeUp"
-              style={{ animationDelay: "0.05s" }}
-            >
-              <Eyebrow>{t("marketing.conversion_by_source")}</Eyebrow>
-              <div className="mt-1 text-[15px] font-semibold tracking-tight">
-                {latest.period_start} — {latest.period_end}
-              </div>
-              <div className="text-[12.5px] text-muted mb-4">
-                {t("marketing.leads_and_conv")}
-              </div>
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={sourceBars}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--faint)" />
-                  <XAxis dataKey="source_name" tick={{ fontSize: 11 }} />
-                  <YAxis yAxisId="l" tick={{ fontSize: 11 }} />
-                  <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Bar yAxisId="l" dataKey="leads" fill="rgba(0,0,0,.25)" name={t("nav.leads")} />
-                  <Bar yAxisId="l" dataKey="converted" fill="#ff9d47" name={t("nav.sales")} />
-                  <Bar yAxisId="r" dataKey="conversion_rate" fill="#f2560b" name={t("marketing.conversion_pct")} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div
-              className="nf-card p-6 animate-nfFadeUp"
-              style={{ animationDelay: "0.1s" }}
-            >
-              <div className="text-[15px] font-semibold tracking-tight mb-3">
-                {t("marketing.top_products")}
-              </div>
-              <ul className="flex flex-col gap-2 text-[13.5px]">
-                {latest.top_products.slice(0, 10).map((p) => (
-                  <li
-                    key={p.product}
-                    className="flex justify-between py-2"
-                    style={{ borderBottom: "1px solid var(--border)" }}
-                  >
-                    <span className="truncate">{p.product}</span>
-                    <span className="text-muted ml-2 tabular-nums">{p.mentions}</span>
-                  </li>
-                ))}
-                {latest.top_products.length === 0 && (
-                  <li className="text-muted py-4 text-center">{t("common.no_data")}</li>
-                )}
-              </ul>
-            </div>
-          </section>
-
-          <section
-            className="nf-card p-6 animate-nfFadeUp"
-            style={{ animationDelay: "0.15s" }}
-          >
-            <Eyebrow>{t("marketing.ai_recommendations")}</Eyebrow>
-            <div className="text-[14px] text-muted italic mt-3 mb-4">
-              {latest.summary}
-            </div>
-            <ul className="flex flex-col gap-2.5 text-[14px]">
-              {latest.targeting_recommendations.map((r, i) => (
-                <li key={i} className="flex gap-3">
-                  <span
-                    className="mt-2 shrink-0 w-1.5 h-1.5 rounded-full"
-                    style={{ background: "var(--accent)" }}
-                  />
-                  <span>{r}</span>
-                </li>
-              ))}
-            </ul>
-            <div className="text-[11px] text-muted mt-4 uppercase tracking-wide">
-              {providerLabel(latest)}
-            </div>
-          </section>
-        </>
-      )}
-
-      {insights.length > 1 && (
-        <section className="nf-card overflow-hidden">
-          <div className="px-6 pt-5 pb-3 text-[15px] font-semibold tracking-tight">
-            {t("marketing.history_title")}
-          </div>
-          <div
-            className="grid gap-2 px-6 pb-3 nf-col"
-            style={{ gridTemplateColumns: ".8fr 2fr .6fr" }}
-          >
-            <div>{t("common.period")}</div>
-            <div>{t("marketing.col_summary")}</div>
-            <div className="text-right">{t("common.model")}</div>
-          </div>
-          <div>
-            {insights.slice(1).map((i, idx) => (
-              <div
-                key={i.id}
-                className="nf-row animate-nfFadeUp"
-                style={{
-                  gridTemplateColumns: ".8fr 2fr .6fr",
-                  animationDelay: `${0.02 + idx * 0.035}s`,
-                  cursor: "default",
-                }}
+    <div className="mx-auto max-w-[1240px] flex flex-col gap-5">
+      {/* Sticky header — controls */}
+      <div className="sticky top-[64px] z-10 bg-[color:var(--bg)] pb-2 pt-1 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="nf-tabs">
+            {RANGE_PRESETS.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => applyPreset(Number(p.value))}
+                className={`nf-tab ${preset === p.value ? "nf-tab--active" : ""}`}
               >
-                <div className="text-muted tabular-nums whitespace-nowrap">
-                  {i.period_start} — {i.period_end}
-                </div>
-                <div className="text-muted truncate">{i.summary}</div>
-                <div className="text-right text-[11px] uppercase text-muted tracking-wide">
-                  {providerLabel(i)}
-                </div>
-              </div>
+                {t(p.labelKey)}
+              </button>
             ))}
           </div>
-        </section>
+          <input
+            type="date"
+            value={dateFrom}
+            max={dateTo}
+            onChange={(e) => {
+              setDateFrom(e.target.value);
+              setPreset("custom");
+            }}
+            className="text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5"
+          />
+          <span className="text-[13px] text-muted">—</span>
+          <input
+            type="date"
+            value={dateTo}
+            min={dateFrom}
+            max={today}
+            onChange={(e) => {
+              setDateTo(e.target.value);
+              setPreset("custom");
+            }}
+            className="text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5"
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => generateMut.mutate()}
+            disabled={generateMut.isPending}
+            variant="secondary"
+          >
+            <RefreshCcw className="w-3.5 h-3.5" />
+            {generateMut.isPending
+              ? t("marketing.calculating")
+              : t("marketing.regenerate_ai")}
+          </Button>
+          <a href={exportUrl} target="_blank" rel="noopener noreferrer">
+            <Button variant="secondary">
+              <Download className="w-3.5 h-3.5" /> {t("common.export")}
+            </Button>
+          </a>
+        </div>
+      </div>
+
+      {/* Tab strip */}
+      <TabPill items={tabs} value={tab} onChange={setTab} />
+
+      {/* Loading */}
+      {dash.isLoading && (
+        <div className="nf-card p-8 text-center text-[13.5px] text-muted animate-pulse">
+          {t("common.loading")}
+        </div>
+      )}
+
+      {dash.isError && (
+        <div className="nf-card p-6 text-[13.5px] text-red-600">
+          {(dash.error as Error).message}
+        </div>
+      )}
+
+      {/* Content */}
+      {dashData && (
+        <>
+          {tab === "overview" && (
+            <div className="flex flex-col gap-5">
+              <MarketingKpiCards totals={dashData.totals} wow={dashData.wow} />
+              <MarketingSourceTable
+                sources={dashData.sources.slice(0, 6)}
+                funnels={dashData.funnels}
+                rejection={dashData.rejection_reasons}
+              />
+              {dashData.sources.length > 6 && (
+                <div className="text-center">
+                  <button
+                    type="button"
+                    className="text-[13px] text-[color:var(--accent)] hover:underline"
+                    onClick={() => setTab("sources")}
+                  >
+                    {t("marketing.see_all_sources")} →
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === "sources" && (
+            <MarketingSourceTable
+              sources={dashData.sources}
+              funnels={dashData.funnels}
+              rejection={dashData.rejection_reasons}
+            />
+          )}
+
+          {tab === "patterns" && (
+            <MarketingHeatmap sources={dashData.time_patterns.sources} />
+          )}
+
+          {tab === "dynamics" && (
+            <div className="flex flex-col gap-5">
+              <MarketingTimeSeries sources={dashData.sources} wow={dashData.wow} />
+              <MarketingCohortTable cohorts={dashData.cohorts} />
+            </div>
+          )}
+
+          {tab === "ai" && (
+            <MarketingRecommendations
+              insight={insightQ.data || null}
+              isMarkPending={markDoneMut.isPending}
+              onMarkDone={(index) => {
+                if (!insightQ.data) return;
+                markDoneMut.mutate({ id: insightQ.data.id, index });
+              }}
+            />
+          )}
+
+          {tab === "spend" && <AdSpendEditor />}
+        </>
       )}
     </div>
   );
