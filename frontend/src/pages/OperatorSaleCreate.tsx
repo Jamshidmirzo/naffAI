@@ -61,11 +61,15 @@ export default function OperatorSaleCreate() {
     [t("op_sale.title_new")],
   );
 
+  // Client phone always keeps the +998 country-code prefix so the operator
+  // types only the local 9 digits. See `handleClientPhoneChange` below.
+  const CLIENT_PHONE_PREFIX = "+998 ";
+
   const [imei, setImei] = useState("");
   const [model, setModel] = useState("");
   const [amount, setAmount] = useState("");
   const [clientName, setClientName] = useState("");
-  const [clientPhone, setClientPhone] = useState("");
+  const [clientPhone, setClientPhone] = useState(CLIENT_PHONE_PREFIX);
   const [comment, setComment] = useState("");
   const [channelId, setChannelId] = useState<number | null>(null);
   const [contractPhoto, setContractPhoto] = useState<File | null>(null);
@@ -75,6 +79,11 @@ export default function OperatorSaleCreate() {
   const [phoneDropdownOpen, setPhoneDropdownOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Per-field server-side errors (from DRF 400 response). Cleared when the
+  // user edits the corresponding field so they don't linger after a fix.
+  const [serverErrors, setServerErrors] = useState<
+    Partial<Record<FieldName, string>>
+  >({});
   const [touched, setTouched] = useState<Record<FieldName, boolean>>({
     imei: false,
     phone_model: false,
@@ -86,6 +95,36 @@ export default function OperatorSaleCreate() {
     contract_photo: false,
   });
   const [submitAttempted, setSubmitAttempted] = useState(false);
+
+  // Reset one field's server-side error — call from every onChange so the
+  // red inline message disappears the moment the operator edits the field.
+  // Also clears the shared error banner once no server errors remain so
+  // the operator gets clean feedback that the fix landed.
+  const clearServerError = (f: FieldName) => {
+    setServerErrors((prev) => {
+      if (!prev[f]) return prev;
+      const next = { ...prev };
+      delete next[f];
+      if (Object.keys(next).length === 0) setError("");
+      return next;
+    });
+  };
+
+  // Keep the "+998 " prefix locked in — the operator types only local
+  // digits. If they backspace into the prefix we snap it back so they
+  // can't accidentally submit "998 XXX ..." or bare digits.
+  const handleClientPhoneChange = (raw: string) => {
+    clearServerError("client_phone");
+    let v = raw;
+    if (!v.startsWith(CLIENT_PHONE_PREFIX)) {
+      // Try to preserve the trailing digits the operator was typing.
+      const tail = v.replace(/^\+?9?9?8?\s*/, "");
+      v = CLIENT_PHONE_PREFIX + tail;
+    }
+    // Cap total length so the field can't grow unbounded.
+    if (v.length > 32) v = v.slice(0, 32);
+    setClientPhone(v);
+  };
 
   // Refs to jump to the first invalid field on submit.
   const fieldRefs = useRef<Record<FieldName, HTMLElement | null>>({
@@ -122,7 +161,9 @@ export default function OperatorSaleCreate() {
   // Lead phone-search (debounced 300ms).
   useEffect(() => {
     if (leadId) return;
-    const digits = clientPhone.replace(/\D/g, "");
+    // Strip the locked-in "998" country code — search on local digits only
+    // so the dropdown doesn't fire on the prefix alone.
+    const digits = clientPhone.replace(/\D/g, "").replace(/^998/, "");
     if (digits.length < 4) {
       setPhoneMatches([]);
       setPhoneDropdownOpen(false);
@@ -157,6 +198,10 @@ export default function OperatorSaleCreate() {
   };
 
   const showError = (f: FieldName): string | null => {
+    // Server-side error wins — it's the freshest signal ("backend just
+    // rejected this exact value") and we want it visible immediately
+    // without waiting for touched/submitAttempted.
+    if (serverErrors[f]) return serverErrors[f] as string;
     if (!errors[f]) return null;
     if (submitAttempted || touched[f]) return t(errors[f] as string);
     return null;
@@ -229,21 +274,70 @@ export default function OperatorSaleCreate() {
       toast.success(t("op_sale.sent_for_review"));
       nav(`/sales/${r.data.id}`);
     } catch (err: any) {
-      // Surface first per-field DRF error if any (rare — client-side
-      // validation should catch most). Otherwise generic fallback.
+      // Map DRF's per-field error dict onto our inline-error state so
+      // the operator sees a red message right under the offending input,
+      // not just a vague banner. Backend already uses snake_case that
+      // matches our FieldName union, so no camelCase translation needed.
       const d = err.response?.data || {};
-      const perField =
-        d.imei?.[0] ||
-        d.phone_model?.[0] ||
-        d.amount?.[0] ||
-        d.channel_id?.[0] ||
-        d.client_name?.[0] ||
-        d.client_phone?.[0] ||
-        d.contract_photo?.[0] ||
-        d.detail;
-      setError(
-        typeof perField === "string" ? perField : t("op_sale.save_failed"),
-      );
+      const fields: FieldName[] = [
+        "imei",
+        "phone_model",
+        "amount",
+        "channel_id",
+        "client_name",
+        "client_phone",
+        "comment",
+        "contract_photo",
+      ];
+      const collected: Partial<Record<FieldName, string>> = {};
+      const localizeMsg = (raw: string): string => {
+        const s = (raw || "").trim();
+        // DRF's default English messages — localize the two most common,
+        // pass the rest through (backend already returns Russian for our
+        // custom validators).
+        if (s === "Not a valid string.") return t("validation.generic_invalid");
+        if (s === "This field is required.")
+          return t("validation.generic_required");
+        if (s === "This field may not be blank.")
+          return t("validation.generic_required");
+        return s;
+      };
+      for (const f of fields) {
+        const raw = d[f];
+        if (!raw) continue;
+        const first = Array.isArray(raw) ? raw[0] : raw;
+        if (typeof first === "string") collected[f] = localizeMsg(first);
+      }
+      if (Object.keys(collected).length > 0) {
+        setServerErrors(collected);
+        setError(t("op_sale.check_marked_fields"));
+        // Scroll to the first offending field so a phone-screen operator
+        // sees the red inline message without hunting.
+        const firstBad = fields.find((f) => collected[f]);
+        if (firstBad) {
+          const el = fieldRefs.current[firstBad];
+          if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            if (typeof (el as HTMLInputElement).focus === "function") {
+              try {
+                (el as HTMLInputElement).focus({ preventScroll: true });
+              } catch {
+                /* older browsers */
+              }
+            }
+          }
+        }
+      } else {
+        // Non-field error (permissions, 5xx, network) — fall back to a
+        // banner-only message.
+        const detail =
+          typeof d.detail === "string"
+            ? d.detail
+            : typeof d.non_field_errors?.[0] === "string"
+              ? d.non_field_errors[0]
+              : null;
+        setError(detail || t("op_sale.save_failed"));
+      }
     } finally {
       setBusy(false);
     }
@@ -256,12 +350,18 @@ export default function OperatorSaleCreate() {
     setClientPhone(lead.phone || clientPhone);
     setPhoneDropdownOpen(false);
     setPhoneMatches([]);
+    clearServerError("client_name");
+    clearServerError("client_phone");
     markTouched("client_name");
     markTouched("client_phone");
   };
   const unlinkLead = () => {
     setLeadId(null);
     setMatchedLead(null);
+    // If we had preserved the lead's phone verbatim (might not match the
+    // +998 canonical form), reset the input to the locked prefix so the
+    // operator sees the familiar placeholder-like state again.
+    setClientPhone(CLIENT_PHONE_PREFIX);
   };
 
   // Live IMEI status hint (before/at 15 digits).
@@ -295,7 +395,10 @@ export default function OperatorSaleCreate() {
               showError("imei") ? "border-red-500" : ""
             }`}
             value={imei}
-            onChange={(e) => setImei(e.target.value.replace(/\D/g, ""))}
+            onChange={(e) => {
+              setImei(e.target.value.replace(/\D/g, ""));
+              clearServerError("imei");
+            }}
             onBlur={() => markTouched("imei")}
             maxLength={15}
             placeholder="490154203237518"
@@ -333,7 +436,10 @@ export default function OperatorSaleCreate() {
               showError("phone_model") ? "border-red-500" : ""
             }`}
             value={model}
-            onChange={(e) => setModel(e.target.value)}
+            onChange={(e) => {
+              setModel(e.target.value);
+              clearServerError("phone_model");
+            }}
             onBlur={() => markTouched("phone_model")}
             placeholder={t("sale_create.model_ph")}
             maxLength={128}
@@ -357,6 +463,7 @@ export default function OperatorSaleCreate() {
               value={amount}
               onChange={(v) => {
                 setAmount(v);
+                clearServerError("amount");
                 if (!touched.amount && v) markTouched("amount");
               }}
               placeholder="5 000 000"
@@ -382,6 +489,7 @@ export default function OperatorSaleCreate() {
               placeholder={t("op_sale.channel_ph")}
               onChange={(v) => {
                 setChannelId(typeof v === "number" ? v : null);
+                clearServerError("channel_id");
                 markTouched("channel_id");
               }}
             />
@@ -404,7 +512,10 @@ export default function OperatorSaleCreate() {
               showError("client_name") ? "border-red-500" : ""
             }`}
             value={clientName}
-            onChange={(e) => setClientName(e.target.value)}
+            onChange={(e) => {
+              setClientName(e.target.value);
+              clearServerError("client_name");
+            }}
             onBlur={() => markTouched("client_name")}
             placeholder={t("sale_create.client_name_ph")}
             maxLength={128}
@@ -452,7 +563,22 @@ export default function OperatorSaleCreate() {
                 showError("client_phone") ? "border-red-500" : ""
               }`}
               value={clientPhone}
-              onChange={(e) => setClientPhone(e.target.value)}
+              onChange={(e) => handleClientPhoneChange(e.target.value)}
+              onFocus={(e) => {
+                // If the field is at its default prefix, park the caret
+                // at the end so the operator starts typing digits, not
+                // in the middle of "+998 ".
+                if (clientPhone === CLIENT_PHONE_PREFIX) {
+                  const el = e.currentTarget;
+                  requestAnimationFrame(() => {
+                    try {
+                      el.setSelectionRange(el.value.length, el.value.length);
+                    } catch {
+                      /* selection API not supported */
+                    }
+                  });
+                }
+              }}
               onBlur={() => markTouched("client_phone")}
               placeholder={t("sale_create.client_phone_ph")}
               inputMode="tel"
@@ -511,7 +637,10 @@ export default function OperatorSaleCreate() {
             }`}
             rows={2}
             value={comment}
-            onChange={(e) => setComment(e.target.value)}
+            onChange={(e) => {
+              setComment(e.target.value);
+              clearServerError("comment");
+            }}
             onBlur={() => markTouched("comment")}
             maxLength={500}
           />
@@ -530,6 +659,7 @@ export default function OperatorSaleCreate() {
             value={contractPhoto}
             onChange={(f) => {
               setContractPhoto(f);
+              clearServerError("contract_photo");
               markTouched("contract_photo");
             }}
             required

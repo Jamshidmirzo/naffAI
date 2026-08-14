@@ -1451,6 +1451,7 @@ const STRINGS: Lookup = {
     "op_sale.sent_for_review": "Отправлено на подтверждение",
     "op_sale.save_failed": "Не удалось отправить. Проверьте поля.",
     "op_sale.fill_all_fields": "Заполните все обязательные поля",
+    "op_sale.check_marked_fields": "Ошибка при отправке — проверьте выделенные поля",
 
     // ------ field-level validation (operator sale create) ------
     "validation.imei_required": "IMEI обязателен",
@@ -1478,6 +1479,8 @@ const STRINGS: Lookup = {
     "validation.photo_required": "Прикрепите фото договора",
     "validation.photo_too_big": "Фото больше 10 МБ — уменьшите размер",
     "validation.photo_type": "Только изображение (JPG, PNG, WebP)",
+    "validation.generic_invalid": "Некорректное значение",
+    "validation.generic_required": "Обязательное поле",
 
     // ------ sales pending / approval ------
     "sales_pending.title": "Ожидают подтверждения",
@@ -3104,6 +3107,7 @@ const STRINGS: Lookup = {
     "op_sale.sent_for_review": "Tasdiqlashga yuborildi",
     "op_sale.save_failed": "Yuborib bo'lmadi. Maydonlarni tekshiring.",
     "op_sale.fill_all_fields": "Barcha majburiy maydonlarni to'ldiring",
+    "op_sale.check_marked_fields": "Yuborishda xatolik — belgilangan maydonlarni tekshiring",
 
     // ------ field-level validation (operator sale create) ------
     "validation.imei_required": "IMEI majburiy",
@@ -3131,6 +3135,8 @@ const STRINGS: Lookup = {
     "validation.photo_required": "Shartnoma suratini biriktiring",
     "validation.photo_too_big": "Surat 10 MB dan katta — hajmini kamaytiring",
     "validation.photo_type": "Faqat rasm (JPG, PNG, WebP)",
+    "validation.generic_invalid": "Noto'g'ri qiymat",
+    "validation.generic_required": "Majburiy maydon",
 
     // ------ sales pending / approval ------
     "sales_pending.title": "Tasdiqlash kutmoqda",
