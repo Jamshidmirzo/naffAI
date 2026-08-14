@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -10,6 +10,18 @@ import NumericInput from "../components/NumericInput";
 import PhotoUploader from "../components/PhotoUploader";
 import { SingleSelectCombobox } from "../components/SingleSelectCombobox";
 import { LEAD_STATUS_BADGE, LEAD_STATUS_LABEL } from "../lib/leads";
+import {
+  imeiLuhnStatus,
+  normalizeUzPhone,
+  validateAmount,
+  validateChannel,
+  validateClientName,
+  validateClientPhone,
+  validateComment,
+  validateContractPhoto,
+  validateImei,
+  validatePhoneModel,
+} from "../lib/validation";
 
 type LeadMatch = {
   id: number;
@@ -18,10 +30,28 @@ type LeadMatch = {
   status: string;
 };
 
+type FieldName =
+  | "imei"
+  | "phone_model"
+  | "amount"
+  | "channel_id"
+  | "client_name"
+  | "client_phone"
+  | "comment"
+  | "contract_photo";
+
 /**
  * Operator's own "New sale" form. Compact + mobile-first.
  * Submits multipart POST /api/sales/ — backend forces status=pending
  * and requires contract_photo for operator role.
+ *
+ * All fields are validated on the client BEFORE the request goes out —
+ * inline errors appear on blur (or on submit for untouched fields), the
+ * submit button stays disabled until every rule passes, and on submit
+ * we scroll to the first invalid field so the operator can see what's
+ * wrong on a phone screen. Optional empty strings are NOT appended to
+ * the FormData so the backend serializer doesn't have to special-case
+ * "null-as-string" values.
  */
 export default function OperatorSaleCreate() {
   const t = useT();
@@ -45,6 +75,29 @@ export default function OperatorSaleCreate() {
   const [phoneDropdownOpen, setPhoneDropdownOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [touched, setTouched] = useState<Record<FieldName, boolean>>({
+    imei: false,
+    phone_model: false,
+    amount: false,
+    channel_id: false,
+    client_name: false,
+    client_phone: false,
+    comment: false,
+    contract_photo: false,
+  });
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+
+  // Refs to jump to the first invalid field on submit.
+  const fieldRefs = useRef<Record<FieldName, HTMLElement | null>>({
+    imei: null,
+    phone_model: null,
+    amount: null,
+    channel_id: null,
+    client_name: null,
+    client_phone: null,
+    comment: null,
+    contract_photo: null,
+  });
 
   const partnersQ = useQuery({
     queryKey: ["op-partners"],
@@ -88,42 +141,109 @@ export default function OperatorSaleCreate() {
     return () => window.clearTimeout(h);
   }, [clientPhone, leadId]);
 
+  // Compute all errors up-front so we can drive both `canSubmit` and the
+  // inline messages from the same source of truth.
+  const errors: Record<FieldName, string | null> = {
+    imei: validateImei(imei),
+    phone_model: validatePhoneModel(model),
+    amount: validateAmount(amount),
+    channel_id: validateChannel(channelId),
+    client_name: validateClientName(clientName),
+    // If the operator picked a lead, we trust the lead's phone even if
+    // it doesn't match the +998 format (legacy imports).
+    client_phone: matchedLead ? null : validateClientPhone(clientPhone),
+    comment: validateComment(comment),
+    contract_photo: validateContractPhoto(contractPhoto),
+  };
+
+  const showError = (f: FieldName): string | null => {
+    if (!errors[f]) return null;
+    if (submitAttempted || touched[f]) return t(errors[f] as string);
+    return null;
+  };
+
+  const markTouched = (f: FieldName) =>
+    setTouched((prev) => (prev[f] ? prev : { ...prev, [f]: true }));
+
+  const setRef = (f: FieldName) => (el: HTMLElement | null) => {
+    fieldRefs.current[f] = el;
+  };
+
   const canSubmit =
-    imei.length >= 6 &&
-    imei.length <= 15 &&
-    /^\d+$/.test(imei) &&
-    Number(amount) >= 1000 &&
-    channelId !== null &&
-    !!contractPhoto &&
-    !busy;
+    !busy && Object.values(errors).every((e) => e === null);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitAttempted(true);
     if (!canSubmit) {
-      setError(t("op_sale.fill_all_fields"));
+      // Find first invalid field and scroll into view.
+      const order: FieldName[] = [
+        "imei",
+        "phone_model",
+        "amount",
+        "channel_id",
+        "client_name",
+        "client_phone",
+        "comment",
+        "contract_photo",
+      ];
+      const firstBad = order.find((f) => errors[f] !== null);
+      if (firstBad) {
+        const el = fieldRefs.current[firstBad];
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          if (typeof (el as HTMLInputElement).focus === "function") {
+            try {
+              (el as HTMLInputElement).focus({ preventScroll: true });
+            } catch {
+              /* older browsers */
+            }
+          }
+        }
+        setError(t(errors[firstBad] as string));
+      }
       return;
     }
     setError("");
     setBusy(true);
     try {
       const fd = new FormData();
+      // Required scalars — validators above guarantee non-empty.
       fd.append("imei", imei);
-      fd.append("phone_model", model || "Не определена");
+      fd.append("phone_model", model.trim());
       fd.append("channel_id", String(channelId));
       fd.append("amount", amount);
       fd.append("client_name", clientName.trim());
-      fd.append("client_phone", clientPhone.trim());
-      fd.append("comment", comment);
+      // Send phone in canonical form so backend + dedup see the same thing.
+      const phoneOut = matchedLead
+        ? matchedLead.phone
+        : normalizeUzPhone(clientPhone);
+      fd.append("client_phone", phoneOut);
+      // Optional — skip the key entirely if empty so the backend
+      // serializer's `allow_blank=True` default kicks in cleanly.
+      if (comment.trim()) fd.append("comment", comment.trim());
       if (leadId) fd.append("lead_id", String(leadId));
       if (contractPhoto) fd.append("contract_photo", contractPhoto);
+
       const r = await api.post("/sales/", fd);
       toast.success(t("op_sale.sent_for_review"));
       nav(`/sales/${r.data.id}`);
     } catch (err: any) {
+      // Surface first per-field DRF error if any (rare — client-side
+      // validation should catch most). Otherwise generic fallback.
       const d = err.response?.data || {};
-      const msg =
-        d.detail || d.imei?.[0] || d.contract_photo?.[0] || t("op_sale.save_failed");
-      setError(typeof msg === "string" ? msg : t("op_sale.save_failed"));
+      const perField =
+        d.imei?.[0] ||
+        d.phone_model?.[0] ||
+        d.amount?.[0] ||
+        d.channel_id?.[0] ||
+        d.client_name?.[0] ||
+        d.client_phone?.[0] ||
+        d.contract_photo?.[0] ||
+        d.detail;
+      setError(
+        typeof perField === "string" ? perField : t("op_sale.save_failed"),
+      );
     } finally {
       setBusy(false);
     }
@@ -136,90 +256,176 @@ export default function OperatorSaleCreate() {
     setClientPhone(lead.phone || clientPhone);
     setPhoneDropdownOpen(false);
     setPhoneMatches([]);
+    markTouched("client_name");
+    markTouched("client_phone");
   };
   const unlinkLead = () => {
     setLeadId(null);
     setMatchedLead(null);
   };
 
+  // Live IMEI status hint (before/at 15 digits).
+  // NB: Luhn failure is a *warning*, not an error — submit stays enabled.
+  // Real-world refurb/grey-market IMEIs sometimes fail Luhn but are valid.
+  const imeiHint = (() => {
+    if (!imei) return null;
+    if (imei.length < 15)
+      return { tone: "muted", text: `${imei.length}/15` } as const;
+    const st = imeiLuhnStatus(imei);
+    if (st === "warn")
+      return { tone: "warn", text: t("validation.imei_luhn_warn") } as const;
+    return { tone: "ok", text: t("validation.imei_valid") } as const;
+  })();
+
   return (
     <div className="max-w-xl mx-auto">
-      <form onSubmit={onSubmit} className="nf-card p-5 md:p-7 space-y-5">
+      <form
+        onSubmit={onSubmit}
+        noValidate
+        className="nf-card p-5 md:p-7 space-y-5"
+      >
         <div>
           <label className="nf-col mb-1.5 block">
-            {t("sale_create.imei_label")}
+            {t("sale_create.imei_label")}{" "}
+            <span className="text-red-500">*</span>
           </label>
           <input
-            className="nf-input font-mono tracking-wide"
+            ref={setRef("imei")}
+            className={`nf-input font-mono tracking-wide ${
+              showError("imei") ? "border-red-500" : ""
+            }`}
             value={imei}
             onChange={(e) => setImei(e.target.value.replace(/\D/g, ""))}
-            minLength={6}
+            onBlur={() => markTouched("imei")}
             maxLength={15}
             placeholder="490154203237518"
             inputMode="numeric"
             autoComplete="off"
-            required
           />
-        </div>
-
-        <div>
-          <label className="nf-col mb-1.5 block">
-            {t("sale_create.phone_model")}
-          </label>
-          <input
-            className="nf-input"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            placeholder={t("sale_create.model_ph")}
-          />
-        </div>
-
-        <div>
-          <label className="nf-col mb-1.5 block">{t("op_sale.amount")}</label>
-          <NumericInput
-            className="nf-input"
-            value={amount}
-            onChange={setAmount}
-            placeholder="5 000 000"
-          />
-          {Number(amount) > 0 && Number(amount) < 1000 && (
-            <div className="text-[11px] text-red-500 mt-1">
-              {t("sale_create.min_amount_line")}
+          {imeiHint && !showError("imei") && (
+            <div
+              className={`text-[11.5px] mt-1 ${
+                imeiHint.tone === "warn"
+                  ? "text-amber-500"
+                  : imeiHint.tone === "ok"
+                    ? "text-emerald-500"
+                    : "text-muted"
+              }`}
+            >
+              {imeiHint.text}
+            </div>
+          )}
+          {showError("imei") && (
+            <div className="text-[11.5px] text-red-500 mt-1">
+              {showError("imei")}
             </div>
           )}
         </div>
 
         <div>
           <label className="nf-col mb-1.5 block">
-            {t("sale_create.channel")}
+            {t("sale_create.phone_model")}{" "}
+            <span className="text-red-500">*</span>
           </label>
-          <SingleSelectCombobox
-            options={partners.map((p) => ({ id: p.id, label: p.name }))}
-            value={channelId}
-            allowFreeText={false}
-            placeholder={t("op_sale.channel_ph")}
-            onChange={(v) => setChannelId(typeof v === "number" ? v : null)}
+          <input
+            ref={setRef("phone_model")}
+            className={`nf-input ${
+              showError("phone_model") ? "border-red-500" : ""
+            }`}
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            onBlur={() => markTouched("phone_model")}
+            placeholder={t("sale_create.model_ph")}
+            maxLength={128}
           />
+          {showError("phone_model") && (
+            <div className="text-[11.5px] text-red-500 mt-1">
+              {showError("phone_model")}
+            </div>
+          )}
         </div>
 
         <div>
           <label className="nf-col mb-1.5 block">
-            {t("sale_create.client_name")}
+            {t("op_sale.amount")} <span className="text-red-500">*</span>
+          </label>
+          <div ref={setRef("amount")}>
+            <NumericInput
+              className={`nf-input ${
+                showError("amount") ? "border-red-500" : ""
+              }`}
+              value={amount}
+              onChange={(v) => {
+                setAmount(v);
+                if (!touched.amount && v) markTouched("amount");
+              }}
+              placeholder="5 000 000"
+            />
+          </div>
+          {showError("amount") && (
+            <div className="text-[11.5px] text-red-500 mt-1">
+              {showError("amount")}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="nf-col mb-1.5 block">
+            {t("sale_create.channel")}{" "}
+            <span className="text-red-500">*</span>
+          </label>
+          <div ref={setRef("channel_id")}>
+            <SingleSelectCombobox
+              options={partners.map((p) => ({ id: p.id, label: p.name }))}
+              value={channelId}
+              allowFreeText={false}
+              placeholder={t("op_sale.channel_ph")}
+              onChange={(v) => {
+                setChannelId(typeof v === "number" ? v : null);
+                markTouched("channel_id");
+              }}
+            />
+          </div>
+          {showError("channel_id") && (
+            <div className="text-[11.5px] text-red-500 mt-1">
+              {showError("channel_id")}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="nf-col mb-1.5 block">
+            {t("sale_create.client_name")}{" "}
+            <span className="text-red-500">*</span>
           </label>
           <input
-            className="nf-input"
+            ref={setRef("client_name")}
+            className={`nf-input ${
+              showError("client_name") ? "border-red-500" : ""
+            }`}
             value={clientName}
             onChange={(e) => setClientName(e.target.value)}
+            onBlur={() => markTouched("client_name")}
             placeholder={t("sale_create.client_name_ph")}
+            maxLength={128}
           />
+          {showError("client_name") && (
+            <div className="text-[11.5px] text-red-500 mt-1">
+              {showError("client_name")}
+            </div>
+          )}
         </div>
 
         <div className="relative">
           <label className="nf-col mb-1.5 block">
-            {t("sale_create.client_phone")}
+            {t("sale_create.client_phone")}{" "}
+            <span className="text-red-500">*</span>
           </label>
           {matchedLead ? (
-            <div className="nf-input flex items-center justify-between gap-2 !py-2.5">
+            <div
+              ref={setRef("client_phone")}
+              className="nf-input flex items-center justify-between gap-2 !py-2.5"
+            >
               <div className="min-w-0 flex-1">
                 <div className="text-[13.5px] font-medium truncate">
                   {matchedLead.full_name || "—"}
@@ -241,13 +447,23 @@ export default function OperatorSaleCreate() {
             </div>
           ) : (
             <input
-              className="nf-input"
+              ref={setRef("client_phone")}
+              className={`nf-input ${
+                showError("client_phone") ? "border-red-500" : ""
+              }`}
               value={clientPhone}
               onChange={(e) => setClientPhone(e.target.value)}
+              onBlur={() => markTouched("client_phone")}
               placeholder={t("sale_create.client_phone_ph")}
               inputMode="tel"
               autoComplete="off"
+              maxLength={32}
             />
+          )}
+          {!matchedLead && showError("client_phone") && (
+            <div className="text-[11.5px] text-red-500 mt-1">
+              {showError("client_phone")}
+            </div>
           )}
           {phoneDropdownOpen && !matchedLead && phoneMatches.length > 0 && (
             <div className="absolute top-full left-0 right-0 mt-1 z-30 nf-card overflow-hidden">
@@ -289,20 +505,43 @@ export default function OperatorSaleCreate() {
             {t("sale_create.comment_label")}
           </label>
           <textarea
-            className="nf-input"
+            ref={setRef("comment")}
+            className={`nf-input ${
+              showError("comment") ? "border-red-500" : ""
+            }`}
             rows={2}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
+            onBlur={() => markTouched("comment")}
+            maxLength={500}
           />
+          <div className="flex justify-between items-center mt-1 gap-2">
+            <div className="text-[11.5px] text-red-500">
+              {showError("comment")}
+            </div>
+            <div className="text-[11px] text-muted tabular-nums">
+              {comment.length}/500
+            </div>
+          </div>
         </div>
 
-        <PhotoUploader
-          value={contractPhoto}
-          onChange={setContractPhoto}
-          required
-          label={t("op_sale.contract_photo")}
-          hint={t("op_sale.contract_photo_hint")}
-        />
+        <div ref={setRef("contract_photo")}>
+          <PhotoUploader
+            value={contractPhoto}
+            onChange={(f) => {
+              setContractPhoto(f);
+              markTouched("contract_photo");
+            }}
+            required
+            label={t("op_sale.contract_photo")}
+            hint={t("op_sale.contract_photo_hint")}
+          />
+          {showError("contract_photo") && (
+            <div className="text-[11.5px] text-red-500 mt-1">
+              {showError("contract_photo")}
+            </div>
+          )}
+        </div>
 
         {Number(amount) > 0 && (
           <div className="nf-tile p-3.5 flex justify-between items-baseline">
