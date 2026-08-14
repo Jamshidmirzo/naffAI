@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import io
 import logging
 import os
 import re
@@ -113,6 +114,14 @@ async def main() -> None:
 
     class LinkOperator(StatesGroup):
         phone = State()
+
+    # 2026-08-14 attendance redesign: `/checkin` / `/checkout` ask for a
+    # selfie, then run through the same photo-check pipeline the web /scan
+    # uses (face + phash dup). The state carries the intended action so
+    # the photo handler knows which endpoint to call.
+    class AttendancePhoto(StatesGroup):
+        awaiting_checkin_photo = State()
+        awaiting_checkout_photo = State()
 
     bot = Bot(token=token)
     dp = Dispatcher(storage=MemoryStorage())
@@ -1069,21 +1078,39 @@ async def main() -> None:
         await state.clear()
         await msg.answer(result)
 
-    # ---------- Attendance Check-in / Check-out ----------
+    # ---------- Attendance Check-in / Check-out (photo-first flow) ----------
 
     @dp.message(Command("checkin"))
-    async def cmd_checkin(msg: Message) -> None:
+    async def cmd_checkin(msg: Message, state: FSMContext) -> None:
+        """Ask for a selfie, then run the same photo pipeline the web uses."""
         tg_user_id = msg.from_user.id
-        username = msg.from_user.username or "-"
-        result = await asyncio.to_thread(_bot_attendance_checkin, tg_user_id, username)
-        await msg.answer(result, parse_mode="HTML")
+        # Verify operator link + no open shift before asking for a photo, so
+        # the user doesn't waste time snapping a selfie only to be told the
+        # shift is already open.
+        pre = await asyncio.to_thread(_bot_attendance_precheck, tg_user_id, "check_in")
+        if not pre["ok"]:
+            await msg.answer(pre["text"], parse_mode="HTML")
+            return
+        await state.set_state(AttendancePhoto.awaiting_checkin_photo)
+        await msg.answer(
+            "📸 <b>Пришлите фото для подтверждения прихода.</b>\n\n"
+            "Сделайте селфи прямо сейчас — на нём должно быть видно лицо.",
+            parse_mode="HTML",
+        )
 
     @dp.message(Command("checkout"))
-    async def cmd_checkout(msg: Message) -> None:
+    async def cmd_checkout(msg: Message, state: FSMContext) -> None:
         tg_user_id = msg.from_user.id
-        username = msg.from_user.username or "-"
-        result = await asyncio.to_thread(_bot_attendance_checkout, tg_user_id, username)
-        await msg.answer(result, parse_mode="HTML")
+        pre = await asyncio.to_thread(_bot_attendance_precheck, tg_user_id, "check_out")
+        if not pre["ok"]:
+            await msg.answer(pre["text"], parse_mode="HTML")
+            return
+        await state.set_state(AttendancePhoto.awaiting_checkout_photo)
+        await msg.answer(
+            "📸 <b>Пришлите фото для подтверждения ухода.</b>\n\n"
+            "Сделайте селфи прямо сейчас — на нём должно быть видно лицо.",
+            parse_mode="HTML",
+        )
 
     @dp.message(Command("status"))
     async def cmd_status(msg: Message) -> None:
@@ -1091,13 +1118,75 @@ async def main() -> None:
         result = await asyncio.to_thread(_bot_attendance_status, tg_user_id)
         await msg.answer(result, parse_mode="HTML")
 
+    async def _handle_attendance_photo(
+        msg: Message, state: FSMContext, action: str
+    ) -> None:
+        """Common branch for /checkin+photo and /checkout+photo."""
+        if not msg.photo:
+            await msg.answer("Ожидаю именно фото (не документ). Попробуйте ещё раз.")
+            return
+        # Grab the largest thumbnail Telegram sent us.
+        photo_size = msg.photo[-1]
+        try:
+            tg_file = await bot.get_file(photo_size.file_id)
+            buf = io.BytesIO()
+            await bot.download(tg_file, destination=buf)
+            image_bytes = buf.getvalue()
+        except Exception as exc:
+            logger.exception("photo download failed")
+            await msg.answer(f"Не удалось получить фото: {exc}")
+            return
+
+        tg_user_id = msg.from_user.id
+        username = msg.from_user.username or "-"
+        result = await asyncio.to_thread(
+            _bot_attendance_scan_with_photo,
+            tg_user_id,
+            username,
+            action,
+            image_bytes,
+        )
+        if result["ok"]:
+            await state.clear()
+            await msg.answer(result["text"], parse_mode="HTML")
+        else:
+            # Keep state so operator can retry with a different photo.
+            await msg.answer(result["text"], parse_mode="HTML")
+
+    @dp.message(AttendancePhoto.awaiting_checkin_photo, F.photo)
+    async def photo_checkin(msg: Message, state: FSMContext) -> None:
+        await _handle_attendance_photo(msg, state, "check_in")
+
+    @dp.message(AttendancePhoto.awaiting_checkout_photo, F.photo)
+    async def photo_checkout(msg: Message, state: FSMContext) -> None:
+        await _handle_attendance_photo(msg, state, "check_out")
+
+    @dp.message(AttendancePhoto.awaiting_checkin_photo)
+    @dp.message(AttendancePhoto.awaiting_checkout_photo)
+    async def photo_wrong_type(msg: Message) -> None:
+        # Any non-photo message while awaiting photo — remind the user.
+        await msg.answer(
+            "Жду именно фото 📸. Отправьте селфи или /cancel чтобы отменить."
+        )
+
     @dp.callback_query(F.data == "attendance:checkin")
-    async def cb_attendance_checkin(cb: CallbackQuery) -> None:
+    async def cb_attendance_checkin(cb: CallbackQuery, state: FSMContext) -> None:
+        """Kept for back-compat with older morning-report DMs that shipped
+        an "Отметиться" inline button. New flow is photo-first: hand off
+        to the same FSM branch as `/checkin` so the operator is asked for
+        a selfie."""
         tg_user_id = cb.from_user.id
-        username = cb.from_user.username or "-"
-        result = await asyncio.to_thread(_bot_attendance_checkin, tg_user_id, username)
+        pre = await asyncio.to_thread(_bot_attendance_precheck, tg_user_id, "check_in")
         await cb.answer()
-        await cb.message.answer(result, parse_mode="HTML")
+        if not pre["ok"]:
+            await cb.message.answer(pre["text"], parse_mode="HTML")
+            return
+        await state.set_state(AttendancePhoto.awaiting_checkin_photo)
+        await cb.message.answer(
+            "📸 <b>Пришлите фото для подтверждения прихода.</b>\n\n"
+            "Сделайте селфи прямо сейчас — на нём должно быть видно лицо.",
+            parse_mode="HTML",
+        )
 
     @dp.callback_query(F.data.startswith("attendance:auto_checkout_confirm:"))
     async def cb_auto_checkout_confirm(cb: CallbackQuery) -> None:
@@ -1341,9 +1430,52 @@ def _bot_snooze_callback(cb_id: int, minutes: int) -> bool:
     return True
 
 
-def _bot_attendance_checkin(tg_user_id: int, username: str) -> str:
+def _bot_attendance_precheck(tg_user_id: int, action: str) -> dict:
+    """
+    Verify operator link + expected action before asking for a photo.
+    Returns {ok, text} — text is the message to send if ok==False,
+    otherwise the caller proceeds to ask for a selfie.
+    """
     from apps.attendance.selectors import open_log_for_operator
+    from apps.users.models import Profile
+
+    profile = Profile.objects.filter(telegram_user_id=tg_user_id).first()
+    if not profile or not profile.operator:
+        return {"ok": False, "text": "Сначала привяжите аккаунт: /link_operator"}
+    operator = profile.operator
+    open_log = open_log_for_operator(operator)
+
+    if action == "check_in" and open_log:
+        chk_in_local = timezone.localtime(open_log.checked_in_at)
+        return {
+            "ok": False,
+            "text": (
+                f"Смена уже открыта в {chk_in_local.strftime('%H:%M')}. "
+                "Для завершения используйте /checkout."
+            ),
+        }
+    if action == "check_out" and not open_log:
+        return {
+            "ok": False,
+            "text": "Вы сегодня не отмечались. Отметьтесь по QR или командой /checkin.",
+        }
+    return {"ok": True, "text": ""}
+
+
+def _bot_attendance_scan_with_photo(
+    tg_user_id: int, username: str, action: str, image_bytes: bytes
+) -> dict:
+    """
+    Run the full photo pipeline (face + phash + dup) and check-in / -out
+    the operator's shift. Returns {ok, text} with an HTML message ready
+    to send back to the user.
+    """
+    from apps.attendance.selectors import (
+        attendance_settings_get,
+        open_log_for_operator,
+    )
     from apps.attendance.services import (
+        PhotoRequiredError,
         ScanRateLimitError,
         TgCheckinDisabledError,
         process_attendance_event,
@@ -1352,27 +1484,66 @@ def _bot_attendance_checkin(tg_user_id: int, username: str) -> str:
 
     profile = Profile.objects.filter(telegram_user_id=tg_user_id).first()
     if not profile or not profile.operator:
-        return "Сначала привяжите аккаунт: /link_operator"
+        return {"ok": False, "text": "Сначала привяжите аккаунт: /link_operator"}
 
     operator = profile.operator
-
     open_log = open_log_for_operator(operator)
-    if open_log:
-        chk_in_local = timezone.localtime(open_log.checked_in_at)
-        return f"Смена уже открыта в {chk_in_local.strftime('%H:%M')}. Для завершения используйте /checkout."
+    # Guard: don't let a stray photo message check-in an operator whose
+    # shift is already open (or vice versa). The precheck at command time
+    # covered the happy case, but state may have shifted.
+    if action == "check_in" and open_log:
+        return {
+            "ok": True,
+            "text": (
+                f"Смена уже открыта в "
+                f"{timezone.localtime(open_log.checked_in_at).strftime('%H:%M')}."
+            ),
+        }
+    if action == "check_out" and not open_log:
+        return {
+            "ok": True,
+            "text": "Смена уже закрыта.",
+        }
 
+    fname = f"{action}-tg-{tg_user_id}-{timezone.now():%Y%m%d-%H%M%S}.jpg"
     try:
         res = process_attendance_event(
             operator=operator,
             source="tg",
-            initiator=f"tg=@{username} id={tg_user_id}",
+            initiator=f"tg=@{username} id={tg_user_id} photo",
             issue_token=False,
+            photo_bytes=image_bytes,
+            photo_filename=fname,
+            require_photo_override=True,
         )
-        chk_time = timezone.localtime(timezone.now()).strftime("%H:%M")
-        lateness_min = 0
-        if res.get("was_late"):
-            from apps.attendance.selectors import attendance_settings_get
+    except ScanRateLimitError:
+        return {"ok": False, "text": "⏱ Подождите 30 секунд между отметками."}
+    except TgCheckinDisabledError:
+        return {
+            "ok": False,
+            "text": "Отметка через Telegram отключена. Используйте QR на рабочей станции.",
+        }
+    except PhotoRequiredError:
+        return {"ok": False, "text": "Требуется фото — пришлите селфи."}
+    except Exception as exc:
+        # Face-detection & duplicate errors surface as ValidationError.
+        msg = str(exc)
+        if "не найдено лицо" in msg.lower() or "no face" in msg.lower():
+            return {
+                "ok": False,
+                "text": "🙈 На фото не видно лицо. Сделайте селфи ещё раз.",
+            }
+        if "уже использ" in msg.lower():
+            return {
+                "ok": False,
+                "text": "♻️ Эту фотку уже использовали. Сделайте новую.",
+            }
+        return {"ok": False, "text": f"Ошибка: {msg}"}
 
+    if res["action"] == "check_in":
+        chk_time = timezone.localtime(timezone.now()).strftime("%H:%M")
+        late_txt = ""
+        if res.get("was_late"):
             settings_obj = attendance_settings_get()
             shift_start_time = settings_obj.shift_start
             now_local = timezone.localtime(timezone.now())
@@ -1382,57 +1553,31 @@ def _bot_attendance_checkin(tg_user_id: int, username: str) -> str:
                 h, m = shift_start_time.hour, shift_start_time.minute
             shift_start_dt = now_local.replace(hour=h, minute=m, second=0, microsecond=0)
             lateness_min = int((now_local - shift_start_dt).total_seconds() / 60)
-            if lateness_min < 0:
-                lateness_min = 0
+            if lateness_min > 0:
+                late_txt = f"\n⚠ Опоздание: {lateness_min} мин."
+        return {
+            "ok": True,
+            "text": (
+                f"✅ <b>Смена начата</b> в <b>{chk_time}</b>.\n"
+                f"Доброе утро, {operator.full_name}.{late_txt}"
+            ),
+        }
 
-        late_msg = f"\nОпоздание: {lateness_min} мин." if res.get("was_late") else ""
-        return f"Доброе утро, {operator.full_name}. Отмечен приход в {chk_time}.{late_msg}"
-
-    except ScanRateLimitError:
-        return "Подождите 30 секунд."
-    except TgCheckinDisabledError:
-        return "Отметка через Telegram отключена. Используйте QR на рабочей станции."
-    except Exception as exc:
-        return f"Ошибка: {exc!s}"
-
-
-def _bot_attendance_checkout(tg_user_id: int, username: str) -> str:
-    from apps.attendance.selectors import open_log_for_operator
-    from apps.attendance.services import (
-        ScanRateLimitError,
-        TgCheckinDisabledError,
-        process_attendance_event,
-    )
-    from apps.users.models import Profile
-
-    profile = Profile.objects.filter(telegram_user_id=tg_user_id).first()
-    if not profile or not profile.operator:
-        return "Сначала привяжите аккаунт: /link_operator"
-
-    operator = profile.operator
-    open_log = open_log_for_operator(operator)
-    if not open_log:
-        return "Вы сегодня не отмечались. Отметьтесь по QR или командой /checkin."
-
-    try:
-        res = process_attendance_event(
-            operator=operator,
-            source="tg",
-            initiator=f"tg=@{username} id={tg_user_id}",
-            issue_token=False,
-        )
-        chk_in_str = timezone.localtime(open_log.checked_in_at).strftime("%H:%M")
-        chk_out_str = timezone.localtime(timezone.now()).strftime("%H:%M")
-        duration = res.get("duration_min", 0)
-        return (
-            f"До завтра, {operator.full_name}. Смена: {chk_in_str}–{chk_out_str} ({duration} мин)."
-        )
-    except ScanRateLimitError:
-        return "Подождите 30 секунд."
-    except TgCheckinDisabledError:
-        return "Отметка через Telegram отключена. Используйте QR на рабочей станции."
-    except Exception as exc:
-        return f"Ошибка: {exc!s}"
+    duration = res.get("duration_min", 0)
+    hours = duration // 60
+    mins = duration % 60
+    if hours:
+        dur_txt = f"{hours} ч {mins} мин"
+    else:
+        dur_txt = f"{mins} мин"
+    chk_out_str = timezone.localtime(timezone.now()).strftime("%H:%M")
+    return {
+        "ok": True,
+        "text": (
+            f"🏁 <b>Смена завершена</b> в <b>{chk_out_str}</b>.\n"
+            f"Длительность: <b>{dur_txt}</b>. До завтра, {operator.full_name}."
+        ),
+    }
 
 
 def _bot_attendance_status(tg_user_id: int) -> str:

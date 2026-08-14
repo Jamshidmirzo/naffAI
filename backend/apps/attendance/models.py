@@ -89,6 +89,33 @@ class AttendanceLog(TimestampedModel):
         help_text="Кто из TL/Manager закрыл смену руками",
     )
     manual_close_note = models.CharField(max_length=280, blank=True, default="")
+    # 2026-08-14: photo confirmation — фото и его perceptual hash. Хранение
+    # 30 дней (cron cleanup_attendance_photos), логи остаются вечно.
+    checkin_photo = models.ImageField(
+        upload_to="attendance/%Y/%m/",
+        null=True,
+        blank=True,
+        help_text="Фото при check-in (обнуляется через 30 дней)",
+    )
+    checkout_photo = models.ImageField(
+        upload_to="attendance/%Y/%m/",
+        null=True,
+        blank=True,
+        help_text="Фото при check-out (обнуляется через 30 дней)",
+    )
+    checkin_photo_phash = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Perceptual hash фото — анти-дубль на 24ч",
+    )
+    checkout_photo_phash = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        db_index=True,
+    )
 
     class Meta:
         constraints = [
@@ -127,6 +154,21 @@ class AttendanceSettings(models.Model):
     long_shift_warning_hours = models.PositiveSmallIntegerField(
         default=10,
         help_text="После скольких часов открытой смены слать warning",
+    )
+    # 2026-08-14 attendance redesign — фото-подтверждение и face-check.
+    # По умолчанию require_photo=False → обратная совместимость (prod поведение
+    # не меняется, включить можно PATCH /api/attendance/settings/).
+    require_photo = models.BooleanField(
+        default=False,
+        help_text="Требовать фото при каждом скане (иначе фото опционально)",
+    )
+    require_face = models.BooleanField(
+        default=True,
+        help_text="Если фото передано — проверять наличие лица (MediaPipe)",
+    )
+    photo_max_size_mb = models.PositiveSmallIntegerField(
+        default=5,
+        help_text="Лимит размера фото в мегабайтах",
     )
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(

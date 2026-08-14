@@ -23,6 +23,13 @@ dependencies = [
   "google-genai>=1.0",
   "sentry-sdk[django]>=2.0",
   "qrcode[pil]>=8.0",
+  # 2026-08-14 attendance photo redesign.
+  # MediaPipe → face-presence detection (~10 MB whl, ~150 MB RSS warm).
+  # opencv-python-headless → fallback if MediaPipe fails to import.
+  # imagehash → perceptual hash (anti-dup 24h window).
+  "mediapipe>=0.10,<0.11",
+  "opencv-python-headless>=4.10",
+  "imagehash>=4.3",
 ]
 
 [dependency-groups]

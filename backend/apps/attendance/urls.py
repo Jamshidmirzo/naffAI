@@ -1,6 +1,8 @@
 from django.urls import path
 from .apis import (
     ScanAttendanceApi,
+    ScanWithPhotoAttendanceApi,
+    QrPreviewAttendanceApi,
     MeCurrentAttendanceApi,
     MeHistoryAttendanceApi,
     MeQrAttendanceApi,
@@ -16,6 +18,8 @@ from .apis import (
 
 urlpatterns = [
     path("scan/", ScanAttendanceApi.as_view(), name="attendance-scan"),
+    path("qr-preview/", QrPreviewAttendanceApi.as_view(), name="attendance-qr-preview"),
+    path("me/scan-with-photo/", ScanWithPhotoAttendanceApi.as_view(), name="attendance-scan-with-photo"),
     path("me/current/", MeCurrentAttendanceApi.as_view(), name="attendance-me-current"),
     path("me/toggle/", MeToggleAttendanceApi.as_view(), name="attendance-me-toggle"),
     path("me/history/", MeHistoryAttendanceApi.as_view(), name="attendance-me-history"),

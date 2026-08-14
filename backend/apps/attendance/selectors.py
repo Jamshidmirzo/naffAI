@@ -106,6 +106,8 @@ def attendance_report(day: dt.date) -> dict:
             "duration_min": log.duration_seconds // 60 if log.duration_seconds is not None else None,
             "auto_closed": log.auto_closed,
             "source": log.source,
+            "checkin_photo_url": log.checkin_photo.url if log.checkin_photo else None,
+            "checkout_photo_url": log.checkout_photo.url if log.checkout_photo else None,
         }
         present_logs.append(log_data)
         if log.was_late:

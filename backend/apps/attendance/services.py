@@ -11,11 +11,14 @@ from django.contrib.auth import get_user_model
 from rest_framework.authtoken.models import Token
 from django.db import transaction
 
+from django.core.files.base import ContentFile
+
 from apps.operators.models import Operator
 from apps.users.models import Profile
 from apps.audit.services import audit_log_create
 from .models import OperatorQr, AttendanceLog, AttendanceSettings
 from .selectors import open_log_for_operator, attendance_settings_get
+from .face import PhotoValidationError, validate_and_hash_photo
 
 User = get_user_model()
 
@@ -33,6 +36,10 @@ class IpNotAllowedError(PermissionDenied):
 
 
 class TgCheckinDisabledError(ValidationError):
+    pass
+
+
+class PhotoRequiredError(ValidationError):
     pass
 
 
@@ -179,6 +186,8 @@ def attendance_scan(
     qr_raw: str,
     ip: str | None,
     user_agent: str,
+    photo_bytes: bytes | None = None,
+    photo_filename: str | None = None,
 ) -> dict:
     if not _ip_allowed(ip):
         audit_log_create(
@@ -228,6 +237,8 @@ def attendance_scan(
         ip=ip,
         user_agent=user_agent,
         issue_token=True,
+        photo_bytes=photo_bytes,
+        photo_filename=photo_filename,
     )
 
 
@@ -240,8 +251,60 @@ def process_attendance_event(
     ip: str | None = None,
     user_agent: str = "",
     issue_token: bool = False,
+    photo_bytes: bytes | None = None,
+    photo_filename: str | None = None,
+    require_photo_override: bool | None = None,
 ) -> dict:
+    """
+    Photo semantics:
+    - `photo_bytes` is optional. If provided → always validated (face +
+       phash + dup) and stored on the created / closed AttendanceLog.
+    - `require_photo_override` — if True, forces the "photo required" gate
+       even when AttendanceSettings.require_photo is False. Used by
+       `/attendance/me/scan-with-photo/` and Telegram `/checkin` where the
+       photo flow is mandatory by contract.
+    - If settings.require_photo (or override) is True and no photo →
+       PhotoRequiredError. Otherwise no photo is fine (back-compat).
+    """
     settings_obj = attendance_settings_get()
+
+    photo_required = settings_obj.require_photo or bool(require_photo_override)
+    if photo_required and not photo_bytes:
+        audit_log_create(
+            user=None,
+            action="attendance.scan_fail",
+            entity="AttendanceLog",
+            entity_id=operator.id,
+            changes={
+                "error_code": "photo_required",
+                "source": source,
+                "initiator": initiator,
+            },
+        )
+        raise PhotoRequiredError("Требуется фото для отметки")
+
+    photo_phash = ""
+    if photo_bytes:
+        try:
+            photo_phash = validate_and_hash_photo(
+                operator=operator,
+                image_bytes=photo_bytes,
+                require_face=settings_obj.require_face,
+                max_size_mb=settings_obj.photo_max_size_mb,
+            )
+        except PhotoValidationError as exc:
+            audit_log_create(
+                user=None,
+                action="attendance.scan_fail",
+                entity="AttendanceLog",
+                entity_id=operator.id,
+                changes={
+                    "error_code": exc.code,
+                    "source": source,
+                    "initiator": initiator,
+                },
+            )
+            raise ValidationError(str(exc)) from exc
 
     if source == "tg" and not settings_obj.tg_checkin_enabled:
         audit_log_create(
@@ -301,6 +364,9 @@ def process_attendance_event(
             user_agent=user_agent,
             issue_token=issue_token,
             settings_obj=settings_obj,
+            photo_bytes=photo_bytes,
+            photo_filename=photo_filename,
+            photo_phash=photo_phash,
         )
     else:
         return _attendance_check_out(
@@ -309,6 +375,9 @@ def process_attendance_event(
             initiator=initiator,
             ip=ip,
             user_agent=user_agent,
+            photo_bytes=photo_bytes,
+            photo_filename=photo_filename,
+            photo_phash=photo_phash,
         )
 
 
@@ -335,9 +404,24 @@ def _force_close_stale_log(log: AttendanceLog, current_ip: str, current_user_age
     )
 
 
+def _default_photo_filename(action: str, operator_id: int) -> str:
+    ts = timezone.now().strftime("%Y%m%d-%H%M%S")
+    return f"{action}-op{operator_id}-{ts}.jpg"
+
+
 @transaction.atomic
 def _attendance_check_in(
-    *, operator, source, initiator, ip, user_agent, issue_token, settings_obj
+    *,
+    operator,
+    source,
+    initiator,
+    ip,
+    user_agent,
+    issue_token,
+    settings_obj,
+    photo_bytes: bytes | None = None,
+    photo_filename: str | None = None,
+    photo_phash: str = "",
 ) -> dict:
     now = timezone.now()
 
@@ -369,7 +453,7 @@ def _attendance_check_in(
             username = profile.user.username
             role = profile.role
 
-    log = AttendanceLog.objects.create(
+    log = AttendanceLog(
         operator=operator,
         checked_in_at=now,
         checked_in_ip=ip,
@@ -377,7 +461,12 @@ def _attendance_check_in(
         was_late=was_late,
         token_key=token_key,
         source=source,
+        checkin_photo_phash=photo_phash,
     )
+    if photo_bytes:
+        fname = photo_filename or _default_photo_filename("checkin", operator.id)
+        log.checkin_photo.save(fname, ContentFile(photo_bytes), save=False)
+    log.save()
 
     audit_log_create(
         user=None,
@@ -389,6 +478,7 @@ def _attendance_check_in(
             "operator_id": operator.id,
             "source": source,
             "initiator": initiator,
+            "has_photo": bool(photo_bytes),
         },
     )
     transaction.on_commit(
@@ -409,22 +499,37 @@ def _attendance_check_in(
         "was_late": was_late,
         "checked_in_at": now.isoformat(),
         "source": source,
+        "photo_url": log.checkin_photo.url if log.checkin_photo else None,
     }
 
 
 @transaction.atomic
-def _attendance_check_out(*, log, source, initiator, ip, user_agent) -> dict:
+def _attendance_check_out(
+    *,
+    log,
+    source,
+    initiator,
+    ip,
+    user_agent,
+    photo_bytes: bytes | None = None,
+    photo_filename: str | None = None,
+    photo_phash: str = "",
+) -> dict:
     now = timezone.now()
     log.checked_out_at = now
     log.checked_out_ip = ip
     log.checked_out_user_agent = user_agent
-    log.save(
-        update_fields=[
-            "checked_out_at",
-            "checked_out_ip",
-            "checked_out_user_agent",
-        ]
-    )
+    update_fields = [
+        "checked_out_at",
+        "checked_out_ip",
+        "checked_out_user_agent",
+    ]
+    if photo_bytes:
+        fname = photo_filename or _default_photo_filename("checkout", log.operator_id)
+        log.checkout_photo.save(fname, ContentFile(photo_bytes), save=False)
+        log.checkout_photo_phash = photo_phash
+        update_fields += ["checkout_photo", "checkout_photo_phash"]
+    log.save(update_fields=update_fields)
 
     # Invalidate token if present
     if log.token_key:
@@ -440,6 +545,7 @@ def _attendance_check_out(*, log, source, initiator, ip, user_agent) -> dict:
             "operator_id": log.operator_id,
             "source": source,
             "initiator": initiator,
+            "has_photo": bool(photo_bytes),
         },
     )
 
@@ -460,6 +566,7 @@ def _attendance_check_out(*, log, source, initiator, ip, user_agent) -> dict:
         "duration_min": duration_min,
         "checked_out_at": now.isoformat(),
         "source": source,
+        "photo_url": log.checkout_photo.url if log.checkout_photo else None,
     }
 
 

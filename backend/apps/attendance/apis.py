@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.throttling import AnonRateThrottle
+from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
 from django.core.exceptions import ValidationError
 
 from apps.operators.models import Operator
@@ -22,7 +23,9 @@ from .services import (
     ScanRateLimitError,
     QrRevokedError,
     IpNotAllowedError,
+    PhotoRequiredError,
     attendance_log_manual_close,
+    qr_token_verify,
 )
 from .selectors import (
     attendance_settings_get,
@@ -48,9 +51,19 @@ def _get_client_ip(request) -> str:
     return ip
 
 
+def _extract_photo_bytes(request) -> tuple[bytes | None, str | None]:
+    """Extract raw bytes + filename from multipart `photo` upload."""
+    photo = request.FILES.get("photo") if hasattr(request, "FILES") else None
+    if not photo:
+        return None, None
+    return photo.read(), (photo.name or None)
+
+
 class ScanAttendanceApi(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [AttendanceScanThrottle]
+    # Accept JSON (legacy: {qr_payload}) OR multipart (adds `photo` file).
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def post(self, request):
         qr_payload = request.data.get("qr_payload")
@@ -62,12 +75,15 @@ class ScanAttendanceApi(APIView):
 
         ip = _get_client_ip(request)
         user_agent = request.META.get("HTTP_USER_AGENT", "")[:256]
+        photo_bytes, photo_filename = _extract_photo_bytes(request)
 
         try:
             res = attendance_scan(
                 qr_raw=qr_payload,
                 ip=ip,
                 user_agent=user_agent,
+                photo_bytes=photo_bytes,
+                photo_filename=photo_filename,
             )
             return Response(res, status=status.HTTP_200_OK)
         except ScanRateLimitError as exc:
@@ -76,19 +92,112 @@ class ScanAttendanceApi(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_410_GONE)
         except IpNotAllowedError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except PhotoRequiredError as exc:
+            return Response({"error": str(exc), "code": "photo_required"}, status=status.HTTP_400_BAD_REQUEST)
         except ValidationError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+class ScanWithPhotoAttendanceApi(APIView):
+    """
+    Mobile self-check-in with mandatory photo. Public (uses HMAC-signed QR
+    payload for identity) — mirrors ScanAttendanceApi semantics but always
+    treats photo as required + face-checked.
+    """
+
+    permission_classes = [AllowAny]
+    throttle_classes = [AttendanceScanThrottle]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        qr_payload = request.data.get("qr_payload")
+        if not qr_payload:
+            return Response(
+                {"error": "qr_payload is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        photo_bytes, photo_filename = _extract_photo_bytes(request)
+        if not photo_bytes:
+            return Response(
+                {"error": "photo is required", "code": "photo_required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ip = _get_client_ip(request)
+        user_agent = request.META.get("HTTP_USER_AGENT", "")[:256]
+
+        try:
+            operator, _qr = qr_token_verify(qr_payload)
+        except QrRevokedError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_410_GONE)
+        except ValidationError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            res = process_attendance_event(
+                operator=operator,
+                source="qr",
+                initiator=f"scan-with-photo ip={ip or '-'}",
+                ip=ip,
+                user_agent=user_agent,
+                issue_token=True,
+                photo_bytes=photo_bytes,
+                photo_filename=photo_filename,
+                require_photo_override=True,
+            )
+            return Response(res, status=status.HTTP_200_OK)
+        except ScanRateLimitError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        except IpNotAllowedError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except PhotoRequiredError as exc:
+            return Response({"error": str(exc), "code": "photo_required"}, status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class QrPreviewAttendanceApi(APIView):
+    """Return operator name / status from QR without side-effects (no check-in).
+
+    Lets the scan photo screen greet the operator by name before they snap.
+    Public because the QR itself is the credential.
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        qr_payload = request.query_params.get("qr", "").strip()
+        if not qr_payload:
+            return Response({"error": "qr required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            operator, _ = qr_token_verify(qr_payload)
+        except QrRevokedError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_410_GONE)
+        except ValidationError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .selectors import open_log_for_operator
+
+        open_log = open_log_for_operator(operator)
+        return Response(
+            {
+                "operator": {"id": operator.id, "full_name": operator.full_name},
+                "on_shift": open_log is not None,
+                "checked_in_at": open_log.checked_in_at.isoformat() if open_log else None,
+                "expected_action": "check_out" if open_log else "check_in",
+            }
+        )
+
+
 class MeToggleAttendanceApi(APIView):
     """
-    Auth-based check-in/out for the /profile card. No QR needed —
-    identifies the operator from request.user.profile.operator and
-    delegates to the same process_attendance_event that the QR flow
-    uses, so cooldowns, notifications and audit all match.
+    Auth-based check-in/out for the /profile card + operator dashboard
+    widget. Accepts optional multipart `photo` — if provided it goes
+    through the same validation as scan-with-photo.
     """
 
     permission_classes = [IsAuthenticated, IsAuthenticatedAnyRole]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def post(self, request):
         profile = getattr(request.user, "profile", None)
@@ -99,6 +208,15 @@ class MeToggleAttendanceApi(APIView):
             )
         ip = _get_client_ip(request)
         ua = request.META.get("HTTP_USER_AGENT", "")[:256]
+        photo_bytes, photo_filename = _extract_photo_bytes(request)
+        # `require_photo=1` from the frontend widget forces the photo gate
+        # for that specific request even when the global setting is off —
+        # keeps the "always ask for photo from the widget" UX consistent.
+        require_photo_override = str(request.data.get("require_photo", "")).lower() in {
+            "1",
+            "true",
+            "yes",
+        }
         try:
             res = process_attendance_event(
                 operator=profile.operator,
@@ -107,10 +225,15 @@ class MeToggleAttendanceApi(APIView):
                 ip=ip,
                 user_agent=ua,
                 issue_token=False,
+                photo_bytes=photo_bytes,
+                photo_filename=photo_filename,
+                require_photo_override=require_photo_override,
             )
             return Response(res, status=status.HTTP_200_OK)
         except ScanRateLimitError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        except PhotoRequiredError as exc:
+            return Response({"error": str(exc), "code": "photo_required"}, status=status.HTTP_400_BAD_REQUEST)
         except ValidationError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -149,10 +272,11 @@ class MeCurrentAttendanceApi(APIView):
                 "id": open_log.id,
                 "checked_in_at": open_log.checked_in_at.isoformat(),
                 "was_late": open_log.was_late,
+                "checkin_photo_url": open_log.checkin_photo.url if open_log.checkin_photo else None,
             }
 
         return Response(
-            {"open_log": open_log_data, "today_events": today_events},
+            {"open_log": open_log_data, "today_events": today_events, "operator_id": profile.operator_id},
             status=status.HTTP_200_OK,
         )
 
@@ -427,40 +551,8 @@ class OperatorQrPngAttendanceApi(APIView):
 class SettingsAttendanceApi(APIView):
     permission_classes = [IsAuthenticated, IsTeamLead]
 
-    def get(self, request):
-        settings_obj = attendance_settings_get()
-        return Response({
-            "shift_start": settings_obj.shift_start.strftime("%H:%M"),
-            "shift_end": settings_obj.shift_end.strftime("%H:%M"),
-            "late_threshold_min": settings_obj.late_threshold_min,
-            "auto_close_at": settings_obj.auto_close_at.strftime("%H:%M"),
-            "tg_checkin_enabled": settings_obj.tg_checkin_enabled,
-        })
-
-    def patch(self, request):
-        settings_obj = attendance_settings_get()
-
-        shift_start = request.data.get("shift_start")
-        shift_end = request.data.get("shift_end")
-        late_threshold_min = request.data.get("late_threshold_min")
-        auto_close_at = request.data.get("auto_close_at")
-        tg_checkin_enabled = request.data.get("tg_checkin_enabled")
-
-        if shift_start:
-            settings_obj.shift_start = shift_start
-        if shift_end:
-            settings_obj.shift_end = shift_end
-        if late_threshold_min is not None:
-            settings_obj.late_threshold_min = int(late_threshold_min)
-        if auto_close_at:
-            settings_obj.auto_close_at = auto_close_at
-        if tg_checkin_enabled is not None:
-            settings_obj.tg_checkin_enabled = bool(tg_checkin_enabled)
-
-        settings_obj.updated_by = request.user
-        settings_obj.save()
-
-        return Response({
+    def _serialize(self, settings_obj) -> dict:
+        return {
             "shift_start": settings_obj.shift_start.strftime("%H:%M")
             if isinstance(settings_obj.shift_start, dt.time)
             else settings_obj.shift_start,
@@ -472,7 +564,46 @@ class SettingsAttendanceApi(APIView):
             if isinstance(settings_obj.auto_close_at, dt.time)
             else settings_obj.auto_close_at,
             "tg_checkin_enabled": settings_obj.tg_checkin_enabled,
-        })
+            "require_photo": settings_obj.require_photo,
+            "require_face": settings_obj.require_face,
+            "photo_max_size_mb": settings_obj.photo_max_size_mb,
+        }
+
+    def get(self, request):
+        return Response(self._serialize(attendance_settings_get()))
+
+    def patch(self, request):
+        settings_obj = attendance_settings_get()
+
+        shift_start = request.data.get("shift_start")
+        shift_end = request.data.get("shift_end")
+        late_threshold_min = request.data.get("late_threshold_min")
+        auto_close_at = request.data.get("auto_close_at")
+        tg_checkin_enabled = request.data.get("tg_checkin_enabled")
+        require_photo = request.data.get("require_photo")
+        require_face = request.data.get("require_face")
+        photo_max_size_mb = request.data.get("photo_max_size_mb")
+
+        if shift_start:
+            settings_obj.shift_start = shift_start
+        if shift_end:
+            settings_obj.shift_end = shift_end
+        if late_threshold_min is not None:
+            settings_obj.late_threshold_min = int(late_threshold_min)
+        if auto_close_at:
+            settings_obj.auto_close_at = auto_close_at
+        if tg_checkin_enabled is not None:
+            settings_obj.tg_checkin_enabled = bool(tg_checkin_enabled)
+        if require_photo is not None:
+            settings_obj.require_photo = bool(require_photo)
+        if require_face is not None:
+            settings_obj.require_face = bool(require_face)
+        if photo_max_size_mb is not None:
+            settings_obj.photo_max_size_mb = max(1, min(20, int(photo_max_size_mb)))
+
+        settings_obj.updated_by = request.user
+        settings_obj.save()
+        return Response(self._serialize(settings_obj))
 
 
 class ManualCloseAttendanceApi(APIView):
