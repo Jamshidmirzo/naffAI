@@ -79,11 +79,14 @@ class LeadSerializer(serializers.ModelSerializer):
     def get_previous_operator_name(self, lead: Lead) -> str:
         prev = (
             lead.assignments.exclude(operator_id=lead.operator_id)
+            .filter(operator__isnull=False)
             .order_by("-created_at")
             .select_related("operator")
             .first()
         )
-        return prev.operator.full_name if prev else ""
+        if not prev or prev.operator is None:
+            return ""
+        return prev.operator.full_name or ""
 
     def get_is_retry(self, lead: Lead) -> bool:
         from .models import LeadAssignmentSource
