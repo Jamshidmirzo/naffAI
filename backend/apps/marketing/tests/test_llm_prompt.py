@@ -94,7 +94,7 @@ def test_run_llm_uses_valid_json(sheet):
     with patch("apps.marketing.services.get_marketing_provider") as gp:
 
         class P:
-            def generate_content(self, *, prompt, response_json=False):
+            def generate_content(self, *, prompt, response_json=False, max_tokens=2000):
                 return LLMResponse(text=json.dumps(good), model_used="m", provider="p")
 
         gp.return_value = P()
@@ -116,7 +116,7 @@ def test_run_llm_falls_back_on_invalid_json(sheet):
     with patch("apps.marketing.services.get_marketing_provider") as gp:
 
         class P:
-            def generate_content(self, *, prompt, response_json=False):
+            def generate_content(self, *, prompt, response_json=False, max_tokens=2000):
                 return LLMResponse(text="not json at all", model_used="m", provider="p")
 
         gp.return_value = P()

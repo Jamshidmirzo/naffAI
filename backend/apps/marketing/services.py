@@ -271,12 +271,19 @@ def _run_llm(payload: dict) -> tuple[dict, str, str]:
 
     try:
         provider = get_marketing_provider()
-        resp = provider.generate_content(prompt=combined_prompt, response_json=True)
+        # Marketing needs a longer completion budget than the default 2000
+        # — the marketer-persona output can easily reach 3-4KB.
+        resp = provider.generate_content(
+            prompt=combined_prompt, response_json=True, max_tokens=4000,
+        )
         raw = (getattr(resp, "text", "") or "").strip()
         parsed = _parse_llm_json_loose(raw)
         ok, err = validate_structured_output(parsed)
         if not ok:
-            logger.warning("marketing LLM returned invalid schema: %s (raw=%s...)", err, raw[:200])
+            logger.warning(
+                "marketing LLM returned invalid schema: %s (raw_len=%d, tail=%r)",
+                err, len(raw), raw[-200:] if raw else "",
+            )
             structured = _static_fallback(payload)
             return structured, "invalid_json_fallback", getattr(resp, "provider", "") or "fallback"
         # Ensure questions_for_owner exists.

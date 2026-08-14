@@ -73,7 +73,7 @@ def test_generate_insight_uses_llm_when_valid_json(sheet):
     with patch("apps.marketing.services.get_marketing_provider") as gp:
 
         class P:
-            def generate_content(self, *, prompt, response_json=False):
+            def generate_content(self, *, prompt, response_json=False, max_tokens=2000):
                 return LLMResponse(text=good_json, model_used="test-model", provider="test")
 
         gp.return_value = P()
@@ -94,7 +94,7 @@ def test_generate_insight_falls_back_when_llm_fails(sheet):
     with patch("apps.marketing.services.get_marketing_provider") as gp:
 
         class P:
-            def generate_content(self, *, prompt, response_json=False):
+            def generate_content(self, *, prompt, response_json=False, max_tokens=2000):
                 raise RuntimeError("boom")
 
         gp.return_value = P()

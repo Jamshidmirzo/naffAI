@@ -117,7 +117,9 @@ class LLMProvider(Protocol):
 
     def generate_quote(self, *, prompt: str) -> QuoteResult: ...
 
-    def generate_content(self, *, prompt: str, response_json: bool = False) -> LLMResponse: ...
+    def generate_content(
+        self, *, prompt: str, response_json: bool = False, max_tokens: int = 2000,
+    ) -> LLMResponse: ...
 
     def chat_with_tools(
         self,
@@ -195,9 +197,9 @@ class GeminiProvider:
             settings, "GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite"
         )
 
-    def _call(self, model: str, prompt: str, response_json: bool = True) -> str:
+    def _call(self, model: str, prompt: str, response_json: bool = True, max_tokens: int = 4096) -> str:
         config: dict[str, Any] = {
-            "max_output_tokens": 4096,
+            "max_output_tokens": max_tokens,
             "temperature": 0.3,
         }
         if response_json:
@@ -210,7 +212,7 @@ class GeminiProvider:
         return resp.text or ""
 
     def _call_with_internal_fallback(
-        self, prompt: str, *, response_json: bool = True
+        self, prompt: str, *, response_json: bool = True, max_tokens: int = 4096,
     ) -> tuple[str, str]:
         """
         Try the primary Gemini model, on 429 fall back to the secondary Gemini
@@ -218,7 +220,7 @@ class GeminiProvider:
         chain can move to a different provider.
         """
         try:
-            raw = self._call(self._model, prompt, response_json=response_json)
+            raw = self._call(self._model, prompt, response_json=response_json, max_tokens=max_tokens)
             return raw, self._model
         except Exception as exc:
             if not _is_quota_error(exc):
@@ -229,15 +231,19 @@ class GeminiProvider:
                 self._fallback_model,
             )
             try:
-                raw = self._call(self._fallback_model, prompt, response_json=response_json)
+                raw = self._call(self._fallback_model, prompt, response_json=response_json, max_tokens=max_tokens)
                 return raw, self._fallback_model
             except Exception as fb_exc:
                 if _is_quota_error(fb_exc):
                     raise LLMRateLimitError(f"Gemini both models exhausted: {fb_exc}") from fb_exc
                 raise LLMProviderError(f"Gemini fallback model also failed: {fb_exc}") from fb_exc
 
-    def generate_content(self, *, prompt: str, response_json: bool = False) -> LLMResponse:
-        raw, model_used = self._call_with_internal_fallback(prompt, response_json=response_json)
+    def generate_content(
+        self, *, prompt: str, response_json: bool = False, max_tokens: int = 4096,
+    ) -> LLMResponse:
+        raw, model_used = self._call_with_internal_fallback(
+            prompt, response_json=response_json, max_tokens=max_tokens,
+        )
         return LLMResponse(text=raw, model_used=model_used, provider=self.PROVIDER_NAME)
 
     def analyze_dialogs(
@@ -472,10 +478,13 @@ class GitHubModelsProvider:
             raise LLMProviderError(f"GitHub Models {r.status_code}: {r.text[:300]}")
         return r.json()
 
-    def generate_content(self, *, prompt: str, response_json: bool = False) -> LLMResponse:
+    def generate_content(
+        self, *, prompt: str, response_json: bool = False, max_tokens: int = 2000,
+    ) -> LLMResponse:
         data = self._post_chat(
             [{"role": "user", "content": prompt}],
             response_json=response_json,
+            max_tokens=max_tokens,
         )
         text = data["choices"][0]["message"]["content"] or ""
         return LLMResponse(text=text, model_used=self._model, provider=self.PROVIDER_NAME)
@@ -727,7 +736,7 @@ class OpenAIProvider:
             provider=self.PROVIDER_NAME,
         )
 
-    def generate_content(self, *, prompt: str, response_json: bool = False) -> LLMResponse:
+    def generate_content(self, *, prompt: str, response_json: bool = False, max_tokens: int = 2000) -> LLMResponse:
         raise LLMProviderError("generate_content not implemented for OpenAIProvider")
 
     def chat_with_tools(
@@ -827,10 +836,17 @@ class OpenAICompatibleProvider:
         except ValueError as exc:
             raise LLMProviderError(f"OpenAI-compat returned non-JSON body: {r.text[:200]}") from exc
 
-    def generate_content(self, *, prompt: str, response_json: bool = False) -> LLMResponse:
+    def generate_content(
+        self,
+        *,
+        prompt: str,
+        response_json: bool = False,
+        max_tokens: int = 2000,
+    ) -> LLMResponse:
         data = self._post_chat(
             [{"role": "user", "content": prompt}],
             response_json=response_json,
+            max_tokens=max_tokens,
         )
         text = (data["choices"][0]["message"].get("content") or "") if data.get("choices") else ""
         return LLMResponse(text=text, model_used=self.model, provider=self.PROVIDER_NAME)
@@ -1075,7 +1091,7 @@ class AnthropicProvider:
             provider=self.PROVIDER_NAME,
         )
 
-    def generate_content(self, *, prompt: str, response_json: bool = False) -> LLMResponse:
+    def generate_content(self, *, prompt: str, response_json: bool = False, max_tokens: int = 2000) -> LLMResponse:
         raise LLMProviderError("generate_content not implemented for AnthropicProvider")
 
     def chat_with_tools(
@@ -1116,7 +1132,7 @@ class NoneProvider:
             provider=self.PROVIDER_NAME,
         )
 
-    def generate_content(self, *, prompt: str, response_json: bool = False) -> LLMResponse:
+    def generate_content(self, *, prompt: str, response_json: bool = False, max_tokens: int = 2000) -> LLMResponse:
         return LLMResponse(
             text="stub",
             model_used="none",
