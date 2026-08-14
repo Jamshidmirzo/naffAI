@@ -61,6 +61,9 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/scan" element={<Scan />} />
+        {/* /kiosk = same public poster page as /scan (no ?qr=), separated
+            path so future kiosk-specific behaviour has its own URL. */}
+        <Route path="/kiosk" element={<Scan />} />
         <Route path="/screen" element={<Protected><Screen /></Protected>} />
         <Route
           element={

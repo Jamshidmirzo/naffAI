@@ -43,6 +43,7 @@ import {
 import { usePageHeader } from "../store/page";
 import { useT, useLangValue } from "../lib/i18n";
 import { GaugeScene } from "../components/three/GaugeScene";
+import AttendanceStatusWidget from "../components/AttendanceStatusWidget";
 
 type MyLeadsView = "active" | "postponed" | "all" | "closed";
 // Chip filter key = LeadStatusLabel.code OR the sentinel "all".
@@ -601,6 +602,9 @@ export default function MyLeads() {
 
   return (
     <div className="mx-auto max-w-[960px] flex flex-col gap-5">
+      {/* --- Attendance status widget (2026-08-14) --------------------- */}
+      <AttendanceStatusWidget />
+
       {/* --- Overdue banner --- */}
       {operator?.blocked && (
         <div

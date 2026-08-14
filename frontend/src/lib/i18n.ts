@@ -1245,6 +1245,57 @@ const STRINGS: Lookup = {
     "attendance.today.absent_title": "Не пришли ({n})",
     "attendance.today.close_now_hint": "— время ухода будет зафиксировано сейчас",
     "attendance.today.close_note_ph": "Например: клиент задержал",
+    // 2026-08-14 attendance redesign — 3-column view
+    "attendance.today.col_on_shift": "Сейчас на смене",
+    "attendance.today.col_gone": "Уже ушли",
+    "attendance.today.col_absent": "Не пришли",
+    "attendance.today.col_gone_empty": "Пока никто не завершил смену",
+    "attendance.today.col_absent_empty": "Все пришли — красавцы 👏",
+
+    // ------ scan photo flow (2026-08-14) ------
+    "scan_photo.no_qr": "QR-код не указан. Сканируйте свой персональный QR камерой телефона.",
+    "scan_photo.error_title": "Не удалось прочитать QR",
+    "scan_photo.login_fallback": "Войти по паролю",
+    "scan_photo.on_shift_since": "На смене с {t}",
+    "scan_photo.step_take_selfie_in": "Сделайте селфи для отметки прихода",
+    "scan_photo.step_take_selfie_out": "Сделайте селфи для отметки ухода",
+    "scan_photo.face_required_hint": "На фото должно быть чётко видно лицо. Одну и ту же фотку использовать нельзя.",
+    "scan_photo.open_camera_in": "Открыть камеру",
+    "scan_photo.open_camera_out": "Открыть камеру",
+    "scan_photo.uploading": "Отправляем фото…",
+    "scan_photo.done_checkin": "СМЕНА НАЧАТА",
+    "scan_photo.done_checkout": "СМЕНА ЗАВЕРШЕНА",
+    "scan_photo.checkin_at": "Приход в {t}",
+    "scan_photo.checkout_at": "Уход в {t}",
+    "scan_photo.duration_label": "Отработано: {d}",
+    "scan_photo.late_badge": "⚠ Опоздание",
+
+    // ------ camera capture ------
+    "camera.title": "Селфи для смены",
+    "camera.preview_title": "Проверьте фото",
+    "camera.starting": "Открываем камеру…",
+    "camera.snap": "Сделать фото",
+    "camera.flip": "Другая камера",
+    "camera.retake": "Пересделать",
+    "camera.submit": "Отправить",
+    "camera.not_ready": "Камера ещё не готова, подождите секунду",
+    "camera.snapshot_failed": "Не удалось сделать снимок",
+    "camera.fallback_title": "Камера недоступна",
+    "camera.fallback_hint": "Разрешите доступ к камере в настройках браузера — или загрузите фото из галереи.",
+    "camera.pick_file": "Выбрать фото",
+
+    // ------ attendance widget (operator dashboard) ------
+    "att_widget.on_shift": "На смене",
+    "att_widget.off_shift": "Смена не начата",
+    "att_widget.on_shift_since": "Пришли в {t}",
+    "att_widget.tap_to_start": "Начните смену",
+    "att_widget.duration_label": "Уже работаете",
+    "att_widget.btn_check_in": "Начать смену",
+    "att_widget.btn_check_out": "Завершить смену",
+    "att_widget.sending": "Отправляем…",
+
+    // ------ photo uploader extras ------
+    "photo.use_camera": "Камера",
 
     // ------ attendance.report (extra) ------
     "attendance.report.subtitle": "Посещаемость — отчёт за период",
@@ -2902,6 +2953,57 @@ const STRINGS: Lookup = {
     "attendance.today.absent_title": "Kelmaganlar ({n})",
     "attendance.today.close_now_hint": "— ketish vaqti hozir qayd etiladi",
     "attendance.today.close_note_ph": "Masalan: mijoz ushlab qoldi",
+    // 2026-08-14 attendance redesign — 3-column
+    "attendance.today.col_on_shift": "Hozir smenada",
+    "attendance.today.col_gone": "Ketganlar",
+    "attendance.today.col_absent": "Kelmaganlar",
+    "attendance.today.col_gone_empty": "Hozircha hech kim smenani yakunlamagan",
+    "attendance.today.col_absent_empty": "Hammasi keldi 👏",
+
+    // ------ scan photo flow (2026-08-14) — UZ ------
+    "scan_photo.no_qr": "QR-kod ko'rsatilmagan. Shaxsiy QR-kodingizni telefon kamerasi bilan skanerlang.",
+    "scan_photo.error_title": "QR-kodni o'qib bo'lmadi",
+    "scan_photo.login_fallback": "Parol bilan kirish",
+    "scan_photo.on_shift_since": "{t} dan smenada",
+    "scan_photo.step_take_selfie_in": "Kelish uchun selfi oling",
+    "scan_photo.step_take_selfie_out": "Ketish uchun selfi oling",
+    "scan_photo.face_required_hint": "Yuz aniq ko'rinishi kerak. Bitta rasmni takroran ishlatib bo'lmaydi.",
+    "scan_photo.open_camera_in": "Kamerani ochish",
+    "scan_photo.open_camera_out": "Kamerani ochish",
+    "scan_photo.uploading": "Rasm yuborilmoqda…",
+    "scan_photo.done_checkin": "SMENA BOSHLANDI",
+    "scan_photo.done_checkout": "SMENA YAKUNLANDI",
+    "scan_photo.checkin_at": "Kelish: {t}",
+    "scan_photo.checkout_at": "Ketish: {t}",
+    "scan_photo.duration_label": "Ishlangan vaqt: {d}",
+    "scan_photo.late_badge": "⚠ Kechikish",
+
+    // ------ camera capture — UZ ------
+    "camera.title": "Smena uchun selfi",
+    "camera.preview_title": "Rasmni tekshiring",
+    "camera.starting": "Kamera ochilmoqda…",
+    "camera.snap": "Rasmga olish",
+    "camera.flip": "Boshqa kamera",
+    "camera.retake": "Qayta olish",
+    "camera.submit": "Yuborish",
+    "camera.not_ready": "Kamera hali tayyor emas, bir soniya kuting",
+    "camera.snapshot_failed": "Rasm olinmadi",
+    "camera.fallback_title": "Kamera mavjud emas",
+    "camera.fallback_hint": "Brauzer sozlamalarida kameraga ruxsat bering — yoki galereyadan rasm tanlang.",
+    "camera.pick_file": "Rasm tanlash",
+
+    // ------ attendance widget — UZ ------
+    "att_widget.on_shift": "Smenada",
+    "att_widget.off_shift": "Smena boshlanmagan",
+    "att_widget.on_shift_since": "Kelgan: {t}",
+    "att_widget.tap_to_start": "Smenani boshlang",
+    "att_widget.duration_label": "Ishlayapsiz",
+    "att_widget.btn_check_in": "Smenani boshlash",
+    "att_widget.btn_check_out": "Smenani yakunlash",
+    "att_widget.sending": "Yuborilmoqda…",
+
+    // ------ photo uploader — UZ ------
+    "photo.use_camera": "Kamera",
 
     // ------ attendance.report (extra) ------
     "attendance.report.subtitle": "Davomat — davr uchun hisobot",

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, Upload, X } from "lucide-react";
 import { useT } from "../lib/i18n";
+import CameraCapture from "./CameraCapture";
 
 interface Props {
   value: File | null;
@@ -36,6 +37,7 @@ export default function PhotoUploader({
   const t = useT();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   const previewUrl = useMemo(() => {
     if (value) return URL.createObjectURL(value);
@@ -141,8 +143,21 @@ export default function PhotoUploader({
             <div className="text-[12px] text-muted max-w-[280px]">
               {t("photo.dropzone_hint")}
             </div>
-            <div className="mt-1 inline-flex items-center gap-1.5 text-[12px] text-[var(--accent)]">
-              <Upload className="w-3.5 h-3.5" /> {t("photo.pick_file")}
+            <div className="mt-1 flex items-center gap-3 text-[12px] justify-center">
+              <span className="inline-flex items-center gap-1.5 text-[var(--accent)]">
+                <Upload className="w-3.5 h-3.5" /> {t("photo.pick_file")}
+              </span>
+              <span className="text-muted">·</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCameraOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 text-[var(--accent)] hover:underline"
+              >
+                <Camera className="w-3.5 h-3.5" /> {t("photo.use_camera")}
+              </button>
             </div>
           </div>
         </div>
@@ -159,6 +174,16 @@ export default function PhotoUploader({
         className="hidden"
         onChange={(e) => pickFile(e.target.files?.[0] || null)}
       />
+
+      {cameraOpen && (
+        <CameraCapture
+          onCapture={(f) => {
+            pickFile(f);
+            setCameraOpen(false);
+          }}
+          onCancel={() => setCameraOpen(false)}
+        />
+      )}
     </div>
   );
 }
