@@ -28,7 +28,9 @@ dependencies = [
   # opencv-python-headless → fallback if MediaPipe fails to import.
   # imagehash → perceptual hash (anti-dup 24h window).
   "mediapipe>=0.10,<0.11",
-  "opencv-python-headless>=4.10",
+  # Pin to 4.x — opencv-python-headless 5.x dropped CascadeClassifier so
+  # our Haar fallback becomes silent-no-op. 4.10 is the LTS ARM64 wheel.
+  "opencv-python-headless>=4.10,<5",
   "imagehash>=4.3",
 ]
 

@@ -32,24 +32,70 @@ logger = logging.getLogger("attendance.face")
 
 
 _MP_DETECTOR = None
+_MP_LEGACY_DETECTOR = None
 _MP_INIT_FAILED = False
 
 
 def _get_mediapipe_detector():
-    """Lazy MediaPipe FaceDetection singleton. Returns None if unavailable."""
-    global _MP_DETECTOR, _MP_INIT_FAILED
+    """
+    Lazy MediaPipe face detector singleton.
+
+    Tries the modern Tasks API first (MediaPipe 0.10+ / ARM64 wheels).
+    Falls back to the legacy `mp.solutions.face_detection` for older
+    wheels. Returns (detector, is_tasks_api) or None.
+    """
+    global _MP_DETECTOR, _MP_LEGACY_DETECTOR, _MP_INIT_FAILED
     if _MP_INIT_FAILED:
         return None
     if _MP_DETECTOR is not None:
-        return _MP_DETECTOR
+        return _MP_DETECTOR, True
+    if _MP_LEGACY_DETECTOR is not None:
+        return _MP_LEGACY_DETECTOR, False
+    # Try modern Tasks API first — 0.10+ wheels sometimes only ship this.
     try:
         import mediapipe as mp  # type: ignore
 
-        _MP_DETECTOR = mp.solutions.face_detection.FaceDetection(
-            model_selection=0, min_detection_confidence=0.7
-        )
-        logger.info("MediaPipe FaceDetection initialised")
-        return _MP_DETECTOR
+        if hasattr(mp, "tasks"):
+            from mediapipe.tasks.python import vision  # type: ignore
+            from mediapipe.tasks.python.core import base_options as _bo  # type: ignore
+
+            # Prefer BlazeFace short-range model. Tasks API needs an on-disk
+            # model file; MediaPipe bundles nothing by default, so we
+            # bootstrap it lazily from a URL when missing. Cache under
+            # /tmp — no persistence needed between deployments.
+            import os
+            import urllib.request
+
+            model_dir = "/tmp/mediapipe-models"
+            model_path = os.path.join(model_dir, "blaze_face_short_range.tflite")
+            if not os.path.exists(model_path):
+                os.makedirs(model_dir, exist_ok=True)
+                url = (
+                    "https://storage.googleapis.com/mediapipe-models/"
+                    "face_detector/blaze_face_short_range/float16/latest/"
+                    "blaze_face_short_range.tflite"
+                )
+                try:
+                    urllib.request.urlretrieve(url, model_path)  # noqa: S310
+                    logger.info("Downloaded MediaPipe face model to %s", model_path)
+                except Exception as exc:
+                    logger.warning("Face model download failed: %s", exc)
+                    raise
+            opts = vision.FaceDetectorOptions(
+                base_options=_bo.BaseOptions(model_asset_path=model_path),
+                min_detection_confidence=0.6,
+            )
+            _MP_DETECTOR = vision.FaceDetector.create_from_options(opts)
+            logger.info("MediaPipe FaceDetector (Tasks API) initialised")
+            return _MP_DETECTOR, True
+        # Fallback: legacy Solutions API (0.9.x + some 0.10.x wheels).
+        if hasattr(mp, "solutions") and hasattr(mp.solutions, "face_detection"):
+            _MP_LEGACY_DETECTOR = mp.solutions.face_detection.FaceDetection(
+                model_selection=0, min_detection_confidence=0.7
+            )
+            logger.info("MediaPipe FaceDetection (legacy Solutions API) initialised")
+            return _MP_LEGACY_DETECTOR, False
+        raise RuntimeError("mediapipe has neither .tasks nor .solutions.face_detection")
     except Exception as exc:
         _MP_INIT_FAILED = True
         logger.warning("MediaPipe unavailable, will fall back: %s", exc)
@@ -58,17 +104,25 @@ def _get_mediapipe_detector():
 
 def _detect_with_mediapipe(image_bytes: bytes) -> Optional[bool]:
     """Return True/False if MediaPipe processed the image, None on error."""
-    detector = _get_mediapipe_detector()
-    if detector is None:
+    pair = _get_mediapipe_detector()
+    if pair is None:
         return None
+    detector, is_tasks_api = pair
     try:
         import numpy as np
         from PIL import Image
 
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         arr = np.asarray(img)
+        if is_tasks_api:
+            import mediapipe as mp  # type: ignore
+
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=arr)
+            result = detector.detect(mp_image)
+            return bool(getattr(result, "detections", None))
+        # Legacy Solutions API.
         result = detector.process(arr)
-        return bool(result.detections)
+        return bool(getattr(result, "detections", None))
     except Exception as exc:
         logger.warning("MediaPipe detection error: %s", exc)
         return None
