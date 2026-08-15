@@ -350,6 +350,58 @@ class MeQrAttendanceApi(APIView):
         return response
 
 
+class MeQrTokenAttendanceApi(APIView):
+    """
+    Return the raw HMAC-signed QR payload + scannable URL for the *current*
+    authenticated operator. Mirrors `OperatorQrTokenAttendanceApi` but is
+    scoped to `request.user.profile.operator` — every operator can only
+    fetch their own token, no cross-operator lookup.
+
+    Used by the operator dashboard `AttendanceStatusWidget`: after tapping
+    «Начать смену» / «Завершить смену» the widget opens a modal with a
+    big QR rendered client-side from `url`. Operator scans it with their
+    phone camera → phone opens `/scan?qr=<payload>` → ScanPhotoFlow
+    handles the selfie + submit (no login required).
+
+    Rationale: desktop PCs at the shop lack webcams; forcing the operator
+    to snap on the same machine is impossible. Delegating photo capture
+    to the personal phone via QR is the only ergonomic option.
+    """
+
+    permission_classes = [IsAuthenticated, IsAuthenticatedAnyRole]
+
+    def get(self, request):
+        from django.conf import settings as dj_settings
+        from urllib.parse import quote
+        from .selectors import operator_qr_current_or_create
+        from .services import qr_token_build
+
+        profile = getattr(request.user, "profile", None)
+        if not profile or not profile.operator_id:
+            return Response(
+                {"error": "Пользователь не привязан к оператору"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        operator = profile.operator
+        qr_obj = operator_qr_current_or_create(operator)
+        payload = qr_token_build(operator, qr_obj.nonce)
+
+        base = getattr(dj_settings, "QR_CHECKIN_URL", "").rstrip("/")
+        url = f"{base}?qr={quote(payload, safe='')}" if base else payload
+
+        return Response(
+            {
+                "operator_id": operator.id,
+                "operator_name": operator.full_name,
+                "payload": payload,
+                "url": url,
+                "nonce_prefix": qr_obj.nonce[:6],
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class ReportAttendanceApi(APIView):
     permission_classes = [IsAuthenticated, IsTeamLeadOrManager]
 

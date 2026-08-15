@@ -114,6 +114,7 @@ export default function ScanPhotoFlow() {
   const bgHex = useMemo(() => (isCheckIn ? "rgba(22,163,74,.10)" : "rgba(249,115,22,.10)"), [isCheckIn]);
 
   const submitPhoto = async (file: File) => {
+    if (pending) return; // hard guard against re-entry / double-tap.
     setPending(true);
     setError("");
     try {
@@ -125,6 +126,7 @@ export default function ScanPhotoFlow() {
         fd,
         {
           headers: { "Content-Type": "multipart/form-data" },
+          timeout: 60_000,
         },
       );
       const data = r.data;

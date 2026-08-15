@@ -1,7 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { CheckCircle2, Clock, LogIn, LogOut, Timer, XCircle } from "lucide-react";
+import qrcode from "qrcode-generator";
+import {
+  Camera,
+  CheckCircle2,
+  Clock,
+  LogIn,
+  LogOut,
+  QrCode as QrCodeIcon,
+  Smartphone,
+  Timer,
+  X,
+} from "lucide-react";
 import { api, API_BASE_URL } from "../lib/api";
 import { apiErrorMessage } from "../lib/api-types";
 import { useT } from "../lib/i18n";
@@ -27,6 +38,14 @@ type MeCurrent = {
   }>;
 };
 
+type MeQrToken = {
+  operator_id: number;
+  operator_name: string;
+  payload: string;
+  url: string;
+  nonce_prefix: string;
+};
+
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("ru-RU", {
     hour: "2-digit",
@@ -44,17 +63,58 @@ function fmtLiveDuration(fromIso: string): string {
   return `${h} ч ${m} мин`;
 }
 
+const QR_CELL = 8;
+const QR_MARGIN = 2;
+
+function renderQrToCanvas(canvas: HTMLCanvasElement, text: string) {
+  const qr = qrcode(0, "M");
+  qr.addData(text);
+  qr.make();
+  const count = qr.getModuleCount();
+  const size = (count + QR_MARGIN * 2) * QR_CELL;
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = "#101013";
+  for (let r = 0; r < count; r++) {
+    for (let c = 0; c < count; c++) {
+      if (qr.isDark(r, c)) {
+        ctx.fillRect(
+          (c + QR_MARGIN) * QR_CELL,
+          (r + QR_MARGIN) * QR_CELL,
+          QR_CELL,
+          QR_CELL,
+        );
+      }
+    }
+  }
+}
+
 /**
  * Compact "current shift" widget for the operator dashboard.
  *
  *  - Green "Начать смену" when no open log.
  *  - Orange "Завершить смену" + live-ticking duration otherwise.
- *  - Tap → CameraCapture overlay → POST /attendance/me/toggle/ with photo.
- *  - Success animation, then auto-refresh /me/current.
+ *  - Tap → **QR modal** (default) — операторские рабочие компы обычно
+ *    без камеры, поэтому первичный сценарий: показываем оператору его
+ *    персональный QR, он сканирует его камерой телефона → на телефоне
+ *    открывается `/scan?qr=<token>` (ScanPhotoFlow), там уже реальное
+ *    фото + submit без логина.
+ *  - Опциональная secondary-кнопка "Камера этого ПК" → CameraCapture
+ *    как раньше, для рабочих мест с веб-камерой.
+ *  - На успешный submit (через любой из двух путей) — refresh /me/current.
+ *
+ * Live-обновление через QR-flow работает не мгновенно (нет push-канала),
+ * но `refetchInterval: 15s` (сжат с 60s пока модалка открыта) быстро
+ * увидит новый open_log и модалка закроется автоматически.
  */
 export default function AttendanceStatusWidget() {
   const t = useT();
   const qc = useQueryClient();
+  const [qrOpen, setQrOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [tick, setTickState] = useState(0);
@@ -63,10 +123,13 @@ export default function AttendanceStatusWidget() {
     | null
   >(null);
 
+  // Poll faster while the QR modal is open — otherwise the "shift
+  // now started" state can lag up to a minute before the modal closes
+  // itself. 15s keeps it snappy without hammering the API.
   const { data: current, refetch } = useQuery<MeCurrent>({
     queryKey: ["me-attendance-current"],
     queryFn: () => api.get<MeCurrent>("/attendance/me/current/").then((r) => r.data),
-    refetchInterval: 60_000,
+    refetchInterval: qrOpen ? 5_000 : 60_000,
     retry: false,
   });
 
@@ -85,6 +148,39 @@ export default function AttendanceStatusWidget() {
   const isOn = !!current?.open_log;
   const openLog = current?.open_log;
 
+  // When the modal is open, watch for the shift status flipping — that
+  // means the operator's phone-side scan succeeded on the backend.
+  const openLogIdRef = useRef<number | null>(openLog?.id ?? null);
+  useEffect(() => {
+    if (!qrOpen) {
+      openLogIdRef.current = openLog?.id ?? null;
+      return;
+    }
+    const prev = openLogIdRef.current;
+    const now = openLog?.id ?? null;
+    if (prev !== now) {
+      // Shift state changed while modal was up → the QR-scan flow
+      // completed. Auto-close, show local success confirmation.
+      const isCheckIn = !prev && now;
+      const isCheckOut = prev && !now;
+      if (isCheckIn && openLog) {
+        setLastResult({
+          action: "check_in",
+          time: openLog.checked_in_at,
+          was_late: openLog.was_late,
+          photo_url: openLog.checkin_photo_url || undefined,
+        });
+      } else if (isCheckOut) {
+        setLastResult({
+          action: "check_out",
+          time: new Date().toISOString(),
+        });
+      }
+      setQrOpen(false);
+      openLogIdRef.current = now;
+    }
+  }, [qrOpen, openLog]);
+
   const liveDur = useMemo(() => {
     if (!openLog) return "";
     // `tick` is intentionally read so the memo recomputes.
@@ -100,6 +196,7 @@ export default function AttendanceStatusWidget() {
       fd.append("require_photo", "1");
       const r = await api.post("/attendance/me/toggle/", fd, {
         headers: { "Content-Type": "multipart/form-data" },
+        timeout: 60_000,
       });
       const data = r.data as {
         action: "check_in" | "check_out";
@@ -117,12 +214,20 @@ export default function AttendanceStatusWidget() {
         was_late: data.was_late,
         photo_url: data.photo_url,
       });
-      // Force a refresh of the widget + any dashboard cards that watch
-      // current attendance.
       await refetch();
       qc.invalidateQueries({ queryKey: ["me-attendance-current"] });
     } catch (e) {
-      toast.error(apiErrorMessage(e));
+      // Handle "photo_duplicate" gracefully — usually it means the
+      // previous submit actually succeeded server-side; nudge the user
+      // to check their current status.
+      toast.error(apiErrorMessage(e), {
+        action: {
+          label: t("att_widget.check_status"),
+          onClick: () => {
+            refetch();
+          },
+        },
+      });
     } finally {
       setPending(false);
       setCameraOpen(false);
@@ -183,7 +288,7 @@ export default function AttendanceStatusWidget() {
       </div>
 
       <button
-        onClick={() => setCameraOpen(true)}
+        onClick={() => setQrOpen(true)}
         disabled={pending}
         className="mt-5 w-full grid place-items-center rounded-2xl font-bold text-white transition-all active:scale-[.98] disabled:opacity-70"
         style={{
@@ -206,6 +311,17 @@ export default function AttendanceStatusWidget() {
           </span>
         )}
       </button>
+
+      {qrOpen && (
+        <QrScanModal
+          isCheckIn={!isOn}
+          onClose={() => setQrOpen(false)}
+          onFallbackCamera={() => {
+            setQrOpen(false);
+            setCameraOpen(true);
+          }}
+        />
+      )}
 
       {cameraOpen && (
         <CameraCapture
@@ -276,5 +392,167 @@ export default function AttendanceStatusWidget() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+/**
+ * Full-screen modal showing the operator's own QR + instructions.
+ *
+ * Fetches the operator-scoped payload from `/attendance/me/qr-token/`
+ * and renders it as a client-side QR canvas. The QR encodes a URL like
+ * `${QR_CHECKIN_URL}?qr=<hmac-payload>` — scanning it with a phone
+ * camera opens the ScanPhotoFlow directly, no login required.
+ *
+ * Secondary: "Использовать камеру этого ПК" bailout button for rare
+ * machines that do have a webcam.
+ */
+function QrScanModal({
+  isCheckIn,
+  onClose,
+  onFallbackCamera,
+}: {
+  isCheckIn: boolean;
+  onClose: () => void;
+  onFallbackCamera: () => void;
+}) {
+  const t = useT();
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const { data: token, isPending, isError, error } = useQuery<MeQrToken>({
+    queryKey: ["me-attendance-qr-token"],
+    queryFn: () =>
+      api.get<MeQrToken>("/attendance/me/qr-token/").then((r) => r.data),
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (canvasRef.current && token?.url) {
+      renderQrToCanvas(canvasRef.current, token.url);
+    }
+  }, [token?.url]);
+
+  const accent = isCheckIn ? "#16a34a" : "#f97316";
+  const accentBg = isCheckIn ? "rgba(22,163,74,.10)" : "rgba(249,115,22,.10)";
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[180] flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,.6)" }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
+      <motion.div
+        className="w-full max-w-[440px] rounded-3xl p-6 relative"
+        style={{ background: "var(--surface)" }}
+        initial={{ scale: 0.9, y: 20, opacity: 0 }}
+        animate={{ scale: 1, y: 0, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        transition={{ type: "spring", damping: 20, stiffness: 220 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 grid place-items-center rounded-full hover:bg-[color:var(--faint)] transition"
+          style={{ width: 36, height: 36 }}
+          aria-label={t("common.close")}
+        >
+          <X className="w-4.5 h-4.5" />
+        </button>
+
+        <div className="text-center">
+          <div
+            className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest"
+            style={{ color: accent }}
+          >
+            <Smartphone className="w-3.5 h-3.5" />
+            {isCheckIn
+              ? t("attendance.kiosk.qr_expected_checkin")
+              : t("attendance.kiosk.qr_expected_checkout")}
+          </div>
+          <div
+            className="mt-2 font-bold tracking-tight"
+            style={{ fontSize: 20, letterSpacing: "-0.02em" }}
+          >
+            {t("att_widget.qr_modal_title")}
+          </div>
+          <div className="mt-1.5 text-[13px] text-muted max-w-[320px] mx-auto">
+            {t("att_widget.qr_modal_hint")}
+          </div>
+        </div>
+
+        <div
+          className="mt-5 mx-auto grid place-items-center"
+          style={{
+            width: 300,
+            height: 300,
+            maxWidth: "82vw",
+            maxHeight: "82vw",
+            padding: 14,
+            background: "#fff",
+            borderRadius: 20,
+            border: "1px solid var(--border)",
+            boxShadow: "0 16px 40px -20px rgba(0,0,0,.2)",
+          }}
+        >
+          {isPending && (
+            <div className="text-[13px] text-muted">
+              {t("attendance.kiosk.loading_qr")}
+            </div>
+          )}
+          {isError && (
+            <div className="text-[13px] text-red-500 text-center px-2">
+              {apiErrorMessage(error)}
+            </div>
+          )}
+          {token && (
+            <canvas
+              ref={canvasRef}
+              style={{
+                width: "100%",
+                height: "100%",
+                imageRendering: "pixelated",
+              }}
+              aria-label="QR"
+            />
+          )}
+        </div>
+
+        <div
+          className="mt-5 rounded-2xl px-4 py-3 text-[12.5px] leading-relaxed"
+          style={{ background: accentBg, color: "var(--text)" }}
+        >
+          <div className="font-semibold mb-1" style={{ color: accent }}>
+            {t("att_widget.qr_steps_title")}
+          </div>
+          <ol className="pl-5 space-y-0.5 list-decimal">
+            <li>{t("att_widget.qr_step_1")}</li>
+            <li>{t("att_widget.qr_step_2")}</li>
+            <li>{t("att_widget.qr_step_3")}</li>
+          </ol>
+        </div>
+
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onFallbackCamera}
+            className="inline-flex items-center gap-2 text-[12.5px] text-muted hover:text-text transition underline underline-offset-4"
+          >
+            <Camera className="w-3.5 h-3.5" />
+            {t("att_widget.use_pc_camera")}
+          </button>
+          <div
+            className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest"
+            style={{ color: "var(--muted)" }}
+          >
+            <QrCodeIcon className="w-3 h-3" />
+            {t("att_widget.qr_waiting")}
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }

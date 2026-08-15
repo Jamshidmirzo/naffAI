@@ -140,20 +140,22 @@ def test_scan_with_photo_happy_path_check_in(api_client, operator, qr_payload):
 
 
 @pytest.mark.django_db
-def test_scan_with_photo_rejects_duplicate_within_24h(api_client, operator, qr_payload):
+def test_scan_with_photo_rejects_duplicate_within_1h(api_client, operator, qr_payload):
+    import datetime as dt
     from django.utils import timezone
     from django.core.files.uploadedfile import SimpleUploadedFile
 
-    # Seed an existing log with a known phash.
-    known_phash = "aaaaaaaaaaaaaaaa"  # will be beaten in hamming by anything different
+    # Seed a log with the known phash but well OUTSIDE the 30-second
+    # idempotency window (~10 min ago) — this must still be flagged as
+    # a duplicate under the 1-hour dup window.
+    known_phash = "aaaaaaaaaaaaaaaa"
     AttendanceLog.objects.create(
         operator=operator,
-        checked_in_at=timezone.now(),
+        checked_in_at=timezone.now() - dt.timedelta(minutes=10),
+        checked_out_at=timezone.now() - dt.timedelta(minutes=9),
         checkin_photo_phash=known_phash,
     )
 
-    # Now attempt to check-in with an image whose phash *happens* to
-    # exactly match the seeded one — force by monkey-patching the hash fn.
     s = AttendanceSettings.objects.get_or_create(pk=1)[0]
     s.require_face = False
     s.save()
@@ -165,9 +167,6 @@ def test_scan_with_photo_rejects_duplicate_within_24h(api_client, operator, qr_p
         photo = SimpleUploadedFile(
             "selfie.jpg", _tiny_jpeg_bytes(), content_type="image/jpeg"
         )
-        # First attempt hits the open-log branch (would be a check-out but
-        # the open log has no token_key issue), and duplicate check fires
-        # BEFORE branching. Assert 400 duplicate.
         r = api_client.post(
             "/api/attendance/me/scan-with-photo/",
             data={"qr_payload": qr_payload, "photo": photo},
@@ -177,6 +176,80 @@ def test_scan_with_photo_rejects_duplicate_within_24h(api_client, operator, qr_p
         assert "уже использ" in r.json()["error"].lower()
     finally:
         face_mod.perceptual_hash = orig
+
+
+@pytest.mark.django_db
+def test_scan_with_photo_double_submit_within_30s_is_idempotent(
+    api_client, operator, qr_payload
+):
+    """Two identical POSTs within 30s must both return 200 with the same
+    successful payload — not a 400 "photo already used" on the second.
+    This is the double-tap / retry / iOS-Safari-resubmit guard."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    s = AttendanceSettings.objects.get_or_create(pk=1)[0]
+    s.require_face = False
+    s.save()
+
+    from apps.attendance import face as face_mod
+    orig = face_mod.perceptual_hash
+    # Force both requests to compute the exact same phash.
+    face_mod.perceptual_hash = lambda b: "b00b1e5c0ff33bee"
+    try:
+        photo1 = SimpleUploadedFile(
+            "selfie.jpg", _tiny_jpeg_bytes(), content_type="image/jpeg"
+        )
+        r1 = api_client.post(
+            "/api/attendance/me/scan-with-photo/",
+            data={"qr_payload": qr_payload, "photo": photo1},
+            format="multipart",
+        )
+        assert r1.status_code == 200
+        assert r1.json()["action"] == "check_in"
+
+        # Second identical submit — should be idempotent replay, not dup.
+        photo2 = SimpleUploadedFile(
+            "selfie.jpg", _tiny_jpeg_bytes(), content_type="image/jpeg"
+        )
+        r2 = api_client.post(
+            "/api/attendance/me/scan-with-photo/",
+            data={"qr_payload": qr_payload, "photo": photo2},
+            format="multipart",
+        )
+        assert r2.status_code == 200, r2.content
+        body2 = r2.json()
+        assert body2["action"] == "check_in"
+        assert body2.get("idempotent_replay") is True
+        # Exactly one log created — no second row.
+        assert AttendanceLog.objects.filter(operator=operator).count() == 1
+    finally:
+        face_mod.perceptual_hash = orig
+
+
+@pytest.mark.django_db
+def test_me_qr_token_returns_operator_scoped_payload(
+    api_client, operator, user_profile
+):
+    """The new operator-self QR-token endpoint returns a valid HMAC
+    payload tied to the current authenticated operator only."""
+    api_client.force_authenticate(user_profile)
+    r = api_client.get("/api/attendance/me/qr-token/")
+    assert r.status_code == 200, r.content
+    body = r.json()
+    assert body["operator_id"] == operator.id
+    assert body["operator_name"] == operator.full_name
+    assert body["payload"].startswith("naffai-att-v1:")
+    assert str(operator.id) in body["payload"]
+
+
+@pytest.mark.django_db
+def test_me_qr_token_rejects_user_without_operator(api_client):
+    """A logged-in senior (no linked operator) must get 404."""
+    lone = User.objects.create_user(username="lone_tl", password="x")
+    Profile.objects.create(user=lone, role=Role.TEAM_LEAD, operator=None)
+    api_client.force_authenticate(lone)
+    r = api_client.get("/api/attendance/me/qr-token/")
+    assert r.status_code == 404
 
 
 @pytest.mark.django_db

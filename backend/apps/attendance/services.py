@@ -18,6 +18,7 @@ from apps.users.models import Profile
 from apps.audit.services import audit_log_create
 from .models import OperatorQr, AttendanceLog, AttendanceSettings
 from .selectors import open_log_for_operator, attendance_settings_get
+from . import face as _face
 from .face import PhotoValidationError, validate_and_hash_photo
 
 User = get_user_model()
@@ -285,12 +286,32 @@ def process_attendance_event(
 
     photo_phash = ""
     if photo_bytes:
+        # ---- Double-submit idempotency guard --------------------------------
+        # If the frontend re-sends the *same photo* within 30s (network
+        # hiccup, user rage-taps «Отправить», iOS Safari retrying an
+        # aborted request) we don't want the second call to hit
+        # `is_photo_recent_duplicate` and get slapped with 400 — the
+        # first call already succeeded. Instead, look up the log that
+        # was created by the first request and replay its response.
+        #
+        # Uses `_face.perceptual_hash` (module attr, not direct import)
+        # so tests that monkey-patch `face.perceptual_hash` see the
+        # patch through this call site.
+        preliminary_phash = _face.perceptual_hash(photo_bytes)
+        if preliminary_phash:
+            replay_log = _face.find_recent_matching_log(
+                operator=operator, phash=preliminary_phash, seconds=30
+            )
+            if replay_log is not None:
+                return _replay_attendance_response(replay_log, source=source)
+
         try:
             photo_phash = validate_and_hash_photo(
                 operator=operator,
                 image_bytes=photo_bytes,
                 require_face=settings_obj.require_face,
                 max_size_mb=settings_obj.photo_max_size_mb,
+                precomputed_phash=preliminary_phash,
             )
         except PhotoValidationError as exc:
             audit_log_create(
@@ -407,6 +428,51 @@ def _force_close_stale_log(log: AttendanceLog, current_ip: str, current_user_age
 def _default_photo_filename(action: str, operator_id: int) -> str:
     ts = timezone.now().strftime("%Y%m%d-%H%M%S")
     return f"{action}-op{operator_id}-{ts}.jpg"
+
+
+def _replay_attendance_response(log: AttendanceLog, *, source: str) -> dict:
+    """
+    Build the same response shape as `_attendance_check_in` /
+    `_attendance_check_out` from an already-existing log — used by the
+    double-submit idempotency guard so the second POST completes with
+    HTTP 200 + the original success payload instead of a bogus
+    "photo already used" 400.
+
+    We infer which side of the shift the original request was: if the
+    log is still open → it was a check-in; if it's closed → it was a
+    check-out (typical case is the rapid re-send hitting the very same
+    endpoint that just closed the shift).
+    """
+    operator = log.operator
+    if log.checked_out_at is None:
+        return {
+            "action": "check_in",
+            "operator": {
+                "id": operator.id,
+                "full_name": operator.full_name,
+            },
+            "token": None,
+            "username": None,
+            "role": None,
+            "was_late": log.was_late,
+            "checked_in_at": log.checked_in_at.isoformat(),
+            "source": source,
+            "photo_url": log.checkin_photo.url if log.checkin_photo else None,
+            "idempotent_replay": True,
+        }
+    duration_min = int((log.checked_out_at - log.checked_in_at).total_seconds() / 60)
+    return {
+        "action": "check_out",
+        "operator": {
+            "id": operator.id,
+            "full_name": operator.full_name,
+        },
+        "duration_min": duration_min,
+        "checked_out_at": log.checked_out_at.isoformat(),
+        "source": source,
+        "photo_url": log.checkout_photo.url if log.checkout_photo else None,
+        "idempotent_replay": True,
+    }
 
 
 @transaction.atomic

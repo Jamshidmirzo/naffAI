@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Camera, RefreshCw, RotateCcw, Upload, X } from "lucide-react";
+import { compressImageFile } from "../lib/imageCompress";
 import { useT } from "../lib/i18n";
 import { toast } from "./ui";
 
 interface Props {
   onCapture: (file: File) => void;
   onCancel: () => void;
-  /** JPEG quality 0..1, default 0.85 */
+  /** JPEG quality 0..1, default 0.82 (was 0.85) */
   jpegQuality?: number;
-  /** target max side length in px, default 1280 (keeps upload small) */
+  /** target max side length in px, default 1024 (was 1280) — shrinks the
+   *  photo payload from 2-5 MB down to ~120-350 KB, cuts upload time 3-5×
+   *  on shop's flaky mobile Wi-Fi. */
   maxSide?: number;
 }
 
@@ -26,8 +29,8 @@ type Facing = "user" | "environment";
 export default function CameraCapture({
   onCapture,
   onCancel,
-  jpegQuality = 0.85,
-  maxSide = 1280,
+  jpegQuality = 0.82,
+  maxSide = 1024,
 }: Props) {
   const t = useT();
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -40,6 +43,13 @@ export default function CameraCapture({
   const [snapshotBlob, setSnapshotBlob] = useState<Blob | null>(null);
   const [needsFallback, setNeedsFallback] = useState(false);
   const [starting, setStarting] = useState(true);
+  // Guards the "Отправить" button from double-click / iOS Safari
+  // resubmission — the second click was flooding the backend with the
+  // same photo and triggering the anti-duplicate reject on the second
+  // request. First-click wins, further clicks are ignored until parent
+  // resets `snapshot` (retake) or the modal closes.
+  const [submitting, setSubmitting] = useState(false);
+  const [pickerBusy, setPickerBusy] = useState(false);
 
   const stopStream = useCallback(() => {
     if (streamRef.current) {
@@ -133,24 +143,45 @@ export default function CameraCapture({
   }, [facing, jpegQuality, maxSide, t]);
 
   const submitSnapshot = () => {
-    if (!snapshotBlob) return;
+    if (!snapshotBlob || submitting) return;
+    setSubmitting(true);
     const file = new File([snapshotBlob], `selfie-${Date.now()}.jpg`, {
       type: "image/jpeg",
     });
     stopStream();
     onCapture(file);
+    // We deliberately don't clear `submitting` here — the parent unmounts
+    // this component on success/failure. Keeping it true prevents a
+    // double-fire if unmount is racy.
   };
 
   const retake = () => {
     if (snapshot) URL.revokeObjectURL(snapshot);
     setSnapshot(null);
     setSnapshotBlob(null);
+    setSubmitting(false);
   };
 
-  const onFilePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onFilePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
-    if (!f) return;
-    onCapture(f);
+    if (!f || pickerBusy) return;
+    setPickerBusy(true);
+    try {
+      // Native picker path bypasses our canvas downscale — real phone
+      // photos are 2-5 MB, so compress before firing `onCapture` too.
+      const compressed = await compressImageFile(f, {
+        maxSide,
+        quality: jpegQuality,
+      });
+      onCapture(compressed);
+    } catch (err) {
+      console.warn("file compress failed, sending raw", err);
+      onCapture(f);
+    } finally {
+      // e.target.value = "" so picking the same file again re-fires.
+      e.target.value = "";
+      setPickerBusy(false);
+    }
   };
 
   return (
@@ -257,9 +288,10 @@ export default function CameraCapture({
             </button>
             <button
               onClick={submitSnapshot}
-              className="inline-flex items-center gap-2 rounded-full px-6 py-3.5 bg-white text-black font-bold"
+              disabled={submitting}
+              className="inline-flex items-center gap-2 rounded-full px-6 py-3.5 bg-white text-black font-bold disabled:opacity-60"
             >
-              {t("camera.submit")}
+              {submitting ? t("camera.sending") : t("camera.submit")}
             </button>
           </>
         ) : !needsFallback ? (

@@ -112,7 +112,7 @@ def _detect_with_mediapipe(image_bytes: bytes) -> Optional[bool]:
         import numpy as np
         from PIL import Image
 
-        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        img = _load_image_downscaled(image_bytes, max_side=640).convert("RGB")
         arr = np.asarray(img)
         if is_tasks_api:
             import mediapipe as mp  # type: ignore
@@ -177,6 +177,29 @@ def detect_face(image_bytes: bytes) -> bool:
     return True
 
 
+def _load_image_downscaled(image_bytes: bytes, *, max_side: int):
+    """
+    Load an image and shrink it to ≤ `max_side` px on the longer side.
+
+    Uses PIL's JPEG draft mode (IDCT-scale during decode) when available
+    — that's an actual "less work" optimisation, not just a post-load
+    resize. On non-JPEG inputs falls through to `thumbnail()` which is
+    an in-place downscale. Never returns None.
+    """
+    from PIL import Image
+
+    img = Image.open(io.BytesIO(image_bytes))
+    # `draft` is JPEG-only and a no-op elsewhere (PNG/HEIC/...). Wrapped
+    # in try because ancient Pillow versions raise on non-JPEG inputs.
+    try:
+        img.draft("RGB", (max_side, max_side))
+    except Exception:
+        pass
+    if max(img.size) > max_side:
+        img.thumbnail((max_side, max_side), Image.BILINEAR)
+    return img
+
+
 def perceptual_hash(image_bytes: bytes) -> str:
     """
     Return a 16-char hex perceptual hash of the image.
@@ -184,14 +207,18 @@ def perceptual_hash(image_bytes: bytes) -> str:
     Uses `imagehash.phash` (64-bit DCT hash). Returns empty string on
     failure so the caller can just skip anti-dup checks rather than
     crashing the scan.
+
+    Perf note: phones may upload 2-5 MB JPEGs (client compression
+    fallback path). We decode via JPEG draft mode to ≤ 512 px — real
+    "less work" during decode, not a redundant post-load resize.
+    `imagehash.phash` internally resizes to 32×32, so 512 is plenty.
     """
     if not image_bytes:
         return ""
     try:
         import imagehash  # type: ignore
-        from PIL import Image
 
-        img = Image.open(io.BytesIO(image_bytes))
+        img = _load_image_downscaled(image_bytes, max_side=512)
         return str(imagehash.phash(img))
     except Exception as exc:
         logger.warning("perceptual_hash failed: %s", exc)
@@ -214,13 +241,22 @@ def is_photo_recent_duplicate(
     *,
     operator,
     phash: str,
-    hours: int = 24,
+    hours: int = 1,
     hamming_threshold: int = 5,
 ) -> bool:
     """
     Return True if this operator uploaded a "same enough" photo within
     the last `hours` window (checkin or checkout), by Hamming distance
     on their phash set.
+
+    Default window was 24h — narrowed to 1h in 2026-08-15. Reasoning:
+    real "replay the same selfie" attacks always happen within seconds
+    (screenshot the previous scan and re-upload). Beyond an hour, a
+    slightly rotated/re-lit re-take is legit — operator forgot to check
+    out and is now checking out on a similar-looking selfie. Combined
+    with the 30-second idempotency check in `process_attendance_event`,
+    genuine double-tap re-submits are absorbed silently, and the 1h
+    window still catches all realistic replay abuse.
     """
     if not phash:
         return False
@@ -241,6 +277,43 @@ def is_photo_recent_duplicate(
     return False
 
 
+def find_recent_matching_log(
+    *,
+    operator,
+    phash: str,
+    seconds: int = 30,
+    hamming_threshold: int = 5,
+):
+    """
+    Return the most recent AttendanceLog whose checkin OR checkout phash
+    matches the given `phash` within the last `seconds` for this
+    operator, or None. Used for double-submit / debounce idempotency —
+    if a user rapid-clicks «Отправить», the same photo (identical phash)
+    hits the backend twice; instead of rejecting the second as "duplicate
+    photo", we return the *original* successful log so the second POST
+    completes with the same happy-path payload.
+    """
+    if not phash:
+        return None
+
+    from .models import AttendanceLog
+
+    since = timezone.now() - dt.timedelta(seconds=seconds)
+    logs = (
+        AttendanceLog.objects.filter(operator=operator)
+        .filter(checked_in_at__gte=since)
+        .order_by("-checked_in_at")
+    )
+    for log in logs:
+        cin_h = log.checkin_photo_phash or ""
+        cout_h = log.checkout_photo_phash or ""
+        if cin_h and _hex_hamming(cin_h, phash) <= hamming_threshold:
+            return log
+        if cout_h and _hex_hamming(cout_h, phash) <= hamming_threshold:
+            return log
+    return None
+
+
 class PhotoValidationError(Exception):
     """Raised when a photo fails face detection or duplicate check."""
 
@@ -255,11 +328,22 @@ def validate_and_hash_photo(
     image_bytes: bytes,
     require_face: bool,
     max_size_mb: int,
+    skip_duplicate_check: bool = False,
+    precomputed_phash: str | None = None,
 ) -> str:
     """
     Run the full photo-validation pipeline. Returns the perceptual hash on
     success, raises PhotoValidationError otherwise. Keeps the code path
     identical for HTTP scan endpoint and Telegram bot.
+
+    `skip_duplicate_check` — kill-switch used by the idempotency layer in
+    `process_attendance_event`: the caller has already matched the phash
+    to a recent successful log and is returning cached data, so we don't
+    want the duplicate-check to fire (it would be a false positive).
+
+    `precomputed_phash` — reuse a hash the caller already computed (for
+    example, the idempotency check computes it too). Saves ~30-100ms on
+    each photo submit.
     """
     if not image_bytes:
         raise PhotoValidationError("photo_missing", "Фото не приложено")
@@ -276,8 +360,12 @@ def validate_and_hash_photo(
             "no_face", "На фото не найдено лицо, попробуйте ещё раз"
         )
 
-    phash = perceptual_hash(image_bytes)
-    if phash and is_photo_recent_duplicate(operator=operator, phash=phash):
+    phash = precomputed_phash if precomputed_phash is not None else perceptual_hash(image_bytes)
+    if (
+        not skip_duplicate_check
+        and phash
+        and is_photo_recent_duplicate(operator=operator, phash=phash)
+    ):
         raise PhotoValidationError(
             "photo_duplicate",
             "Эта фотка уже использовалась, сделайте новую",
