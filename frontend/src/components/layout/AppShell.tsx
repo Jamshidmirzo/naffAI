@@ -36,6 +36,7 @@ function useManagerGroups(t: (k: string) => string, showPhotos: boolean): Sideba
       title: t("sidebar.attendance"),
       items: [
         { to: "/attendance/today", label: t("nav.attendance_today") },
+        { to: "/attendance/kiosk", label: t("nav.attendance_kiosk") },
         { to: "/attendance/report", label: t("nav.attendance_report") },
         // Только для роли `superadmin` — расширенная галерея всех
         // фото check-in/out. Обычный менеджер видит фото inline на

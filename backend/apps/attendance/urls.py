@@ -13,6 +13,7 @@ from .apis import (
     OperatorQrAttendanceApi,
     OperatorQrRotateAttendanceApi,
     OperatorQrPngAttendanceApi,
+    OperatorQrTokenAttendanceApi,
     SettingsAttendanceApi,
     ManualCloseAttendanceApi,
 )
@@ -46,6 +47,11 @@ urlpatterns = [
         "operators/<int:operator_id>/qr.png",
         OperatorQrPngAttendanceApi.as_view(),
         name="attendance-operator-qr-png",
+    ),
+    path(
+        "operators/<int:operator_id>/qr-token/",
+        OperatorQrTokenAttendanceApi.as_view(),
+        name="attendance-operator-qr-token",
     ),
     path("settings/", SettingsAttendanceApi.as_view(), name="attendance-settings"),
     path("logs/<int:log_id>/close/", ManualCloseAttendanceApi.as_view(), name="attendance-manual-close"),

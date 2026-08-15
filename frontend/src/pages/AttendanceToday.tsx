@@ -4,9 +4,11 @@ import { Link } from "react-router-dom";
 import {
   AlertTriangle,
   Calendar,
+  Camera,
   Clock,
   LogOut as LogOutIcon,
   Moon,
+  RefreshCw,
   UserX,
   X,
 } from "lucide-react";
@@ -122,8 +124,17 @@ function PhotoThumb({ url, alt }: { url: string | null; alt: string }) {
   );
 }
 
+// Tashkent-local YYYY-MM-DD — критично! Backend считает «день» по
+// таймзоне Ташкента, а `new Date().toISOString()` даёт UTC. При UTC ≤
+// 19:00 (Tashkent 00:00) день совпадает, но поздним вечером Ташкента
+// мы бы запрашивали УЖЕ ЗАВТРАШНИЙ день по UTC → фильтр показывал бы
+// пустой отчёт. Из-за этого менеджер вечером видел «никто не пришёл».
+function tashkentLocalDate(): string {
+  return new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tashkent" });
+}
+
 export default function AttendanceToday() {
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(tashkentLocalDate);
   const [closingLog, setClosingLog] = useState<{ id: number; name: string } | null>(null);
   const [closeNote, setCloseNote] = useState("");
   const [tick, setTickState] = useState(0);
@@ -131,11 +142,20 @@ export default function AttendanceToday() {
   const t = useT();
   usePageHeader({ title: t("attendance.today.title"), subtitle: t("attendance.today.subtitle") }, [t("attendance.today.title")]);
 
-  const { data: report, isLoading, refetch } = useQuery<AttendanceReport>({
+  const {
+    data: report,
+    isLoading,
+    isFetching,
+    dataUpdatedAt,
+    refetch,
+  } = useQuery<AttendanceReport>({
     queryKey: ["attendance-report", date],
     queryFn: () =>
       api.get<AttendanceReport>(`/attendance/report/?date=${date}`).then((r) => r.data),
     refetchInterval: 30_000,
+    // Возвращение из другой вкладки/окна → сразу обновить, чтобы
+    // менеджер не смотрел на устаревший срез.
+    refetchOnWindowFocus: true,
   });
 
   // Tick every 60s so live durations update.
@@ -222,12 +242,14 @@ export default function AttendanceToday() {
             </div>
           </div>
           <div className="flex flex-col gap-2 items-end">
-            <Link to="/kiosk" target="_blank">
-              <Button>{t("attendance.today.open_scan")}</Button>
+            <Link to="/attendance/kiosk">
+              <Button>
+                <Camera className="w-3.5 h-3.5" /> {t("attendance.today.open_kiosk")}
+              </Button>
             </Link>
-            <Button variant="ghost" onClick={() => toast(t("attendance.today.png_soon"))}>
-              {t("op_detail.download_png")}
-            </Button>
+            <Link to="/kiosk" target="_blank">
+              <Button variant="ghost">{t("attendance.today.open_scan")}</Button>
+            </Link>
           </div>
         </div>
       </section>
@@ -259,8 +281,9 @@ export default function AttendanceToday() {
         </section>
       )}
 
-      {/* Date filter */}
-      <section className="flex items-center gap-3">
+      {/* Date filter + last-updated line so the manager always знает,
+          что смотрит на свежий срез (auto-refresh 30 s + on-focus). */}
+      <section className="flex items-center gap-3 flex-wrap">
         <span className="nf-col flex items-center gap-1.5">
           <Calendar className="w-3.5 h-3.5" /> {t("common.date")}:
         </span>
@@ -270,6 +293,28 @@ export default function AttendanceToday() {
           onChange={(e) => setDate(e.target.value)}
           className="nf-input py-2 px-3.5 w-auto text-[13px]"
         />
+        <button
+          type="button"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="inline-flex items-center gap-1.5 text-[12px] text-muted hover:text-text transition disabled:opacity-50"
+          title={t("attendance.today.refresh")}
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
+          {t("attendance.today.refresh")}
+        </button>
+        {dataUpdatedAt > 0 && (
+          <span className="text-[11.5px] text-muted tabular-nums">
+            {t("attendance.today.updated_at", {
+              t: new Date(dataUpdatedAt).toLocaleTimeString("ru-RU", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                timeZone: "Asia/Tashkent",
+              }),
+            })}
+          </span>
+        )}
       </section>
 
       {/* Three columns: on-shift / gone / not-come */}

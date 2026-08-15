@@ -524,6 +524,52 @@ class OperatorQrAttendanceApi(APIView):
         )
 
 
+class OperatorQrTokenAttendanceApi(APIView):
+    """
+    Return the raw HMAC-signed QR payload + a scannable URL for a given
+    operator. Used by the manager Kiosk page:
+
+    - `payload` — the token string that fits `POST /scan-with-photo/` as
+      `qr_payload` when the manager captures a photo directly from a
+      laptop/desktop webcam (no round-trip through the phone).
+    - `url`     — the same payload wrapped as
+      `${QR_CHECKIN_URL}?qr=<payload>`, ready to render as a QR that the
+      operator scans with their phone camera — opens `/scan?qr=` on the
+      phone, which then does check-in without login (public HMAC flow).
+
+    Manager-gated (superadmin included via SENIOR_ROLES). This endpoint
+    is intentionally not exposed to operators — they use their own
+    `GET /api/me/attendance-qr.png` and `GET /api/attendance/qr-preview/`
+    for the same purpose.
+    """
+
+    permission_classes = [IsAuthenticated, IsTeamLeadOrManager]
+
+    def get(self, request, operator_id):
+        from django.conf import settings as dj_settings
+        from urllib.parse import quote
+        from .selectors import operator_qr_current_or_create
+        from .services import qr_token_build
+
+        operator = get_object_or_404(Operator, id=operator_id)
+        qr_obj = operator_qr_current_or_create(operator)
+        payload = qr_token_build(operator, qr_obj.nonce)
+
+        base = getattr(dj_settings, "QR_CHECKIN_URL", "").rstrip("/")
+        url = f"{base}?qr={quote(payload, safe='')}" if base else payload
+
+        return Response(
+            {
+                "operator_id": operator.id,
+                "operator_name": operator.full_name,
+                "payload": payload,
+                "url": url,
+                "nonce_prefix": qr_obj.nonce[:6],
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class OperatorQrRotateAttendanceApi(APIView):
     permission_classes = [IsAuthenticated, IsTeamLead]
 
