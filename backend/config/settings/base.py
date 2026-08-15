@@ -214,6 +214,28 @@ CALLBACK_OVERDUE_GRACE_MINUTES = config(
 # (dev only — cameras won't open plain text).
 QR_CHECKIN_URL = config("QR_CHECKIN_URL", default="")
 
+# Whitelist of allowed origins the QR URL may be built from. Both the
+# incoming `Host` header (via `request.get_host()`) and the caller-supplied
+# `?origin=` hint are checked against this list — otherwise we fall back to
+# `QR_CHECKIN_URL`. This prevents an attacker from tricking us into
+# rendering `https://evil.com/scan?qr=…` inside an operator's QR just by
+# forging a Host header. Comma-separated env var; falls back to a sensible
+# default covering prod + demo + localhost dev.
+QR_CHECKIN_ALLOWED_ORIGINS = [
+    o.strip().rstrip("/")
+    for o in config(
+        "QR_CHECKIN_ALLOWED_ORIGINS",
+        default="https://naff.flek.uz,https://demo.naff.flek.uz,http://localhost:5173,http://localhost:8001",
+    ).split(",")
+    if o.strip()
+]
+
+# Trust `X-Forwarded-Host` from our nginx proxy so that `request.get_host()`
+# returns the public hostname the browser actually used (naff.flek.uz vs
+# demo.naff.flek.uz) instead of the internal upstream. Safe because our
+# nginx sits in front of gunicorn and controls this header end-to-end.
+USE_X_FORWARDED_HOST = True
+
 # --- Operator password reversible-encryption keys ---
 # Fernet keys used to (en|de)crypt the plaintext stored in `OperatorSecret`.
 # Generate a key with:

@@ -146,7 +146,12 @@ export default function AttendanceKiosk() {
     queryKey: ["kiosk-qr-token", operatorId],
     queryFn: () =>
       api
-        .get<QrToken>(`/attendance/operators/${operatorId}/qr-token/`)
+        // Pass current SPA origin so the QR URL points at whichever host
+        // the manager is actually looking at (prod vs demo), regardless
+        // of where the API base URL is pinned.
+        .get<QrToken>(`/attendance/operators/${operatorId}/qr-token/`, {
+          params: { origin: window.location.origin },
+        })
         .then((r) => r.data),
     enabled: !!operatorId,
     staleTime: 60_000,

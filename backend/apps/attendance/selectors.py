@@ -48,24 +48,77 @@ def operator_qr_current_or_create(operator: Operator) -> OperatorQr:
     return qr
 
 
-def operator_qr_png_bytes(operator: Operator) -> bytes:
+def _origin_allowed(origin: str) -> bool:
+    """Guard against Host-header / origin-hint spoofing.
+
+    Only origins explicitly listed in `QR_CHECKIN_ALLOWED_ORIGINS` are
+    trusted as the base for the scannable QR URL. Everything else falls
+    back to the statically configured `QR_CHECKIN_URL`.
+    """
     from django.conf import settings
 
+    if not origin:
+        return False
+    allowed = getattr(settings, "QR_CHECKIN_ALLOWED_ORIGINS", []) or []
+    return origin.rstrip("/") in {o.rstrip("/") for o in allowed}
+
+
+def build_scan_url(payload: str, *, request=None, origin_hint: str | None = None) -> str:
+    """Wrap the raw HMAC token into a scannable `https://<host>/scan?qr=…`.
+
+    Resolution order (first match wins):
+      1. `origin_hint` (typically `window.location.origin` from the SPA)
+         — required so that a browser sitting on demo.naff.flek.uz gets a
+         QR pointing at demo.naff.flek.uz, even though its API calls hit
+         the prod backend directly.
+      2. `request.get_host()` scheme+host — works when the SPA and the
+         API share the same public domain.
+      3. Static `settings.QR_CHECKIN_URL` (deploy-time default).
+      4. Raw payload (dev-only fallback so a plain `printenv` still
+         encodes something scannable).
+
+    Only origins in `QR_CHECKIN_ALLOWED_ORIGINS` are trusted for steps 1
+    and 2 to prevent an attacker from injecting a phishing URL into an
+    operator's QR by forging a `Host` header or `?origin=` query param.
+    """
+    from django.conf import settings
+    from urllib.parse import quote
+
+    base = ""
+
+    # 1. explicit origin from the SPA (window.location.origin)
+    if origin_hint and _origin_allowed(origin_hint):
+        base = f"{origin_hint.rstrip('/')}/scan"
+
+    # 2. host of the current API request (respects USE_X_FORWARDED_HOST)
+    if not base and request is not None:
+        try:
+            scheme = "https" if request.is_secure() else "http"
+            host = request.get_host()
+            candidate_origin = f"{scheme}://{host}"
+            if _origin_allowed(candidate_origin):
+                base = request.build_absolute_uri("/scan")
+        except Exception:
+            base = ""
+
+    # 3. static configured URL
+    if not base:
+        base = getattr(settings, "QR_CHECKIN_URL", "").rstrip("/")
+
+    if not base:
+        # 4. dev fallback — raw token, phone camera won't open it but
+        # unit tests / management commands still succeed.
+        return payload
+
+    return f"{base.rstrip('/')}?qr={quote(payload, safe='')}"
+
+
+def operator_qr_png_bytes(operator: Operator, *, request=None, origin_hint: str | None = None) -> bytes:
     qr_obj = operator_qr_current_or_create(operator)
     from .services import qr_token_build
 
     payload = qr_token_build(operator, qr_obj.nonce)
-
-    # Wrap the raw HMAC token into a scannable URL so a phone camera
-    # opens the /scan page directly. Falls back to the raw token if
-    # QR_CHECKIN_URL isn't configured.
-    base = getattr(settings, "QR_CHECKIN_URL", "").rstrip("/")
-    if base:
-        from urllib.parse import quote
-
-        content = f"{base}?qr={quote(payload, safe='')}"
-    else:
-        content = payload
+    content = build_scan_url(payload, request=request, origin_hint=origin_hint)
 
     # Generate QR Code image bytes
     qr = qrcode.QRCode(version=1, box_size=10, border=4)

@@ -421,7 +421,16 @@ function QrScanModal({
   const { data: token, isPending, isError, error } = useQuery<MeQrToken>({
     queryKey: ["me-attendance-qr-token"],
     queryFn: () =>
-      api.get<MeQrToken>("/attendance/me/qr-token/").then((r) => r.data),
+      api
+        // Pass current SPA origin so the backend builds the QR against
+        // this host (demo.naff.flek.uz vs naff.flek.uz) instead of the
+        // static QR_CHECKIN_URL — the API base itself is fixed to prod
+        // and can't be used as a hint. Backend validates against a
+        // whitelist to prevent phishing-URL injection.
+        .get<MeQrToken>("/attendance/me/qr-token/", {
+          params: { origin: window.location.origin },
+        })
+        .then((r) => r.data),
     staleTime: 60_000,
     retry: false,
   });

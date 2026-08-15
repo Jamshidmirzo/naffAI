@@ -343,7 +343,10 @@ class MeQrAttendanceApi(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        png_bytes = operator_qr_png_bytes(profile.operator)
+        origin_hint = request.query_params.get("origin", "").strip() or None
+        png_bytes = operator_qr_png_bytes(
+            profile.operator, request=request, origin_hint=origin_hint
+        )
         response = HttpResponse(png_bytes, content_type="image/png")
         response["Cache-Control"] = "private, no-store"
         response["Content-Disposition"] = "inline; filename=qr.png"
@@ -371,9 +374,7 @@ class MeQrTokenAttendanceApi(APIView):
     permission_classes = [IsAuthenticated, IsAuthenticatedAnyRole]
 
     def get(self, request):
-        from django.conf import settings as dj_settings
-        from urllib.parse import quote
-        from .selectors import operator_qr_current_or_create
+        from .selectors import operator_qr_current_or_create, build_scan_url
         from .services import qr_token_build
 
         profile = getattr(request.user, "profile", None)
@@ -387,8 +388,8 @@ class MeQrTokenAttendanceApi(APIView):
         qr_obj = operator_qr_current_or_create(operator)
         payload = qr_token_build(operator, qr_obj.nonce)
 
-        base = getattr(dj_settings, "QR_CHECKIN_URL", "").rstrip("/")
-        url = f"{base}?qr={quote(payload, safe='')}" if base else payload
+        origin_hint = request.query_params.get("origin", "").strip() or None
+        url = build_scan_url(payload, request=request, origin_hint=origin_hint)
 
         return Response(
             {
@@ -598,17 +599,15 @@ class OperatorQrTokenAttendanceApi(APIView):
     permission_classes = [IsAuthenticated, IsTeamLeadOrManager, IsAttendancePinVerified]
 
     def get(self, request, operator_id):
-        from django.conf import settings as dj_settings
-        from urllib.parse import quote
-        from .selectors import operator_qr_current_or_create
+        from .selectors import operator_qr_current_or_create, build_scan_url
         from .services import qr_token_build
 
         operator = get_object_or_404(Operator, id=operator_id)
         qr_obj = operator_qr_current_or_create(operator)
         payload = qr_token_build(operator, qr_obj.nonce)
 
-        base = getattr(dj_settings, "QR_CHECKIN_URL", "").rstrip("/")
-        url = f"{base}?qr={quote(payload, safe='')}" if base else payload
+        origin_hint = request.query_params.get("origin", "").strip() or None
+        url = build_scan_url(payload, request=request, origin_hint=origin_hint)
 
         return Response(
             {
@@ -644,7 +643,10 @@ class OperatorQrPngAttendanceApi(APIView):
 
     def get(self, request, operator_id):
         operator = get_object_or_404(Operator, id=operator_id)
-        png_bytes = operator_qr_png_bytes(operator)
+        origin_hint = request.query_params.get("origin", "").strip() or None
+        png_bytes = operator_qr_png_bytes(
+            operator, request=request, origin_hint=origin_hint
+        )
 
         response = HttpResponse(png_bytes, content_type="image/png")
         response["Cache-Control"] = "private, no-store"
