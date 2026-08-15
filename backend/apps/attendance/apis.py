@@ -41,7 +41,7 @@ from .selectors import (
     operator_qr_png_bytes,
     operator_qr_current,
 )
-from .permissions import IsTeamLeadOrManager
+from .permissions import IsTeamLeadOrManager, IsAttendancePinVerified
 
 
 class AttendanceScanThrottle(AnonRateThrottle):
@@ -403,7 +403,7 @@ class MeQrTokenAttendanceApi(APIView):
 
 
 class ReportAttendanceApi(APIView):
-    permission_classes = [IsAuthenticated, IsTeamLeadOrManager]
+    permission_classes = [IsAuthenticated, IsTeamLeadOrManager, IsAttendancePinVerified]
 
     def get(self, request):
         date_from_str = request.query_params.get("date_from")
@@ -515,7 +515,7 @@ class ReportAttendanceApi(APIView):
 
 
 class OperatorLogsAttendanceApi(APIView):
-    permission_classes = [IsAuthenticated, IsTeamLeadOrManager]
+    permission_classes = [IsAuthenticated, IsTeamLeadOrManager, IsAttendancePinVerified]
 
     def get(self, request, operator_id):
         operator = get_object_or_404(Operator, id=operator_id)
@@ -554,7 +554,7 @@ class OperatorLogsAttendanceApi(APIView):
 
 
 class OperatorQrAttendanceApi(APIView):
-    permission_classes = [IsAuthenticated, IsTeamLeadOrManager]
+    permission_classes = [IsAuthenticated, IsTeamLeadOrManager, IsAttendancePinVerified]
 
     def get(self, request, operator_id):
         operator = get_object_or_404(Operator, id=operator_id)
@@ -595,7 +595,7 @@ class OperatorQrTokenAttendanceApi(APIView):
     for the same purpose.
     """
 
-    permission_classes = [IsAuthenticated, IsTeamLeadOrManager]
+    permission_classes = [IsAuthenticated, IsTeamLeadOrManager, IsAttendancePinVerified]
 
     def get(self, request, operator_id):
         from django.conf import settings as dj_settings
@@ -623,7 +623,7 @@ class OperatorQrTokenAttendanceApi(APIView):
 
 
 class OperatorQrRotateAttendanceApi(APIView):
-    permission_classes = [IsAuthenticated, IsTeamLead]
+    permission_classes = [IsAuthenticated, IsTeamLead, IsAttendancePinVerified]
 
     def post(self, request, operator_id):
         operator = get_object_or_404(Operator, id=operator_id)
@@ -640,7 +640,7 @@ class OperatorQrRotateAttendanceApi(APIView):
 
 
 class OperatorQrPngAttendanceApi(APIView):
-    permission_classes = [IsAuthenticated, IsTeamLeadOrManager]
+    permission_classes = [IsAuthenticated, IsTeamLeadOrManager, IsAttendancePinVerified]
 
     def get(self, request, operator_id):
         operator = get_object_or_404(Operator, id=operator_id)
@@ -653,7 +653,7 @@ class OperatorQrPngAttendanceApi(APIView):
 
 
 class SettingsAttendanceApi(APIView):
-    permission_classes = [IsAuthenticated, IsTeamLead]
+    permission_classes = [IsAuthenticated, IsTeamLead, IsAttendancePinVerified]
 
     def _serialize(self, settings_obj) -> dict:
         return {
@@ -724,7 +724,7 @@ class PhotosGalleryAttendanceApi(APIView):
     получит 403.
     """
 
-    permission_classes = [IsAuthenticated, IsSuperadminOrManager]
+    permission_classes = [IsAuthenticated, IsSuperadminOrManager, IsAttendancePinVerified]
 
     def get(self, request):
         # Parse dates
@@ -804,7 +804,7 @@ class PhotosGalleryAttendanceApi(APIView):
 
 
 class ManualCloseAttendanceApi(APIView):
-    permission_classes = [IsAuthenticated, IsTeamLeadOrManager]
+    permission_classes = [IsAuthenticated, IsTeamLeadOrManager, IsAttendancePinVerified]
 
     def post(self, request, log_id):
         log = get_object_or_404(AttendanceLog, id=log_id)

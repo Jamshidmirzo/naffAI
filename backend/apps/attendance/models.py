@@ -137,6 +137,27 @@ class AttendanceLog(TimestampedModel):
         return int((self.checked_out_at - self.checked_in_at).total_seconds())
 
 
+class AttendancePinSession(models.Model):
+    """
+    Отметка «менеджер ввёл attendance-PIN в этой сессии».
+
+    Один row per User. При успешном verify обновляем `verified_at=now()`.
+    Permission-класс `IsAttendancePinVerified` пропускает менеджера, если
+    `now() - verified_at <= PIN_TTL` (30 минут). Superadmin PIN'a не имеет —
+    его сессия здесь не нужна.
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="attendance_pin_session",
+    )
+    verified_at = models.DateTimeField()
+
+    def __str__(self) -> str:
+        return f"pin_session<{self.user_id}>"
+
+
 class AttendanceSettings(models.Model):
     """Singleton configuration storing schedule and telegram toggles."""
 

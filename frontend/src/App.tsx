@@ -42,6 +42,7 @@ import Catalog from "./pages/Catalog";
 import CatalogBanks from "./pages/CatalogBanks";
 import { useAuth } from "./store/auth";
 import { RoleGate, normaliseRole } from "./components/RoleGate";
+import PinGate from "./components/PinGate";
 import { ToastHost } from "./components/ui";
 
 function Protected({ children }: { children: React.ReactNode }) {
@@ -109,10 +110,10 @@ export default function App() {
           <Route path="/audit" element={<RoleGate allow={["manager"]}><Audit /></RoleGate>} />
           <Route path="/ai-chat" element={<RoleGate allow={["manager"]}><AIChat /></RoleGate>} />
           <Route path="/marketing" element={<RoleGate allow={["manager"]}><Marketing /></RoleGate>} />
-          <Route path="/attendance/today" element={<RoleGate allow={["manager"]}><AttendanceToday /></RoleGate>} />
-          <Route path="/attendance/report" element={<RoleGate allow={["manager"]}><AttendanceReport /></RoleGate>} />
-          <Route path="/attendance/photos" element={<RoleGate allow={["manager"]}><AttendancePhotos /></RoleGate>} />
-          <Route path="/attendance/kiosk" element={<RoleGate allow={["manager"]}><AttendanceKiosk /></RoleGate>} />
+          <Route path="/attendance/today" element={<RoleGate allow={["manager"]}><PinGate><AttendanceToday /></PinGate></RoleGate>} />
+          <Route path="/attendance/report" element={<RoleGate allow={["manager"]}><PinGate><AttendanceReport /></PinGate></RoleGate>} />
+          <Route path="/attendance/photos" element={<RoleGate allow={["manager"]}><PinGate><AttendancePhotos /></PinGate></RoleGate>} />
+          <Route path="/attendance/kiosk" element={<RoleGate allow={["manager"]}><PinGate><AttendanceKiosk /></PinGate></RoleGate>} />
         </Route>
       </Routes>
     </>

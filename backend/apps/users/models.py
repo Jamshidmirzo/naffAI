@@ -63,6 +63,16 @@ class Profile(models.Model):
         blank=True,
         help_text="Soft-delete marker for operator accounts (set together with User.is_active=False).",
     )
+    # 2026-08-15: attendance section PIN-gate. Manager вводит 4-значный PIN
+    # при входе в attendance-раздел (фото сотрудников), чтобы другой менеджер
+    # на общем компе не увидел чужие фото. Хранится хеш (make_password),
+    # сброс — только superadmin. Superadmin PIN не требуется.
+    attendance_pin_hash = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        help_text="Django password-hash 4-значного PIN'a. Пусто = PIN не задан.",
+    )
 
     def __str__(self) -> str:
         return f"{self.user.username} ({self.get_role_display()})"

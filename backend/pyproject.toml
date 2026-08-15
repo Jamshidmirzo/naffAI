@@ -64,6 +64,9 @@ quote-style = "double"
 DJANGO_SETTINGS_MODULE = "config.settings.test"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
 addopts = "-ra --strict-markers"
+markers = [
+    "pin_gate: тесты самого attendance-PIN-gate — conftest НЕ мокает сессию",
+]
 
 [tool.mypy]
 python_version = "3.12"

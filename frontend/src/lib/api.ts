@@ -26,6 +26,13 @@ api.interceptors.response.use(
   (r) => r,
   (err) => {
     if (err.response?.status === 401) {
+      // Специальный код `pin_required` — это НЕ разлогин, а signal
+      // фронту показать PIN-модалку. Никакой очистки localStorage,
+      // никакого редиректа. PinGate сам обработает.
+      const body = err.response?.data as { code?: string } | undefined;
+      if (body?.code === "pin_required") {
+        return Promise.reject(err);
+      }
       localStorage.removeItem("naffai_token");
       localStorage.removeItem("naffai_username");
       localStorage.removeItem("naffai_role");

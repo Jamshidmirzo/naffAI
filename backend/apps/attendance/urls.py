@@ -18,6 +18,12 @@ from .apis import (
     SettingsAttendanceApi,
     ManualCloseAttendanceApi,
 )
+from .pin_apis import (
+    PinStatusApi,
+    PinSetApi,
+    PinVerifyApi,
+    PinResetApi,
+)
 
 urlpatterns = [
     path("scan/", ScanAttendanceApi.as_view(), name="attendance-scan"),
@@ -57,6 +63,15 @@ urlpatterns = [
     ),
     path("settings/", SettingsAttendanceApi.as_view(), name="attendance-settings"),
     path("logs/<int:log_id>/close/", ManualCloseAttendanceApi.as_view(), name="attendance-manual-close"),
+    # PIN-gate — статус / установка / подтверждение / сброс.
+    path("pin/status/", PinStatusApi.as_view(), name="attendance-pin-status"),
+    path("pin/set/", PinSetApi.as_view(), name="attendance-pin-set"),
+    path("pin/verify/", PinVerifyApi.as_view(), name="attendance-pin-verify"),
+    path(
+        "pin/reset/<int:profile_id>/",
+        PinResetApi.as_view(),
+        name="attendance-pin-reset",
+    ),
 ]
 
 # Profile-nested URL mounted under `/api/me/`
