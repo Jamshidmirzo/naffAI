@@ -64,14 +64,12 @@ urlpatterns = [
     path("settings/", SettingsAttendanceApi.as_view(), name="attendance-settings"),
     path("logs/<int:log_id>/close/", ManualCloseAttendanceApi.as_view(), name="attendance-manual-close"),
     # PIN-gate — статус / установка / подтверждение / сброс.
+    # PIN глобальный (один на всех менеджеров), set/reset — только
+    # superadmin. См. `apps.attendance.pin_services`.
     path("pin/status/", PinStatusApi.as_view(), name="attendance-pin-status"),
     path("pin/set/", PinSetApi.as_view(), name="attendance-pin-set"),
     path("pin/verify/", PinVerifyApi.as_view(), name="attendance-pin-verify"),
-    path(
-        "pin/reset/<int:profile_id>/",
-        PinResetApi.as_view(),
-        name="attendance-pin-reset",
-    ),
+    path("pin/reset/", PinResetApi.as_view(), name="attendance-pin-reset"),
 ]
 
 # Profile-nested URL mounted under `/api/me/`

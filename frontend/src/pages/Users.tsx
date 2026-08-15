@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, KeyRound, LockKeyholeOpen, Plus, ShieldOff, Trash2, UserCog } from "lucide-react";
+import { Copy, KeyRound, Plus, ShieldOff, Trash2, UserCog } from "lucide-react";
 import { api } from "../lib/api";
 import {
   Button,
@@ -11,7 +11,7 @@ import {
 } from "../components/ui";
 import { usePageHeader } from "../store/page";
 import { useAuth } from "../store/auth";
-import { isSuperadmin, normaliseRole } from "../components/RoleGate";
+import { normaliseRole } from "../components/RoleGate";
 import { useT } from "../lib/i18n";
 import { apiErrorMessage } from "../lib/api-types";
 
@@ -50,8 +50,6 @@ export default function Users() {
   const qc = useQueryClient();
   const t = useT();
   const meUsername = useAuth((s) => s.username);
-  const rawRole = useAuth((s) => s.role);
-  const iAmSuperadmin = isSuperadmin(rawRole);
 
   usePageHeader({ title: t("nav.users") }, [t("nav.users")]);
 
@@ -67,7 +65,6 @@ export default function Users() {
   const [credsModal, setCredsModal] = useState<Creds | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<UserRow | null>(null);
   const [confirmReset, setConfirmReset] = useState<UserRow | null>(null);
-  const [confirmPinReset, setConfirmPinReset] = useState<UserRow | null>(null);
 
   const usersQ = useQuery<UserRow[]>({
     queryKey: ["users"],
@@ -113,18 +110,6 @@ export default function Users() {
       qc.invalidateQueries({ queryKey: ["users"] });
       setConfirmDelete(null);
       toast.success(t("users.user_deactivated"));
-    },
-    onError: (err: unknown) => toast.error(apiErrorMessage(err)),
-  });
-
-  const pinResetMut = useMutation({
-    // Endpoint принимает `profile_id` в URL, но безопасно упасть на
-    // `user_id` — backend умеет и то, и другое.
-    mutationFn: (user_id: number) =>
-      api.post(`/attendance/pin/reset/${user_id}/`),
-    onSuccess: () => {
-      setConfirmPinReset(null);
-      toast.success(t("pin.reset_ok"));
     },
     onError: (err: unknown) => toast.error(apiErrorMessage(err)),
   });
@@ -220,16 +205,6 @@ export default function Users() {
                     >
                       <KeyRound className="w-3.5 h-3.5" /> {t("common.password")}
                     </button>
-                    {iAmSuperadmin && !isMe && (
-                      <button
-                        onClick={() => setConfirmPinReset(u)}
-                        className="nf-btn nf-btn--ghost"
-                        style={{ padding: "6px 10px", fontSize: 12 }}
-                        title={t("pin.reset_btn_title")}
-                      >
-                        <LockKeyholeOpen className="w-3.5 h-3.5" /> {t("pin.reset_btn")}
-                      </button>
-                    )}
                     {!isMe && (
                       <button
                         onClick={() => setConfirmDelete(u)}
@@ -431,34 +406,6 @@ export default function Users() {
         )}
       </Modal>
 
-      {/* Confirm PIN reset (superadmin only) */}
-      <Modal
-        open={!!confirmPinReset}
-        onClose={() => setConfirmPinReset(null)}
-        width={420}
-      >
-        {confirmPinReset && (
-          <div className="p-7">
-            <div className="text-[18px] font-semibold tracking-tight flex items-center gap-2">
-              <LockKeyholeOpen className="w-4 h-4" /> {t("pin.reset_q")}
-            </div>
-            <div className="text-[13px] text-muted mt-2">
-              {t("pin.reset_hint_confirm", { name: confirmPinReset.username })}
-            </div>
-            <div className="mt-6 flex gap-2 justify-end">
-              <Button variant="ghost" onClick={() => setConfirmPinReset(null)}>
-                {t("common.cancel")}
-              </Button>
-              <Button
-                onClick={() => pinResetMut.mutate(confirmPinReset.id)}
-                disabled={pinResetMut.isPending}
-              >
-                {pinResetMut.isPending ? "…" : t("pin.reset_btn")}
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
     </div>
   );
 }

@@ -191,6 +191,29 @@ class AttendanceSettings(models.Model):
         default=5,
         help_text="Лимит размера фото в мегабайтах",
     )
+    # 2026-08-15: global attendance PIN. Один общий PIN на всех менеджеров —
+    # ставит и сбрасывает только суперадмин. Хеш (make_password), пустой →
+    # PIN не задан → менеджеры не могут пройти в раздел, пока superadmin
+    # не задаст. Superadmin PIN'a не требует. См. `apps.attendance.pin_services`.
+    pin_hash = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        help_text="Django password-hash 4-значного глобального PIN'a. Пусто = PIN не задан.",
+    )
+    pin_updated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Момент последнего set/reset глобального PIN'a.",
+    )
+    pin_updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        help_text="Superadmin, задавший/сбросивший PIN.",
+    )
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

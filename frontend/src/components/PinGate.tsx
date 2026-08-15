@@ -2,27 +2,28 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AxiosError } from "axios";
-import { KeyRound, ShieldCheck } from "lucide-react";
+import { LockKeyhole, ShieldAlert, ShieldCheck } from "lucide-react";
 import { api } from "../lib/api";
 import { Button, toast } from "./ui";
 import { useT } from "../lib/i18n";
 import { apiErrorMessage } from "../lib/api-types";
 
 /**
- * Обёртка для attendance-раздела.
+ * PIN-обёртка для attendance-раздела (2026-08-15 global-PIN redesign).
  *
- * Логика:
- * - `superadmin` — рендерим children сразу, PIN не нужен.
- * - `manager / team_lead` без PIN — форма «Задайте PIN» → POST /set/ →
- *   render children.
- * - `manager / team_lead` с PIN, но без активной сессии — форма
- *   «Введите PIN» → POST /verify/ → render children.
+ * Модель: **один общий PIN на всех менеджеров**, ставит и сбрасывает
+ * только superadmin (через /settings/). Логика ветвления:
+ *
+ * - `superadmin` — рендерим children сразу (bypass, PIN не нужен).
+ * - `manager / team_lead` + PIN ещё не задан суперадмином — сообщение
+ *   «Обратитесь к супер-админу». Формы «задайте PIN» тут нет.
+ * - `manager / team_lead` + PIN задан, но personal-сессия истекла /
+ *   отсутствует — форма «Введите PIN» → POST /verify/ → children.
  * - Активная сессия (< 30 мин) — render children; за минуту до
  *   истечения показываем toast-предупреждение.
- * - Если API отдаст 401 pin_required где-то посреди работы, глобальный
- *   axios-interceptor кинет ошибку без разлогина; TanStack-запросы будут
- *   ретраиться после успешного verify (мы invalidate'ним всё после
- *   verify).
+ * - 401 pin_required где-то посреди работы: глобальный axios-interceptor
+ *   не разлогинивает; TanStack-запросы ретраятся после успешного verify
+ *   (мы invalidate'ним всё после verify).
  */
 
 interface PinStatus {
@@ -32,6 +33,8 @@ interface PinStatus {
   pin_verified: boolean;
   expires_at: string | null;
   ttl_minutes: number;
+  updated_at: string | null;
+  updated_by: string | null;
 }
 
 interface Props {
@@ -43,29 +46,24 @@ export default function PinGate({ children }: Props) {
   const t = useT();
   const location = useLocation();
 
-  // Status refetch каждые 60 сек — на случай истёкшей сессии в другой
-  // вкладке или изменения роли. Стартует сразу, кеш общий по ключу.
   const statusQ = useQuery<PinStatus>({
     queryKey: ["attendance-pin-status"],
     queryFn: () =>
       api.get<PinStatus>("/attendance/pin/status/").then((r) => r.data),
     staleTime: 30_000,
     refetchInterval: 60_000,
-    // При открытии нового attendance-роута фетчим свежий статус — на
-    // случай если в другой вкладке сделали reset.
     refetchOnWindowFocus: true,
   });
 
   // Countdown / expiry warning.
   const warnedRef = useRef(false);
   useEffect(() => {
-    warnedRef.current = false; // сброс при смене статуса
+    warnedRef.current = false;
     if (!statusQ.data?.expires_at) return;
     const expiresMs = new Date(statusQ.data.expires_at).getTime();
     const tick = () => {
       const leftMs = expiresMs - Date.now();
       if (leftMs <= 0) {
-        // Сессия истекла — инвалидируем статус, PinGate покажет форму.
         qc.invalidateQueries({ queryKey: ["attendance-pin-status"] });
       } else if (leftMs <= 60_000 && !warnedRef.current) {
         toast.error(t("pin.session_expires_soon"));
@@ -77,8 +75,6 @@ export default function PinGate({ children }: Props) {
     return () => window.clearInterval(id);
   }, [statusQ.data?.expires_at, qc, t]);
 
-  // Ре-render при смене роута — если пользователь ушёл и вернулся,
-  // пусть покажется актуальная форма без ожидания refetchInterval.
   useEffect(() => {
     qc.invalidateQueries({ queryKey: ["attendance-pin-status"] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -97,100 +93,50 @@ export default function PinGate({ children }: Props) {
   // Superadmin / оператор / кто-угодно без обязательного PIN'a — просто рендер.
   if (!s.pin_required) return <>{children}</>;
 
-  // Menedger без PIN — форма «Задайте PIN».
-  if (!s.has_pin) return <PinSetForm onDone={() => qc.invalidateQueries({ queryKey: ["attendance-pin-status"] })} />;
+  // Manager с PIN, сессия ещё жива — пропускаем.
+  if (s.has_pin && s.pin_verified) return <>{children}</>;
 
-  // Menedger с PIN, сессия ещё жива — пропускаем.
-  if (s.pin_verified) return <>{children}</>;
+  // Manager, PIN ещё не установлен суперадмином — заглушка «обратитесь к суперадмину».
+  if (!s.has_pin) return <PinNotSetNotice />;
 
-  // Menedger с PIN, но сессия просрочена / отсутствует — форма ввода.
+  // Manager, PIN задан, но personal-сессия истекла — форма ввода.
   return (
     <PinEnterForm
       onDone={() => {
         qc.invalidateQueries({ queryKey: ["attendance-pin-status"] });
-        // Инвалидируем все attendance-запросы, чтобы те, что упали в
-        // 401 pin_required, перезапросились.
-        qc.invalidateQueries({ predicate: (q) => {
-          const key = q.queryKey?.[0];
-          return typeof key === "string" && key.startsWith("attendance");
-        }});
+        // Инвалидируем все attendance-запросы, чтобы упавшие в 401
+        // pin_required перезапросились автоматически.
+        qc.invalidateQueries({
+          predicate: (q) => {
+            const key = q.queryKey?.[0];
+            return typeof key === "string" && key.startsWith("attendance");
+          },
+        });
       }}
     />
   );
 }
 
-// ------------------------- SET FORM ----------------------------------------
+// ------------------------- NOTICE (PIN not set) -----------------------------
 
-function PinSetForm({ onDone }: { onDone: () => void }) {
+function PinNotSetNotice() {
   const t = useT();
-  const [pin, setPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  const submit = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    setErr("");
-    if (!/^\d{4}$/.test(pin)) {
-      setErr(t("pin.only_digits"));
-      return;
-    }
-    if (pin !== confirmPin) {
-      setErr(t("pin.mismatch"));
-      return;
-    }
-    setBusy(true);
-    try {
-      await api.post("/attendance/pin/set/", { new_pin: pin });
-      // После set — сразу verify, чтобы user не вводил ещё раз.
-      await api.post("/attendance/pin/verify/", { pin });
-      toast.success(t("pin.set_ok"));
-      onDone();
-    } catch (e) {
-      setErr(apiErrorMessage(e as AxiosError));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <PinShell
-      icon={<KeyRound className="w-4 h-4" />}
-      title={t("pin.set_title")}
-      subtitle={t("pin.set_subtitle")}
+      icon={<ShieldAlert className="w-4 h-4" />}
+      title={t("pin.contact_admin_title")}
+      subtitle={t("pin.contact_admin_subtitle")}
     >
-      <form onSubmit={submit} className="flex flex-col gap-3.5">
-        <PinField
-          value={pin}
-          onChange={setPin}
-          placeholder={t("pin.new_ph")}
-          inputRef={inputRef}
-          onEnterMoveTo={() => document.getElementById("pin-confirm")?.focus()}
-        />
-        <PinField
-          value={confirmPin}
-          onChange={setConfirmPin}
-          placeholder={t("pin.confirm_ph")}
-          id="pin-confirm"
-        />
-        {err && (
-          <div className="text-[12.5px] rounded-xl px-3.5 py-2.5"
-               style={{ background: "rgba(220,60,40,.08)", color: "var(--danger)", border: "1px solid rgba(220,60,40,.2)" }}>
-            {err}
-          </div>
-        )}
-        <div className="flex justify-end pt-1">
-          <Button type="submit" disabled={busy || pin.length !== 4 || confirmPin.length !== 4}>
-            {busy ? "…" : t("pin.save")}
-          </Button>
-        </div>
-      </form>
-      <div className="mt-4 text-[11.5px] text-muted leading-snug">
-        {t("pin.reset_hint")}
+      <div
+        className="mt-1 rounded-xl px-3.5 py-3 text-[12.5px] flex items-start gap-2.5"
+        style={{
+          background: "rgba(220,60,40,.08)",
+          color: "var(--danger)",
+          border: "1px solid rgba(220,60,40,.2)",
+        }}
+      >
+        <LockKeyhole className="w-4 h-4 mt-0.5 shrink-0" />
+        <div>{t("pin.contact_admin_subtitle")}</div>
       </div>
     </PinShell>
   );
@@ -243,8 +189,14 @@ function PinEnterForm({ onDone }: { onDone: () => void }) {
           onSubmit={() => submit()}
         />
         {err && (
-          <div className="text-[12.5px] rounded-xl px-3.5 py-2.5"
-               style={{ background: "rgba(220,60,40,.08)", color: "var(--danger)", border: "1px solid rgba(220,60,40,.2)" }}>
+          <div
+            className="text-[12.5px] rounded-xl px-3.5 py-2.5"
+            style={{
+              background: "rgba(220,60,40,.08)",
+              color: "var(--danger)",
+              border: "1px solid rgba(220,60,40,.2)",
+            }}
+          >
             {err}
           </div>
         )}
@@ -345,3 +297,6 @@ function PinField({
     />
   );
 }
+
+// Экспорт хелпера — используется страницей настроек PIN.
+export { PinField };
