@@ -181,8 +181,26 @@ class SaleCreateInputSerializer(serializers.Serializer):
     contract_photo = serializers.ImageField(required=False, allow_null=True)
 
     def to_internal_value(self, data):
+        # NB: `request.data` for multipart requests is a `QueryDict`, which
+        # subclasses `dict`. Plain `dict(query_dict)` returns *lists* of
+        # values per key (QueryDict's internal storage) — that used to
+        # translate every scalar field to `["490154203237518"]` and every
+        # file to `[<InMemoryUploadedFile>]`, causing DRF to reject every
+        # field with "Not a valid string." / "Загруженный файл не является
+        # корректным файлом." The `.dict()` method flattens each key to
+        # its last value while preserving UploadedFile entries, so it's
+        # the right unwrap for both `QueryDict` (multipart/form-encoded)
+        # and plain `dict` (JSON) payloads.
+        #
+        # Regression traceable to the very first fix commit — the JSON
+        # code path masked it because `dict({...})` is idempotent. Only
+        # exposed once the OperatorSaleCreate form started sending
+        # multipart FormData with the contract photo.
         if isinstance(data, dict):
-            data = dict(data)
+            if hasattr(data, "dict"):
+                data = data.dict()
+            else:
+                data = dict(data)
             if "operator" in data and "operator_id" not in data:
                 data["operator_id"] = data.pop("operator")
             if "channel" in data and "channel_id" not in data:
