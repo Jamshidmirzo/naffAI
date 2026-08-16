@@ -70,11 +70,7 @@ ACTIVE_LEAD_STATUSES = _ActiveStatusesProxy()
 
 
 def lead_get(pk: int) -> Lead | None:
-    return (
-        Lead.objects.select_related("operator", "sheet_source")
-        .filter(pk=pk)
-        .first()
-    )
+    return Lead.objects.select_related("operator", "sheet_source").filter(pk=pk).first()
 
 
 def lead_list(
@@ -219,9 +215,7 @@ def _active_today_filter(prefix: str = "") -> Q:
     recall_active_now = now >= lunch_start
 
     p = prefix
-    q = Q(**{f"{p}status__in": UNTOUCHED_LEAD_STATUSES}) | Q(
-        **{f"{p}updated_at__lt": today_start}
-    )
+    q = Q(**{f"{p}status__in": UNTOUCHED_LEAD_STATUSES}) | Q(**{f"{p}updated_at__lt": today_start})
     if recall_active_now:
         recall_codes = recall_after_lunch_status_codes()
         if recall_codes:
@@ -265,18 +259,14 @@ def leads_for_operator(
                     `-updated_at` (последнее закрытое сверху).
       - "all":       no postpone filter
     """
-    qs = Lead.objects.select_related("operator", "sheet_source").filter(
-        operator=operator
-    )
+    qs = Lead.objects.select_related("operator", "sheet_source").filter(operator=operator)
 
     # `closed` — история терминальных лидов. Обходим общий active-filter
     # ниже, потому что include_archived/status там сузили бы выборку до
     # активных кодов (у terminal-лидов другая семантика — они и так
     # закрыты, оператор их только смотрит).
     if view == "closed":
-        return qs.filter(status__in=terminal_lead_status_codes()).order_by(
-            "-updated_at"
-        )
+        return qs.filter(status__in=terminal_lead_status_codes()).order_by("-updated_at")
 
     if status:
         qs = qs.filter(status=status)
@@ -357,10 +347,34 @@ def _callback_due_cutoff():
 def _morning_gate_enabled() -> bool:
     """
     Kill-switch for the whole morning-gate (callback + blocking-status).
-    Set MORNING_GATE_ENABLED=1 in .env to turn it back on. Default off
-    so RR just distributes whatever lands, no user-visible lock.
+
+    Порядок приоритетов:
+      1. settings.MORNING_GATE_ENABLED (bool или None) — если явно задан
+         в env, побеждает. Используется в тестах через
+         `@override_settings(MORNING_GATE_ENABLED=False)` и как emergency-
+         off, если БД недоступна.
+      2. `SystemSetting.morning_gate_enabled` (singleton в БД, default=True) —
+         менеджерский toggle из UI. По умолчанию гейт **включён**.
+
+    Раньше kill-switch жил только в env и был выключен по умолчанию
+    (`a19e40e feat(gate): kill-switch — morning gate off by default`).
+    Теперь по бизнес-запросу «вернуть блокировку когда есть спец-лиды»
+    гейт снова активен, а менеджер может выключить его через `/settings`
+    без деплоя.
     """
-    return bool(getattr(settings, "MORNING_GATE_ENABLED", False))
+    override = getattr(settings, "MORNING_GATE_ENABLED", None)
+    if override is not None:
+        return bool(override)
+    # Local import — apps.leads не должен зависеть от system_settings
+    # на уровне модуля (циклы + test-loading order).
+    from apps.system_settings.selectors import morning_gate_enabled as _db_toggle
+
+    try:
+        return _db_toggle()
+    except Exception:  # БД недоступна / migrations не прогнаны
+        # Безопасный fallback: гейт считаем ОТКЛЮЧЁННЫМ, чтобы RR
+        # продолжал раздавать, а не встал колом.
+        return False
 
 
 def operator_has_open_callbacks(operator: Operator) -> bool:
@@ -409,8 +423,9 @@ def blocking_lead_status_codes() -> list[str]:
     from .models import LeadStatusLabel
 
     return list(
-        LeadStatusLabel.objects.filter(is_active=True, blocks_new_leads=True)
-        .values_list("code", flat=True)
+        LeadStatusLabel.objects.filter(is_active=True, blocks_new_leads=True).values_list(
+            "code", flat=True
+        )
     )
 
 
@@ -422,8 +437,9 @@ def terminal_lead_status_codes() -> list[str]:
     from .models import LeadStatusLabel
 
     return list(
-        LeadStatusLabel.objects.filter(is_active=True, is_terminal=True)
-        .values_list("code", flat=True)
+        LeadStatusLabel.objects.filter(is_active=True, is_terminal=True).values_list(
+            "code", flat=True
+        )
     )
 
 
@@ -444,8 +460,9 @@ def carry_over_status_codes() -> list[str]:
     if cached is not None:
         return cached
     codes = list(
-        LeadStatusLabel.objects.filter(is_active=True, carry_over_next_day=True)
-        .values_list("code", flat=True)
+        LeadStatusLabel.objects.filter(is_active=True, carry_over_next_day=True).values_list(
+            "code", flat=True
+        )
     )
     cache.set("carry_over_status_codes", codes, 60)
     return codes
@@ -467,8 +484,9 @@ def recall_after_lunch_status_codes() -> list[str]:
     if cached is not None:
         return cached
     codes = list(
-        LeadStatusLabel.objects.filter(is_active=True, recall_after_lunch=True)
-        .values_list("code", flat=True)
+        LeadStatusLabel.objects.filter(is_active=True, recall_after_lunch=True).values_list(
+            "code", flat=True
+        )
     )
     cache.set("recall_after_lunch_status_codes", codes, 60)
     return codes
@@ -498,11 +516,7 @@ def stale_leads_for_auto_close() -> QuerySet[Lead]:
     # день они уже carry (carry_over_next_day тоже стоит). Оставлять их
     # в auto-close задвоило бы правило.
     stale_codes = [
-        c
-        for c in active
-        if c not in carry
-        and c not in recall
-        and c not in UNTOUCHED_LEAD_STATUSES
+        c for c in active if c not in carry and c not in recall and c not in UNTOUCHED_LEAD_STATUSES
     ]
     if not stale_codes:
         return Lead.objects.none()
@@ -683,14 +697,9 @@ def my_status_for_operator(operator: Operator) -> dict:
             f"{recall_afternoon_count} — надо перезвонить после обеда."
         )
     elif working_count >= quota_limit:
-        reason_ru = (
-            f"Все {quota_limit} слотов в работе. Закрой любой — придёт новый."
-        )
+        reason_ru = f"Все {quota_limit} слотов в работе. Закрой любой — придёт новый."
     else:
-        reason_ru = (
-            f"Свободно {free} из {quota_limit} слотов. "
-            "Новые придут автоматически."
-        )
+        reason_ru = f"Свободно {free} из {quota_limit} слотов. Новые придут автоматически."
 
     # Общая разбивка «сколько лидов у оператора в каждом статусе за всё время»
     # — нужна фронту для бейджей на chip-фильтрах. Chip показывает и terminal
@@ -702,9 +711,7 @@ def my_status_for_operator(operator: Operator) -> dict:
     # по числу статусов. Возвращаем плоский dict {status_code: count} — фронту
     # удобнее чем список. postponed / carry / recall остаются отдельными
     # полями, здесь чистый разрез по status без времени/postponed_at.
-    by_status_qs = (
-        Lead.objects.filter(operator=operator).values("status").annotate(n=Count("id"))
-    )
+    by_status_qs = Lead.objects.filter(operator=operator).values("status").annotate(n=Count("id"))
     by_status = {row["status"]: row["n"] for row in by_status_qs}
     total_leads = sum(by_status.values())
 
@@ -742,10 +749,7 @@ def operator_yesterday_backlog_count(operator: Operator) -> int:
 
 def operator_has_open_backlog(operator: Operator) -> bool:
     """Union check used by morning gate: open callback OR blocking status."""
-    return (
-        operator_has_open_callbacks(operator)
-        or operator_yesterday_backlog_count(operator) > 0
-    )
+    return operator_has_open_callbacks(operator) or operator_yesterday_backlog_count(operator) > 0
 
 
 def operators_eligible_for_new_leads() -> QuerySet[Operator]:
@@ -759,8 +763,10 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
     все свои лиды, _working_count падает до 0 и он снова становится
     eligible → приходит новая пачка.
 
-    When MORNING_GATE_ENABLED=1, additionally excludes anyone with a
-    due callback or a blocking-status lead (legacy gate, off by default).
+    When the morning gate is enabled (default: on via SystemSetting;
+    overridable by settings.MORNING_GATE_ENABLED), additionally excludes
+    anyone with a due callback or a blocking-status lead (spec-leads
+    gate — «пока не разобрал спец-лиды, новых не получишь»).
     """
     from django.db.models import Count, Q
 
@@ -801,7 +807,21 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
             remind_at__lte=_callback_due_cutoff(),
         ).values_list("operator_id", flat=True)
     )
-    return qs.exclude(pk__in=cb_blocked)
+
+    # Blocking-status exclusion (spec-leads gate). `callback_scheduled`
+    # обрабатывается через CallbackReminder выше — иначе оператор
+    # блокировался бы двойным механизмом и до срока callback'а.
+    # Остальные (no_answer, phone_on, has_debt + manager-flagged) —
+    # блокируют пока не сменят статус.
+    codes = [c for c in blocking_lead_status_codes() if c != "callback_scheduled"]
+    backlog_blocked: set[int] = set()
+    if codes:
+        backlog_blocked = set(
+            Lead.objects.filter(status__in=codes)
+            .exclude(operator__isnull=True)
+            .values_list("operator_id", flat=True)
+        )
+    return qs.exclude(pk__in=(cb_blocked | backlog_blocked))
 
 
 def operators_distribution_status() -> list[dict]:
@@ -864,9 +884,7 @@ def operators_distribution_status() -> list[dict]:
 
         reasons: list[str] = []
         if working >= batch:
-            reasons.append(
-                f"Квота: {working}/{batch} — освободите слот, закрыв лид"
-            )
+            reasons.append(f"Квота: {working}/{batch} — освободите слот, закрыв лид")
         if morning_gate and operator_has_open_callbacks(op):
             reasons.append("morning-gate: есть просроченный callback")
         if morning_gate and operator_yesterday_backlog_count(op) > 0:
@@ -916,9 +934,7 @@ def next_operator_for_round_robin() -> Operator | None:
 def alias_lookup(alias_name: str) -> OperatorSheetAlias | None:
     if not alias_name:
         return None
-    return OperatorSheetAlias.objects.filter(
-        alias_name__iexact=alias_name.strip()
-    ).first()
+    return OperatorSheetAlias.objects.filter(alias_name__iexact=alias_name.strip()).first()
 
 
 # ---- Telegram link cache --------------------------------------------------

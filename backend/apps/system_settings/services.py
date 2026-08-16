@@ -19,6 +19,7 @@ def system_setting_update(
     *,
     user: Any | None = None,
     auto_distribution_enabled: bool | None = None,
+    morning_gate_enabled: bool | None = None,
 ) -> SystemSetting:
     obj = SystemSetting.get_solo()
 
@@ -35,6 +36,14 @@ def system_setting_update(
         }
         obj.auto_distribution_enabled = auto_distribution_enabled
         dirty_fields.append("auto_distribution_enabled")
+
+    if morning_gate_enabled is not None and obj.morning_gate_enabled != morning_gate_enabled:
+        changes["morning_gate_enabled"] = {
+            "from": obj.morning_gate_enabled,
+            "to": morning_gate_enabled,
+        }
+        obj.morning_gate_enabled = morning_gate_enabled
+        dirty_fields.append("morning_gate_enabled")
 
     if not dirty_fields:
         return obj

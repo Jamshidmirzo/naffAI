@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, KeyRound, LockKeyholeOpen, ShieldCheck } from "lucide-react";
+import { AlertCircle, KeyRound, Lock, LockKeyholeOpen, ShieldCheck } from "lucide-react";
 import { AxiosError } from "axios";
 import { api } from "../lib/api";
 import { Button, Modal, Toggle, toast } from "../components/ui";
@@ -13,9 +13,14 @@ import { isSuperadmin } from "../components/RoleGate";
 
 interface DistributionSettings {
   auto_distribution_enabled: boolean;
+  morning_gate_enabled: boolean;
   updated_at: string | null;
   updated_by: { id: number; full_name: string } | null;
 }
+
+type DistributionPatch = Partial<
+  Pick<DistributionSettings, "auto_distribution_enabled" | "morning_gate_enabled">
+>;
 
 function fmtDateTime(iso: string | null) {
   if (!iso) return "—";
@@ -49,20 +54,27 @@ export default function Settings() {
   });
 
   const patchMut = useMutation({
-    mutationFn: (value: boolean) =>
+    mutationFn: (patch: DistributionPatch) =>
       api
-        .patch<DistributionSettings>("/settings/distribution/", {
-          auto_distribution_enabled: value,
-        })
+        .patch<DistributionSettings>("/settings/distribution/", patch)
         .then((r) => r.data),
-    onSuccess: (data) => {
+    onSuccess: (data, patch) => {
       qc.setQueryData(["settings", "distribution"], data);
       qc.invalidateQueries({ queryKey: ["settings", "distribution"] });
-      toast.success(
-        data.auto_distribution_enabled
-          ? t("settings.auto_distribution.enabled_toast")
-          : t("settings.auto_distribution.disabled_toast"),
-      );
+      if (patch.auto_distribution_enabled !== undefined) {
+        toast.success(
+          data.auto_distribution_enabled
+            ? t("settings.auto_distribution.enabled_toast")
+            : t("settings.auto_distribution.disabled_toast"),
+        );
+      }
+      if (patch.morning_gate_enabled !== undefined) {
+        toast.success(
+          data.morning_gate_enabled
+            ? t("settings.morning_gate.enabled_toast")
+            : t("settings.morning_gate.disabled_toast"),
+        );
+      }
     },
     onError: (err: unknown) => toast.error(apiErrorMessage(err)),
   });
@@ -96,7 +108,9 @@ export default function Settings() {
           <div className="shrink-0 pt-1">
             <Toggle
               on={!!data?.auto_distribution_enabled}
-              onChange={(v) => patchMut.mutate(v)}
+              onChange={(v) =>
+                patchMut.mutate({ auto_distribution_enabled: v })
+              }
               disabled={settingsQ.isLoading || patchMut.isPending}
               aria-label={t("settings.auto_distribution.aria")}
             />
@@ -114,6 +128,45 @@ export default function Settings() {
           >
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
             <div>{t("settings.disabled_warning")}</div>
+          </div>
+        )}
+      </section>
+
+      {/* Morning-gate toggle — «спец-лиды блокируют раздачу».
+          Пока у оператора есть просроченный/скорый callback или лид
+          в статусе `blocks_new_leads`, RR ему новых лидов не выдаёт. */}
+      <section className="nf-card p-7 animate-nfFadeUp">
+        <div className="flex items-start justify-between gap-6">
+          <div className="min-w-0">
+            <div className="text-[15px] font-semibold tracking-tight flex items-center gap-2">
+              <Lock className="w-4 h-4" />
+              {t("settings.morning_gate.title")}
+            </div>
+            <p className="text-[13px] text-muted mt-1.5 leading-relaxed">
+              {t("settings.morning_gate.hint")}
+            </p>
+          </div>
+          <div className="shrink-0 pt-1">
+            <Toggle
+              on={!!data?.morning_gate_enabled}
+              onChange={(v) => patchMut.mutate({ morning_gate_enabled: v })}
+              disabled={settingsQ.isLoading || patchMut.isPending}
+              aria-label={t("settings.morning_gate.aria")}
+            />
+          </div>
+        </div>
+
+        {data && !data.morning_gate_enabled && (
+          <div
+            className="mt-5 flex items-start gap-2.5 rounded-xl px-3.5 py-2.5 text-[12.5px]"
+            style={{
+              background: "rgba(220,60,40,.08)",
+              color: "var(--danger)",
+              border: "1px solid rgba(220,60,40,.2)",
+            }}
+          >
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+            <div>{t("settings.morning_gate.disabled_warning")}</div>
           </div>
         )}
       </section>

@@ -73,9 +73,7 @@ def test_flag_false_refill_on_close_noop():
 
     # У оператора теперь только закрытый + 0 новых (refill не сработал).
     assert Lead.objects.filter(operator=op).exclude(status=LeadStatus.WON).count() == 0
-    assert LeadAssignment.objects.filter(
-        source=LeadAssignmentSource.AUTO_REFILL
-    ).count() == 0
+    assert LeadAssignment.objects.filter(source=LeadAssignmentSource.AUTO_REFILL).count() == 0
 
 
 @pytest.mark.django_db
@@ -124,7 +122,11 @@ def test_settings_patch_stamps_actor_and_writes_audit():
     assert r.data["updated_at"]
 
     # Audit-log получил запись.
-    entry = AuditLog.objects.filter(entity="system_settings.SystemSetting").order_by("-created_at").first()
+    entry = (
+        AuditLog.objects.filter(entity="system_settings.SystemSetting")
+        .order_by("-created_at")
+        .first()
+    )
     assert entry is not None
     assert entry.user_id == user.id
     assert entry.changes == {"auto_distribution_enabled": {"from": True, "to": False}}
@@ -162,3 +164,78 @@ def test_settings_patch_noop_when_value_unchanged():
     )
     assert r.status_code == 200
     assert AuditLog.objects.filter(entity="system_settings.SystemSetting").count() == audit_before
+
+
+# ---- morning_gate_enabled --------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_morning_gate_defaults_true():
+    """Свежий singleton должен идти с gate=True (новый дефолт)."""
+    obj = SystemSetting.get_solo()
+    assert obj.morning_gate_enabled is True
+
+
+@pytest.mark.django_db
+def test_settings_get_includes_morning_gate():
+    user = User.objects.create_user(username="mgr", password="mgrpass1")
+    Profile.objects.create(user=user, role=Role.MANAGER)
+    c = APIClient()
+    c.force_authenticate(user=user)
+
+    r = c.get("/api/settings/distribution/")
+    assert r.status_code == 200, r.content
+    assert r.data["morning_gate_enabled"] is True
+
+
+@pytest.mark.django_db
+def test_settings_patch_morning_gate_only():
+    """Патчим только morning_gate — auto_distribution не трогаем."""
+    user = User.objects.create_user(username="mgr", password="mgrpass1")
+    Profile.objects.create(user=user, role=Role.MANAGER)
+    c = APIClient()
+    c.force_authenticate(user=user)
+
+    r = c.patch(
+        "/api/settings/distribution/",
+        {"morning_gate_enabled": False},
+        format="json",
+    )
+    assert r.status_code == 200, r.content
+    assert r.data["morning_gate_enabled"] is False
+    assert r.data["auto_distribution_enabled"] is True  # не изменилось
+
+    entry = (
+        AuditLog.objects.filter(entity="system_settings.SystemSetting")
+        .order_by("-created_at")
+        .first()
+    )
+    assert entry is not None
+    assert entry.changes == {"morning_gate_enabled": {"from": True, "to": False}}
+
+
+@pytest.mark.django_db
+def test_settings_patch_rejects_empty_body():
+    """Хотя бы один флаг должен присутствовать."""
+    user = User.objects.create_user(username="mgr", password="mgrpass1")
+    Profile.objects.create(user=user, role=Role.MANAGER)
+    c = APIClient()
+    c.force_authenticate(user=user)
+
+    r = c.patch("/api/settings/distribution/", {}, format="json")
+    assert r.status_code == 400
+
+
+@pytest.mark.django_db
+def test_morning_gate_selector_reads_from_db():
+    """system_settings.selectors.morning_gate_enabled — прямой read."""
+    from apps.system_settings.selectors import morning_gate_enabled
+
+    obj = SystemSetting.get_solo()
+    obj.morning_gate_enabled = False
+    obj.save(update_fields=["morning_gate_enabled", "updated_at"])
+    assert morning_gate_enabled() is False
+
+    obj.morning_gate_enabled = True
+    obj.save(update_fields=["morning_gate_enabled", "updated_at"])
+    assert morning_gate_enabled() is True

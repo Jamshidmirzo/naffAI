@@ -1603,6 +1603,12 @@ const STRINGS: Lookup = {
     "settings.updated_with_user": "Изменено {date} — {name}",
     "settings.updated_no_user": "Изменено {date}",
     "settings.disabled_warning": "Раздача полностью выключена. Все новые лиды копятся в пуле свободных, пока менеджер не назначит их вручную.",
+    "settings.morning_gate.title": "Блокировка при спец-лидах",
+    "settings.morning_gate.hint": "Если включено — оператору не выдаются новые лиды, пока у него есть просроченный/скорый callback или хотя бы один лид в блокирующем статусе (например «Не взял трубку», «Долг», «Телефон включён»). Статусы отмечаются на странице «Статусы лидов» флажком «🔒 Блокирует получение новых лидов».",
+    "settings.morning_gate.aria": "Блокировка при спец-лидах включена",
+    "settings.morning_gate.enabled_toast": "Блокировка при спец-лидах включена",
+    "settings.morning_gate.disabled_toast": "Блокировка при спец-лидах выключена",
+    "settings.morning_gate.disabled_warning": "Оператор получает новые лиды даже с необработанными callback'ами и «спец» статусами. Восстановите блокировку, если менеджеры теряют старые заявки.",
 
     // ------ orphan leads page ------
     "orphans.title": "Свободные лиды",
@@ -3486,6 +3492,12 @@ const STRINGS: Lookup = {
     "settings.updated_with_user": "O'zgartirildi: {date} — {name}",
     "settings.updated_no_user": "O'zgartirildi: {date}",
     "settings.disabled_warning": "Taqsimlash butunlay o'chirilgan. Barcha yangi lidlar menejer qo'lda tayinlagunga qadar bo'sh puldda to'planadi.",
+    "settings.morning_gate.title": "Maxsus lidlarda bloklash",
+    "settings.morning_gate.hint": "Yoqilgan bo'lsa — operatorda muddati o'tgan/tez oradagi callback yoki bloklovchi statusdagi kamida bitta lid bo'lsa (masalan «Telefon ko'tarmadi», «Qarz», «Telefon yoqilgan»), unga yangi lidlar berilmaydi. Statuslar «Lid statuslari» sahifasida «🔒 Yangi lidlarni olishni bloklaydi» belgisi bilan tanlanadi.",
+    "settings.morning_gate.aria": "Maxsus lidlarda bloklash yoqilgan",
+    "settings.morning_gate.enabled_toast": "Maxsus lidlarda bloklash yoqildi",
+    "settings.morning_gate.disabled_toast": "Maxsus lidlarda bloklash o'chirildi",
+    "settings.morning_gate.disabled_warning": "Operator qayta ishlanmagan callback va «maxsus» statusli lidlar bilan ham yangi lidlar oladi. Menejerlar eski arizalarni yo'qotayotgan bo'lsa, bloklashni qayta yoqing.",
 
     // ------ orphan leads page ------
     "orphans.title": "Bo'sh lidlar",

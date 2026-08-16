@@ -22,6 +22,15 @@ class SystemSetting(models.Model):
             "watcher-минутка ничего не раздают. Всё распределение вручную."
         ),
     )
+    morning_gate_enabled = models.BooleanField(
+        default=True,
+        help_text=(
+            "Если True — оператору не выдаются новые лиды через RR, пока у "
+            "него есть просроченный/скорый callback или хотя бы один лид в "
+            "статусе с флагом `blocks_new_leads`. Восстанавливает старое "
+            "поведение «спец-лиды блокируют раздачу»."
+        ),
+    )
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,

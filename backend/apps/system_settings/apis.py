@@ -17,6 +17,7 @@ from .services import system_setting_update
 
 class DistributionSettingsSerializer(serializers.Serializer):
     auto_distribution_enabled = serializers.BooleanField()
+    morning_gate_enabled = serializers.BooleanField()
     updated_at = serializers.DateTimeField()
     updated_by = serializers.SerializerMethodField()
 
@@ -33,13 +34,25 @@ class DistributionSettingsSerializer(serializers.Serializer):
 
 
 class DistributionSettingsUpdateSerializer(serializers.Serializer):
-    auto_distribution_enabled = serializers.BooleanField()
+    # Оба поля опциональны — фронт шлёт только тот тумблер, что двигают.
+    auto_distribution_enabled = serializers.BooleanField(required=False)
+    morning_gate_enabled = serializers.BooleanField(required=False)
+
+    def validate(self, attrs):
+        if not attrs:
+            raise serializers.ValidationError(
+                "передайте хотя бы один флаг: auto_distribution_enabled или morning_gate_enabled"
+            )
+        return attrs
 
 
 class DistributionSettingsApi(APIView):
     """
     GET  /api/settings/distribution/  — current value + who/when changed
     PATCH /api/settings/distribution/ — toggle, records audit-log entry
+
+    Один endpoint покрывает оба тумблера (auto-distribution + morning-gate),
+    т.к. оба живут в singleton `SystemSetting` и оба ограничены `IsManager`.
     """
 
     permission_classes = [IsManager]
@@ -53,6 +66,7 @@ class DistributionSettingsApi(APIView):
         ser.is_valid(raise_exception=True)
         obj = system_setting_update(
             user=request.user,
-            auto_distribution_enabled=ser.validated_data["auto_distribution_enabled"],
+            auto_distribution_enabled=ser.validated_data.get("auto_distribution_enabled"),
+            morning_gate_enabled=ser.validated_data.get("morning_gate_enabled"),
         )
         return Response(DistributionSettingsSerializer(obj).data)
