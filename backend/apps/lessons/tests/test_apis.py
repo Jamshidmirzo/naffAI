@@ -93,6 +93,66 @@ def test_api_own_lesson(api_client, user1, op1, op2):
     assert r.status_code == 403
 
 
+@pytest.fixture
+def superadmin(db):
+    user = User.objects.create_user(username="root", password="x")
+    Profile.objects.create(user=user, role=Role.SUPERADMIN)
+    return user
+
+
+@pytest.mark.django_db
+def test_operator_expands_own_lesson_detail_without_operator_param(
+    api_client, user1, op1
+):
+    """Regression: operator on /lessons/history clicks a card -> UI calls
+    GET /api/lessons/?date=... (no ?operator=), which used to 400 because
+    the endpoint required both params. Backend now infers operator_id from
+    the auth profile for non-manager roles.
+    """
+    yesterday = timezone.localdate() - dt.timedelta(days=1)
+    DailyLesson.objects.create(
+        operator=op1,
+        lesson_date=yesterday,
+        summary="Свой урок",
+        micro_lesson="Фокус",
+        model_version="test",
+        prompt_version="v2",
+    )
+    api_client.force_authenticate(user1)
+
+    r = api_client.get(f"/api/lessons/?date={yesterday}")
+    assert r.status_code == 200
+    assert r.json()["summary"] == "Свой урок"
+
+
+@pytest.mark.django_db
+def test_superadmin_can_read_history_and_detail(
+    api_client, superadmin, op1
+):
+    """Regression: role checks used `role in (TEAM_LEAD, MANAGER)` and
+    excluded SUPERADMIN. Product treats superadmin as senior, so history +
+    detail must work with an ?operator= param.
+    """
+    yesterday = timezone.localdate() - dt.timedelta(days=1)
+    DailyLesson.objects.create(
+        operator=op1,
+        lesson_date=yesterday,
+        summary="Урок оператора для админа",
+        micro_lesson="F",
+        model_version="test",
+        prompt_version="v2",
+    )
+    api_client.force_authenticate(superadmin)
+
+    r = api_client.get(f"/api/lessons/history/?operator={op1.id}")
+    assert r.status_code == 200
+    assert len(r.json()) == 1
+
+    r = api_client.get(f"/api/lessons/?operator={op1.id}&date={yesterday}")
+    assert r.status_code == 200
+    assert r.json()["summary"] == "Урок оператора для админа"
+
+
 @pytest.mark.django_db
 def test_api_manager_sees_all(api_client, manager, op1, op2):
     today = timezone.localdate()

@@ -94,7 +94,19 @@ function fmtDate(iso: string, language: "ru" | "uz") {
 }
 
 function isContentV2(c: LessonContentV2 | Record<string, never>): c is LessonContentV2 {
-  return !!c && typeof c === "object" && "yesterday_summary" in c;
+  // Any of the v2-only keys signals a v2 lesson. `content` may arrive as `{}`
+  // (Django default) or missing entirely for legacy pre-v2 rows — both must
+  // fall through to the flat summary/highlights/tips renderer below.
+  if (!c || typeof c !== "object") return false;
+  const v2Keys = [
+    "greeting_line",
+    "yesterday_summary",
+    "main_insight",
+    "blockers",
+    "practice_today",
+    "closing_line",
+  ];
+  return v2Keys.some((k) => k in (c as Record<string, unknown>));
 }
 
 /* ------------------------------------------------------------------ */

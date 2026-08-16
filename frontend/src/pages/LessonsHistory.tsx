@@ -70,7 +70,16 @@ function fmtDate(iso: string, language: "ru" | "uz" = "ru") {
 }
 
 function isContentV2(c: LessonContentV2 | Record<string, never>): c is LessonContentV2 {
-  return !!c && typeof c === "object" && "yesterday_summary" in c;
+  if (!c || typeof c !== "object") return false;
+  const v2Keys = [
+    "greeting_line",
+    "yesterday_summary",
+    "main_insight",
+    "blockers",
+    "practice_today",
+    "closing_line",
+  ];
+  return v2Keys.some((k) => k in (c as Record<string, unknown>));
 }
 
 export default function LessonsHistory() {
@@ -97,12 +106,17 @@ export default function LessonsHistory() {
 
   const { data: detail, isLoading: isLoadingDetail } = useQuery<DailyLessonDetail>({
     queryKey: ["lessons", "detail", operatorId, expandedDate],
-    queryFn: () =>
-      api
-        .get<DailyLessonDetail>(
-          `/lessons/?operator=${operatorId}&date=${expandedDate}`,
-        )
-        .then((r) => r.data),
+    queryFn: () => {
+      // Operators viewing their own history don't have a ?operator= in the URL —
+      // the backend infers their operator id from the auth profile. Managers /
+      // superadmins have selected an operator upstream (OperatorDetail passes
+      // it via ?operator=), so we forward whatever we have.
+      const params = new URLSearchParams({ date: expandedDate! });
+      if (operatorId) params.set("operator", operatorId);
+      return api
+        .get<DailyLessonDetail>(`/lessons/?${params.toString()}`)
+        .then((r) => r.data);
+    },
     enabled: !!expandedDate,
   });
 

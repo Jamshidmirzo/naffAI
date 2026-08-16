@@ -6,9 +6,9 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 
 from .models import DailyLesson, DailyLessonFeedback, DailyLessonFeedbackRating
-from .permissions import IsOwnerOrManager, _role
+from .permissions import IsOwnerOrManager, _role, is_manager_role
 from .services import lesson_feedback_upsert
-from apps.users.models import Role
+from apps.users.models import Role  # noqa: F401 — kept for downstream imports
 
 
 class DailyLessonFeedbackSerializer(serializers.ModelSerializer):
@@ -155,13 +155,21 @@ class HistoryLessonApi(APIView):
     def get(self, request):
         role = _role(request.user)
 
-        if role in (Role.TEAM_LEAD, Role.MANAGER):
+        if is_manager_role(role):
+            # Managers explicitly pick which operator's history they want; if
+            # they omit `operator` we can't guess (they have no operator_id of
+            # their own).  Fall back to their profile-linked operator if any
+            # (superadmin-turned-operator edge case), then error.
             operator_id = request.query_params.get("operator")
             if not operator_id:
-                return Response(
-                    {"error": "operator parameter is required for managers/team leads"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+                profile = getattr(request.user, "profile", None)
+                if profile and profile.operator_id:
+                    operator_id = profile.operator_id
+                else:
+                    return Response(
+                        {"error": "operator parameter is required for managers/team leads"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
         else:
             profile = getattr(request.user, "profile", None)
             if not profile or not profile.operator_id:
@@ -197,8 +205,18 @@ class DetailLessonApi(APIView):
         operator_id = request.query_params.get("operator")
         date_str = request.query_params.get("date")
 
+        # Operators expanding their own lesson history don't need to pass
+        # `operator` — the URL comes from LessonsHistory.tsx where a plain
+        # operator has no way to know their own id. Fall back to the
+        # profile-linked operator so `/lessons/?date=...` works. Managers /
+        # superadmins still must pass `operator` explicitly because they can
+        # look up anyone.
+        if not operator_id and not is_manager_role(role):
+            profile = getattr(request.user, "profile", None)
+            if profile and profile.operator_id:
+                operator_id = profile.operator_id
+
         if not operator_id or not date_str:
-            # If not filtering by operator/date, default list is not supported
             return Response(
                 {"error": "operator and date parameters are required"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -212,7 +230,7 @@ class DetailLessonApi(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if role not in (Role.TEAM_LEAD, Role.MANAGER):
+        if not is_manager_role(role):
             profile = getattr(request.user, "profile", None)
             if not profile or str(profile.operator_id) != str(operator_id):
                 return Response({"error": "Permission denied"}, status=status.HTTP_403_FORBIDDEN)
