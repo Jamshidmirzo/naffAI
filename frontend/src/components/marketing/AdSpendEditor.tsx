@@ -6,6 +6,7 @@ import { formatUZS, toDateInputValue } from "../../lib/format";
 import { useT } from "../../lib/i18n";
 import { Button, toast } from "../ui";
 import { Select } from "../Select";
+import DateInput from "../DateInput";
 import type { AdSpendRow } from "./types";
 
 interface SheetSource {
@@ -105,18 +106,18 @@ export default function AdSpendEditor() {
         <div className="text-[15px] font-semibold tracking-tight mb-3">
           {t("marketing.adspend.add_title")}
         </div>
-        <div className="grid gap-2 md:grid-cols-[110px_110px_1fr_1fr_140px_auto]">
-          <input
-            type="date"
+        <div className="grid gap-2 md:grid-cols-[150px_150px_1fr_1fr_140px_auto]">
+          <DateInput
             value={draft.period_start}
-            onChange={(e) => setDraft({ ...draft, period_start: e.target.value })}
-            className="nf-input text-sm py-2 px-2"
+            onChange={(v) => setDraft({ ...draft, period_start: v })}
+            ariaLabel={t("marketing.adspend.period") + " (с)"}
+            max={draft.period_end || undefined}
           />
-          <input
-            type="date"
+          <DateInput
             value={draft.period_end}
-            onChange={(e) => setDraft({ ...draft, period_end: e.target.value })}
-            className="nf-input text-sm py-2 px-2"
+            onChange={(v) => setDraft({ ...draft, period_end: v })}
+            ariaLabel={t("marketing.adspend.period") + " (по)"}
+            min={draft.period_start || undefined}
           />
           <Select<string>
             value={draft.source_id}

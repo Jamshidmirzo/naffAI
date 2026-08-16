@@ -19,6 +19,7 @@ import ProgressBar from "../components/ProgressBar";
 import TgDialogsPanel from "../components/TgDialogsPanel";
 import { StickerPicker } from "../components/StickerPicker";
 import { Select } from "../components/Select";
+import DateInput from "../components/DateInput";
 import {
   Bar,
   BarChart,
@@ -1536,13 +1537,13 @@ export default function OperatorDetail() {
           </div>
           <div>
             <div className="nf-col mb-1.5">{t("op_edit.hired_at")}</div>
-            <input
-              type="date"
-              className="nf-input"
+            <DateInput
               value={profileForm.hired_at}
-              onChange={(e) =>
-                setProfileForm({ ...profileForm, hired_at: e.target.value })
+              onChange={(v) =>
+                setProfileForm({ ...profileForm, hired_at: v })
               }
+              ariaLabel={t("op_edit.hired_at")}
+              allowClear
             />
           </div>
           <div>

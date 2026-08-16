@@ -9,6 +9,7 @@ import { formatUZS } from "../lib/format";
 import NumericInput from "../components/NumericInput";
 import { StickerPicker } from "../components/StickerPicker";
 import { Select } from "../components/Select";
+import DateInput from "../components/DateInput";
 import {
   Button,
   Card,
@@ -508,11 +509,11 @@ export default function Operators() {
             </div>
             <div>
               <div className="nf-col mb-1.5">{t("op_edit.hired_at")}</div>
-              <input
-                type="date"
-                className="nf-input"
+              <DateInput
                 value={editModal.hired_at ? editModal.hired_at.slice(0, 10) : ""}
-                onChange={(e) => setEditModal({ ...editModal, hired_at: e.target.value })}
+                onChange={(v) => setEditModal({ ...editModal, hired_at: v })}
+                ariaLabel={t("op_edit.hired_at")}
+                allowClear
               />
             </div>
             <div>
