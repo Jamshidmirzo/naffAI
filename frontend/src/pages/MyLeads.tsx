@@ -290,68 +290,32 @@ function BlockingGateCard({ status, onGoToLead }: BlockingGateCardProps) {
   }
 
   return (
-    <div
-      className="rounded-[22px] overflow-hidden animate-nfPop"
-      style={{
-        border: "2px solid rgba(220, 38, 38, 0.35)",
-        background:
-          "linear-gradient(180deg, rgba(254, 226, 226, 0.9), rgba(255, 245, 245, 0.85))",
-        boxShadow: "0 20px 44px -22px rgba(220,38,38,0.35)",
-      }}
-    >
+    <div className="nf-blocking-card animate-nfPop">
       {/* Header row: icon + big title with count + explain text */}
       <div className="p-5 pb-4 flex items-start gap-4">
-        <div
-          className="shrink-0 grid place-items-center rounded-2xl"
-          style={{
-            width: 52,
-            height: 52,
-            background: "rgba(220,38,38,0.14)",
-            border: "1px solid rgba(220,38,38,0.28)",
-          }}
-        >
-          <Lock className="w-7 h-7" style={{ color: "#b91c1c" }} />
+        <div className="nf-blocking-icon">
+          <Lock className="w-7 h-7" />
         </div>
         <div className="flex-1 min-w-0">
-          <div
-            className="text-[19px] font-bold leading-tight"
-            style={{ color: "#7f1d1d" }}
-          >
+          <div className="nf-blocking-title">
             {t("my.gate.title", { n: totalBlocked })}
           </div>
-          <div
-            className="text-[13.5px] mt-1.5 leading-snug"
-            style={{ color: "#991b1b" }}
-          >
-            {t("my.gate.explain")}
-          </div>
+          <div className="nf-blocking-explain">{t("my.gate.explain")}</div>
         </div>
       </div>
 
       {/* Progress hint: «0 из N закрыто» */}
       <div className="px-5 pb-3">
-        <div
-          className="rounded-full h-2 overflow-hidden"
-          style={{ background: "rgba(220,38,38,0.15)" }}
-        >
-          <div
-            className="h-full rounded-full transition-all"
-            style={{
-              width: "3%",
-              background: "linear-gradient(90deg,#dc2626,#f97316)",
-            }}
-          />
+        <div className="nf-blocking-progress-track">
+          <div className="nf-blocking-progress-fill" style={{ width: "3%" }} />
         </div>
-        <div
-          className="text-[12px] mt-1.5 font-medium"
-          style={{ color: "#991b1b" }}
-        >
+        <div className="nf-blocking-progress-label">
           {t("my.gate.progress", { done: 0, total: totalBlocked })}
         </div>
       </div>
 
       {/* List of specific leads with «Open» buttons */}
-      <div className="bg-white/60 px-3 pb-3 pt-2 space-y-2">
+      <div className="nf-blocking-list">
         {rows.slice(0, 8).map((row, idx) => (
           <BlockingGateRow
             key={row.key}
@@ -414,51 +378,32 @@ function BlockingGateRow({
     : statusInfo.label;
 
   return (
-    <div
-      className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-white/90"
-      style={{ border: "1px solid rgba(220,38,38,0.18)" }}
-    >
-      <div
-        className="grid place-items-center text-white font-bold shrink-0"
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: 999,
-          background: "linear-gradient(140deg,#dc2626,#f97316)",
-          fontSize: 12.5,
-        }}
-      >
-        {index}
-      </div>
+    <div className="nf-blocking-row">
+      <div className="nf-blocking-row__index">{index}</div>
       <div className="flex-1 min-w-0">
-        <div className="text-[14px] font-semibold truncate">{displayName}</div>
-        <div className="text-[12.5px] text-muted tabular-nums font-mono truncate">
+        <div className="nf-blocking-row__name truncate">{displayName}</div>
+        <div className="nf-blocking-row__phone tabular-nums font-mono truncate">
           {row.phone || t("leads.no_phone")}
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11.5px]">
+        <div className="mt-1 flex flex-wrap items-center gap-2">
           <span
-            className="px-2 py-0.5 rounded-full font-medium"
-            style={{
-              background: row.isCallback
-                ? "rgba(220,38,38,0.15)"
-                : "rgba(249,115,22,0.15)",
-              color: row.isCallback ? "#b91c1c" : "#c2410c",
-            }}
+            className={
+              "nf-blocking-row__badge " +
+              (row.isCallback
+                ? "nf-blocking-row__badge--danger"
+                : "nf-blocking-row__badge--warn")
+            }
           >
             {badgeText}
           </span>
           {overdueText && (
-            <span className="text-muted">· {overdueText}</span>
+            <span className="text-[11.5px] text-muted">· {overdueText}</span>
           )}
         </div>
       </div>
       <button
         onClick={() => onGoToLead(row.leadId)}
-        className="shrink-0 rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold text-white"
-        style={{
-          background: "linear-gradient(90deg,#dc2626,#f97316)",
-          boxShadow: "0 8px 18px -8px rgba(220,38,38,0.55)",
-        }}
+        className="nf-blocking-row__open"
       >
         {t("my.gate.open_lead")}
       </button>
@@ -1710,9 +1655,9 @@ function LeadCard({
           <div
             className="mt-1 flex items-start gap-1.5 rounded-md border px-2 py-1 text-[12px]"
             style={{
-              background: "rgba(249,115,22,0.10)",
-              borderColor: "rgba(249,115,22,0.40)",
-              color: "#c2410c",
+              background: "var(--accent-pale-bg)",
+              borderColor: "var(--accent-pale-border)",
+              color: "var(--accent-pale-text-strong)",
             }}
           >
             <span>🔄</span>

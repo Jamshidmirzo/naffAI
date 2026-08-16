@@ -159,6 +159,132 @@ body {
 }
 
 /* ============================================================
+   BlockingGateCard (2026-08-16) — theme-aware token-driven surface.
+   Читается ярко и без «горящего пятна» в дарке. Все цвета берём из
+   --danger-* токенов (index.css: :root + html[data-nf="dark"]),
+   поэтому переключение темы работает без JS-хука.
+   ============================================================ */
+.nf-blocking-card {
+  border-radius: 22px;
+  overflow: hidden;
+  border: 2px solid var(--danger-border);
+  background: var(--danger-bg);
+  box-shadow: 0 20px 44px -22px color-mix(in srgb, var(--danger) 35%, transparent);
+}
+.nf-blocking-icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  color: var(--danger-text-strong);
+  flex-shrink: 0;
+}
+.nf-blocking-title {
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--danger-text-strong);
+}
+.nf-blocking-explain {
+  font-size: 13.5px;
+  line-height: 1.35;
+  margin-top: 6px;
+  color: var(--danger-text);
+}
+.nf-blocking-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+}
+.nf-blocking-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--danger), #f97316);
+  transition: width 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.nf-blocking-progress-label {
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 6px;
+  color: var(--danger-text);
+}
+.nf-blocking-list {
+  padding: 8px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: color-mix(in srgb, var(--bg-card) 55%, transparent);
+}
+.nf-blocking-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--bg-card);
+  border: 1px solid color-mix(in srgb, var(--danger) 18%, transparent);
+}
+.nf-blocking-row__index {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12.5px;
+  background: linear-gradient(140deg, var(--danger), #f97316);
+  flex-shrink: 0;
+}
+.nf-blocking-row__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.nf-blocking-row__phone {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.nf-blocking-row__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.nf-blocking-row__badge--danger {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: var(--danger-text-strong);
+}
+.nf-blocking-row__badge--warn {
+  background: color-mix(in srgb, #f97316 15%, transparent);
+  color: var(--danger-text-strong);
+}
+.nf-blocking-row__open {
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(90deg, var(--danger), #f97316);
+  box-shadow: 0 8px 18px -8px color-mix(in srgb, var(--danger) 55%, transparent);
+  border: none;
+  cursor: pointer;
+  transition: transform .16s cubic-bezier(.16,1,.3,1);
+}
+.nf-blocking-row__open:hover { transform: translateY(-1px); }
+.nf-blocking-row__open:active { transform: scale(.985); }
+html[data-nf="dark"] .nf-blocking-row__badge--warn {
+  color: #FFB57A;
+}
+
+/* ============================================================
    Outcome tiles (Phase 2 redesign, /my LeadCard).
    Big 2×2 (mobile) / 4×1 (desktop) grid of decision buttons that
    replaces the old ~15 tiny status chips. Each tile carries an

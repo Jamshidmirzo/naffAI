@@ -49,7 +49,7 @@ export function TabPill<V extends string>({
                   "ml-1.5 text-[11px] tabular-nums font-semibold",
                   !it.danger && (active ? "text-muted" : "text-muted"),
                 )}
-                style={it.danger ? { color: "#dc2626" } : undefined}
+                style={it.danger ? { color: "var(--danger)" } : undefined}
               >
                 {it.danger && "🔒 "}
                 {it.count}
