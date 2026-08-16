@@ -608,6 +608,21 @@ html[data-nf="dark"] {
     background: var(--accent);
   }
 
+  /* --- legacy utility aliases ---------------------------------
+     Older components use bare .input / .btn-ghost / .btn-primary
+     class names. Alias them to the nf-* primitives so styles are
+     consistent everywhere without a mass rename. New code should
+     prefer the nf-* names directly. */
+  .input {
+    @apply nf-input;
+  }
+  .btn-ghost {
+    @apply nf-btn nf-btn--ghost;
+  }
+  .btn-primary {
+    @apply nf-btn nf-btn--primary;
+  }
+
   /* --- row hover for tables ------------------------------------ */
   .nf-row {
     display: grid;

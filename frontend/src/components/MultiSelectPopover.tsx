@@ -81,7 +81,7 @@ export function MultiSelectPopover({
         <button
           type="button"
           aria-label="Очистить"
-          className="absolute -top-1 -right-1 bg-gray-200 dark:bg-slate-700 rounded-full w-4 h-4 flex items-center justify-center"
+          className="absolute -top-1 -right-1 rounded-full w-4 h-4 flex items-center justify-center bg-[color:var(--bg-nested)] text-[color:var(--text-primary)] border border-[color:var(--border-main)]"
           onClick={(e) => {
             e.stopPropagation();
             onChange([]);
@@ -92,18 +92,18 @@ export function MultiSelectPopover({
       )}
 
       {open && (
-        <div className="absolute z-30 mt-1 left-0 min-w-[14rem] max-h-72 overflow-auto rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg p-2">
+        <div className="absolute z-30 mt-1 left-0 min-w-[14rem] max-h-72 overflow-auto rounded-xl border border-[color:var(--border-main)] bg-[color:var(--bg-card)] text-[color:var(--text-primary)] shadow-modal p-2">
           {options.length >= searchThreshold && (
             <input
               autoFocus
-              className="input mb-2 text-sm"
+              className="nf-input mb-2 text-sm"
               placeholder="Поиск…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
           )}
           {filtered.length === 0 && (
-            <div className="px-2 py-3 text-xs text-gray-500 dark:text-slate-400">
+            <div className="px-2 py-3 text-xs text-[color:var(--text-muted)]">
               Нет вариантов
             </div>
           )}
@@ -112,12 +112,12 @@ export function MultiSelectPopover({
               const checked = selectedIds.includes(o.id);
               return (
                 <li key={o.id}>
-                  <label className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer text-sm">
+                  <label className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-nested)]">
                     <span
                       className={`w-4 h-4 rounded border flex items-center justify-center ${
                         checked
-                          ? "bg-indigo-600 border-indigo-600 text-white"
-                          : "border-gray-300 dark:border-slate-600"
+                          ? "bg-[color:var(--accent)] border-[color:var(--accent)] text-white"
+                          : "border-[color:var(--border-btn)] bg-[color:var(--bg-card)]"
                       }`}
                     >
                       {checked && <Check className="w-3 h-3" />}

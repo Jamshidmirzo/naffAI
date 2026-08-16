@@ -20,6 +20,7 @@ type Props = {
   /** Show inline search when options.length >= this. */
   searchThreshold?: number;
   className?: string;
+  disabled?: boolean;
 };
 
 /**
@@ -39,6 +40,7 @@ export function SingleSelectCombobox({
   allowFreeText = false,
   searchThreshold = 0,
   className,
+  disabled,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -101,21 +103,26 @@ export function SingleSelectCombobox({
     <div className={`relative ${className ?? ""}`} ref={ref}>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="input flex items-center justify-between w-full text-left"
+        onClick={() => !disabled && setOpen((v) => !v)}
+        disabled={disabled}
+        className="nf-input flex items-center justify-between w-full text-left disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        <span className={currentLabel ? "" : "text-gray-400 dark:text-slate-500"}>
+        <span
+          className={
+            currentLabel ? "" : "text-[color:var(--text-weak)]"
+          }
+        >
           {currentLabel || placeholder}
         </span>
         <ChevronDown className="w-4 h-4 opacity-60 ml-2 flex-shrink-0" />
       </button>
 
       {open && (
-        <div className="absolute z-30 mt-1 left-0 right-0 min-w-full max-h-72 overflow-auto rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg p-2">
+        <div className="absolute z-30 mt-1 left-0 right-0 min-w-full max-h-72 overflow-auto rounded-xl border border-[color:var(--border-main)] bg-[color:var(--bg-card)] text-[color:var(--text-primary)] shadow-modal p-2">
           {options.length >= searchThreshold && (
             <input
               ref={inputRef}
-              className="input mb-2 text-sm"
+              className="nf-input mb-2 text-sm"
               placeholder="Поиск…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -132,7 +139,7 @@ export function SingleSelectCombobox({
             />
           )}
           {filtered.length === 0 && !showAddFreeText && (
-            <div className="px-2 py-3 text-xs text-gray-500 dark:text-slate-400">
+            <div className="px-2 py-3 text-xs text-[color:var(--text-muted)]">
               Нет вариантов
             </div>
           )}
@@ -146,14 +153,18 @@ export function SingleSelectCombobox({
                   <button
                     type="button"
                     onClick={() => pickOption(o)}
-                    className={`w-full text-left flex items-center justify-between gap-2 px-2 py-1.5 rounded text-sm
-                      ${selected ? "bg-indigo-50 dark:bg-indigo-500/20" : "hover:bg-gray-100 dark:hover:bg-slate-800"}
-                      ${isInactive ? "text-gray-400 dark:text-slate-500" : ""}
+                    className={`w-full text-left flex items-center justify-between gap-2 px-2 py-1.5 rounded text-sm transition-colors
+                      ${
+                        selected
+                          ? "bg-[color:var(--accent-pale-bg)] text-[color:var(--accent-pale-text-strong)] font-medium"
+                          : "text-[color:var(--text-primary)] hover:bg-[color:var(--bg-nested)]"
+                      }
+                      ${isInactive ? "opacity-60" : ""}
                     `}
                   >
                     <span className="truncate">{o.label}</span>
                     {isInactive && (
-                      <span className="badge bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-400 text-[10px]">
+                      <span className="badge text-[10px] px-1.5 py-0.5 rounded bg-[color:var(--bg-nested)] text-[color:var(--text-muted)]">
                         неактивен
                       </span>
                     )}
@@ -166,7 +177,7 @@ export function SingleSelectCombobox({
                 <button
                   type="button"
                   onClick={commitFreeText}
-                  className="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded text-sm hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                  className="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded text-sm text-[color:var(--success-text-strong)] hover:bg-[color:var(--success-bg)]"
                 >
                   <Plus className="w-3 h-3" />
                   <span>

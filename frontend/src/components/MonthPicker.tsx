@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   formatDateRu,
   monthLabel,
@@ -7,14 +7,13 @@ import {
   type MonthChoice,
 } from "../lib/period";
 
-// A compact dropdown to pick between "Этот месяц" (label — falls back to
-// the day/week/month tab strip), "За весь период", a fixed calendar month
-// (Июнь 2026, Май 2026, …), or an arbitrary date range picked via two
-// native <input type="date"> calendars. Used on Dashboard and OperatorDetail.
-//
-// Native <input type="date"> is used on purpose — no extra dependency, the
-// OS-provided calendar is already localized, and it plays well with both
-// desktop and mobile.
+// Compact period picker with a fully custom popover: "Все период",
+// "Текущий период", a rolling list of past N calendar months, and an
+// inline mini-calendar for arbitrary date ranges. Every color and
+// control uses design tokens (--accent, --border-main, --bg-card, …)
+// so the popover matches the naffAI palette in both light and dark
+// themes — no native <input type="date"> anywhere so the OS blue
+// picker never leaks through.
 
 type Props = {
   value: MonthChoice;
@@ -22,30 +21,123 @@ type Props = {
   monthsBack?: number;
 };
 
+const RU_MONTH_NAMES_FULL = [
+  "Январь",
+  "Февраль",
+  "Март",
+  "Апрель",
+  "Май",
+  "Июнь",
+  "Июль",
+  "Август",
+  "Сентябрь",
+  "Октябрь",
+  "Ноябрь",
+  "Декабрь",
+];
+
+const RU_WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
 const todayIso = (): string => {
   const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+};
+
+const parseIso = (iso: string): { y: number; m: number; d: number } | null => {
+  const parts = iso.split("-");
+  if (parts.length !== 3) return null;
+  const y = Number(parts[0]);
+  const m = Number(parts[1]);
+  const d = Number(parts[2]);
+  if (!y || !m || !d) return null;
+  return { y, m, d };
+};
+
+const daysInMonth = (year: number, month1: number): number =>
+  new Date(year, month1, 0).getDate();
+
+// Return the ordered ISO days that fill a monthly grid: 6 rows of 7 days,
+// leading days from prev month + this month + trailing next-month days.
+// Weeks start on Monday (Russian convention).
+const buildCalendarGrid = (
+  year: number,
+  month1: number,
+): { iso: string; inMonth: boolean }[] => {
+  const first = new Date(year, month1 - 1, 1);
+  // JS: 0=Sun..6=Sat; convert to Mon=0..Sun=6.
+  const startDow = (first.getDay() + 6) % 7;
+  const dim = daysInMonth(year, month1);
+
+  const cells: { iso: string; inMonth: boolean }[] = [];
+
+  // Leading previous-month days.
+  if (startDow > 0) {
+    const prevMonth = month1 === 1 ? 12 : month1 - 1;
+    const prevYear = month1 === 1 ? year - 1 : year;
+    const prevDim = daysInMonth(prevYear, prevMonth);
+    for (let i = startDow - 1; i >= 0; i--) {
+      const day = prevDim - i;
+      cells.push({
+        iso: `${prevYear}-${pad2(prevMonth)}-${pad2(day)}`,
+        inMonth: false,
+      });
+    }
+  }
+
+  // Current month.
+  for (let d = 1; d <= dim; d++) {
+    cells.push({ iso: `${year}-${pad2(month1)}-${pad2(d)}`, inMonth: true });
+  }
+
+  // Trailing next-month days to complete a 6×7 grid (42 cells).
+  const trailing = 42 - cells.length;
+  if (trailing > 0) {
+    const nextMonth = month1 === 12 ? 1 : month1 + 1;
+    const nextYear = month1 === 12 ? year + 1 : year;
+    for (let d = 1; d <= trailing; d++) {
+      cells.push({
+        iso: `${nextYear}-${pad2(nextMonth)}-${pad2(d)}`,
+        inMonth: false,
+      });
+    }
+  }
+
+  return cells;
 };
 
 export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) {
   const [open, setOpen] = useState(false);
-  // "range mode" reveals two date inputs inside the dropdown. Auto-enabled
-  // when the current choice IS already a range, so re-opening the picker
-  // takes the user straight back to the calendar they just used.
   const [rangeMode, setRangeMode] = useState(value.kind === "range");
   const ref = useRef<HTMLDivElement | null>(null);
-  const months = recentMonths(monthsBack + 1); // includes current month
+  const months = recentMonths(monthsBack + 1);
 
-  const initialFrom = value.kind === "range" ? value.from : "";
-  const initialTo = value.kind === "range" ? value.to : "";
-  const [fromDate, setFromDate] = useState(initialFrom);
-  const [toDate, setToDate] = useState(initialTo);
+  const today = todayIso();
 
-  // Keep the local inputs in sync if the parent swaps the choice from
-  // outside (e.g. resetting to "current").
+  // Calendar view state (month currently rendered in the mini calendar).
+  const initialViewDate = useMemo(() => {
+    if (value.kind === "range") {
+      const p = parseIso(value.from) ?? parseIso(today);
+      return { year: p!.y, month: p!.m };
+    }
+    if (value.kind === "specific") {
+      return { year: value.year, month: value.month };
+    }
+    const t = parseIso(today)!;
+    return { year: t.y, month: t.m };
+  }, [value, today]);
+  const [view, setView] = useState(initialViewDate);
+
+  // Range picker "from" / "to" state (ISO). We commit on Apply so the
+  // parent doesn't refetch until the user picks a full range.
+  const [fromDate, setFromDate] = useState(
+    value.kind === "range" ? value.from : "",
+  );
+  const [toDate, setToDate] = useState(
+    value.kind === "range" ? value.to : "",
+  );
+
   useEffect(() => {
     if (value.kind === "range") {
       setFromDate(value.from);
@@ -71,8 +163,15 @@ export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) 
       if (!ref.current) return;
       if (!ref.current.contains(e.target as Node)) setOpen(false);
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
     document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [open]);
 
   const isAll = value.kind === "all";
@@ -81,22 +180,54 @@ export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) 
 
   const applyRange = () => {
     if (!fromDate || !toDate) return;
-    // Auto-swap if the user picked "from" > "to" — cheaper than showing an
-    // error and lets them chain selections without extra clicks.
     const [from, to] = fromDate <= toDate ? [fromDate, toDate] : [toDate, fromDate];
     onChange({ kind: "range", from, to });
     setOpen(false);
   };
 
   const canApplyRange = !!fromDate && !!toDate;
-  const today = todayIso();
+
+  const gotoPrev = () => {
+    setView((v) => ({
+      year: v.month === 1 ? v.year - 1 : v.year,
+      month: v.month === 1 ? 12 : v.month - 1,
+    }));
+  };
+  const gotoNext = () => {
+    setView((v) => ({
+      year: v.month === 12 ? v.year + 1 : v.year,
+      month: v.month === 12 ? 1 : v.month + 1,
+    }));
+  };
+
+  const cells = useMemo(
+    () => buildCalendarGrid(view.year, view.month),
+    [view],
+  );
+
+  const pickDay = (iso: string) => {
+    if (iso > today) return; // no future dates for a sales report
+    if (!fromDate || (fromDate && toDate)) {
+      // Start a new range.
+      setFromDate(iso);
+      setToDate("");
+      return;
+    }
+    // We have "from" but not "to" — set "to". Auto-swap if needed.
+    if (iso < fromDate) {
+      setToDate(fromDate);
+      setFromDate(iso);
+    } else {
+      setToDate(iso);
+    }
+  };
 
   return (
     <div className="relative" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-800"
+        className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-[color:var(--border-main)] bg-[color:var(--bg-card)] text-[color:var(--text-primary)] hover:bg-[color:var(--bg-nested)] transition-colors"
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -107,7 +238,7 @@ export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) 
       {open && (
         <div
           role="listbox"
-          className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg py-1 max-h-96 overflow-auto"
+          className="absolute right-0 z-30 mt-1 w-80 rounded-xl border border-[color:var(--border-main)] bg-[color:var(--bg-card)] text-[color:var(--text-primary)] shadow-modal py-1 max-h-[32rem] overflow-auto"
         >
           <button
             role="option"
@@ -117,10 +248,10 @@ export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) 
               setOpen(false);
             }}
             className={
-              "w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-slate-800 " +
+              "w-full text-left px-3 py-1.5 text-sm transition-colors hover:bg-[color:var(--bg-nested)] " +
               (isAll
-                ? "text-blue-600 dark:text-blue-400 font-medium"
-                : "text-gray-700 dark:text-slate-200")
+                ? "text-[color:var(--accent)] font-medium"
+                : "text-[color:var(--text-primary)]")
             }
           >
             За весь период
@@ -133,55 +264,116 @@ export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) 
               setOpen(false);
             }}
             className={
-              "w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-slate-800 " +
+              "w-full text-left px-3 py-1.5 text-sm transition-colors hover:bg-[color:var(--bg-nested)] " +
               (isCurrent
-                ? "text-blue-600 dark:text-blue-400 font-medium"
-                : "text-gray-700 dark:text-slate-200")
+                ? "text-[color:var(--accent)] font-medium"
+                : "text-[color:var(--text-primary)]")
             }
           >
             Текущий период (день/неделя/месяц)
           </button>
-          <div className="my-1 border-t border-gray-100 dark:border-slate-800" />
+          <div className="my-1 border-t border-[color:var(--border-row)]" />
           <button
             role="option"
             aria-selected={isRange || rangeMode}
             onClick={() => setRangeMode((v) => !v)}
             className={
-              "w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-slate-800 " +
+              "w-full text-left px-3 py-1.5 text-sm transition-colors hover:bg-[color:var(--bg-nested)] " +
               (isRange
-                ? "text-blue-600 dark:text-blue-400 font-medium"
-                : "text-gray-700 dark:text-slate-200")
+                ? "text-[color:var(--accent)] font-medium"
+                : "text-[color:var(--text-primary)]")
             }
           >
-            {rangeMode ? "▼ Произвольный период" : "▶ Произвольный период..."}
+            {rangeMode
+              ? "▼ Произвольный период"
+              : "▶ Произвольный период..."}
           </button>
           {rangeMode && (
-            <div className="px-3 py-2 space-y-2 bg-gray-50 dark:bg-slate-800/40">
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] uppercase text-gray-500 dark:text-slate-400">
-                  С
-                </label>
-                <input
-                  type="date"
-                  value={fromDate}
-                  max={toDate || today}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  className="w-full text-sm rounded-md border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-gray-700 dark:text-slate-200"
-                />
+            <div className="px-3 py-2 space-y-2 bg-[color:var(--bg-nested)]">
+              {/* Calendar header with month/year + prev/next */}
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={gotoPrev}
+                  className="p-1 rounded-md hover:bg-[color:var(--bg-card)] text-[color:var(--text-primary)]"
+                  aria-label="Предыдущий месяц"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <div className="text-sm font-medium text-[color:var(--text-primary)]">
+                  {RU_MONTH_NAMES_FULL[view.month - 1]} {view.year}
+                </div>
+                <button
+                  type="button"
+                  onClick={gotoNext}
+                  className="p-1 rounded-md hover:bg-[color:var(--bg-card)] text-[color:var(--text-primary)]"
+                  aria-label="Следующий месяц"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] uppercase text-gray-500 dark:text-slate-400">
-                  По
-                </label>
-                <input
-                  type="date"
-                  value={toDate}
-                  min={fromDate || undefined}
-                  max={today}
-                  onChange={(e) => setToDate(e.target.value)}
-                  className="w-full text-sm rounded-md border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-gray-700 dark:text-slate-200"
-                />
+
+              {/* Weekday header */}
+              <div className="grid grid-cols-7 gap-1 text-[10px] uppercase text-[color:var(--text-label)]">
+                {RU_WEEKDAYS.map((w) => (
+                  <div key={w} className="text-center py-1">
+                    {w}
+                  </div>
+                ))}
               </div>
+
+              {/* Day grid */}
+              <div className="grid grid-cols-7 gap-1">
+                {cells.map(({ iso, inMonth }) => {
+                  const isFuture = iso > today;
+                  const isFrom = fromDate === iso;
+                  const isTo = toDate === iso;
+                  const isInRange =
+                    !!fromDate && !!toDate && iso > fromDate && iso < toDate;
+                  const isEndpoint = isFrom || isTo;
+                  const dayNum = Number(iso.slice(-2));
+
+                  const base =
+                    "w-full aspect-square rounded-md text-xs flex items-center justify-center transition-colors";
+                  let cls = base;
+                  if (isFuture) {
+                    cls += " text-[color:var(--text-weak)] opacity-40 cursor-not-allowed";
+                  } else if (isEndpoint) {
+                    cls +=
+                      " bg-[color:var(--accent)] text-white font-medium shadow-sm";
+                  } else if (isInRange) {
+                    cls +=
+                      " bg-[color:var(--accent-pale-bg)] text-[color:var(--accent-pale-text-strong)]";
+                  } else if (inMonth) {
+                    cls +=
+                      " text-[color:var(--text-primary)] hover:bg-[color:var(--bg-card)]";
+                  } else {
+                    cls +=
+                      " text-[color:var(--text-weak)] hover:bg-[color:var(--bg-card)]";
+                  }
+
+                  return (
+                    <button
+                      key={iso}
+                      type="button"
+                      disabled={isFuture}
+                      onClick={() => pickDay(iso)}
+                      className={cls}
+                      aria-label={iso}
+                    >
+                      {dayNum}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Selected range summary */}
+              <div className="text-[11px] text-[color:var(--text-muted)] text-center pt-1">
+                {fromDate && !toDate && `С ${formatDateRu(fromDate)} — выберите конец`}
+                {fromDate && toDate && `${formatDateRu(fromDate)} — ${formatDateRu(toDate)}`}
+                {!fromDate && "Выберите начало периода"}
+              </div>
+
               <div className="flex justify-end gap-2 pt-1">
                 <button
                   type="button"
@@ -189,7 +381,7 @@ export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) 
                     setFromDate("");
                     setToDate("");
                   }}
-                  className="text-xs px-2 py-1 rounded-md text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800"
+                  className="text-xs px-2 py-1 rounded-md text-[color:var(--text-muted)] hover:bg-[color:var(--bg-card)]"
                 >
                   Очистить
                 </button>
@@ -198,10 +390,10 @@ export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) 
                   onClick={applyRange}
                   disabled={!canApplyRange}
                   className={
-                    "text-xs px-3 py-1 rounded-md font-medium " +
+                    "text-xs px-3 py-1 rounded-md font-medium transition-colors " +
                     (canApplyRange
-                      ? "bg-blue-600 text-white hover:bg-blue-700"
-                      : "bg-gray-200 dark:bg-slate-700 text-gray-400 dark:text-slate-500 cursor-not-allowed")
+                      ? "bg-[color:var(--accent)] text-white hover:bg-[color:var(--accent-hover)]"
+                      : "bg-[color:var(--bg-muted-block)] text-[color:var(--text-weak)] cursor-not-allowed")
                   }
                 >
                   Применить
@@ -209,7 +401,7 @@ export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) 
               </div>
             </div>
           )}
-          <div className="my-1 border-t border-gray-100 dark:border-slate-800" />
+          <div className="my-1 border-t border-[color:var(--border-row)]" />
           {months.map(({ year, month }) => {
             const selected =
               value.kind === "specific" &&
@@ -225,10 +417,10 @@ export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) 
                   setOpen(false);
                 }}
                 className={
-                  "w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-slate-800 " +
+                  "w-full text-left px-3 py-1.5 text-sm transition-colors hover:bg-[color:var(--bg-nested)] " +
                   (selected
-                    ? "text-blue-600 dark:text-blue-400 font-medium"
-                    : "text-gray-700 dark:text-slate-200")
+                    ? "text-[color:var(--accent)] font-medium"
+                    : "text-[color:var(--text-primary)]")
                 }
               >
                 {monthLabel(year, month)}
