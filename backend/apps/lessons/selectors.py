@@ -11,6 +11,30 @@ from apps.sales.selectors import operator_sales_aggregate
 from apps.tg_userclient.models import TgChat, TgMessage, TgAiInsight
 from apps.calls.models import CallbackReminder, CallbackReminderStatus
 from apps.leads.models import Lead, LeadStatus
+from apps.users.models import Profile
+
+
+DEFAULT_OPERATOR_LANGUAGE = "uz"
+
+
+def resolve_operator_language(operator: Operator) -> str:
+    """
+    Return the operator's preferred content language ('ru' or 'uz').
+
+    Preference lives on the operator's linked ``users.Profile`` (there
+    can be several profiles pointing to the same operator historically —
+    we pick the most-recently-updated one so a manager toggle takes
+    effect immediately). Fallback: 'uz' — the phone-shop default because
+    most of the field team is Uzbek-first.
+    """
+    profile = (
+        Profile.objects.filter(operator_id=operator.id)
+        .order_by("-user__last_login", "-id")
+        .first()
+    )
+    if profile and profile.preferred_language in ("ru", "uz"):
+        return profile.preferred_language
+    return DEFAULT_OPERATOR_LANGUAGE
 
 
 def collect_yesterday_facts(operator: Operator, date: dt.date) -> dict:

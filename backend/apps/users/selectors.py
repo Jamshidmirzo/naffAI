@@ -40,11 +40,18 @@ def account_state(user: User | None) -> dict:
     Compact status snapshot rendered next to each Operator row in the UI.
     """
     if user is None:
-        return {"has_account": False, "is_active": False, "deleted": False, "username": None}
+        return {
+            "has_account": False,
+            "is_active": False,
+            "deleted": False,
+            "username": None,
+            "preferred_language": None,
+        }
     profile = getattr(user, "profile", None)
     return {
         "has_account": True,
         "is_active": bool(user.is_active),
         "deleted": bool(profile and profile.deleted_at is not None),
         "username": user.username,
+        "preferred_language": getattr(profile, "preferred_language", None) or "uz",
     }

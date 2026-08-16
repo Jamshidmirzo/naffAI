@@ -81,6 +81,7 @@ class MeApi(APIView):
         profile = getattr(user, "profile", None)
         operator_name = profile.operator.full_name if profile and profile.operator else None
         display_name = operator_name or (user.get_full_name() or None)
+        preferred_language = getattr(profile, "preferred_language", None) or "uz"
         return Response(
             {
                 "username": user.username,
@@ -90,8 +91,33 @@ class MeApi(APIView):
                 "operator_name": operator_name,
                 "display_name": display_name,
                 "telegram_user_id": profile.telegram_user_id if profile else None,
+                "preferred_language": preferred_language,
             }
         )
+
+    def patch(self, request):
+        """Self-service partial update — currently only `preferred_language`.
+
+        Any authenticated user can flip their own language preference
+        (used by operators when they want RU / UZ; managers may also
+        set their own). Managers change other users' language through
+        the dedicated admin endpoints below.
+        """
+        user = request.user
+        profile = getattr(user, "profile", None)
+        if profile is None:
+            from .models import Profile as _Profile
+            profile = _Profile.objects.create(user=user)
+
+        lang = request.data.get("preferred_language")
+        if lang not in ("ru", "uz"):
+            return Response(
+                {"preferred_language": "must be 'ru' or 'uz'"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        profile.preferred_language = lang
+        profile.save(update_fields=["preferred_language"])
+        return Response({"preferred_language": profile.preferred_language})
 
 
 class LogoutApi(APIView):
@@ -345,6 +371,7 @@ class UserListCreateApi(APIView):
                 "is_superuser": user.is_superuser,
                 "date_joined": user.date_joined.isoformat() if user.date_joined else None,
                 "last_login": user.last_login.isoformat() if user.last_login else None,
+                "preferred_language": getattr(profile, "preferred_language", None) or "uz",
             })
         return Response(rows)
 
@@ -435,3 +462,100 @@ class UserDeleteApi(APIView):
             changes={"deactivated_at": timezone.now().isoformat()},
         )
         return Response({"id": user.id, "is_active": False})
+
+
+class UserUpdateApi(APIView):
+    """
+    PATCH /users/{id}/ — manager-only partial update.
+
+    Currently supports only `preferred_language` (RU/UZ) — used by
+    the Users admin page so a manager can force an account's UI/AI
+    language without needing the operator to log in and change it.
+    Audit-logged so the trail shows who flipped whose language.
+    """
+
+    permission_classes = [IsManager]
+
+    class InputSerializer(serializers.Serializer):
+        preferred_language = serializers.ChoiceField(
+            choices=[("ru", "ru"), ("uz", "uz")],
+            required=False,
+        )
+
+    def patch(self, request, user_id: int):
+        try:
+            user = User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            raise NotFound("Пользователь не найден")
+
+        s = self.InputSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+
+        updated: dict = {}
+        if "preferred_language" in s.validated_data:
+            profile, _ = Profile.objects.get_or_create(user=user)
+            old = profile.preferred_language
+            new = s.validated_data["preferred_language"]
+            if old != new:
+                profile.preferred_language = new
+                profile.save(update_fields=["preferred_language"])
+                audit_log_create(
+                    user=request.user,
+                    action=AuditAction.UPDATE,
+                    entity="users.Profile",
+                    entity_id=profile.id,
+                    changes={"preferred_language": {"old": old, "new": new}},
+                )
+            updated["preferred_language"] = new
+
+        return Response({
+            "id": user.id,
+            "username": user.username,
+            **updated,
+        })
+
+
+class OperatorAccountLanguageApi(APIView):
+    """
+    PATCH /operators/{id}/account/language/  {preferred_language: 'ru'|'uz'}
+
+    Manager surface — set the linked operator user's language without
+    touching passwords / activation. Keeps the operator-admin flow in
+    one place (Operators page, not Users page).
+    """
+
+    permission_classes = [IsManager]
+
+    class InputSerializer(serializers.Serializer):
+        preferred_language = serializers.ChoiceField(choices=[("ru", "ru"), ("uz", "uz")])
+
+    def patch(self, request, operator_id: int):
+        operator = _operator_or_404(operator_id)
+        user = user_by_operator(operator)
+        if user is None:
+            raise NotFound("У оператора нет аккаунта")
+
+        s = self.InputSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+
+        profile, _ = Profile.objects.get_or_create(user=user)
+        old = profile.preferred_language
+        new = s.validated_data["preferred_language"]
+        if old != new:
+            profile.preferred_language = new
+            profile.save(update_fields=["preferred_language"])
+            audit_log_create(
+                user=request.user,
+                action=AuditAction.UPDATE,
+                entity="users.Profile",
+                entity_id=profile.id,
+                changes={
+                    "target_operator_id": operator.id,
+                    "preferred_language": {"old": old, "new": new},
+                },
+            )
+        return Response({
+            "operator_id": operator.id,
+            "user_id": user.id,
+            "preferred_language": new,
+        })

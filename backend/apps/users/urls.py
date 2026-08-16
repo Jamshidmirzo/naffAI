@@ -8,6 +8,7 @@ from .apis import (
     OperatorAccountCreateApi,
     OperatorAccountDeactivateApi,
     OperatorAccountDeleteApi,
+    OperatorAccountLanguageApi,
     OperatorAccountPasswordViewApi,
     OperatorAccountResetPasswordApi,
     SelfChangePasswordApi,
@@ -65,15 +66,25 @@ operator_account_urlpatterns = [
         OperatorAccountDeleteApi.as_view(),
         name="operator-account-delete",
     ),
+    path(
+        "<int:operator_id>/account/language/",
+        OperatorAccountLanguageApi.as_view(),
+        name="operator-account-language",
+    ),
 ]
 
 
 # Manager-facing user CRUD for web accounts (managers/team-leads only —
 # operators have their own /operators/{id}/account/… surface).
-from .apis import UserDeleteApi, UserListCreateApi, UserResetPasswordApi
+from .apis import UserDeleteApi, UserListCreateApi, UserResetPasswordApi, UserUpdateApi
 
 users_urlpatterns = [
     path("", UserListCreateApi.as_view(), name="users-list-create"),
+    path(
+        "<int:user_id>/",
+        UserUpdateApi.as_view(),
+        name="user-update",
+    ),
     path(
         "<int:user_id>/reset-password/",
         UserResetPasswordApi.as_view(),

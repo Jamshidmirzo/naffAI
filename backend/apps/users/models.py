@@ -28,6 +28,11 @@ class Role(models.TextChoices):
     SUPERADMIN = "superadmin", "Супер-админ"
 
 
+class ProfileLanguage(models.TextChoices):
+    RU = "ru", "Русский"
+    UZ = "uz", "O'zbekcha"
+
+
 class Profile(models.Model):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -58,6 +63,17 @@ class Profile(models.Model):
     # bot's cmd_link handler.
     tg_link_code = models.CharField(max_length=8, blank=True, default="", db_index=True)
     tg_link_code_expires_at = models.DateTimeField(null=True, blank=True)
+    preferred_language = models.CharField(
+        max_length=8,
+        choices=ProfileLanguage.choices,
+        default=ProfileLanguage.UZ,
+        help_text=(
+            "Основной язык интерфейса и AI-контента (утренние цитаты, "
+            "дневные уроки). Default 'uz' т.к. большинство операторов — "
+            "узбекско-говорящие. Manager/superadmin может переключить "
+            "конкретному оператору на 'ru'."
+        ),
+    )
     deleted_at = models.DateTimeField(
         null=True,
         blank=True,

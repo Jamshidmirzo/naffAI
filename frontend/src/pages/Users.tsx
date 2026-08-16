@@ -16,6 +16,7 @@ import { useT } from "../lib/i18n";
 import { apiErrorMessage } from "../lib/api-types";
 
 type Role = "manager" | "team_lead";
+type Language = "ru" | "uz";
 
 interface UserRow {
   id: number;
@@ -25,6 +26,7 @@ interface UserRow {
   is_superuser: boolean;
   date_joined: string | null;
   last_login: string | null;
+  preferred_language?: Language;
 }
 
 interface Creds {
@@ -114,6 +116,18 @@ export default function Users() {
     onError: (err: unknown) => toast.error(apiErrorMessage(err)),
   });
 
+  const languageMut = useMutation({
+    mutationFn: ({ user_id, preferred_language }: { user_id: number; preferred_language: Language }) =>
+      api
+        .patch(`/users/${user_id}/`, { preferred_language })
+        .then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      toast.success(t("users.language_saved"));
+    },
+    onError: (err: unknown) => toast.error(apiErrorMessage(err)),
+  });
+
   const rows = usersQ.data ?? [];
 
   return (
@@ -132,10 +146,11 @@ export default function Users() {
       <section className="nf-card overflow-hidden">
         <div
           className="grid gap-2 px-6 pt-5 pb-3 nf-col"
-          style={{ gridTemplateColumns: "1.4fr .8fr .8fr .8fr auto" }}
+          style={{ gridTemplateColumns: "1.4fr .8fr .7fr .8fr .8fr auto" }}
         >
           <div>{t("common.login")}</div>
           <div>{t("common.role")}</div>
+          <div>{t("users.language")}</div>
           <div>{t("users.col_created")}</div>
           <div>{t("profile.last_login")}</div>
           <div className="text-right">{t("common.actions")}</div>
@@ -154,7 +169,7 @@ export default function Users() {
                   key={u.id}
                   className="nf-row animate-nfFadeUp"
                   style={{
-                    gridTemplateColumns: "1.4fr .8fr .8fr .8fr auto",
+                    gridTemplateColumns: "1.4fr .8fr .7fr .8fr .8fr auto",
                     animationDelay: `${0.02 + i * 0.035}s`,
                     cursor: "default",
                   }}
@@ -189,6 +204,26 @@ export default function Users() {
                         superuser
                       </div>
                     )}
+                  </div>
+                  <div className="flex gap-1">
+                    {(["uz", "ru"] as Language[]).map((lang) => {
+                      const active = (u.preferred_language ?? "uz") === lang;
+                      return (
+                        <Chip
+                          key={lang}
+                          active={active}
+                          onClick={() =>
+                            !active &&
+                            languageMut.mutate({
+                              user_id: u.id,
+                              preferred_language: lang,
+                            })
+                          }
+                        >
+                          {lang.toUpperCase()}
+                        </Chip>
+                      );
+                    })}
                   </div>
                   <div className="text-muted text-[12.5px]">
                     {fmtDate(u.date_joined)}

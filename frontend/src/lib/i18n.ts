@@ -904,6 +904,26 @@ const STRINGS: Lookup = {
     "lessons.mark_read_btn": "Отметить прочитанным",
     "lessons.marked_done": "Разбор прочитан ✓",
     "lessons.focus_day": "Фокус дня",
+    // v2 prompt sections
+    "lessons.yesterday_title": "Вчера",
+    "lessons.main_insight": "Ключевой инсайт",
+    "lessons.practice_today": "Сегодня по шагам",
+    "lessons.feedback_title": "Помог ли разбор?",
+    "lessons.feedback_hint": "Одна оценка помогает делать уроки лучше.",
+    "lessons.feedback_helpful": "Помог",
+    "lessons.feedback_not_helpful": "Не помог",
+    "lessons.feedback_saved": "Спасибо, оценка сохранена",
+    "lessons.feedback_modal_title": "Что было не так?",
+    "lessons.feedback_modal_hint": "Опционально — комментарий помогает тюнинговать промпт.",
+    "lessons.feedback_comment_ph": "Напр.: советы общие, нет примеров, не подходит под мою ситуацию…",
+    // preferred_language admin
+    "users.language": "Язык",
+    "users.language_hint": "AI-контент (утренняя цитата, урок) на выбранном языке.",
+    "users.language_ru": "Русский",
+    "users.language_uz": "O'zbekcha",
+    "users.language_saved": "Язык сохранён",
+    "op_detail.language": "Язык интерфейса и AI",
+    "op_detail.language_hint": "Оператор получает утренние цитаты и уроки на этом языке. По умолчанию UZ.",
 
     // ------ tg (telegram) ------
     "tg.connect_title": "Подключить Telegram",
@@ -2840,6 +2860,26 @@ const STRINGS: Lookup = {
     "lessons.mark_read_btn": "O'qilgan deb belgilash",
     "lessons.marked_done": "Tahlil o'qildi ✓",
     "lessons.focus_day": "Kun fokusi",
+    // v2 prompt sections
+    "lessons.yesterday_title": "Kecha",
+    "lessons.main_insight": "Asosiy tushuncha",
+    "lessons.practice_today": "Bugun bosqichma-bosqich",
+    "lessons.feedback_title": "Tahlil foyda berdimi?",
+    "lessons.feedback_hint": "Bitta baho darslarni yaxshilashga yordam beradi.",
+    "lessons.feedback_helpful": "Foydali",
+    "lessons.feedback_not_helpful": "Foydasiz",
+    "lessons.feedback_saved": "Rahmat, baho saqlandi",
+    "lessons.feedback_modal_title": "Nimasi noto'g'ri edi?",
+    "lessons.feedback_modal_hint": "Ixtiyoriy — izoh promptni sozlashga yordam beradi.",
+    "lessons.feedback_comment_ph": "Masalan: tavsiyalar umumiy, misollar yo'q, mening holatimga to'g'ri kelmaydi…",
+    // preferred_language admin
+    "users.language": "Til",
+    "users.language_hint": "AI-kontent (ertalabki iqtibos, dars) tanlangan tilda bo'ladi.",
+    "users.language_ru": "Ruscha",
+    "users.language_uz": "O'zbekcha",
+    "users.language_saved": "Til saqlandi",
+    "op_detail.language": "Interfeys va AI tili",
+    "op_detail.language_hint": "Operator ertalabki iqtiboslar va darslarni shu tilda oladi. Standart — UZ.",
 
     // ------ tg (telegram) ------
     "tg.connect_title": "Telegramni ulash",

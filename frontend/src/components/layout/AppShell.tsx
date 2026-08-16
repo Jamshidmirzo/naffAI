@@ -5,6 +5,7 @@ import { Sidebar, type SidebarGroup } from "./Sidebar";
 import { Header } from "./Header";
 import MorningGreeting from "../MorningGreeting";
 import { useT } from "../../lib/i18n";
+import { useMe } from "../../hooks/useMe";
 
 /**
  * Sidebar layout — sections grouped with lightweight headers so the
@@ -110,6 +111,13 @@ export default function AppShell() {
   const operatorGroups = useOperatorGroups(t);
   const groups = role === "operator" ? operatorGroups : managerGroups;
 
+  // Read the operator's preferred content language from the profile so
+  // MorningGreeting fetches the correct RU/UZ daily quote. Default 'uz'
+  // — phone-shop team is UZ-first; manager can flip individual operators
+  // to 'ru' via /operators/{id}/account/language/.
+  const me = useMe();
+  const greetingLang = (me.data?.preferred_language ?? "uz") as "ru" | "uz";
+
   return (
     <div className="min-h-screen flex bg-[color:var(--bg)] text-[color:var(--text)]">
       <Sidebar groups={groups} role={role} />
@@ -122,7 +130,7 @@ export default function AppShell() {
           <Outlet />
         </main>
       </div>
-      {role === "operator" && <MorningGreeting language="ru" />}
+      {role === "operator" && <MorningGreeting language={greetingLang} />}
     </div>
   );
 }

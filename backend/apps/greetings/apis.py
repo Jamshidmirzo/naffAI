@@ -19,7 +19,14 @@ class MorningGreetingApi(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        language = request.query_params.get("language") or DEFAULT_LANGUAGE
+        # Preference order:
+        # 1. Explicit ?language= override (kept for demos / manual switching).
+        # 2. request.user.profile.preferred_language (per-operator setting).
+        # 3. Global DEFAULT_LANGUAGE fallback.
+        language = request.query_params.get("language")
+        if not language:
+            profile = getattr(request.user, "profile", None)
+            language = getattr(profile, "preferred_language", None) or DEFAULT_LANGUAGE
         quote = get_or_create_daily_quote(language=language)
 
         operator = _operator_for(request)

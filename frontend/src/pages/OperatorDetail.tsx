@@ -93,6 +93,7 @@ interface AccountState {
   is_active: boolean;
   deleted: boolean;
   username: string | null;
+  preferred_language?: "ru" | "uz" | null;
 }
 
 interface OperatorDetail {
@@ -191,6 +192,7 @@ export default function OperatorDetail() {
   const account: AccountState = detail.data?.account ?? {
     has_account: false,
     is_active: false,
+    preferred_language: "uz",
     deleted: false,
     username: null,
   };
@@ -275,6 +277,19 @@ export default function OperatorDetail() {
       toast.success(t("op_detail.account_deleted"));
     },
     onError: () => toast.error(t("op_detail.account_delete_failed")),
+  });
+
+  const changeLanguageMut = useMutation({
+    mutationFn: (preferred_language: "ru" | "uz") =>
+      api.patch(`/operators/${id}/account/language/`, { preferred_language }),
+    onSuccess: () => {
+      invalidateAccount();
+      toast.success(t("users.language_saved"));
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(msg || t("common.error"));
+    },
   });
 
   const savePhonesMut = useMutation({
@@ -865,6 +880,42 @@ export default function OperatorDetail() {
                   </Button>
                 )}
               </div>
+
+              {/* Preferred language toggle — controls AI content (daily
+                  quote + lesson) language for this operator. Default UZ. */}
+              {!account.deleted && (
+                <div
+                  className="nf-tile flex items-center justify-between flex-wrap gap-3"
+                  style={{ padding: "14px 18px" }}
+                >
+                  <div>
+                    <div className="text-[11px] text-muted uppercase tracking-wide font-semibold">
+                      {t("op_detail.language")}
+                    </div>
+                    <div className="text-[12px] text-muted mt-1 max-w-md">
+                      {t("op_detail.language_hint")}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    {(["uz", "ru"] as const).map((lang) => {
+                      const current = account.preferred_language ?? "uz";
+                      const active = current === lang;
+                      return (
+                        <Chip
+                          key={lang}
+                          active={active}
+                          onClick={() =>
+                            !active && changeLanguageMut.mutate(lang)
+                          }
+                          disabled={changeLanguageMut.isPending}
+                        >
+                          {lang === "uz" ? t("users.language_uz") : t("users.language_ru")}
+                        </Chip>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>

@@ -12,8 +12,17 @@ interface Payload {
 }
 
 interface Props {
-  language?: string;
+  language?: "ru" | "uz";
 }
+
+// Two chrome strings depend on the operator's chosen language, not the
+// team-wide UI locale — otherwise a UZ-first operator would still see
+// "Доброе утро!" over an Uzbek quote. Kept inline (no i18n key) because
+// the whole component gates on `language` anyway.
+const LABELS: Record<string, { title: string; cta: string }> = {
+  ru: { title: "Доброе утро!", cta: "Приступить" },
+  uz: { title: "Xayrli tong!", cta: "Boshlash" },
+};
 
 /**
  * Shows a one-time-per-day motivational modal for operators. It is safe to
@@ -21,7 +30,7 @@ interface Props {
  * ``should_show=true``. On close, we POST to /morning-greeting/dismiss/ so
  * the flag stays flipped until the calendar date rolls.
  */
-export default function MorningGreeting({ language = "ru" }: Props) {
+export default function MorningGreeting({ language = "uz" }: Props) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const q = useQuery<Payload>({
@@ -42,6 +51,8 @@ export default function MorningGreeting({ language = "ru" }: Props) {
 
   if (!open || !q.data) return null;
 
+  const labels = LABELS[language] ?? LABELS.uz;
+
   const onClose = () => {
     setOpen(false);
     dismiss.mutate();
@@ -61,7 +72,7 @@ export default function MorningGreeting({ language = "ru" }: Props) {
         <div className="flex items-center gap-3 mb-4">
           <Sun className="w-6 h-6 text-amber-500" />
           <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">
-            Доброе утро!
+            {labels.title}
           </h2>
         </div>
 
@@ -80,7 +91,7 @@ export default function MorningGreeting({ language = "ru" }: Props) {
           onClick={onClose}
           disabled={dismiss.isPending}
         >
-          Приступить
+          {labels.cta}
         </button>
       </div>
     </div>

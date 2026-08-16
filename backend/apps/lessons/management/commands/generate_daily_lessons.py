@@ -6,7 +6,13 @@ from django.utils import timezone
 from apps.operators.models import Operator, OperatorStatus
 from apps.lessons.models import DailyLesson, DailyLessonAttempt
 from apps.lessons.selectors import collect_yesterday_facts
-from apps.lessons.ai.generator import generate_daily_lesson
+from apps.lessons.ai.generator import (
+    DEFAULT_LANGUAGE as LESSON_DEFAULT_LANGUAGE,
+    PROMPT_VERSION as LESSON_PROMPT_VERSION,
+    SUPPORTED_LANGUAGES as LESSON_SUPPORTED_LANGUAGES,
+    generate_daily_lesson,
+)
+from apps.lessons.selectors import resolve_operator_language
 
 
 class Command(BaseCommand):
@@ -72,13 +78,17 @@ class Command(BaseCommand):
                 self.stdout.write(f"[Dry Run] Would call LLM generator for operator {op.id}")
                 continue
 
+            # Language preference lives on the operator's linked User→Profile.
+            # Fallback: 'uz' (phone-shop default) if no linked profile.
+            language = resolve_operator_language(op)
+
             start_time = time.time()
             try:
                 tenure_days = 0
                 if op.hired_at:
                     tenure_days = max(0, (target_date - op.hired_at).days)
 
-                res = generate_daily_lesson(op.full_name, tenure_days, facts)
+                res = generate_daily_lesson(op.full_name, tenure_days, facts, language=language)
                 duration_ms = int((time.time() - start_time) * 1000)
 
                 stats_snapshot = {
@@ -102,9 +112,11 @@ class Command(BaseCommand):
                     highlights=res["highlights"],
                     tips=res["tips"],
                     micro_lesson=res["micro_lesson"],
+                    content=res.get("content") or {},
+                    language=language,
                     stats_snapshot=stats_snapshot,
                     model_version=res["model_used"],
-                    prompt_version="v1",
+                    prompt_version=LESSON_PROMPT_VERSION,
                 )
 
                 DailyLessonAttempt.objects.create(

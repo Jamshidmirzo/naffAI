@@ -12,27 +12,36 @@ interface LessonHistoryItem {
   lesson_date: string;
   summary: string;
   micro_lesson: string;
+  language?: "ru" | "uz";
   opened_at: string | null;
 }
 
-interface Tip {
-  title: string;
-  why: string;
-  example: string;
-  action: string;
+interface Highlight { title: string; evidence: string }
+interface Blocker { title: string; why: string; example: string }
+interface PracticeStep { step: string; when: string; how: string }
+interface MainInsight { title: string; text: string }
+
+interface LessonContentV2 {
+  greeting_line: string;
+  yesterday_summary: string;
+  main_insight: MainInsight;
+  highlights: Highlight[];
+  blockers: Blocker[];
+  practice_today: PracticeStep[];
+  micro_lesson: string;
+  closing_line: string;
 }
 
-interface Highlight {
-  title: string;
-  evidence: string;
-}
+interface LegacyTip { title: string; why: string; example: string; action: string }
 
 interface DailyLessonDetail {
   id: number;
   lesson_date: string;
+  language: "ru" | "uz";
+  content: LessonContentV2 | Record<string, never>;
   summary: string;
   highlights: Highlight[];
-  tips: Tip[];
+  tips: LegacyTip[];
   micro_lesson: string;
   stats_snapshot: {
     sales_count: number;
@@ -43,12 +52,25 @@ interface DailyLessonDetail {
   };
 }
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("ru-RU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+function fmtDate(iso: string, language: "ru" | "uz" = "ru") {
+  const locale = language === "uz" ? "uz-UZ" : "ru-RU";
+  try {
+    return new Date(iso).toLocaleDateString(locale, {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  } catch {
+    return new Date(iso).toLocaleDateString("ru-RU", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  }
+}
+
+function isContentV2(c: LessonContentV2 | Record<string, never>): c is LessonContentV2 {
+  return !!c && typeof c === "object" && "yesterday_summary" in c;
 }
 
 export default function LessonsHistory() {
@@ -127,7 +149,7 @@ export default function LessonsHistory() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <div className="text-[14.5px] font-semibold">
-                    {fmtDate(item.lesson_date)}
+                    {fmtDate(item.lesson_date, item.language ?? "ru")}
                   </div>
                   {!item.opened_at && (
                     <StatusBadge tone="hot">{t("lessons.not_read")}</StatusBadge>
@@ -159,132 +181,255 @@ export default function LessonsHistory() {
                     {t("common.loading")}
                   </div>
                 )}
-                {detail && (
-                  <div className="pt-5 flex flex-col gap-5">
-                    {detail.micro_lesson && (
-                      <div>
-                        <Eyebrow>{t("lessons.focus_day")}</Eyebrow>
-                        <div className="text-[14px] font-medium mt-2">
-                          {detail.micro_lesson}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="nf-tile" style={{ padding: "12px 14px" }}>
-                        <div className="text-[10.5px] text-muted uppercase tracking-wider">
-                          {t("lessons.stat_sales")}
-                        </div>
-                        <div className="mt-1 text-[19px] font-semibold tabular-nums">
-                          {detail.stats_snapshot?.sales_count || 0}
-                        </div>
-                      </div>
-                      <div className="nf-tile" style={{ padding: "12px 14px" }}>
-                        <div className="text-[10.5px] text-muted uppercase tracking-wider">
-                          {t("lessons.stat_dialogs")}
-                        </div>
-                        <div className="mt-1 text-[19px] font-semibold tabular-nums">
-                          {detail.stats_snapshot?.dialogs_count || 0}
-                        </div>
-                      </div>
-                      <div className="nf-tile" style={{ padding: "12px 14px" }}>
-                        <div className="text-[10.5px] text-muted uppercase tracking-wider">
-                          {t("lessons.stat_quality")}
-                        </div>
-                        <div className="mt-1 text-[19px] font-semibold tabular-nums">
-                          {Math.round(detail.stats_snapshot?.avg_quality || 0)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {detail.summary && (
-                      <div>
-                        <div className="text-[13.5px] font-semibold">
-                          {t("lessons.how_day_went")}
-                        </div>
-                        <p
-                          className="mt-1.5 text-[14px]"
-                          style={{ color: "var(--muted)", lineHeight: 1.55 }}
-                        >
-                          {detail.summary}
-                        </p>
-                      </div>
-                    )}
-
-                    {detail.highlights?.length > 0 && (
-                      <div>
-                        <div className="text-[13.5px] font-semibold">
-                          {t("lessons.what_worked")}
-                        </div>
-                        <div className="mt-1.5 flex flex-col gap-2">
-                          {detail.highlights.map((hl, k) => (
-                            <div
-                              key={k}
-                              className="text-[13.5px]"
-                              style={{ color: "var(--muted)", lineHeight: 1.55 }}
-                            >
-                              <span style={{ color: "var(--text)", fontWeight: 600 }}>
-                                {hl.title}.
-                              </span>{" "}
-                              {hl.evidence}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {detail.tips?.length > 0 && (
-                      <div>
-                        <div className="text-[13.5px] font-semibold">
-                          {t("lessons.what_improve")}
-                        </div>
-                        <div className="mt-1.5 flex flex-col gap-3">
-                          {detail.tips.map((tip, k) => (
-                            <div key={k}>
-                              <div
-                                className="text-[13.5px] font-semibold"
-                                style={{ color: "var(--text)" }}
-                              >
-                                {tip.title}
-                              </div>
-                              <div
-                                className="text-[13px] mt-0.5"
-                                style={{ color: "var(--muted)", lineHeight: 1.55 }}
-                              >
-                                {tip.why}
-                              </div>
-                              {tip.example && (
-                                <div
-                                  className="mt-1.5 rounded-lg px-3 py-2 text-[12.5px]"
-                                  style={{
-                                    background: "var(--faint)",
-                                    fontStyle: "italic",
-                                    color: "var(--text)",
-                                  }}
-                                >
-                                  «{tip.example}»
-                                </div>
-                              )}
-                              {tip.action && (
-                                <div
-                                  className="mt-1.5 text-[12.5px] font-medium"
-                                  style={{ color: "var(--accent)" }}
-                                >
-                                  → {tip.action}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                {detail && <LessonDetailBody detail={detail} />}
               </div>
             )}
           </section>
         );
       })}
+    </div>
+  );
+}
+
+function LessonDetailBody({ detail }: { detail: DailyLessonDetail }) {
+  const t = useT();
+  const v2 = isContentV2(detail.content) ? detail.content : null;
+
+  return (
+    <div className="pt-5 flex flex-col gap-5">
+      {(v2?.micro_lesson || detail.micro_lesson) && (
+        <div>
+          <Eyebrow>{t("lessons.focus_day")}</Eyebrow>
+          <div className="text-[14px] font-medium mt-2">
+            {v2?.micro_lesson || detail.micro_lesson}
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-3 gap-2">
+        <div className="nf-tile" style={{ padding: "12px 14px" }}>
+          <div className="text-[10.5px] text-muted uppercase tracking-wider">
+            {t("lessons.stat_sales")}
+          </div>
+          <div className="mt-1 text-[19px] font-semibold tabular-nums">
+            {detail.stats_snapshot?.sales_count || 0}
+          </div>
+        </div>
+        <div className="nf-tile" style={{ padding: "12px 14px" }}>
+          <div className="text-[10.5px] text-muted uppercase tracking-wider">
+            {t("lessons.stat_dialogs")}
+          </div>
+          <div className="mt-1 text-[19px] font-semibold tabular-nums">
+            {detail.stats_snapshot?.dialogs_count || 0}
+          </div>
+        </div>
+        <div className="nf-tile" style={{ padding: "12px 14px" }}>
+          <div className="text-[10.5px] text-muted uppercase tracking-wider">
+            {t("lessons.stat_quality")}
+          </div>
+          <div className="mt-1 text-[19px] font-semibold tabular-nums">
+            {Math.round(detail.stats_snapshot?.avg_quality || 0)}
+          </div>
+        </div>
+      </div>
+
+      {(v2?.yesterday_summary || detail.summary) && (
+        <div>
+          <div className="text-[13.5px] font-semibold">
+            {t("lessons.yesterday_title")}
+          </div>
+          <p
+            className="mt-1.5 text-[14px]"
+            style={{ color: "var(--muted)", lineHeight: 1.55 }}
+          >
+            {v2?.yesterday_summary || detail.summary}
+          </p>
+        </div>
+      )}
+
+      {v2?.main_insight?.text && (
+        <div>
+          <div className="text-[13.5px] font-semibold">
+            {t("lessons.main_insight")}
+          </div>
+          <div
+            className="mt-1.5 rounded-lg px-3 py-2"
+            style={{
+              borderLeft: "3px solid var(--accent)",
+              background: "var(--faint)",
+            }}
+          >
+            {v2.main_insight.title && (
+              <div
+                className="text-[13.5px] font-semibold"
+                style={{ color: "var(--text)" }}
+              >
+                {v2.main_insight.title}
+              </div>
+            )}
+            <div
+              className="text-[13px] mt-0.5"
+              style={{ color: "var(--muted)", lineHeight: 1.55 }}
+            >
+              {v2.main_insight.text}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(v2?.highlights ?? detail.highlights ?? []).length > 0 && (
+        <div>
+          <div className="text-[13.5px] font-semibold">
+            {t("lessons.what_worked")}
+          </div>
+          <div className="mt-1.5 flex flex-col gap-2">
+            {(v2?.highlights ?? detail.highlights).map((hl, k) => (
+              <div
+                key={k}
+                className="text-[13.5px]"
+                style={{ color: "var(--muted)", lineHeight: 1.55 }}
+              >
+                <span style={{ color: "var(--text)", fontWeight: 600 }}>
+                  {hl.title}.
+                </span>{" "}
+                {hl.evidence}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {v2 && v2.blockers?.length > 0 && (
+        <div>
+          <div className="text-[13.5px] font-semibold">
+            {t("lessons.what_blocked")}
+          </div>
+          <div className="mt-1.5 flex flex-col gap-3">
+            {v2.blockers.map((b, k) => (
+              <div key={k}>
+                <div
+                  className="text-[13.5px] font-semibold"
+                  style={{ color: "var(--text)" }}
+                >
+                  {b.title}
+                </div>
+                {b.why && (
+                  <div
+                    className="text-[13px] mt-0.5"
+                    style={{ color: "var(--muted)", lineHeight: 1.55 }}
+                  >
+                    {b.why}
+                  </div>
+                )}
+                {b.example && (
+                  <div
+                    className="mt-1.5 rounded-lg px-3 py-2 text-[12.5px]"
+                    style={{
+                      background: "var(--faint)",
+                      fontStyle: "italic",
+                      color: "var(--text)",
+                      whiteSpace: "pre-line",
+                    }}
+                  >
+                    «{b.example}»
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {v2 && v2.practice_today?.length > 0 && (
+        <div>
+          <div className="text-[13.5px] font-semibold">
+            {t("lessons.practice_today")}
+          </div>
+          <div className="mt-1.5 flex flex-col gap-3">
+            {v2.practice_today.map((s, k) => (
+              <div key={k}>
+                <div
+                  className="text-[13.5px] font-semibold"
+                  style={{ color: "var(--text)" }}
+                >
+                  {s.step}
+                </div>
+                {s.when && (
+                  <div
+                    className="text-[11.5px] uppercase tracking-wider mt-0.5"
+                    style={{ color: "var(--accent)" }}
+                  >
+                    {s.when}
+                  </div>
+                )}
+                {s.how && (
+                  <div
+                    className="text-[13px] mt-0.5 italic"
+                    style={{ color: "var(--muted)", lineHeight: 1.55 }}
+                  >
+                    {s.how}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!v2 && detail.tips?.length > 0 && (
+        <div>
+          <div className="text-[13.5px] font-semibold">
+            {t("lessons.what_improve")}
+          </div>
+          <div className="mt-1.5 flex flex-col gap-3">
+            {detail.tips.map((tip, k) => (
+              <div key={k}>
+                <div
+                  className="text-[13.5px] font-semibold"
+                  style={{ color: "var(--text)" }}
+                >
+                  {tip.title}
+                </div>
+                <div
+                  className="text-[13px] mt-0.5"
+                  style={{ color: "var(--muted)", lineHeight: 1.55 }}
+                >
+                  {tip.why}
+                </div>
+                {tip.example && (
+                  <div
+                    className="mt-1.5 rounded-lg px-3 py-2 text-[12.5px]"
+                    style={{
+                      background: "var(--faint)",
+                      fontStyle: "italic",
+                      color: "var(--text)",
+                    }}
+                  >
+                    «{tip.example}»
+                  </div>
+                )}
+                {tip.action && (
+                  <div
+                    className="mt-1.5 text-[12.5px] font-medium"
+                    style={{ color: "var(--accent)" }}
+                  >
+                    → {tip.action}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {v2?.closing_line && (
+        <div
+          className="text-center text-[13px] italic"
+          style={{ color: "var(--muted)" }}
+        >
+          {v2.closing_line}
+        </div>
+      )}
     </div>
   );
 }
