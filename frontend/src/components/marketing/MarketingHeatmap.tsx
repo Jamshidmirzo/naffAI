@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useT } from "../../lib/i18n";
+import { Select } from "../Select";
 import type { TimePatternSource } from "./types";
 
 interface Props {
@@ -49,17 +50,17 @@ export default function MarketingHeatmap({ sources }: Props) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <select
+          <Select<string>
+            className="min-w-[180px]"
             value={source}
-            onChange={(e) => setSource(e.target.value)}
-            className="text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5"
-          >
-            {sources.map((s) => (
-              <option key={s.source_name} value={s.source_name}>
-                {s.source_name}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setSource(v)}
+            options={sources.map((s) => ({
+              value: s.source_name,
+              label: s.source_name,
+            }))}
+            ariaLabel="Источник"
+            searchable={sources.length > 8}
+          />
           <div className="nf-tabs">
             <button
               type="button"

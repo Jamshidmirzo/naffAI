@@ -18,6 +18,7 @@ import NumericInput from "../components/NumericInput";
 import ProgressBar from "../components/ProgressBar";
 import TgDialogsPanel from "../components/TgDialogsPanel";
 import { StickerPicker } from "../components/StickerPicker";
+import { Select } from "../components/Select";
 import {
   Bar,
   BarChart,
@@ -1546,20 +1547,18 @@ export default function OperatorDetail() {
           </div>
           <div>
             <div className="nf-col mb-1.5">{t("op_edit.status")}</div>
-            <select
-              className="nf-input"
+            <Select<OperatorStatusChoice>
               value={profileForm.status}
-              onChange={(e) =>
-                setProfileForm({
-                  ...profileForm,
-                  status: e.target.value as OperatorStatusChoice,
-                })
+              onChange={(v) =>
+                setProfileForm({ ...profileForm, status: v })
               }
-            >
-              <option value="active">{t("op_edit.status_active")}</option>
-              <option value="trainee">{t("op_edit.status_trainee")}</option>
-              <option value="inactive">{t("op_edit.status_inactive")}</option>
-            </select>
+              options={[
+                { value: "active", label: t("op_edit.status_active") },
+                { value: "trainee", label: t("op_edit.status_trainee") },
+                { value: "inactive", label: t("op_edit.status_inactive") },
+              ]}
+              ariaLabel={t("op_edit.status")}
+            />
           </div>
           <div>
             <div className="nf-col mb-1.5">{t("op_edit.note")}</div>

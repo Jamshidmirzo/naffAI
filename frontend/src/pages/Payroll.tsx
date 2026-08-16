@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { api, API_BASE_URL } from "../lib/api";
 import { formatUZS } from "../lib/format";
 import { Button, StatusBadge } from "../components/ui";
+import { Select } from "../components/Select";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
 
@@ -41,17 +42,16 @@ export default function Payroll() {
     <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
       {/* Filters */}
       <section className="flex items-center gap-3 animate-nfFadeUp">
-        <select
-          className="nf-input py-2 px-3.5 w-auto text-[13px]"
+        <Select<number>
+          className="w-40"
           value={month}
-          onChange={(e) => setMonth(Number(e.target.value))}
-        >
-          {[...Array(12)].map((_, i) => (
-            <option key={i + 1} value={i + 1}>
-              {new Date(2000, i).toLocaleString("ru", { month: "long" })}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => setMonth(v)}
+          options={[...Array(12)].map((_, i) => ({
+            value: i + 1,
+            label: new Date(2000, i).toLocaleString("ru", { month: "long" }),
+          }))}
+          ariaLabel="Месяц"
+        />
         <input
           className="nf-input py-2 px-3.5 w-24 text-[13px] tabular-nums"
           type="number"

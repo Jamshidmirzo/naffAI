@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Download, Filter, Plus, RotateCcw, Search } 
 import { api } from "../lib/api";
 import { formatDate, formatUZS } from "../lib/format";
 import { MultiSelectPopover } from "../components/MultiSelectPopover";
+import { Select } from "../components/Select";
 import { Button, Chip, StatusBadge } from "../components/ui";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
@@ -340,15 +341,16 @@ export default function Sales() {
           >
             <div className="flex items-center gap-2 text-muted">
               <span>На странице:</span>
-              <select
-                className="nf-input py-1.5 px-3 w-auto text-[13px]"
-                value={limit}
-                onChange={(e) => update({ limit: e.target.value })}
-              >
-                {PAGE_SIZE_OPTIONS.map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
+              <Select<string>
+                className="w-24"
+                value={String(limit)}
+                onChange={(v) => update({ limit: v })}
+                options={PAGE_SIZE_OPTIONS.map((n) => ({
+                  value: String(n),
+                  label: String(n),
+                }))}
+                ariaLabel="Размер страницы"
+              />
               <span className="ml-3 tabular-nums">
                 {rangeStart}–{rangeEnd} из {total}
               </span>

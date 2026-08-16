@@ -7,6 +7,7 @@ import { apiErrorMessage } from "../lib/api-types";
 import { type Lead } from "../lib/leads";
 import { Button, Checkbox, Chip, Modal, StatusBadge, toast } from "../components/ui";
 import { Paginator } from "../components/Paginator";
+import { Select } from "../components/Select";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
 
@@ -620,17 +621,17 @@ function AssignModal({
         <div className="mt-6 flex flex-col gap-4">
           <div>
             <div className="nf-col mb-1.5">{t("orphans.assign_modal.op_label")}</div>
-            <select
-              className="nf-input"
+            <Select<string>
               value={opId}
-              onChange={(e) => setOpId(e.target.value)}
-            >
-              {operators.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.full_name}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setOpId(v)}
+              options={operators.map((o) => ({
+                value: String(o.id),
+                label: o.full_name,
+              }))}
+              placeholder={t("orphans.assign_modal.op_label")}
+              ariaLabel={t("orphans.assign_modal.op_label")}
+              searchable={operators.length > 8}
+            />
           </div>
         </div>
         <div className="mt-7 flex gap-2 justify-end">

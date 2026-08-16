@@ -9,6 +9,7 @@ import { useLeadStatusInfo } from "../hooks/useLeadStatuses";
 import { Paginator } from "../components/Paginator";
 import { formatDate } from "../lib/format";
 import { Button, Checkbox, Chip, Modal, StatusBadge, toast } from "../components/ui";
+import { Select } from "../components/Select";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
 
@@ -395,15 +396,17 @@ function AssignModal({
         <div className="mt-6 flex flex-col gap-4">
           <div>
             <div className="nf-col mb-1.5">{t("common.operator")}</div>
-            <select
-              className="nf-input"
+            <Select<string>
               value={opId}
-              onChange={(e) => setOpId(e.target.value)}
-            >
-              {operators.map((o) => (
-                <option key={o.id} value={o.id}>{o.full_name}</option>
-              ))}
-            </select>
+              onChange={(v) => setOpId(v)}
+              options={operators.map((o) => ({
+                value: String(o.id),
+                label: o.full_name,
+              }))}
+              placeholder={t("common.operator")}
+              ariaLabel={t("common.operator")}
+              searchable={operators.length > 8}
+            />
           </div>
           <div>
             <div className="nf-col mb-1.5">{t("leads.reason_optional")}</div>

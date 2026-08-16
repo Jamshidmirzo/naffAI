@@ -17,6 +17,7 @@ import {
 } from "../components/ui";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
+import { Select } from "../components/Select";
 
 type DistributionMode =
   | "alias_only"
@@ -324,15 +325,16 @@ function SheetSourceForm({
             />
           </Field>
           <Field label={t("sheet_src.field_default_status")}>
-            <select
-              className="nf-input"
+            <Select<string>
               value={defaultStatus}
-              onChange={(e) => setDefaultStatus(e.target.value)}
-            >
-              <option value="new">new</option>
-              <option value="archived">archived</option>
-              <option value="needs_review">needs_review</option>
-            </select>
+              onChange={(v) => setDefaultStatus(v)}
+              options={[
+                { value: "new", label: "new" },
+                { value: "archived", label: "archived" },
+                { value: "needs_review", label: "needs_review" },
+              ]}
+              ariaLabel={t("sheet_src.field_default_status")}
+            />
           </Field>
           <div className="col-span-2">
             <Field label={t("sheet_src.field_spreadsheet_id")}>
@@ -368,33 +370,30 @@ function SheetSourceForm({
             </Field>
           </div>
           <Field label={t("sheet_src.field_default_op")}>
-            <select
-              className="nf-input"
+            <Select<string>
               value={defaultOperator}
-              onChange={(e) => setDefaultOperator(e.target.value)}
-            >
-              <option value="">{t("sheet_src.option_none")}</option>
-              {operators.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.full_name}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setDefaultOperator(v)}
+              options={[
+                { value: "", label: t("sheet_src.option_none") },
+                ...operators.map((o) => ({
+                  value: String(o.id),
+                  label: o.full_name,
+                })),
+              ]}
+              ariaLabel={t("sheet_src.field_default_op")}
+              searchable={operators.length > 8}
+            />
           </Field>
           <Field label={t("sheet_src.field_mode")}>
-            <select
-              className="nf-input"
+            <Select<DistributionMode>
               value={distributionMode}
-              onChange={(e) =>
-                setDistributionMode(e.target.value as DistributionMode)
-              }
-            >
-              {modes.map((m) => (
-                <option key={m} value={m}>
-                  {t(DISTRIBUTION_KEY[m])}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setDistributionMode(v)}
+              options={modes.map((m) => ({
+                value: m,
+                label: t(DISTRIBUTION_KEY[m]),
+              }))}
+              ariaLabel={t("sheet_src.field_mode")}
+            />
           </Field>
           <div className="col-span-2 text-[12px] text-muted">
             {distributionMode === "alias_only" &&
@@ -576,20 +575,19 @@ function AliasesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                   )}
                 </div>
                 <div>
-                  <select
-                    className="nf-input py-1.5 px-3 text-[13px]"
-                    value={a.operator || ""}
-                    onChange={(e) =>
-                      bind(a, e.target.value ? Number(e.target.value) : null)
-                    }
-                  >
-                    <option value="">{t("sheet_src.aliases_none")}</option>
-                    {(ops.data || []).map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.full_name}
-                      </option>
-                    ))}
-                  </select>
+                  <Select<string>
+                    value={a.operator ? String(a.operator) : ""}
+                    onChange={(v) => bind(a, v ? Number(v) : null)}
+                    options={[
+                      { value: "", label: t("sheet_src.aliases_none") },
+                      ...(ops.data || []).map((o) => ({
+                        value: String(o.id),
+                        label: o.full_name,
+                      })),
+                    ]}
+                    ariaLabel={t("common.operator")}
+                    searchable={(ops.data || []).length > 8}
+                  />
                 </div>
               </div>
             ))}

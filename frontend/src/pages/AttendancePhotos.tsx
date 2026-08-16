@@ -14,6 +14,7 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Calendar, RefreshCw, User as UserIcon, X } from "lucide-react";
 import { api, API_BASE_URL } from "../lib/api";
 import { Button, Eyebrow, StatusBadge } from "../components/ui";
+import { Select } from "../components/Select";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
 
@@ -371,22 +372,20 @@ export default function AttendancePhotos() {
             <UserIcon className="w-3.5 h-3.5" />{" "}
             {t("attendance.photos.filter_operator")}
           </span>
-          <select
+          <Select<string>
+            className="min-w-[220px]"
             value={operatorId === "" ? "" : String(operatorId)}
-            onChange={(e) =>
-              setOperatorId(e.target.value ? Number(e.target.value) : "")
-            }
-            className="nf-input py-2 px-3.5 w-auto text-[13px] min-w-[200px]"
-          >
-            <option value="">
-              {t("attendance.photos.filter_operator_all")}
-            </option>
-            {(operatorsQuery.data ?? []).map((op) => (
-              <option key={op.id} value={op.id}>
-                {op.full_name}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setOperatorId(v ? Number(v) : "")}
+            options={[
+              { value: "", label: t("attendance.photos.filter_operator_all") },
+              ...(operatorsQuery.data ?? []).map((op) => ({
+                value: String(op.id),
+                label: op.full_name,
+              })),
+            ]}
+            ariaLabel={t("attendance.photos.filter_operator")}
+            searchable={(operatorsQuery.data ?? []).length > 8}
+          />
         </label>
         <div className="flex items-center gap-2 ml-auto">
           <Button variant="ghost" onClick={resetFilters}>

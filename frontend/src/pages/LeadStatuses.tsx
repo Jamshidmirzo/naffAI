@@ -18,6 +18,7 @@ import {
 } from "../components/ui";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
+import { Select } from "../components/Select";
 import {
   useLeadStatuses,
   type LeadStatusRow,
@@ -342,17 +343,15 @@ function StatusFormModal({
           </div>
           <div>
             <div className="nf-col mb-1.5">{t("lead_statuses.tone")}</div>
-            <select
-              className="nf-input"
+            <Select<LeadStatusTone>
               value={tone}
-              onChange={(e) => setTone(e.target.value as LeadStatusTone)}
-            >
-              {TONE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setTone(v)}
+              options={TONE_OPTIONS.map((o) => ({
+                value: o.value,
+                label: o.label,
+              }))}
+              ariaLabel={t("lead_statuses.tone")}
+            />
           </div>
           <div>
             <div className="nf-col mb-1.5">{t("lead_statuses.sort_order")}</div>

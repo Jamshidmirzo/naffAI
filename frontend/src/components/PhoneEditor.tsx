@@ -1,6 +1,7 @@
 import { Plus, X } from "lucide-react";
 import PhotoUploader from "./PhotoUploader";
 import NumericInput from "./NumericInput";
+import { Select } from "./Select";
 import { useT } from "../lib/i18n";
 import type { PhoneColor } from "../pages/Catalog";
 
@@ -100,15 +101,16 @@ export default function PhoneEditor({ draft, onChange, onSave, onCancel, saving 
         </div>
         <div>
           <label className="nf-col mb-1.5 block">{t("catalog.stock")}</label>
-          <select
-            className="nf-input"
+          <Select<PhoneDraft["stock_status"]>
             value={draft.stock_status}
-            onChange={(e) => set("stock_status", e.target.value as any)}
-          >
-            <option value="available">{t("catalog.stock_available")}</option>
-            <option value="on_order">{t("catalog.stock_on_order")}</option>
-            <option value="out">{t("catalog.stock_out")}</option>
-          </select>
+            onChange={(v) => set("stock_status", v)}
+            options={[
+              { value: "available", label: t("catalog.stock_available") },
+              { value: "on_order", label: t("catalog.stock_on_order") },
+              { value: "out", label: t("catalog.stock_out") },
+            ]}
+            ariaLabel={t("catalog.stock")}
+          />
         </div>
       </div>
 

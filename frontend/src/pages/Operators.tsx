@@ -8,6 +8,7 @@ import { normaliseRole } from "../components/RoleGate";
 import { formatUZS } from "../lib/format";
 import NumericInput from "../components/NumericInput";
 import { StickerPicker } from "../components/StickerPicker";
+import { Select } from "../components/Select";
 import {
   Button,
   Card,
@@ -516,17 +517,16 @@ export default function Operators() {
             </div>
             <div>
               <div className="nf-col mb-1.5">{t("op_edit.status")}</div>
-              <select
-                className="nf-input"
+              <Select<OperatorStatus>
                 value={editModal.status}
-                onChange={(e) =>
-                  setEditModal({ ...editModal, status: e.target.value as OperatorStatus })
-                }
-              >
-                <option value="active">{t("op_edit.status_active")}</option>
-                <option value="trainee">{t("op_edit.status_trainee")}</option>
-                <option value="inactive">{t("op_edit.status_inactive")}</option>
-              </select>
+                onChange={(v) => setEditModal({ ...editModal, status: v })}
+                options={[
+                  { value: "active", label: t("op_edit.status_active") },
+                  { value: "trainee", label: t("op_edit.status_trainee") },
+                  { value: "inactive", label: t("op_edit.status_inactive") },
+                ]}
+                ariaLabel={t("op_edit.status")}
+              />
             </div>
             <div>
               <div className="nf-col mb-1.5">{t("op_edit.note")}</div>
@@ -663,15 +663,16 @@ export default function Operators() {
             </div>
             <div>
               <div className="nf-col mb-1.5">{t("common.status")}</div>
-              <select
-                className="nf-input"
+              <Select<OperatorStatus>
                 value={form.status}
-                onChange={(e) => setForm({ ...form, status: e.target.value as OperatorStatus })}
-              >
-                <option value="active">{t("op_detail.status_active")}</option>
-                <option value="trainee">{t("op_detail.status_trainee")}</option>
-                <option value="inactive">{t("op_detail.status_inactive")}</option>
-              </select>
+                onChange={(v) => setForm({ ...form, status: v })}
+                options={[
+                  { value: "active", label: t("op_detail.status_active") },
+                  { value: "trainee", label: t("op_detail.status_trainee") },
+                  { value: "inactive", label: t("op_detail.status_inactive") },
+                ]}
+                ariaLabel={t("common.status")}
+              />
             </div>
           </div>
           <div className="mt-6 flex gap-2 justify-end">

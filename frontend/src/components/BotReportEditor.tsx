@@ -6,6 +6,7 @@ import { api } from "../lib/api";
 import { useT } from "../lib/i18n";
 import BotBlockLibrary, { type BlockMeta } from "./BotBlockLibrary";
 import BotSchedulePicker from "./BotSchedulePicker";
+import { Select } from "./Select";
 
 export type BotReportDraft = {
   name: string;
@@ -161,30 +162,26 @@ export default function BotReportEditor({
               <label className="nf-col mb-1.5 block">
                 {t("bot.editor.language")}
               </label>
-              <select
-                className="nf-input"
+              <Select<string>
                 value={draft.language}
-                onChange={(e) => set("language", e.target.value)}
-              >
-                <option value="uz">O'zbekcha</option>
-                <option value="ru">Русский</option>
-              </select>
+                onChange={(v) => set("language", v)}
+                options={[
+                  { value: "uz", label: "O'zbekcha" },
+                  { value: "ru", label: "Русский" },
+                ]}
+                ariaLabel={t("bot.editor.language")}
+              />
             </div>
             <div>
               <label className="nf-col mb-1.5 block">
                 {t("bot.editor.period")}
               </label>
-              <select
-                className="nf-input"
+              <Select<string>
                 value={draft.period}
-                onChange={(e) => set("period", e.target.value)}
-              >
-                {periods.map((p) => (
-                  <option key={p.slug} value={p.slug}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => set("period", v)}
+                options={periods.map((p) => ({ value: p.slug, label: p.label }))}
+                ariaLabel={t("bot.editor.period")}
+              />
             </div>
           </div>
 
@@ -279,20 +276,19 @@ export default function BotReportEditor({
             <span className="text-[11px] text-muted">
               {t("bot.editor.preview_as")}
             </span>
-            <select
-              className="nf-input !py-1 !text-[12px] flex-1"
-              value={previewAs ?? ""}
-              onChange={(e) =>
-                setPreviewAs(e.target.value ? Number(e.target.value) : null)
-              }
-            >
-              <option value="">{t("bot.editor.preview_as_default")}</option>
-              {activeChats.map((c) => (
-                <option key={c.id} value={c.id}>
-                  [{c.kind}] {c.title || c.chat_id}
-                </option>
-              ))}
-            </select>
+            <Select<string>
+              className="flex-1"
+              value={previewAs ? String(previewAs) : ""}
+              onChange={(v) => setPreviewAs(v ? Number(v) : null)}
+              options={[
+                { value: "", label: t("bot.editor.preview_as_default") },
+                ...activeChats.map((c) => ({
+                  value: String(c.id),
+                  label: `[${c.kind}] ${c.title || c.chat_id}`,
+                })),
+              ]}
+              ariaLabel={t("bot.editor.preview_as")}
+            />
           </div>
           {reportId && previewAs && (
             <button

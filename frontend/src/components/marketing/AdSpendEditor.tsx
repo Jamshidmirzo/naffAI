@@ -5,6 +5,7 @@ import { api } from "../../lib/api";
 import { formatUZS, toDateInputValue } from "../../lib/format";
 import { useT } from "../../lib/i18n";
 import { Button, toast } from "../ui";
+import { Select } from "../Select";
 import type { AdSpendRow } from "./types";
 
 interface SheetSource {
@@ -109,33 +110,37 @@ export default function AdSpendEditor() {
             type="date"
             value={draft.period_start}
             onChange={(e) => setDraft({ ...draft, period_start: e.target.value })}
-            className="text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-2"
+            className="nf-input text-sm py-2 px-2"
           />
           <input
             type="date"
             value={draft.period_end}
             onChange={(e) => setDraft({ ...draft, period_end: e.target.value })}
-            className="text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-2"
+            className="nf-input text-sm py-2 px-2"
           />
-          <select
+          <Select<string>
             value={draft.source_id}
-            onChange={(e) => setDraft({ ...draft, source_id: e.target.value })}
-            className="text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-2"
-          >
-            <option value="">— {t("marketing.adspend.pick_source")} —</option>
-            {(sourcesQ.data || []).map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setDraft({ ...draft, source_id: v })}
+            options={[
+              {
+                value: "",
+                label: `— ${t("marketing.adspend.pick_source")} —`,
+              },
+              ...(sourcesQ.data || []).map((s) => ({
+                value: String(s.id),
+                label: s.name,
+              })),
+            ]}
+            ariaLabel={t("marketing.adspend.pick_source")}
+            searchable={(sourcesQ.data || []).length > 8}
+          />
           <input
             type="text"
             value={draft.source_label}
             placeholder={t("marketing.adspend.custom_label_ph")}
             onChange={(e) => setDraft({ ...draft, source_label: e.target.value })}
             disabled={!!draft.source_id}
-            className="text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 disabled:opacity-50"
+            className="nf-input text-sm py-2 px-3 disabled:opacity-50"
           />
           <input
             type="number"
@@ -144,7 +149,7 @@ export default function AdSpendEditor() {
             value={draft.amount}
             placeholder={t("marketing.adspend.amount_ph")}
             onChange={(e) => setDraft({ ...draft, amount: e.target.value })}
-            className="text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-right tabular-nums"
+            className="nf-input text-sm py-2 px-3 text-right tabular-nums"
           />
           <Button onClick={submit} disabled={createMut.isPending}>
             <Plus className="w-3.5 h-3.5" />
