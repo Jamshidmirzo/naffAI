@@ -36,6 +36,15 @@ class Command(BaseCommand):
             action="store_true",
             help="Run without saving lessons or calling LLM",
         )
+        parser.add_argument(
+            "--force",
+            action="store_true",
+            help=(
+                "Regenerate the lesson even if one already exists for the "
+                "operator on --date. Deletes the existing DailyLesson and "
+                "any DailyLessonAttempt rows for that (operator, date) first."
+            ),
+        )
 
     def handle(self, *args, **options):
         date_str = options["date"]
@@ -56,8 +65,20 @@ class Command(BaseCommand):
             self.stdout.write(f"Processing operator {op.full_name} (ID: {op.id})")
 
             if DailyLesson.objects.filter(operator=op, lesson_date=target_date).exists():
-                self.stdout.write(f"Lesson already exists for operator {op.id} on {target_date}. Skipping.")
-                continue
+                if options["force"]:
+                    # Regenerate: drop the existing lesson + any attempt
+                    # rows for this (operator, date) so the ORM constraint
+                    # doesn't fire on the re-create below.
+                    DailyLesson.objects.filter(operator=op, lesson_date=target_date).delete()
+                    DailyLessonAttempt.objects.filter(operator=op, lesson_date=target_date).delete()
+                    self.stdout.write(
+                        f"Force-regenerating lesson for operator {op.id} on {target_date}."
+                    )
+                else:
+                    self.stdout.write(
+                        f"Lesson already exists for operator {op.id} on {target_date}. Skipping."
+                    )
+                    continue
 
             facts = collect_yesterday_facts(op, target_date)
             sales_count = facts["sales"]["count"]

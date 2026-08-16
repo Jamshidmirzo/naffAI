@@ -68,7 +68,11 @@ class ChatMessagesApi(APIView):
         if not content:
             raise ValidationError({"content": "Пустое сообщение."})
         provider_key = (request.data or {}).get("provider_key", "") or ""
-        language = (request.data or {}).get("language", "") or "ru"
+        # Default to the manager's profile language if the FE didn't pass one.
+        # Phone-shop default (also when profile is missing) is Uzbek.
+        prof = getattr(request.user, "profile", None)
+        prof_lang = getattr(prof, "preferred_language", "") if prof else ""
+        language = (request.data or {}).get("language", "") or prof_lang or "uz"
         assistant_msg = handle_user_message(
             session=session,
             text=content,

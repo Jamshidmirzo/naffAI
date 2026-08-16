@@ -32,7 +32,9 @@ logger = logging.getLogger("apps.greetings")
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 SUPPORTED_LANGUAGES = ("ru", "uz")
-DEFAULT_LANGUAGE = "ru"
+# Phone-shop default is Uzbek — most operators are Uzbek-first. Callers
+# with an explicit `language=` override still get what they asked for.
+DEFAULT_LANGUAGE = "uz"
 
 STATIC_FALLBACKS: dict[str, tuple[str, str]] = {
     "ru": ("Успех — это сумма маленьких усилий, повторяемых день за днём.", "Роберт Кольер"),

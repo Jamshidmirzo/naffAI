@@ -63,22 +63,27 @@ _BASE_PROMPT_RU = (
 LANG_RULES = {
     "ru": "Отвечай кратко, по-русски. Не пересказывай данные буквально — выделяй главное.",
     "uz": (
-        "Отвечай ТОЛЬКО на узбекском языке (o'zbekcha, lotin yozuvida). "
-        "Никогда не переходи на русский, даже если вопрос был на русском. "
-        "Кратко, выделяй главное. Валюта: so'm."
+        "**MAJBURIY**: javob FAQAT o'zbek tilida (o'zbekcha, lotin yozuvida). "
+        "Rus tili so'zlaridan foydalanish QAT'IYAN taqiqlanadi — na kirillcha, "
+        "na lotinlashtirilgan («privet», «srochno», «kliyent» — mumkin emas, "
+        "«mijoz» yozing). Savol rus tilida bo'lsa ham, javob faqat o'zbekcha. "
+        "Har bir rus so'zi — kritik xato. Qisqa yozing, asosiysini ajrating. "
+        "Valyuta: so'm."
     ),
 }
 
 
-def build_system_prompt(language: str = "ru") -> str:
-    lang = (language or "ru").lower()
+def build_system_prompt(language: str = "uz") -> str:
+    # Phone-shop default is Uzbek — most managers are Uzbek-first.
+    # Callers that pass an explicit ``language=`` still get what they asked for.
+    lang = (language or "uz").lower()
     if lang not in LANG_RULES:
-        lang = "ru"
+        lang = "uz"
     return _BASE_PROMPT_RU.replace("{LANG_RULE}", LANG_RULES[lang])
 
 
 # Kept as module-level alias for backwards compatibility (older imports).
-SYSTEM_PROMPT = build_system_prompt("ru")
+SYSTEM_PROMPT = build_system_prompt("uz")
 
 
 @transaction.atomic
@@ -124,7 +129,7 @@ def handle_user_message(
     session: ChatSession,
     text: str,
     provider_key: str = "",
-    language: str = "ru",
+    language: str = "uz",
 ) -> ChatMessage:
     """
     Drive the tool-calling loop and return the final assistant message.

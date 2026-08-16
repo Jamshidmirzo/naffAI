@@ -1,5 +1,12 @@
-Telefon do'koni call-markazi operatori uchun qisqa (1-2 gap) motivatsion iqtibos ber.
-O'zbek tilida. Agar mashhur muallif bo'lsa — muallifni ko'rsat.
-Faqat quyidagi formatdagi JSON qaytar:
+MAJBURIY: Javob FAQAT o'zbek tilida (lotin yozuvida). Rus tili
+so'zlari — kritik xato, ishlatish taqiqlanadi.
+
+Telefon do'koni call-markazi operatori uchun qisqa (1-2 gap) motivatsion
+iqtibos bering. O'zbek tilida, samimiy va aniq. Agar mashhur muallif
+bo'lsa — muallifni ko'rsating (o'zbek yozuvida: "Stiv Jobs", "Robert Kolyer").
+
+Faqat quyidagi formatdagi TO'G'RI JSON qaytaring (atrofida matn yo'q):
 {"text": "...", "author": "..."}
-author bo'sh string bo'lishi mumkin, agar muallif noma'lum bo'lsa.
+
+`author` bo'sh string bo'lishi mumkin, agar muallif noma'lum bo'lsa.
+`text` — faqat o'zbekcha (lotincha), rus so'zi yo'q.

@@ -36,13 +36,7 @@ from apps.leads.models import Lead
 from apps.tg_userclient.ai.provider import LLMChainExhaustedError, get_marketing_provider
 
 from .models import AdSpend, MarketingInsight
-from .prompts import (
-    ADSPEND_HINT_EMPTY,
-    ADSPEND_HINT_WITH_DATA,
-    MARKETER_FEW_SHOT,
-    MARKETER_PERSONA_SYSTEM,
-    MARKETER_USER_TEMPLATE,
-)
+from .prompts import resolve_prompts
 
 logger = logging.getLogger("apps.marketing")
 
@@ -306,21 +300,23 @@ def _slim_payload_for_llm(payload: dict) -> dict:
     }
 
 
-def _run_llm(payload: dict) -> tuple[dict, str, str]:
+def _run_llm(payload: dict, *, language: str = "uz") -> tuple[dict, str, str]:
     """
     Ask the LLM for the marketer-persona structured output.
 
     Returns (structured_dict, model_version, provider_used). Falls back to
-    static analyser on chain exhaustion / invalid JSON.
+    static analyser on chain exhaustion / invalid JSON. ``language`` picks
+    the RU or UZ prompt bundle — phone-shop default is UZ.
     """
+    prompts = resolve_prompts(language)
     adspend_hint = (
-        ADSPEND_HINT_WITH_DATA
+        prompts["adspend_hint_with_data"]
         if payload.get("adspend_summary", {}).get("has_data")
-        else ADSPEND_HINT_EMPTY
+        else prompts["adspend_hint_empty"]
     )
     slim = _slim_payload_for_llm(payload)
     # Compact JSON — no indent, saves tokens.
-    user_text = MARKETER_USER_TEMPLATE.format(
+    user_text = prompts["user_template"].format(
         period_start=slim["period"]["start"],
         period_end=slim["period"]["end"],
         days=slim["period"]["days"],
@@ -334,7 +330,7 @@ def _run_llm(payload: dict) -> tuple[dict, str, str]:
         wow_json=json.dumps(slim["wow"], ensure_ascii=False),
         adspend_hint=adspend_hint,
     )
-    combined_prompt = f"{MARKETER_PERSONA_SYSTEM}\n\n{MARKETER_FEW_SHOT}\n\n---\n\n{user_text}"
+    combined_prompt = f"{prompts['system']}\n\n{prompts['few_shot']}\n\n---\n\n{user_text}"
     logger.info("marketing LLM prompt size: %d chars", len(combined_prompt))
 
     try:
@@ -417,9 +413,17 @@ def generate_marketing_insight(
     period_start: dt.date,
     period_end: dt.date,
     user=None,
+    language: str = "",
 ) -> MarketingInsight:
     payload = build_dashboard_payload(period_start=period_start, period_end=period_end)
-    structured, model_version, provider_used = _run_llm(payload)
+    # Resolve language: explicit arg > requesting user's profile > phone-shop
+    # default (uz). Marketing insights are usually generated on-demand by a
+    # manager pressing "Refresh" — we key on their preferred_language.
+    if not language and user is not None:
+        prof = getattr(user, "profile", None)
+        language = getattr(prof, "preferred_language", "") if prof else ""
+    language = language or "uz"
+    structured, model_version, provider_used = _run_llm(payload, language=language)
 
     insight, created = MarketingInsight.objects.update_or_create(
         period_start=period_start,

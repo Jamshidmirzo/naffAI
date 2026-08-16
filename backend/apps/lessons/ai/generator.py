@@ -23,14 +23,20 @@ MAX_JSON_ATTEMPTS = 2
 PROMPT_VERSION = "v2"
 
 SUPPORTED_LANGUAGES = ("ru", "uz")
-DEFAULT_LANGUAGE = "ru"
+# Phone-shop default is Uzbek — most operators are Uzbek-first, and the
+# `_prompt_path_for` helper falls back here when a caller doesn't pass
+# `language=` explicitly. Callers with a resolved language (via
+# `resolve_operator_language`) still get what they asked for.
+DEFAULT_LANGUAGE = "uz"
 
 
 def _prompt_path_for(language: str) -> Path:
     lang = language if language in SUPPORTED_LANGUAGES else DEFAULT_LANGUAGE
-    if lang == "uz":
-        return PROMPTS_DIR / "daily_lesson_v1_uz.md"
-    return PROMPTS_DIR / "daily_lesson_v1.md"
+    if lang == "ru":
+        return PROMPTS_DIR / "daily_lesson_v1.md"
+    # 'uz' is now the default — any unknown language falls back here
+    # (see DEFAULT_LANGUAGE note above).
+    return PROMPTS_DIR / "daily_lesson_v1_uz.md"
 
 
 def _fallback_lesson_ru(name: str, facts: dict) -> dict:
