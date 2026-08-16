@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.common.excel import new_workbook, workbook_response, write_sheet
-from apps.users.permissions import IsTeamLeadOrManagerReadOnly
+from apps.users.permissions import IsAuthenticatedAnyRole, IsTeamLeadOrManagerReadOnly
 
 from .selectors import (
     by_channel,
@@ -60,7 +60,10 @@ class KpiApi(APIView):
 
 
 class LeaderboardApi(APIView):
-    permission_classes = [IsTeamLeadOrManagerReadOnly]
+    # Табло видно всем ролям (в т.ч. рядовому оператору — тот смотрит
+    # своё место и подсвечивает себя в списке). Read-only, sensitive
+    # данных нет (только имя + агрегаты).
+    permission_classes = [IsAuthenticatedAnyRole]
 
     def get(self, request):
         date_from, date_to = _window(request)

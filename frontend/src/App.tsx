@@ -10,6 +10,7 @@ import Partners from "./pages/Partners";
 import Analytics from "./pages/Analytics";
 import LeadsStats from "./pages/LeadsStats";
 import Payroll from "./pages/Payroll";
+import Leaderboard from "./pages/Leaderboard";
 import Audit from "./pages/Audit";
 import Screen from "./pages/Screen";
 import Login from "./pages/Login";
@@ -107,6 +108,7 @@ export default function App() {
           <Route path="/analytics" element={<RoleGate allow={["manager"]}><Analytics /></RoleGate>} />
           <Route path="/leads-stats" element={<RoleGate allow={["manager"]}><LeadsStats /></RoleGate>} />
           <Route path="/payroll" element={<RoleGate allow={["manager"]}><Payroll /></RoleGate>} />
+          <Route path="/leaderboard" element={<RoleGate allow={["manager", "operator"]}><Leaderboard /></RoleGate>} />
           <Route path="/audit" element={<RoleGate allow={["manager"]}><Audit /></RoleGate>} />
           <Route path="/ai-chat" element={<RoleGate allow={["manager"]}><AIChat /></RoleGate>} />
           <Route path="/marketing" element={<RoleGate allow={["manager"]}><Marketing /></RoleGate>} />

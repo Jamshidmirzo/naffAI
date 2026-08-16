@@ -27,6 +27,7 @@ function useManagerGroups(t: (k: string) => string, showPhotos: boolean): Sideba
       title: t("sidebar.analytics"),
       items: [
         { to: "/analytics", label: t("nav.analytics") },
+        { to: "/leaderboard", label: t("nav.leaderboard") },
         { to: "/leads-stats", label: t("nav.leads_stats") },
         { to: "/reports", label: t("nav.reports") },
         { to: "/screen", label: t("nav.screen"), external: true },
@@ -90,6 +91,7 @@ function useOperatorGroups(t: (k: string) => string): SidebarGroup[] {
       items: [
         { to: "/my", label: t("nav.my_leads"), end: true, badgeKey: "myBlockers" },
         { to: "/notifications", label: t("nav.notifications"), badgeKey: "notifs" },
+        { to: "/leaderboard", label: t("nav.leaderboard") },
         { to: "/catalog", label: t("nav.catalog") },
         { to: "/lessons/today", label: t("nav.lesson_today"), badgeKey: "lessonNew" },
         { to: "/lessons/history", label: t("nav.lesson_history") },
