@@ -418,8 +418,15 @@ function QrScanModal({
   const t = useT();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  // Key the cache by the SPA origin so that switching hosts (naff ↔ demo)
+  // or picking up a freshly-deployed backend contract never serves a stale
+  // URL from an earlier session. Also drop `staleTime` — the payload is
+  // cheap to fetch and the historical bug (QR pointing at prod on demo)
+  // was survivable only because we cached the wrong URL for a minute.
+  const spaOrigin =
+    typeof window !== "undefined" ? window.location.origin : "ssr";
   const { data: token, isPending, isError, error } = useQuery<MeQrToken>({
-    queryKey: ["me-attendance-qr-token"],
+    queryKey: ["me-attendance-qr-token", spaOrigin],
     queryFn: () =>
       api
         // Pass current SPA origin so the backend builds the QR against
@@ -428,10 +435,11 @@ function QrScanModal({
         // and can't be used as a hint. Backend validates against a
         // whitelist to prevent phishing-URL injection.
         .get<MeQrToken>("/attendance/me/qr-token/", {
-          params: { origin: window.location.origin },
+          params: { origin: spaOrigin },
         })
         .then((r) => r.data),
-    staleTime: 60_000,
+    staleTime: 0,
+    gcTime: 0,
     retry: false,
   });
 
