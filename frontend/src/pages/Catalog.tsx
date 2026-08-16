@@ -19,6 +19,8 @@ import { useT } from "../lib/i18n";
 import { usePageHeader } from "../store/page";
 import { Modal } from "../components/ui";
 import PhoneEditor, { type PhoneDraft } from "../components/PhoneEditor";
+import { useAuth } from "../store/auth";
+import { normaliseRole } from "../components/RoleGate";
 import {
   copyPhoneTextOnly,
   copyPhoneImageOnly,
@@ -72,6 +74,8 @@ function fmtPrice(v: string | number): string {
 export default function Catalog() {
   const t = useT();
   const qc = useQueryClient();
+  const rawRole = useAuth((s) => s.role);
+  const canEdit = normaliseRole(rawRole) === "manager";
   usePageHeader({ title: t("catalog.title"), subtitle: t("catalog.subtitle") }, [
     t("catalog.title"),
   ]);
@@ -238,12 +242,16 @@ export default function Catalog() {
             </button>
           ))}
         </div>
-        <Link to="/catalog/banks" className="nf-btn nf-btn--secondary">
-          <Settings2 className="w-4 h-4" /> {t("catalog.banks_link")}
-        </Link>
-        <button type="button" className="nf-btn nf-btn--primary" onClick={() => openEdit()}>
-          <Plus className="w-4 h-4" /> {t("catalog.new_phone")}
-        </button>
+        {canEdit && (
+          <>
+            <Link to="/catalog/banks" className="nf-btn nf-btn--secondary">
+              <Settings2 className="w-4 h-4" /> {t("catalog.banks_link")}
+            </Link>
+            <button type="button" className="nf-btn nf-btn--primary" onClick={() => openEdit()}>
+              <Plus className="w-4 h-4" /> {t("catalog.new_phone")}
+            </button>
+          </>
+        )}
       </div>
 
       {phones.isLoading && <div className="text-muted">{t("common.loading")}</div>}
@@ -339,34 +347,36 @@ export default function Catalog() {
                     {t("catalog.copy_photo")}
                   </button>
                 </div>
-                <div className="flex items-center justify-end gap-1.5">
-                  <button
-                    type="button"
-                    className="nf-btn nf-btn--ghost !p-2"
-                    onClick={() => openEdit(p)}
-                    title={t("common.edit")}
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    className="nf-btn nf-btn--ghost !p-2"
-                    onClick={() => toggleActive.mutate({ id: p.id, is_active: !p.is_active })}
-                    title={p.is_active ? t("catalog.hide") : t("catalog.show")}
-                  >
-                    {p.is_active ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                  </button>
-                  <button
-                    type="button"
-                    className="nf-btn nf-btn--ghost !p-2 text-red-500"
-                    onClick={() => {
-                      if (confirm(t("catalog.confirm_delete", { name: p.model_name })))
-                        remove.mutate(p.id);
-                    }}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                {canEdit && (
+                  <div className="flex items-center justify-end gap-1.5">
+                    <button
+                      type="button"
+                      className="nf-btn nf-btn--ghost !p-2"
+                      onClick={() => openEdit(p)}
+                      title={t("common.edit")}
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      className="nf-btn nf-btn--ghost !p-2"
+                      onClick={() => toggleActive.mutate({ id: p.id, is_active: !p.is_active })}
+                      title={p.is_active ? t("catalog.hide") : t("catalog.show")}
+                    >
+                      {p.is_active ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
+                      type="button"
+                      className="nf-btn nf-btn--ghost !p-2 text-red-500"
+                      onClick={() => {
+                        if (confirm(t("catalog.confirm_delete", { name: p.model_name })))
+                          remove.mutate(p.id);
+                      }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -374,14 +384,14 @@ export default function Catalog() {
       </div>
 
       <Modal
-        open={!!editing}
+        open={!!editing && canEdit}
         onClose={() => {
           setEditing(null);
           setEditingId(null);
         }}
         width={640}
       >
-        {editing && (
+        {editing && canEdit && (
           <PhoneEditor
             draft={editing}
             onChange={setEditing}

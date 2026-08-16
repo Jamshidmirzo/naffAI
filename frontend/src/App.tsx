@@ -89,7 +89,7 @@ export default function App() {
           <Route path="/settings" element={<RoleGate allow={["manager"]}><Settings /></RoleGate>} />
           <Route path="/calls" element={<RoleGate allow={["manager"]}><Placeholder title="Звонки" /></RoleGate>} />
           <Route path="/reports" element={<RoleGate allow={["manager"]}><Reports /></RoleGate>} />
-          <Route path="/catalog" element={<RoleGate allow={["manager"]}><Catalog /></RoleGate>} />
+          <Route path="/catalog" element={<RoleGate allow={["manager", "operator"]}><Catalog /></RoleGate>} />
           <Route path="/catalog/banks" element={<RoleGate allow={["manager"]}><CatalogBanks /></RoleGate>} />
           <Route path="/stickers" element={<RoleGate allow={["manager"]}><Placeholder title="Стикеры" /></RoleGate>} />
           <Route path="/users" element={<RoleGate allow={["manager"]}><Users /></RoleGate>} />
