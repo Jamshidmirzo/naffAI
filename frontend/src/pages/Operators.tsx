@@ -36,6 +36,7 @@ interface OperatorRow {
   account?: unknown;
   month_total?: string | number | null;
   month_count?: number | null;
+  blocking_gate_enabled?: boolean;
 }
 
 function initials(name: string) {
@@ -104,6 +105,7 @@ export default function Operators() {
     hired_at: string;
     note: string;
     status: OperatorStatus;
+    blocking_gate_enabled: boolean;
   } | null>(null);
   const [deleteError, setDeleteError] = useState("");
 
@@ -172,13 +174,22 @@ export default function Operators() {
   });
 
   const editOp = useMutation({
-    mutationFn: ({ id, ...body }: { id: number; full_name: string; phone: string; hired_at: string; note: string; status: OperatorStatus }) =>
+    mutationFn: ({ id, ...body }: {
+      id: number;
+      full_name: string;
+      phone: string;
+      hired_at: string;
+      note: string;
+      status: OperatorStatus;
+      blocking_gate_enabled: boolean;
+    }) =>
       api.patch(`/operators/${id}/`, {
         full_name: body.full_name,
         phone: body.phone || null,
         hired_at: body.hired_at || null,
         note: body.note || "",
         status: body.status,
+        blocking_gate_enabled: body.blocking_gate_enabled,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["operators"] });
@@ -425,6 +436,7 @@ export default function Operators() {
                           hired_at: selected.hired_at || "",
                           note: (selected as any).note || "",
                           status: selected.status,
+                          blocking_gate_enabled: !!selected.blocking_gate_enabled,
                         })
                       }
                     >
@@ -538,6 +550,39 @@ export default function Operators() {
                 onChange={(e) => setEditModal({ ...editModal, note: e.target.value })}
               />
             </div>
+            {/* Per-operator morning-gate opt-in (2026-08-16).
+                Обычно OFF (prod-безопасно) → оператор получает лидов
+                без блокировки. ON — используется для тестирования UX
+                блокировки на demo-стенде. */}
+            <label
+              className="flex items-start gap-3 rounded-xl px-3 py-3 cursor-pointer"
+              style={{
+                border: "1.5px solid var(--border)",
+                background: editModal.blocking_gate_enabled
+                  ? "rgba(220,38,38,0.05)"
+                  : "var(--bg-card)",
+              }}
+            >
+              <input
+                type="checkbox"
+                className="mt-0.5 shrink-0 h-4 w-4 accent-red-600"
+                checked={editModal.blocking_gate_enabled}
+                onChange={(e) =>
+                  setEditModal({
+                    ...editModal,
+                    blocking_gate_enabled: e.target.checked,
+                  })
+                }
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-[13.5px] font-semibold">
+                  {t("op_edit.blocking_gate")}
+                </div>
+                <div className="text-[12px] text-muted mt-0.5 leading-snug">
+                  {t("op_edit.blocking_gate_hint")}
+                </div>
+              </div>
+            </label>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="ghost" onClick={() => setEditModal(null)}>
                 {t("common.cancel")}

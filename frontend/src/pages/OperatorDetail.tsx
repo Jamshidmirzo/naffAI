@@ -104,6 +104,7 @@ interface OperatorDetail {
   hired_at: string | null;
   note?: string;
   account: AccountState;
+  blocking_gate_enabled?: boolean;
 }
 
 type OperatorStatusChoice = "active" | "trainee" | "inactive";
@@ -149,7 +150,14 @@ export default function OperatorDetail() {
     hired_at: string;
     status: OperatorStatusChoice;
     note: string;
-  }>({ full_name: "", hired_at: "", status: "active", note: "" });
+    blocking_gate_enabled: boolean;
+  }>({
+    full_name: "",
+    hired_at: "",
+    status: "active",
+    note: "",
+    blocking_gate_enabled: false,
+  });
 
   const isSpecific = choice.kind !== "current";
   const params = buildPeriodParams(period, choice);
@@ -301,6 +309,7 @@ export default function OperatorDetail() {
       hired_at: string | null;
       status: OperatorStatusChoice;
       note: string;
+      blocking_gate_enabled: boolean;
     }) => api.patch(`/operators/${id}/`, payload),
     onSuccess: () => {
       invalidateAccount();
@@ -332,6 +341,7 @@ export default function OperatorDetail() {
       hired_at: (d?.hired_at || s?.operator?.hired_at || "").slice(0, 10),
       status,
       note: d?.note || "",
+      blocking_gate_enabled: !!d?.blocking_gate_enabled,
     });
     setEditProfile(true);
   };
@@ -1572,6 +1582,40 @@ export default function OperatorDetail() {
               }
             />
           </div>
+          {/* Per-operator morning-gate opt-in (2026-08-16).
+              По умолчанию OFF — оператор не блокируется. ON —
+              тестовый/дисциплинарный режим, оператор не получает
+              новых лидов пока не разберёт спец-лиды и просроченные
+              колбэки. */}
+          <label
+            className="flex items-start gap-3 rounded-xl px-3 py-3 cursor-pointer"
+            style={{
+              border: "1.5px solid var(--border)",
+              background: profileForm.blocking_gate_enabled
+                ? "rgba(220,38,38,0.05)"
+                : "var(--bg-card)",
+            }}
+          >
+            <input
+              type="checkbox"
+              className="mt-0.5 shrink-0 h-4 w-4 accent-red-600"
+              checked={profileForm.blocking_gate_enabled}
+              onChange={(e) =>
+                setProfileForm({
+                  ...profileForm,
+                  blocking_gate_enabled: e.target.checked,
+                })
+              }
+            />
+            <div className="flex-1 min-w-0">
+              <div className="text-[13.5px] font-semibold">
+                {t("op_edit.blocking_gate")}
+              </div>
+              <div className="text-[12px] text-muted mt-0.5 leading-snug">
+                {t("op_edit.blocking_gate_hint")}
+              </div>
+            </div>
+          </label>
           <div className="flex justify-end gap-2 pt-2">
             <Button
               variant="ghost"
@@ -1587,6 +1631,7 @@ export default function OperatorDetail() {
                   hired_at: profileForm.hired_at || null,
                   status: profileForm.status,
                   note: profileForm.note,
+                  blocking_gate_enabled: profileForm.blocking_gate_enabled,
                 })
               }
               disabled={

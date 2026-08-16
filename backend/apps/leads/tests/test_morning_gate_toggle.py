@@ -60,7 +60,11 @@ def test_gate_enabled_excludes_operator_with_blocking_status_lead():
     _set_gate(True)
     _make_blocking_status()
 
-    op = Operator.objects.create(full_name="Blocked", status=OperatorStatus.ACTIVE)
+    op = Operator.objects.create(
+        full_name="Blocked",
+        status=OperatorStatus.ACTIVE,
+        blocking_gate_enabled=True,
+    )
     Lead.objects.create(
         full_name="L",
         phone="+998900000001",
@@ -79,7 +83,13 @@ def test_gate_disabled_allows_operator_with_blocking_status_lead():
     _set_gate(False)
     _make_blocking_status()
 
-    op = Operator.objects.create(full_name="OK", status=OperatorStatus.ACTIVE)
+    # Даже при `blocking_gate_enabled=True` глобальный switch OFF
+    # должен отпустить оператора.
+    op = Operator.objects.create(
+        full_name="OK",
+        status=OperatorStatus.ACTIVE,
+        blocking_gate_enabled=True,
+    )
     Lead.objects.create(
         full_name="L",
         phone="+998900000002",
@@ -103,7 +113,11 @@ def test_gate_enabled_excludes_operator_with_due_callback():
     """
     _set_gate(True)
 
-    op = Operator.objects.create(full_name="Callback", status=OperatorStatus.ACTIVE)
+    op = Operator.objects.create(
+        full_name="Callback",
+        status=OperatorStatus.ACTIVE,
+        blocking_gate_enabled=True,
+    )
     lead = Lead.objects.create(
         full_name="L",
         phone="+998900000003",
@@ -129,7 +143,11 @@ def test_env_override_beats_db_setting():
     _set_gate(True)
     _make_blocking_status()
 
-    op = Operator.objects.create(full_name="Env", status=OperatorStatus.ACTIVE)
+    op = Operator.objects.create(
+        full_name="Env",
+        status=OperatorStatus.ACTIVE,
+        blocking_gate_enabled=True,
+    )
     Lead.objects.create(
         full_name="L",
         phone="+998900000004",
@@ -151,7 +169,11 @@ def test_future_callback_does_not_block_when_gate_enabled():
     """
     _set_gate(True)
 
-    op = Operator.objects.create(full_name="Later", status=OperatorStatus.ACTIVE)
+    op = Operator.objects.create(
+        full_name="Later",
+        status=OperatorStatus.ACTIVE,
+        blocking_gate_enabled=True,
+    )
     lead = Lead.objects.create(
         full_name="L",
         phone="+998900000005",

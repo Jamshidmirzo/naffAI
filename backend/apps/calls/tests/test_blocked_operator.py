@@ -22,7 +22,13 @@ from apps.operators.models import Operator, OperatorStatus
 @pytest.mark.django_db
 def test_operator_is_blocked_when_overdue_past_grace(db, settings):
     settings.CALLBACK_OVERDUE_GRACE_MINUTES = 30
-    op = Operator.objects.create(full_name="Slow", status=OperatorStatus.ACTIVE)
+    # Per-op gate flag on — иначе overdue callback не блокирует
+    # (2026-08-16 rollout, prod-safe default OFF).
+    op = Operator.objects.create(
+        full_name="Slow",
+        status=OperatorStatus.ACTIVE,
+        blocking_gate_enabled=True,
+    )
     lead = Lead.objects.create(full_name="L", phone="+998900002233", operator=op)
 
     callback_reminder_create(

@@ -315,7 +315,13 @@ def operator_is_blocked_by_overdue_callbacks(operator: Operator) -> bool:
     Returns True if the operator has at least one live callback whose
     `remind_at + grace_minutes` has passed. Used both to gate round-robin
     assignment and to render the red banner on the operator workstation.
+
+    Respects `_gate_active_for_operator`: если гейт неактивен для этого
+    оператора (глобальный switch OFF или per-op flag OFF) — возвращает
+    False, чтобы UI и API-фасад не показывали блокировочный баннер.
     """
+    if not _gate_active_for_operator(operator):
+        return False
     # Local import to keep import-time cycles out of apps.leads → apps.calls.
     from apps.calls.models import CallbackReminder, CallbackReminderStatus
 
@@ -361,6 +367,12 @@ def _morning_gate_enabled() -> bool:
     Теперь по бизнес-запросу «вернуть блокировку когда есть спец-лиды»
     гейт снова активен, а менеджер может выключить его через `/settings`
     без деплоя.
+
+    NB. Даже когда глобальный switch ON, **факт применения гейта к
+    конкретному оператору** контролируется его флагом
+    `Operator.blocking_gate_enabled`. Это глобальное — «включён ли гейт
+    как механизм», а не «блокировать ли всех». См.
+    `_gate_active_for_operator()`.
     """
     override = getattr(settings, "MORNING_GATE_ENABLED", None)
     if override is not None:
@@ -377,13 +389,38 @@ def _morning_gate_enabled() -> bool:
         return False
 
 
+def _gate_active_for_operator(operator: Operator) -> bool:
+    """
+    Effective gate: global switch AND per-operator opt-in.
+
+    Both must be True for the morning-gate (callback + blocking-status)
+    to apply to `operator`.
+
+      - global switch OFF → gate never applies (ни для кого).
+      - global switch ON + operator flag OFF → «prod-безопасно», оператор
+        всегда получает новых лидов, никаких блокирующих баннеров.
+      - global switch ON + operator flag ON  → gate applies as before
+        (используется для тестовых/демо-операторов).
+
+    Rollout plan (2026-08-16): по умолчанию флаг у всех False → prod
+    unaffected; менеджер вручную включает у тестовых на demo, обкатывает
+    UX, потом уже раскатывает шире.
+    """
+    if not _morning_gate_enabled():
+        return False
+    return bool(getattr(operator, "blocking_gate_enabled", False))
+
+
 def operator_has_open_callbacks(operator: Operator) -> bool:
     """
     True only if the operator has a callback whose remind_at is due
-    now or within the lookahead window. Future callbacks («перезвонить
-    после обеда») don't block morning RR intake.
+    now or within the lookahead window AND the gate is effectively
+    active for this operator (global switch + per-op opt-in).
+
+    Future callbacks («перезвонить после обеда») don't block morning
+    RR intake regardless of flag state.
     """
-    if not _morning_gate_enabled():
+    if not _gate_active_for_operator(operator):
         return False
     from apps.calls.models import CallbackReminder, CallbackReminderStatus
 
@@ -400,7 +437,7 @@ def operator_has_open_callbacks(operator: Operator) -> bool:
 
 def operator_open_callbacks_count(operator: Operator) -> int:
     """Due-or-soon callbacks — matches the `has_open_callbacks` window."""
-    if not _morning_gate_enabled():
+    if not _gate_active_for_operator(operator):
         return 0
     from apps.calls.models import CallbackReminder, CallbackReminderStatus
 
@@ -715,6 +752,75 @@ def my_status_for_operator(operator: Operator) -> dict:
     by_status = {row["status"]: row["n"] for row in by_status_qs}
     total_leads = sum(by_status.values())
 
+    # -------- Per-operator gate block --------------------------------
+    # Показать оператору **конкретный список** лидов, которые его
+    # блокируют — без этого он видит красный банер и не понимает «что
+    # именно закрыть». Фронт рендерит карточки со ссылкой на лид.
+    #
+    # Список пустой, если гейт неактивен для оператора → фронт не
+    # покажет блокировочный блок (баннер прячется автоматически).
+    gate_active = _gate_active_for_operator(operator)
+    global_gate_on = _morning_gate_enabled()
+    op_gate_flag = bool(getattr(operator, "blocking_gate_enabled", False))
+
+    blocking_leads: list[dict] = []
+    overdue_callbacks: list[dict] = []
+    if gate_active:
+        # Спец-лиды (status с blocks_new_leads=True минус callback_scheduled
+        # — колбэки идут отдельным списком overdue_callbacks). Отдаём
+        # компактный shape: фронту нужно только имя, телефон, статус и id
+        # для deep-link'а на карточку лида.
+        codes = [c for c in blocking_lead_status_codes() if c != "callback_scheduled"]
+        if codes:
+            blk_qs = (
+                Lead.objects.filter(operator=operator, status__in=codes)
+                .order_by("updated_at")
+                .values("id", "full_name", "phone", "status", "updated_at")[:50]
+            )
+            blocking_leads = [
+                {
+                    "id": r["id"],
+                    "full_name": r["full_name"],
+                    "phone": r["phone"],
+                    "status": r["status"],
+                    "updated_at": r["updated_at"].isoformat()
+                    if r["updated_at"]
+                    else None,
+                }
+                for r in blk_qs
+            ]
+
+        # Просроченные / скоро-due callback'и. Тот же lookahead-cutoff,
+        # что использует `operator_has_open_callbacks` — оператор увидит
+        # ровно тот список, что вызывает блокировку RR.
+        from apps.calls.models import CallbackReminder, CallbackReminderStatus
+
+        cb_cutoff = _callback_due_cutoff()
+        cb_qs = (
+            CallbackReminder.objects.select_related("lead")
+            .filter(
+                operator=operator,
+                status__in=(
+                    CallbackReminderStatus.PENDING,
+                    CallbackReminderStatus.OVERDUE,
+                    CallbackReminderStatus.SNOOZED,
+                ),
+                remind_at__lte=cb_cutoff,
+            )
+            .order_by("remind_at")[:50]
+        )
+        overdue_callbacks = [
+            {
+                "id": cb.id,
+                "lead_id": cb.lead_id,
+                "full_name": cb.lead.full_name if cb.lead else "",
+                "phone": cb.lead.phone if cb.lead else "",
+                "remind_at": cb.remind_at.isoformat() if cb.remind_at else None,
+                "status": cb.status,
+            }
+            for cb in cb_qs
+        ]
+
     return {
         "working_count": working_count,
         "quota_limit": quota_limit,
@@ -727,6 +833,15 @@ def my_status_for_operator(operator: Operator) -> dict:
         "recall_active_now": recall_active_now,
         "by_status": by_status,
         "total_leads": total_leads,
+        # Gate diagnostics — фронт использует их для рендера
+        # «карточки-инструкции» вместо старого красного sticky banner.
+        "gate_active": gate_active,
+        "global_gate_on": global_gate_on,
+        "operator_gate_flag": op_gate_flag,
+        "blocking_leads": blocking_leads,
+        "overdue_callbacks": overdue_callbacks,
+        "blocking_leads_count": len(blocking_leads),
+        "overdue_callbacks_count": len(overdue_callbacks),
     }
 
 
@@ -736,8 +851,12 @@ def operator_yesterday_backlog_count(operator: Operator) -> int:
     manager-flagged «blocking» status. Time-independent — a phone_on
     lead marked five minutes ago still counts, because that phone
     conversation isn't done. Feeds the /my lock overlay.
+
+    Returns 0 when the gate is not effectively active for this
+    operator (global switch off OR per-op opt-in off) — то есть даже
+    если у оператора есть спец-лиды, счётчик 0 и баннер не появится.
     """
-    if not _morning_gate_enabled():
+    if not _gate_active_for_operator(operator):
         return 0
     # Same rule as operators_eligible_for_new_leads: callback_scheduled
     # is counted only when the reminder is due (via operator_open_callbacks_count).
@@ -795,10 +914,26 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
     if not _morning_gate_enabled():
         return qs
 
+    # Per-operator opt-in: гейт применяется ТОЛЬКО к операторам с
+    # `blocking_gate_enabled=True`. Все остальные получают лидов
+    # без блокировки, даже если у них есть спец-лиды или просроченный
+    # callback. Это позволяет обкатать блокировку на выборке
+    # (demo/тестовые), не выключая её глобально для всех.
+    gate_op_ids = set(
+        Operator.objects.filter(
+            status=OperatorStatus.ACTIVE,
+            blocking_gate_enabled=True,
+        ).values_list("id", flat=True)
+    )
+    if not gate_op_ids:
+        # Никого с включённым гейтом → нечего исключать.
+        return qs
+
     from apps.calls.models import CallbackReminder, CallbackReminderStatus
 
     cb_blocked = set(
         CallbackReminder.objects.filter(
+            operator_id__in=gate_op_ids,
             status__in=(
                 CallbackReminderStatus.PENDING,
                 CallbackReminderStatus.OVERDUE,
@@ -817,9 +952,10 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
     backlog_blocked: set[int] = set()
     if codes:
         backlog_blocked = set(
-            Lead.objects.filter(status__in=codes)
-            .exclude(operator__isnull=True)
-            .values_list("operator_id", flat=True)
+            Lead.objects.filter(
+                operator_id__in=gate_op_ids,
+                status__in=codes,
+            ).values_list("operator_id", flat=True)
         )
     return qs.exclude(pk__in=(cb_blocked | backlog_blocked))
 

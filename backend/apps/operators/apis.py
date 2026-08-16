@@ -51,6 +51,7 @@ class OperatorSerializer(serializers.ModelSerializer):
             "status",
             "hired_at",
             "note",
+            "blocking_gate_enabled",
             "created_at",
             "updated_at",
             "plan_target",
@@ -59,6 +60,13 @@ class OperatorSerializer(serializers.ModelSerializer):
             "sticker",
         ]
         read_only_fields = ["id", "created_at", "updated_at", "account", "sticker"]
+        extra_kwargs = {
+            # Опциональный на write — существующие PATCH'и без него
+            # (edit-модалка правит full_name/phone/hired_at/status/note)
+            # должны продолжать работать. Только если явно передан —
+            # `operator_update` его применит.
+            "blocking_gate_enabled": {"required": False},
+        }
 
     def get_account(self, obj: Operator) -> dict:
         return account_state(user_by_operator(obj))

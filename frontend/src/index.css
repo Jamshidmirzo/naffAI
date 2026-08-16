@@ -145,6 +145,19 @@ body {
   box-shadow: 0 10px 22px rgba(23, 21, 15, 0.07);
 }
 
+/* Deep-link flash from BlockingGateCard (2026-08-16) — оператор кликнул
+   «Открыть» в списке блокирующих лидов, страница проскроллила к карточке,
+   и подсветим её пульсирующей красной рамкой, чтобы взгляд не потерялся. */
+@keyframes nfFlashTarget {
+  0%   { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.55), 0 0 0 4px rgba(220, 38, 38, 0.20); border-color: #dc2626; }
+  70%  { box-shadow: 0 0 0 14px rgba(220, 38, 38, 0),   0 0 0 0 rgba(220, 38, 38, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0),      0 0 0 0 rgba(220, 38, 38, 0); }
+}
+.nf-flash-target {
+  animation: nfFlashTarget 2100ms cubic-bezier(.2,.7,.2,1) both;
+  border-color: #dc2626 !important;
+}
+
 /* ============================================================
    Outcome tiles (Phase 2 redesign, /my LeadCard).
    Big 2×2 (mobile) / 4×1 (desktop) grid of decision buttons that

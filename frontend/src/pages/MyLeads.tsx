@@ -203,6 +203,269 @@ function initials(name: string) {
     .toUpperCase() || "?";
 }
 
+// --- BlockingGateCard --------------------------------------------------
+// Карточка-инструкция: показывает оператору **конкретно какие лиды**
+// надо закрыть, чтобы получать новые. Заменяет старый sticky red banner,
+// где было написано только «Разбери N просроченных» — оператор не понимал
+// что именно.
+//
+// Рендерится только когда `myStatus.data.gate_active === true`, что
+// эквивалентно «глобальный switch ON AND у оператора включён per-op
+// флаг `blocking_gate_enabled`». На prod, где флаг у всех OFF по
+// умолчанию, карточка вообще не появляется — prod-безопасный rollout.
+type BlockingGateCardProps = {
+  status: {
+    blocking_leads?: Array<{
+      id: number;
+      full_name: string;
+      phone: string;
+      status: string;
+      updated_at: string | null;
+    }>;
+    overdue_callbacks?: Array<{
+      id: number;
+      lead_id: number;
+      full_name: string;
+      phone: string;
+      remind_at: string | null;
+      status: string;
+    }>;
+    blocking_leads_count?: number;
+    overdue_callbacks_count?: number;
+  };
+  onGoToLead: (leadId: number) => void;
+};
+
+function BlockingGateCard({ status, onGoToLead }: BlockingGateCardProps) {
+  const t = useT();
+  const blocking = status.blocking_leads ?? [];
+  const callbacks = status.overdue_callbacks ?? [];
+  const totalBlocked = blocking.length + callbacks.length;
+
+  if (totalBlocked === 0) return null;
+
+  // Deduplicate: если один и тот же лид и в blocking_leads (по статусу),
+  // и висит в overdue_callbacks — покажем один раз, отметив что и
+  // callback просрочен, и статус блокирует.
+  const seen = new Set<number>();
+  type Row = {
+    key: string;
+    leadId: number;
+    fullName: string;
+    phone: string;
+    statusCode: string | null;
+    isCallback: boolean;
+    remindAt: string | null;
+    updatedAt: string | null;
+  };
+  const rows: Row[] = [];
+
+  for (const cb of callbacks) {
+    if (seen.has(cb.lead_id)) continue;
+    seen.add(cb.lead_id);
+    rows.push({
+      key: `cb-${cb.id}`,
+      leadId: cb.lead_id,
+      fullName: cb.full_name,
+      phone: cb.phone,
+      statusCode: null,
+      isCallback: true,
+      remindAt: cb.remind_at,
+      updatedAt: null,
+    });
+  }
+  for (const bl of blocking) {
+    if (seen.has(bl.id)) continue;
+    seen.add(bl.id);
+    rows.push({
+      key: `bl-${bl.id}`,
+      leadId: bl.id,
+      fullName: bl.full_name,
+      phone: bl.phone,
+      statusCode: bl.status,
+      isCallback: false,
+      remindAt: null,
+      updatedAt: bl.updated_at,
+    });
+  }
+
+  return (
+    <div
+      className="rounded-[22px] overflow-hidden animate-nfPop"
+      style={{
+        border: "2px solid rgba(220, 38, 38, 0.35)",
+        background:
+          "linear-gradient(180deg, rgba(254, 226, 226, 0.9), rgba(255, 245, 245, 0.85))",
+        boxShadow: "0 20px 44px -22px rgba(220,38,38,0.35)",
+      }}
+    >
+      {/* Header row: icon + big title with count + explain text */}
+      <div className="p-5 pb-4 flex items-start gap-4">
+        <div
+          className="shrink-0 grid place-items-center rounded-2xl"
+          style={{
+            width: 52,
+            height: 52,
+            background: "rgba(220,38,38,0.14)",
+            border: "1px solid rgba(220,38,38,0.28)",
+          }}
+        >
+          <Lock className="w-7 h-7" style={{ color: "#b91c1c" }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div
+            className="text-[19px] font-bold leading-tight"
+            style={{ color: "#7f1d1d" }}
+          >
+            {t("my.gate.title", { n: totalBlocked })}
+          </div>
+          <div
+            className="text-[13.5px] mt-1.5 leading-snug"
+            style={{ color: "#991b1b" }}
+          >
+            {t("my.gate.explain")}
+          </div>
+        </div>
+      </div>
+
+      {/* Progress hint: «0 из N закрыто» */}
+      <div className="px-5 pb-3">
+        <div
+          className="rounded-full h-2 overflow-hidden"
+          style={{ background: "rgba(220,38,38,0.15)" }}
+        >
+          <div
+            className="h-full rounded-full transition-all"
+            style={{
+              width: "3%",
+              background: "linear-gradient(90deg,#dc2626,#f97316)",
+            }}
+          />
+        </div>
+        <div
+          className="text-[12px] mt-1.5 font-medium"
+          style={{ color: "#991b1b" }}
+        >
+          {t("my.gate.progress", { done: 0, total: totalBlocked })}
+        </div>
+      </div>
+
+      {/* List of specific leads with «Open» buttons */}
+      <div className="bg-white/60 px-3 pb-3 pt-2 space-y-2">
+        {rows.slice(0, 8).map((row, idx) => (
+          <BlockingGateRow
+            key={row.key}
+            index={idx + 1}
+            row={row}
+            onGoToLead={onGoToLead}
+          />
+        ))}
+        {rows.length > 8 && (
+          <div className="text-[12.5px] text-muted text-center py-1.5">
+            {t("my.gate.more_hidden", { n: rows.length - 8 })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BlockingGateRow({
+  index,
+  row,
+  onGoToLead,
+}: {
+  index: number;
+  row: {
+    leadId: number;
+    fullName: string;
+    phone: string;
+    statusCode: string | null;
+    isCallback: boolean;
+    remindAt: string | null;
+    updatedAt: string | null;
+  };
+  onGoToLead: (leadId: number) => void;
+}) {
+  const t = useT();
+  const statusInfo = useLeadStatusInfo(row.statusCode || undefined);
+  const displayName = row.fullName || t("my.no_name");
+
+  // «Просрочен на 2ч 15м» — только для callback'ов. Для статусов
+  // показываем «Ждёт X часов» = минуты с updated_at.
+  const overdueText = (() => {
+    const iso = row.isCallback ? row.remindAt : row.updatedAt;
+    if (!iso) return "";
+    const dtMs = new Date(iso).getTime();
+    if (!Number.isFinite(dtMs)) return "";
+    const diffMin = Math.max(0, Math.round((Date.now() - dtMs) / 60000));
+    if (diffMin < 60) return t("my.gate.mins_ago", { n: diffMin });
+    const h = Math.floor(diffMin / 60);
+    const m = diffMin % 60;
+    if (h < 24) return t("my.gate.hours_ago", { h, m });
+    const d = Math.floor(h / 24);
+    return t("my.gate.days_ago", { n: d });
+  })();
+
+  const badgeText = row.isCallback
+    ? t("my.gate.reason_callback")
+    : statusInfo.emoji
+    ? `${statusInfo.emoji} ${statusInfo.label}`
+    : statusInfo.label;
+
+  return (
+    <div
+      className="flex items-center gap-3 rounded-xl px-3 py-2.5 bg-white/90"
+      style={{ border: "1px solid rgba(220,38,38,0.18)" }}
+    >
+      <div
+        className="grid place-items-center text-white font-bold shrink-0"
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 999,
+          background: "linear-gradient(140deg,#dc2626,#f97316)",
+          fontSize: 12.5,
+        }}
+      >
+        {index}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[14px] font-semibold truncate">{displayName}</div>
+        <div className="text-[12.5px] text-muted tabular-nums font-mono truncate">
+          {row.phone || t("leads.no_phone")}
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11.5px]">
+          <span
+            className="px-2 py-0.5 rounded-full font-medium"
+            style={{
+              background: row.isCallback
+                ? "rgba(220,38,38,0.15)"
+                : "rgba(249,115,22,0.15)",
+              color: row.isCallback ? "#b91c1c" : "#c2410c",
+            }}
+          >
+            {badgeText}
+          </span>
+          {overdueText && (
+            <span className="text-muted">· {overdueText}</span>
+          )}
+        </div>
+      </div>
+      <button
+        onClick={() => onGoToLead(row.leadId)}
+        className="shrink-0 rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold text-white"
+        style={{
+          background: "linear-gradient(90deg,#dc2626,#f97316)",
+          boxShadow: "0 8px 18px -8px rgba(220,38,38,0.55)",
+        }}
+      >
+        {t("my.gate.open_lead")}
+      </button>
+    </div>
+  );
+}
+
 export default function MyLeads() {
   const qc = useQueryClient();
   const nav = useNavigate();
@@ -263,6 +526,28 @@ export default function MyLeads() {
           recall_active_now: boolean;
           by_status: Record<string, number>;
           total_leads: number;
+          // Per-operator morning-gate diagnostics (2026-08-16).
+          // Пустые/false-поля означают что баннер блокировки не рендерим.
+          gate_active: boolean;
+          global_gate_on: boolean;
+          operator_gate_flag: boolean;
+          blocking_leads: Array<{
+            id: number;
+            full_name: string;
+            phone: string;
+            status: string;
+            updated_at: string | null;
+          }>;
+          overdue_callbacks: Array<{
+            id: number;
+            lead_id: number;
+            full_name: string;
+            phone: string;
+            remind_at: string | null;
+            status: string;
+          }>;
+          blocking_leads_count: number;
+          overdue_callbacks_count: number;
         }>("/leads/my/status/")
         .then((r) => r.data),
     refetchInterval: 30_000,
@@ -321,6 +606,26 @@ export default function MyLeads() {
     recall_active_now: boolean;
     by_status: Record<string, number>;
     total_leads: number;
+    gate_active?: boolean;
+    global_gate_on?: boolean;
+    operator_gate_flag?: boolean;
+    blocking_leads?: Array<{
+      id: number;
+      full_name: string;
+      phone: string;
+      status: string;
+      updated_at: string | null;
+    }>;
+    overdue_callbacks?: Array<{
+      id: number;
+      lead_id: number;
+      full_name: string;
+      phone: string;
+      remind_at: string | null;
+      status: string;
+    }>;
+    blocking_leads_count?: number;
+    overdue_callbacks_count?: number;
   };
   const applyOptimisticStatusCounts = (
     oldStatus: string | null | undefined,
@@ -605,43 +910,30 @@ export default function MyLeads() {
       {/* --- Attendance status widget (2026-08-14) --------------------- */}
       <AttendanceStatusWidget />
 
-      {/* --- Overdue banner --- */}
-      {operator?.blocked && (
-        <div
-          className="rounded-[20px] px-6 py-5 flex items-center gap-4 text-white animate-nfPop"
-          style={{
-            background: "linear-gradient(100deg, var(--accent), var(--accent2))",
-            boxShadow: "0 18px 40px -20px var(--accent)",
+      {/* --- Blocking-gate инструкция (2026-08-16 UX overhaul) ------------
+          Заменяет старый red-sticky banner + короткое «Разбери просроченные».
+          Новый компонент: карточка-инструкция с пронумерованным списком
+          конкретных лидов, которые надо закрыть, и deep-link'ами на них.
+          Показывается ТОЛЬКО когда у оператора включён `blocking_gate_enabled`
+          (per-op flag). На prod без флага баннер не появится вообще.
+      */}
+      {myStatus.data?.gate_active && (
+        <BlockingGateCard
+          status={myStatus.data}
+          onGoToLead={(leadId) => {
+            setView("active");
+            setPage(1);
+            // Даём React отрендерить активную вкладку, потом скроллим к якорю.
+            setTimeout(() => {
+              const el = document.getElementById(`lead-${leadId}`);
+              if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "start" });
+                el.classList.add("nf-flash-target");
+                setTimeout(() => el.classList.remove("nf-flash-target"), 2200);
+              }
+            }, 60);
           }}
-        >
-          <span className="relative flex w-3 h-3 shrink-0">
-            <span className="animate-nfPulse absolute inline-flex h-full w-full rounded-full bg-white/60" />
-            <span className="relative inline-flex w-3 h-3 rounded-full bg-white" />
-          </span>
-          <div className="flex-1 min-w-0">
-            <div className="text-[15px] font-semibold">
-              {overdueCount > 0
-                ? t("my.overdue_count", { n: overdueCount })
-                : t("my.backlog_gate", {
-                    n:
-                      (operator?.open_callbacks ?? 0) +
-                      (operator?.yesterday_backlog ?? 0),
-                  })}
-            </div>
-            <div className="text-[13px] opacity-90">
-              {overdueCount > 0
-                ? t("my.overdue_hint")
-                : t("my.backlog_gate_hint")}
-            </div>
-          </div>
-          <button
-            className="rounded-full px-5 py-2.5 text-[13px] font-semibold text-[color:var(--accent)]"
-            style={{ background: "#fff" }}
-            onClick={() => setView("active")}
-          >
-            {t("my.resolve")}
-          </button>
-        </div>
+        />
       )}
 
       {/* --- Hero --- */}
@@ -877,37 +1169,9 @@ export default function MyLeads() {
         );
       })()}
 
-      {/* --- Legacy overdue-callback banner (morning-gate) -------------- */}
-      {view === "active" && operator?.blocked && (
-        <div
-          className="sticky z-30 flex items-center gap-3 rounded-2xl border px-4 py-3 backdrop-blur-md shadow-lg"
-          style={{
-            top: 74,
-            background: "rgba(220, 38, 38, 0.10)",
-            borderColor: "rgba(220, 38, 38, 0.45)",
-            color: "var(--fg)",
-          }}
-        >
-          <div
-            className="shrink-0 rounded-xl p-2"
-            style={{ background: "rgba(220, 38, 38, 0.18)" }}
-          >
-            <Lock className="w-6 h-6" style={{ color: "#dc2626" }} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold text-[14.5px]" style={{ color: "#dc2626" }}>
-              {t("my.locked_title", {
-                n:
-                  (operator?.open_callbacks ?? 0) +
-                  (operator?.yesterday_backlog ?? 0),
-              })}
-            </div>
-            <div className="text-[12.5px] opacity-90">
-              {t("my.locked_hint")}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Legacy sticky lock overlay удалён 2026-08-16 —
+          BlockingGateCard выше уже несёт все инструкции + deep-link'и,
+          дублировать нет смысла. */}
 
       {(() => {
         // Общий helper для рендера карточки — используется секциями и в
@@ -1369,7 +1633,11 @@ function LeadCard({
   return (
     <div
       key={`card-${lead.id}`}
-      className="animate-nfFadeUp nf-lead-card relative flex flex-wrap items-start gap-4"
+      // id-якорь для deep-link'а из «карточки-инструкции» блокировки:
+      // `<a href="#lead-123">` скроллит браузер к нужному лиду и
+      // подсвечивает его через CSS :target-hint animation.
+      id={`lead-${lead.id}`}
+      className="animate-nfFadeUp nf-lead-card relative flex flex-wrap items-start gap-4 scroll-mt-20"
       style={{
         borderRadius: 18,
         padding: "14px 18px",

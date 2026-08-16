@@ -1138,6 +1138,20 @@ const STRINGS: Lookup = {
     "lead.retry_badge": "🔄 Уже звонил {name}",
     "lead.retry_hint": "Клиент сказал дорого — предложи рассрочку или скидку.",
     "my.resolve": "Разобрать",
+    // --- BlockingGateCard (2026-08-16 UX overhaul) --------------------
+    // Заменяет "my.locked_title/hint/backlog_gate" — новая карточка-инструкция
+    // со списком конкретных лидов и deep-link'ами. Тексты специально
+    // максимально простые: «закрой эти X штук, потом получишь новые».
+    "my.gate.title": "Закрой эти {n} лида(-ов), чтобы получать новые",
+    "my.gate.explain":
+      "Пока эти клиенты не закрыты (продажа, отказ или отложить) — свежие лиды тебе не даются. Нажми «Открыть» и разберись с каждым.",
+    "my.gate.progress": "{done} из {total} закрыто",
+    "my.gate.open_lead": "Открыть",
+    "my.gate.reason_callback": "Пропущенный колбэк",
+    "my.gate.mins_ago": "просрочен {n} мин",
+    "my.gate.hours_ago": "просрочен {h}ч {m}м",
+    "my.gate.days_ago": "просрочен {n} дн.",
+    "my.gate.more_hidden": "…и ещё {n} — прокрути ниже, увидишь весь список",
     "my.you_have_prefix": "У вас",
     "my.active_lead_one": "активный лид",
     "my.active_lead_many": "активных лидов",
@@ -1742,6 +1756,9 @@ const STRINGS: Lookup = {
     "op_edit.status_trainee": "Стажёр",
     "op_edit.status_inactive": "Неактивный",
     "op_edit.note": "Заметка",
+    "op_edit.blocking_gate": "Блокировка по спец-лидам",
+    "op_edit.blocking_gate_hint":
+      "Если ВКЛ — оператор не получает новых лидов пока не закроет спец-лиды (phone_on, no_answer, has_debt) и просроченные колбэки. По умолчанию ВЫКЛ — включайте для тестовых операторов или тех, кому хотите жёсткую дисциплину.",
     "op_edit.saved": "Оператор обновлён",
     "op_edit.save_failed": "Не удалось сохранить",
 
@@ -3057,6 +3074,17 @@ const STRINGS: Lookup = {
     "lead.retry_badge": "🔄 Avval {name} qo'ng'iroq qilgan",
     "lead.retry_hint": "Mijoz qimmat dedi — bo'lib to'lash yoki chegirma taklif qiling.",
     "my.resolve": "Hal qilish",
+    // BlockingGateCard (2026-08-16) — see RU section above for context.
+    "my.gate.title": "Yangi lid olish uchun bu {n} ta lidni yoping",
+    "my.gate.explain":
+      "Bu mijozlar yopilmaguncha (sotuv, rad etish yoki kechiktirish) — yangi lidlar berilmaydi. «Ochish» tugmasini bosing va har birini yakunlang.",
+    "my.gate.progress": "{done} / {total} yopildi",
+    "my.gate.open_lead": "Ochish",
+    "my.gate.reason_callback": "O'tkazib yuborilgan callback",
+    "my.gate.mins_ago": "{n} daqiqa kechikkan",
+    "my.gate.hours_ago": "{h}s {m}d kechikkan",
+    "my.gate.days_ago": "{n} kun kechikkan",
+    "my.gate.more_hidden": "…yana {n} — pastga aylantiring, hammasini ko'rasiz",
     "my.you_have_prefix": "Sizda",
     "my.active_lead_one": "faol lid",
     "my.active_lead_many": "faol lidlar",
@@ -3631,6 +3659,9 @@ const STRINGS: Lookup = {
     "op_edit.status_trainee": "Stajyor",
     "op_edit.status_inactive": "Nofaol",
     "op_edit.note": "Izoh",
+    "op_edit.blocking_gate": "Maxsus lidlar bo'yicha blokirovka",
+    "op_edit.blocking_gate_hint":
+      "YOQIQ bo'lsa — operator maxsus lidlarni (phone_on, no_answer, has_debt) va muddati o'tgan callbacklarni yakunlamaguncha yangi lid olmaydi. Standart holat OCHIQ — sinov operatorlari yoki qattiq nazorat kerak bo'lganlar uchun yoqing.",
     "op_edit.saved": "Operator yangilandi",
     "op_edit.save_failed": "Saqlab bo'lmadi",
 
