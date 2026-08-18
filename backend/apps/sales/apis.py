@@ -17,7 +17,15 @@ from apps.users.permissions import (
 )
 
 from .imports.excel_importer import import_file
-from .models import GiftItem, Sale, SaleOperator, SalePartner, SaleStatus
+from .models import (
+    GiftItem,
+    Sale,
+    SaleAssignedManager,
+    SaleContractPhoto,
+    SaleOperator,
+    SalePartner,
+    SaleStatus,
+)
 from .selectors import sale_get, sale_list
 from .services import (
     sale_confirm,
@@ -52,6 +60,51 @@ class SalePartnerLineSerializer(serializers.ModelSerializer):
         fields = ["partner", "partner_name", "amount"]
 
 
+class AssignedManagerBriefSerializer(serializers.ModelSerializer):
+    """Nested read-only view of one partner-manager attached to a sale."""
+
+    id = serializers.IntegerField(source="manager.id", read_only=True)
+    full_name = serializers.SerializerMethodField()
+    role = serializers.CharField(source="manager.profile.role", read_only=True, default=None)
+
+    class Meta:
+        model = SaleAssignedManager
+        fields = ["id", "full_name", "role"]
+
+    def get_full_name(self, obj) -> str:
+        u = obj.manager
+        if not u:
+            return ""
+        # Profile.operator.full_name is the friendlier display where set;
+        # otherwise fall back to the User's own full name / username.
+        prof = getattr(u, "profile", None)
+        op = getattr(prof, "operator", None) if prof else None
+        if op and op.full_name:
+            return op.full_name
+        return u.get_full_name() or u.username
+
+
+class ContractPhotoBriefSerializer(serializers.ModelSerializer):
+    """Nested read-only view of one contract photo. `url` is absolute-safe:
+    if the serializer has a `request` in context we let DRF's ImageField
+    build a full URL; otherwise we fall back to `.url` (relative to MEDIA_URL)."""
+
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SaleContractPhoto
+        fields = ["id", "url", "position", "uploaded_at"]
+
+    def get_url(self, obj) -> str | None:
+        if not obj.photo:
+            return None
+        req = self.context.get("request")
+        try:
+            return req.build_absolute_uri(obj.photo.url) if req else obj.photo.url
+        except Exception:
+            return None
+
+
 class SaleSerializer(serializers.ModelSerializer):
     operator_name = serializers.CharField(source="operator.full_name", read_only=True)
     channel_name = serializers.CharField(source="channel.name", read_only=True)
@@ -61,6 +114,11 @@ class SaleSerializer(serializers.ModelSerializer):
     gifts = GiftItemSerializer(many=True, read_only=True)
     operator_lines = SaleOperatorLineSerializer(many=True, read_only=True)
     partner_lines = SalePartnerLineSerializer(many=True, read_only=True)
+    # Manager-partners + multi-photo enhancement — both nested + optional
+    # so the legacy prod frontend (which knows nothing about these) simply
+    # ignores the extra keys.
+    assigned_managers = AssignedManagerBriefSerializer(many=True, read_only=True)
+    contract_photos_all = ContractPhotoBriefSerializer(many=True, read_only=True)
     # NET amount (`amount − discount`) — derived on read so clients don't
     # have to recompute it. Both the SaleListCreateApi queryset and the
     # detail queryset annotate `total_price`, but we fall back to a
@@ -97,6 +155,8 @@ class SaleSerializer(serializers.ModelSerializer):
             "is_deleted",
             "gifts",
             "contract_photo",
+            "assigned_managers",
+            "contract_photos_all",
             "rejection_reason",
             "rejected_at",
             "created_at",
@@ -116,6 +176,8 @@ class SaleSerializer(serializers.ModelSerializer):
             "returned_at",
             "return_reason",
             "contract_photo",
+            "assigned_managers",
+            "contract_photos_all",
             "rejection_reason",
             "rejected_at",
             "created_at",
@@ -176,9 +238,29 @@ class SaleCreateInputSerializer(serializers.Serializer):
         choices=[SaleStatus.PENDING, SaleStatus.CONFIRMED],
         required=False,
     )
-    # Attached contract photo (multipart upload). Required by service layer
-    # when status=pending; otherwise optional.
+    # Attached contract photo (multipart upload, single). Legacy — kept
+    # for the old prod frontend which sends only one photo. Required by
+    # the service layer when status=pending IF `contract_photos` (multi)
+    # is also empty.
     contract_photo = serializers.ImageField(required=False, allow_null=True)
+
+    # Manager-partners + multi-photo enhancement.
+    # Both must be extracted with `getlist()` from a QueryDict BEFORE the
+    # `.dict()` flatten below — otherwise multipart clients that repeat
+    # `manager_partner_ids=1&manager_partner_ids=2` (and 5 `contract_photos`)
+    # would silently lose everything but the last value.
+    manager_partner_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        allow_empty=True,
+        max_length=2,
+    )
+    contract_photos = serializers.ListField(
+        child=serializers.ImageField(),
+        required=False,
+        allow_empty=True,
+        max_length=5,
+    )
 
     def to_internal_value(self, data):
         # NB: `request.data` for multipart requests is a `QueryDict`, which
@@ -197,10 +279,28 @@ class SaleCreateInputSerializer(serializers.Serializer):
         # exposed once the OperatorSaleCreate form started sending
         # multipart FormData with the contract photo.
         if isinstance(data, dict):
+            # Pull the two genuinely-multi fields BEFORE `.dict()` flattens
+            # them — otherwise a client that sends the 2 partner ids and 5
+            # photos loses everything but the last of each. Only touch the
+            # branch that actually needs it: QueryDict → getlist,
+            # plain dict → the value is either already a list or absent.
+            multi_manager_ids: list | None = None
+            multi_contract_photos: list | None = None
+            if hasattr(data, "getlist"):
+                mm = data.getlist("manager_partner_ids")
+                if mm:
+                    multi_manager_ids = mm
+                cp = data.getlist("contract_photos")
+                if cp:
+                    multi_contract_photos = cp
             if hasattr(data, "dict"):
                 data = data.dict()
             else:
                 data = dict(data)
+            if multi_manager_ids is not None:
+                data["manager_partner_ids"] = multi_manager_ids
+            if multi_contract_photos is not None:
+                data["contract_photos"] = multi_contract_photos
             if "operator" in data and "operator_id" not in data:
                 data["operator_id"] = data.pop("operator")
             if "channel" in data and "channel_id" not in data:

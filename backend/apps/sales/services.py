@@ -17,8 +17,22 @@ from apps.common.exceptions import ApplicationError, DuplicateError
 from apps.common.validators import is_valid_imei
 from apps.operators.models import Operator, OperatorStatus
 
-from .models import GiftItem, Sale, SaleOperator, SalePartner, SaleStatus
+from .models import (
+    GiftItem,
+    Sale,
+    SaleAssignedManager,
+    SaleContractPhoto,
+    SaleOperator,
+    SalePartner,
+    SaleStatus,
+)
 from .selectors import sale_imei_duplicate_count
+
+# Business-rule caps for the manager-partners + multi-photo feature.
+# Live in the service (not the model) so DB inserts stay flexible for
+# future overrides while the operator UX gets a hard rail.
+MAX_ASSIGNED_MANAGERS = 2
+MAX_CONTRACT_PHOTOS = 5
 
 # Money is stored as Decimal(14, 2). All proportional splits round
 # half-up to two decimal places and dump any rounding remainder onto
@@ -75,6 +89,100 @@ def _apply_discount_to_operator_lines(
             running += new_amt
         scaled.append((obj, new_amt))
     return scaled
+
+
+def _validate_manager_partner_ids(ids: list[int] | None) -> list[int]:
+    """
+    Normalise + validate the operator-selected list of partner-manager
+    user ids. Rules:
+      - length ≤ MAX_ASSIGNED_MANAGERS (2)
+      - unique
+      - every id points to an active User whose Profile.role is manager
+        or superadmin (team_lead is hidden from the operator UI but
+        accepted server-side just in case a manager assigns themselves).
+    Returns the deduped, preserved-order list. Empty/None input → [].
+    """
+    if not ids:
+        return []
+    # Dedup while preserving first-seen order.
+    seen: set[int] = set()
+    cleaned: list[int] = []
+    for raw in ids:
+        try:
+            uid = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise ApplicationError(
+                "Некорректный id менеджера-партнёра",
+                {"field": "manager_partner_ids"},
+            ) from exc
+        if uid in seen:
+            continue
+        seen.add(uid)
+        cleaned.append(uid)
+    if len(cleaned) > MAX_ASSIGNED_MANAGERS:
+        raise ApplicationError(
+            f"Можно выбрать не более {MAX_ASSIGNED_MANAGERS} менеджеров-партнёров",
+            {"field": "manager_partner_ids"},
+        )
+    # Import here to avoid circular deps on module load — users → sales.
+    from apps.users.models import Profile, Role  # noqa: WPS433
+
+    valid_ids = set(
+        Profile.objects.filter(
+            user_id__in=cleaned,
+            user__is_active=True,
+            role__in=[Role.MANAGER, Role.SUPERADMIN, Role.TEAM_LEAD],
+        ).values_list("user_id", flat=True)
+    )
+    missing = [uid for uid in cleaned if uid not in valid_ids]
+    if missing:
+        raise ApplicationError(
+            "Один или несколько выбранных менеджеров недоступны",
+            {"field": "manager_partner_ids", "invalid_ids": missing},
+        )
+    return cleaned
+
+
+def _validate_contract_photos(photos: list | None) -> list:
+    """Trim None entries + enforce the ≤ MAX_CONTRACT_PHOTOS cap."""
+    if not photos:
+        return []
+    cleaned = [p for p in photos if p is not None]
+    if len(cleaned) > MAX_CONTRACT_PHOTOS:
+        raise ApplicationError(
+            f"Можно приложить не более {MAX_CONTRACT_PHOTOS} фото договора",
+            {"field": "contract_photos"},
+        )
+    return cleaned
+
+
+def _write_assigned_managers(sale: Sale, manager_ids: list[int]) -> None:
+    if not manager_ids:
+        return
+    SaleAssignedManager.objects.bulk_create(
+        [SaleAssignedManager(sale=sale, manager_id=uid) for uid in manager_ids]
+    )
+
+
+def _write_contract_photos(sale: Sale, photos: list, *, legacy_single) -> None:
+    """
+    Bulk-create SaleContractPhoto rows for `photos` (in the given order).
+
+    If `photos` is empty AND a legacy `contract_photo` (single) was
+    attached to the Sale itself, mirror it as the first photo entry so
+    the new gallery UI can render a uniform list. This preserves back-
+    compat for the old prod-фронт which still sends only the single field.
+    """
+    if photos:
+        SaleContractPhoto.objects.bulk_create(
+            [
+                SaleContractPhoto(sale=sale, photo=f, position=idx)
+                for idx, f in enumerate(photos)
+            ]
+        )
+        return
+    if legacy_single:
+        SaleContractPhoto.objects.create(sale=sale, photo=legacy_single, position=0)
 
 
 def _resolve_operator(line: dict) -> Operator:
@@ -169,6 +277,8 @@ def sale_create(
     sheet_source_id: int | None = None,
     lead_id: int | None = None,
     contract_photo=None,
+    manager_partner_ids: list[int] | None = None,
+    contract_photos: list | None = None,
 ) -> Sale:
     """
     Create a sale.
@@ -180,10 +290,22 @@ def sale_create(
 
     Legacy single-FK payload (`operator_id`, `channel_id`, `amount`) is still
     accepted and wrapped into a single allocation line per role.
+
+    Optional add-ons introduced with the manager-partners + multi-photo pass:
+      - `manager_partner_ids` — до 2 user-id менеджеров, кого оператор хочет
+        «прикрепить» к продаже (аналитика, не payroll).
+      - `contract_photos` — до 5 фото договора (список UploadedFile).
+        Legacy single `contract_photo` остаётся принят: если пришёл только
+        он — он же кладётся первым в новую таблицу.
     """
     imei = (imei or "").strip()
     if not is_valid_imei(imei):
         raise ApplicationError("IMEI должен быть из 6–15 цифр", {"field": "imei"})
+
+    # Validate the two new optional inputs BEFORE any DB writes, so an
+    # invalid manager id or a 6th photo aborts the transaction cleanly.
+    manager_ids = _validate_manager_partner_ids(manager_partner_ids)
+    photos = _validate_contract_photos(contract_photos)
 
     duplicates = sale_imei_duplicate_count(imei=imei)
     if duplicates and not allow_duplicate_imei:
@@ -236,10 +358,11 @@ def sale_create(
     primary_partner = partner_lines[0][0]
 
     qty = max(1, int(quantity or 1))
-    # Pending sales from operators must have a contract photo — enforced
-    # at the service layer so any caller path (API, tests, tg-bot later)
-    # gets the same guarantee.
-    if status == SaleStatus.PENDING and not contract_photo:
+    # Pending sales from operators must have at least one contract photo —
+    # accepted either as the new `contract_photos` list or as the legacy
+    # single `contract_photo`. Enforced at the service layer so any caller
+    # path (API, tests, tg-bot later) gets the same guarantee.
+    if status == SaleStatus.PENDING and not (photos or contract_photo):
         raise ApplicationError(
             "Для отправки продажи на подтверждение приложите фото договора.",
             {"field": "contract_photo"},
@@ -279,6 +402,9 @@ def sale_create(
             ]
         )
 
+    _write_assigned_managers(sale, manager_ids)
+    _write_contract_photos(sale, photos, legacy_single=contract_photo)
+
     audit_log_create(
         user=user,
         action=AuditAction.CREATE,
@@ -300,6 +426,8 @@ def sale_create(
             "net": str(total - discount_dec),
             "sheet_source_id": sheet_source_id,
             "bonus_note": sale.bonus_note[:120] if sale.bonus_note else "",
+            "assigned_manager_ids": manager_ids,
+            "contract_photos_count": len(photos) if photos else (1 if contract_photo else 0),
         },
         comment=duplicate_override_comment if duplicates else "",
     )
@@ -451,11 +579,18 @@ def sale_full_update(
     gifts: Iterable[dict] | None = None,
     allow_duplicate_imei: bool = False,
     duplicate_override_comment: str = "",
+    manager_partner_ids: list[int] | None = None,
+    contract_photos: list | None = None,
+    contract_photo=None,
     **_kwargs,
 ) -> Sale:
     imei = (imei or "").strip()
     if not is_valid_imei(imei):
         raise ApplicationError("IMEI должен быть из 6–15 цифр", {"field": "imei"})
+
+    # Validate optional add-ons BEFORE mutating any rows.
+    manager_ids = _validate_manager_partner_ids(manager_partner_ids)
+    photos = _validate_contract_photos(contract_photos)
 
     if imei != sale.imei:
         duplicates = sale_imei_duplicate_count(imei=imei, exclude_id=sale.id)
@@ -527,26 +662,49 @@ def sale_full_update(
         [SalePartner(sale=sale, partner=p, amount=a) for p, a in partner_lines]
     )
 
+    # Replace the assigned-managers set only if the caller sent the key at
+    # all. `None` / missing → keep existing links intact (partial-friendly).
+    managers_updated = False
+    if manager_partner_ids is not None:
+        sale.assigned_managers.all().delete()
+        _write_assigned_managers(sale, manager_ids)
+        managers_updated = True
+
+    # Same policy for photos: pass an explicit list (even []) to replace;
+    # omit the key to keep the existing gallery.
+    photos_updated = False
+    if contract_photos is not None:
+        sale.contract_photos_all.all().delete()
+        _write_contract_photos(sale, photos, legacy_single=contract_photo)
+        photos_updated = True
+
+    audit_changes = {
+        "imei": sale.imei,
+        "phone_model": sale.phone_model,
+        "quantity": sale.quantity,
+        "operators": [
+            {"id": o.id, "name": o.full_name, "amount": str(a)}
+            for o, a in credited_operator_lines
+        ],
+        "partners": [
+            {"id": p.id, "name": p.name, "amount": str(a)} for p, a in partner_lines
+        ],
+        "total": str(total),
+        "discount": str(discount_dec),
+        "net": str(total - discount_dec),
+    }
+    if managers_updated:
+        audit_changes["assigned_manager_ids"] = manager_ids
+    if photos_updated:
+        audit_changes["contract_photos_count"] = len(photos) if photos else (
+            1 if contract_photo else 0
+        )
     audit_log_create(
         user=user,
         action=AuditAction.UPDATE,
         entity="sales.Sale",
         entity_id=sale.id,
-        changes={
-            "imei": sale.imei,
-            "phone_model": sale.phone_model,
-            "quantity": sale.quantity,
-            "operators": [
-                {"id": o.id, "name": o.full_name, "amount": str(a)}
-                for o, a in credited_operator_lines
-            ],
-            "partners": [
-                {"id": p.id, "name": p.name, "amount": str(a)} for p, a in partner_lines
-            ],
-            "total": str(total),
-            "discount": str(discount_dec),
-            "net": str(total - discount_dec),
-        },
+        changes=audit_changes,
     )
     return sale
 
