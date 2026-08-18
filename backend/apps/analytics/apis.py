@@ -11,6 +11,7 @@ from .selectors import (
     by_channel,
     by_model,
     callback_hour_heatmap,
+    dashboard_summary,
     kpi_snapshot,
     lead_stats_snapshot,
     leaderboard,
@@ -183,6 +184,36 @@ class CallbackHeatmapApi(APIView):
     def get(self, request):
         days_back = int(request.query_params.get("days_back", 30))
         return Response(callback_hour_heatmap(days_back=days_back))
+
+
+class DashboardSummaryApi(APIView):
+    """
+    GET /api/analytics/dashboard-summary/?period=day|week|month  (default: week)
+
+    Единый endpoint для менеджерской главной «Сводка дня» — собирает всё,
+    что нужно верхнему ряду KPI-карточек, среднему ряду (бар-чарт + «требует
+    решения») и нижнему ряду (топ операторов) одним ответом. Внутри просто
+    композиция уже существующих селекторов.
+
+    Форма ответа:
+      {
+        "period": "week",
+        "today":       {"count": N, "total": "X", "pending_count": N},
+        "turnover":    {"actual": "X", "target": "Y"|null, "target_period": "..."},
+        "conversion":  {"value_pct": F, "delta_pp": F, "prev_value_pct": F},
+        "shift":       {"on_shift": N, "expected": M, "late_today": K},
+        "timeseries":  [{"day": "YYYY-MM-DD", "count": N, "total": "X"}, ...14],
+        "target_daily_count": N|null,
+        "attention":   {"to_review": N, "orphans": N, "on_review": N, "late_today": N},
+        "top_operators":[{"id": N, "name": "...", "count": N, "amount": "X"}, ...5]
+      }
+    """
+
+    permission_classes = [IsTeamLeadOrManagerReadOnly]
+
+    def get(self, request):
+        period = (request.query_params.get("period") or "week").lower()
+        return Response(dashboard_summary(period=period))
 
 
 class AnalyticsExportApi(APIView):

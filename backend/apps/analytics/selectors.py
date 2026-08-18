@@ -1282,3 +1282,231 @@ def marketing_totals(*, date_from: dt.datetime, date_to: dt.datetime) -> dict:
         "cac": _decimal_str(cac.quantize(Decimal("1"))) if cac else None,
         "roi_pct": _decimal_str(roi.quantize(Decimal("0.1"))) if roi else None,
     }
+
+
+# ==============================================================
+# ---- Manager «Сводка дня» dashboard aggregate selector -------
+# ==============================================================
+#
+# Aggregates every card + chart on the redesigned manager home into a
+# single JSON response so the FE fires one request instead of six. It
+# reuses the individual selectors above; no new business logic — pure
+# composition + shape reformatting for the dashboard.
+
+
+_DASHBOARD_TIMESERIES_DAYS = 14
+
+
+def _period_bounds(
+    period: str,
+) -> tuple[dt.datetime, dt.datetime, dt.datetime, dt.datetime]:
+    """
+    Returns (cur_start, cur_end, prev_start, prev_end) datetimes anchored
+    on now() in the active timezone. `period` ∈ {day, week, month}.
+
+    - day    → today 00:00 … now, prev = yesterday 00:00 … 24:00
+    - week   → Mon 00:00 … now, prev = prior Mon..Sun
+    - month  → 1st 00:00 … now, prev = prior calendar month
+    """
+    now = timezone.now()
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if period == "day":
+        cur_start = start_of_day
+        cur_end = now
+        prev_start = cur_start - dt.timedelta(days=1)
+        prev_end = cur_start
+        return cur_start, cur_end, prev_start, prev_end
+
+    if period == "week":
+        cur_start = start_of_day - dt.timedelta(days=now.weekday())
+        cur_end = now
+        prev_start = cur_start - dt.timedelta(days=7)
+        prev_end = cur_start
+        return cur_start, cur_end, prev_start, prev_end
+
+    # month (default)
+    cur_start = start_of_day.replace(day=1)
+    cur_end = now
+    # Prev month = full calendar month before `cur_start`.
+    prev_end = cur_start
+    if cur_start.month == 1:
+        prev_start = cur_start.replace(year=cur_start.year - 1, month=12, day=1)
+    else:
+        prev_start = cur_start.replace(month=cur_start.month - 1, day=1)
+    return cur_start, cur_end, prev_start, prev_end
+
+
+def _sales_target_for_period(
+    period: str, cur_start: dt.datetime
+) -> dict:
+    """
+    Look up the applicable SalesTarget row for the current window.
+
+    Falls back through: exact match → most recent row of the same period_type →
+    `None`. Returns `{amount, count, period_type}` (Decimals stringified).
+    """
+    # Local import to avoid circular imports at module load.
+    from .models import SalesTarget, SalesTargetPeriod
+
+    period_type = {
+        "day": SalesTargetPeriod.DAILY,
+        "week": SalesTargetPeriod.WEEKLY,
+        "month": SalesTargetPeriod.MONTHLY,
+    }.get(period, SalesTargetPeriod.WEEKLY)
+
+    anchor = cur_start.date()
+
+    row = SalesTarget.objects.filter(
+        period_type=period_type, period_start=anchor
+    ).first()
+    if row is None:
+        # Fallback: most recent target of the same type (so old seed still shows).
+        row = (
+            SalesTarget.objects.filter(period_type=period_type)
+            .order_by("-period_start")
+            .first()
+        )
+    if row is None:
+        return {"amount": None, "count": None, "period_type": period_type}
+
+    return {
+        "amount": _decimal_str(row.target_amount),
+        "count": int(row.target_count),
+        "period_type": period_type,
+    }
+
+
+def dashboard_summary(period: str = "week") -> dict:
+    """
+    Aggregate everything the manager «Сводка дня» dashboard needs.
+
+    Composes existing selectors — no new business logic here. Shape is
+    documented next to the endpoint (see `apis.DashboardSummaryApi`).
+    """
+    from apps.leads.selectors import orphan_leads
+    from apps.sales.models import Sale
+    from apps.attendance.selectors import attendance_dashboard_snapshot
+
+    if period not in ("day", "week", "month"):
+        period = "week"
+
+    cur_start, cur_end, prev_start, prev_end = _period_bounds(period)
+
+    # -------- today card (always today, независимо от period) --------
+    now = timezone.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_agg = _base_qs(date_from=today_start, date_to=now).aggregate(
+        count=Count("id"), total=Sum(NET_AMOUNT)
+    )
+    pending_today = Sale.objects.filter(
+        is_deleted=False, is_returned=False, status="pending"
+    ).count()
+
+    # -------- turnover card (period window, net) --------
+    turnover_actual = _base_qs(date_from=cur_start, date_to=cur_end).aggregate(
+        total=Sum(NET_AMOUNT)
+    )["total"] or Decimal("0")
+    target_row = _sales_target_for_period(period, cur_start)
+
+    # -------- conversion card (leads → sales in window) --------
+    from apps.leads.models import Lead
+
+    def _leads_and_conv(start, end):
+        leads_cnt = Lead.objects.filter(
+            created_at__gte=start, created_at__lte=end
+        ).count()
+        conv_cnt = Sale.objects.filter(
+            is_deleted=False, is_returned=False, status="confirmed",
+            lead__created_at__gte=start, lead__created_at__lte=end,
+        ).count()
+        rate = round(conv_cnt * 100.0 / leads_cnt, 2) if leads_cnt else 0.0
+        return leads_cnt, conv_cnt, rate
+
+    _cur_leads, _cur_conv, cur_conv_rate = _leads_and_conv(cur_start, cur_end)
+    _pr_leads, _pr_conv, prev_conv_rate = _leads_and_conv(prev_start, prev_end)
+    delta_pp = round(cur_conv_rate - prev_conv_rate, 2)
+
+    # -------- shift card --------
+    shift = attendance_dashboard_snapshot()
+
+    # -------- timeseries: last N days regardless of period tab --------
+    ts_start = today_start - dt.timedelta(days=_DASHBOARD_TIMESERIES_DAYS - 1)
+    ts_rows = timeseries_daily(date_from=ts_start, date_to=now)
+    # Backfill missing days with zeros so the bar chart has fixed width.
+    ts_by_day = {r["day"]: r for r in ts_rows}
+    ts_filled: list[dict] = []
+    cursor = ts_start.date()
+    end_date = now.date()
+    while cursor <= end_date:
+        key = cursor.isoformat()
+        r = ts_by_day.get(key)
+        ts_filled.append(
+            {
+                "day": key,
+                "count": int(r["count"]) if r else 0,
+                "total": r["total"] if r else "0",
+            }
+        )
+        cursor += dt.timedelta(days=1)
+
+    # -------- attention: 4 counters --------
+    orphans_cnt = orphan_leads().count()
+    to_review = pending_today  # alias — Sale.status='pending' == «требует проверки»
+    late_today = int(shift.get("late_today") or 0)
+
+    # -------- leaderboard: top 5 for the SAME window as the KPIs --------
+    top_ops = leaderboard(date_from=cur_start, date_to=cur_end, limit=5)
+    top_ops_shaped = [
+        {
+            "id": r["operator_id"],
+            "name": r["operator_name"],
+            "count": r["count"],
+            "amount": r["total"],
+        }
+        for r in top_ops
+    ]
+
+    return {
+        "period": period,
+        "today": {
+            "count": int(today_agg["count"] or 0),
+            "total": _decimal_str(today_agg["total"] or Decimal("0")),
+            "pending_count": pending_today,
+        },
+        "turnover": {
+            "actual": _decimal_str(turnover_actual),
+            "target": target_row["amount"],
+            "target_period": target_row["period_type"],
+        },
+        "conversion": {
+            "value_pct": cur_conv_rate,
+            "delta_pp": delta_pp,
+            "prev_value_pct": prev_conv_rate,
+        },
+        "shift": {
+            "on_shift": int(shift["on_shift"]),
+            "expected": int(shift["expected"]),
+            "late_today": late_today,
+        },
+        "timeseries": ts_filled,
+        "target_daily_count": (
+            # Дашборд рисует dashed-линию «план X шт./день» на бар-чарте.
+            # Для weekly-плана делим на 7, для monthly — на 30, для daily —
+            # используем как есть.
+            None
+            if target_row["count"] is None
+            else (
+                target_row["count"]
+                if target_row["period_type"] == "daily"
+                else max(1, round(target_row["count"] / (7 if target_row["period_type"] == "weekly" else 30)))
+            )
+        ),
+        "attention": {
+            "to_review": to_review,
+            "orphans": orphans_cnt,
+            "on_review": pending_today,
+            "late_today": late_today,
+        },
+        "top_operators": top_ops_shaped,
+    }
