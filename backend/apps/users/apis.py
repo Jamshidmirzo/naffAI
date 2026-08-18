@@ -355,17 +355,37 @@ class UserListCreateApi(APIView):
     def get(self, request):
         # We only list web-only accounts (not operator-linked ones —
         # those are managed via /operators/{id}/account/…).
-        rows = []
-        for user in (
+        #
+        # Optional `?role=` filter — used by the OperatorSaleCreate
+        # form's "менеджеры-партнёры" select. Accepts a single role
+        # code (`manager`/`team_lead`/`superadmin`) or a comma-separated
+        # list. Silently ignores unknown codes so the caller can't
+        # smuggle arbitrary predicates in.
+        allowed_roles = {Role.MANAGER, Role.TEAM_LEAD, Role.SUPERADMIN}
+        role_param = (request.query_params.get("role") or "").strip()
+        role_filter: set[str] = set()
+        if role_param:
+            for code in role_param.split(","):
+                c = code.strip()
+                if c in allowed_roles:
+                    role_filter.add(c)
+
+        qs = (
             User.objects.filter(is_active=True)
             .exclude(profile__operator__isnull=False)
             .select_related("profile")
             .order_by("username")
-        ):
+        )
+        if role_filter:
+            qs = qs.filter(profile__role__in=role_filter)
+
+        rows = []
+        for user in qs:
             profile = getattr(user, "profile", None)
             rows.append({
                 "id": user.id,
                 "username": user.username,
+                "full_name": user.get_full_name() or user.username,
                 "role": profile.role if profile else "team_lead",
                 "is_active": user.is_active,
                 "is_superuser": user.is_superuser,
