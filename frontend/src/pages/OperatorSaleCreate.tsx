@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { X } from "lucide-react";
 import { api } from "../lib/api";
 import { useT } from "../lib/i18n";
 import { usePageHeader } from "../store/page";
 import { formatNumber } from "../lib/format";
 import NumericInput from "../components/NumericInput";
-import PhotoUploader from "../components/PhotoUploader";
+import PhotosUploader from "../components/PhotosUploader";
 import { SingleSelectCombobox } from "../components/SingleSelectCombobox";
 import { LEAD_STATUS_BADGE, LEAD_STATUS_LABEL } from "../lib/leads";
 import {
@@ -18,10 +19,14 @@ import {
   validateClientName,
   validateClientPhone,
   validateComment,
-  validateContractPhoto,
+  validateContractPhotos,
   validateImei,
+  validateManagerPartners,
   validatePhoneModel,
 } from "../lib/validation";
+
+const MAX_MANAGER_PARTNERS = 2;
+const MAX_CONTRACT_PHOTOS = 5;
 
 type LeadMatch = {
   id: number;
@@ -38,7 +43,10 @@ type FieldName =
   | "client_name"
   | "client_phone"
   | "comment"
-  | "contract_photo";
+  | "contract_photos"
+  | "manager_partner_ids";
+
+type ManagerOption = { id: number; full_name: string; username: string; role: string };
 
 /**
  * Operator's own "New sale" form. Compact + mobile-first.
@@ -72,7 +80,8 @@ export default function OperatorSaleCreate() {
   const [clientPhone, setClientPhone] = useState(CLIENT_PHONE_PREFIX);
   const [comment, setComment] = useState("");
   const [channelId, setChannelId] = useState<number | null>(null);
-  const [contractPhoto, setContractPhoto] = useState<File | null>(null);
+  const [contractPhotos, setContractPhotos] = useState<File[]>([]);
+  const [managerPartnerIds, setManagerPartnerIds] = useState<number[]>([]);
   const [leadId, setLeadId] = useState<number | null>(null);
   const [matchedLead, setMatchedLead] = useState<LeadMatch | null>(null);
   const [phoneMatches, setPhoneMatches] = useState<LeadMatch[]>([]);
@@ -92,7 +101,8 @@ export default function OperatorSaleCreate() {
     client_name: false,
     client_phone: false,
     comment: false,
-    contract_photo: false,
+    contract_photos: false,
+    manager_partner_ids: false,
   });
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
@@ -148,7 +158,8 @@ export default function OperatorSaleCreate() {
     client_name: null,
     client_phone: null,
     comment: null,
-    contract_photo: null,
+    contract_photos: null,
+    manager_partner_ids: null,
   });
 
   const partnersQ = useQuery({
@@ -156,6 +167,22 @@ export default function OperatorSaleCreate() {
     queryFn: () => api.get("/channels/?limit=200").then((r) => r.data),
   });
   const partners: { id: number; name: string }[] = partnersQ.data?.results || [];
+
+  // Roster of manager-partners the operator may attach (max 2) to a sale.
+  // Backend filter includes managers + superadmins; team_lead is hidden
+  // from the operator UI per project role policy.
+  const managersQ = useQuery({
+    queryKey: ["op-manager-partners"],
+    queryFn: () =>
+      api
+        .get<ManagerOption[]>("/users/?role=manager,superadmin")
+        .then((r) => r.data),
+    staleTime: 5 * 60_000,
+  });
+  const managers: ManagerOption[] = managersQ.data || [];
+  const managerLabel = (m: ManagerOption) =>
+    (m.full_name && m.full_name !== m.username ? m.full_name : m.username) ||
+    m.username;
 
   // TAC autofill on 15-digit IMEI.
   useEffect(() => {
@@ -207,7 +234,11 @@ export default function OperatorSaleCreate() {
     // it doesn't match the +998 format (legacy imports).
     client_phone: matchedLead ? null : validateClientPhone(clientPhone),
     comment: validateComment(comment),
-    contract_photo: validateContractPhoto(contractPhoto),
+    contract_photos: validateContractPhotos(contractPhotos, MAX_CONTRACT_PHOTOS),
+    manager_partner_ids: validateManagerPartners(
+      managerPartnerIds,
+      MAX_MANAGER_PARTNERS,
+    ),
   };
 
   const showError = (f: FieldName): string | null => {
@@ -255,10 +286,11 @@ export default function OperatorSaleCreate() {
         "phone_model",
         "amount",
         "channel_id",
+        "manager_partner_ids",
         "client_name",
         "client_phone",
         "comment",
-        "contract_photo",
+        "contract_photos",
       ];
       const firstBad = order.find((f) => errors[f] !== null);
       if (firstBad) {
@@ -296,7 +328,15 @@ export default function OperatorSaleCreate() {
       // serializer's `allow_blank=True` default kicks in cleanly.
       if (comment.trim()) fd.append("comment", comment.trim());
       if (leadId) fd.append("lead_id", String(leadId));
-      if (contractPhoto) fd.append("contract_photo", contractPhoto);
+      // New multi-fields: append each entry with the SAME key so the
+      // backend gets a real list via QueryDict.getlist(). Also emit the
+      // legacy single `contract_photo` = first file for maximum back-compat
+      // with any older manager tooling that reads `sale.contract_photo`.
+      contractPhotos.forEach((f) => fd.append("contract_photos", f));
+      if (contractPhotos[0]) fd.append("contract_photo", contractPhotos[0]);
+      managerPartnerIds.forEach((id) =>
+        fd.append("manager_partner_ids", String(id)),
+      );
 
       const r = await api.post("/sales/", fd);
       toast.success(t("op_sale.sent_for_review"));
@@ -315,7 +355,8 @@ export default function OperatorSaleCreate() {
         "client_name",
         "client_phone",
         "comment",
-        "contract_photo",
+        "contract_photos",
+        "manager_partner_ids",
       ];
       const collected: Partial<Record<FieldName, string>> = {};
       const localizeMsg = (raw: string): string => {
@@ -341,7 +382,12 @@ export default function OperatorSaleCreate() {
       // inline-error map so the operator gets a red message under the exact
       // input instead of a vague top-banner.
       if (typeof d.field === "string" && typeof d.detail === "string") {
-        const f = d.field as FieldName;
+        // Backend still uses the legacy `contract_photo` key on the "photo
+        // required for pending" error even though the UI now sends a list;
+        // re-route it onto the multi-photo inline slot so the operator sees
+        // the red hint under the new gallery, not orphaned in the banner.
+        const rawKey = d.field === "contract_photo" ? "contract_photos" : d.field;
+        const f = rawKey as FieldName;
         if (fields.includes(f) && !collected[f]) {
           collected[f] = localizeMsg(d.detail);
         }
@@ -559,6 +605,71 @@ export default function OperatorSaleCreate() {
           )}
         </div>
 
+        <div ref={setRef("manager_partner_ids")}>
+          <label className="nf-col mb-1.5 block">
+            {t("sale_create.manager_partners_label")}
+            <span className="ml-2 text-[11px] text-muted font-normal">
+              {managerPartnerIds.length}/{MAX_MANAGER_PARTNERS}
+            </span>
+          </label>
+          {managerPartnerIds.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {managerPartnerIds.map((id) => {
+                const m = managers.find((x) => x.id === id);
+                const label = m ? managerLabel(m) : `#${id}`;
+                return (
+                  <span
+                    key={id}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--faint)] text-[12.5px] border border-[var(--border)]"
+                  >
+                    {label}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setManagerPartnerIds((prev) =>
+                          prev.filter((x) => x !== id),
+                        );
+                        clearServerError("manager_partner_ids");
+                        markTouched("manager_partner_ids");
+                      }}
+                      className="text-muted hover:text-text"
+                      aria-label={t("common.remove")}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          {managerPartnerIds.length < MAX_MANAGER_PARTNERS && (
+            <SingleSelectCombobox
+              options={managers
+                .filter((m) => !managerPartnerIds.includes(m.id))
+                .map((m) => ({ id: m.id, label: managerLabel(m) }))}
+              value={null}
+              allowFreeText={false}
+              placeholder={t("sale_create.manager_partners_ph")}
+              onChange={(v) => {
+                if (typeof v !== "number") return;
+                setManagerPartnerIds((prev) =>
+                  prev.includes(v) ? prev : [...prev, v].slice(0, MAX_MANAGER_PARTNERS),
+                );
+                clearServerError("manager_partner_ids");
+                markTouched("manager_partner_ids");
+              }}
+            />
+          )}
+          <div className="text-[11.5px] text-muted mt-1">
+            {t("sale_create.manager_partners_hint")}
+          </div>
+          {showError("manager_partner_ids") && (
+            <div className="text-[11.5px] text-red-500 mt-1">
+              {showError("manager_partner_ids")}
+            </div>
+          )}
+        </div>
+
         <div>
           <label className="nf-col mb-1.5 block">
             {t("sale_create.client_name")}{" "}
@@ -727,21 +838,22 @@ export default function OperatorSaleCreate() {
           </div>
         </div>
 
-        <div ref={setRef("contract_photo")}>
-          <PhotoUploader
-            value={contractPhoto}
-            onChange={(f) => {
-              setContractPhoto(f);
-              clearServerError("contract_photo");
-              markTouched("contract_photo");
+        <div ref={setRef("contract_photos")}>
+          <PhotosUploader
+            value={contractPhotos}
+            onChange={(files) => {
+              setContractPhotos(files);
+              clearServerError("contract_photos");
+              markTouched("contract_photos");
             }}
+            max={MAX_CONTRACT_PHOTOS}
             required
-            label={t("op_sale.contract_photo")}
-            hint={t("op_sale.contract_photo_hint")}
+            label={t("op_sale.contract_photos")}
+            hint={t("op_sale.contract_photos_hint")}
           />
-          {showError("contract_photo") && (
+          {showError("contract_photos") && (
             <div className="text-[11.5px] text-red-500 mt-1">
-              {showError("contract_photo")}
+              {showError("contract_photos")}
             </div>
           )}
         </div>
