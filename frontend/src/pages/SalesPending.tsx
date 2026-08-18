@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Camera } from "lucide-react";
+import { Camera, Copy } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "../lib/api";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
@@ -16,6 +17,8 @@ type PendingSale = {
   client_name: string;
   client_phone: string;
   contract_photo: string | null;
+  contract_photos_all?: { id: number; url: string | null; position: number }[];
+  assigned_managers?: { id: number; full_name: string; role: string | null }[];
   created_at: string;
 };
 
@@ -57,48 +60,104 @@ export default function SalesPending() {
       )}
 
       <div className="grid gap-3 md:grid-cols-2">
-        {rows.map((s) => (
-          <Link
-            key={s.id}
-            to={`/sales/${s.id}`}
-            className="nf-card overflow-hidden hover:border-[var(--accent)] transition"
-          >
-            <div className="flex gap-3">
-              <div className="w-24 h-24 flex-shrink-0 bg-[var(--surface2)] flex items-center justify-center">
-                {s.contract_photo ? (
-                  <img
-                    src={s.contract_photo}
-                    alt="contract"
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <Camera className="w-6 h-6 text-muted" />
-                )}
+        {rows.map((s) => {
+          // Prefer the multi-photo thumbnail (#0) when present; fall back
+          // to the legacy single field, then to the camera-placeholder.
+          const firstPhoto =
+            s.contract_photos_all?.[0]?.url ?? s.contract_photo ?? null;
+          const extraPhotoCount = Math.max(
+            0,
+            (s.contract_photos_all?.length ?? 0) - 1,
+          );
+          const managers = s.assigned_managers ?? [];
+          return (
+            <Link
+              key={s.id}
+              to={`/sales/${s.id}`}
+              className="nf-card overflow-hidden hover:border-[var(--accent)] transition"
+            >
+              <div className="flex gap-3">
+                <div className="relative w-24 h-24 flex-shrink-0 bg-[var(--surface2)] flex items-center justify-center">
+                  {firstPhoto ? (
+                    <img
+                      src={firstPhoto}
+                      alt="contract"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <Camera className="w-6 h-6 text-muted" />
+                  )}
+                  {extraPhotoCount > 0 && (
+                    <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded-md bg-black/70 text-white text-[10px] tabular-nums">
+                      +{extraPhotoCount}
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0 p-3 pr-4">
+                  <div className="flex justify-between items-baseline gap-2">
+                    <div className="text-[14px] font-semibold truncate">
+                      {s.phone_model}
+                    </div>
+                    <div className="text-[14px] font-semibold tabular-nums flex-shrink-0">
+                      {formatUZS(Number(s.amount))}
+                    </div>
+                  </div>
+                  {/* Prominent IMEI — mono 14 with a tiny inline copy button
+                      so the manager can grab it from the queue without
+                      opening the detail page. */}
+                  <div
+                    className="mt-1.5 flex items-center gap-1.5 text-muted"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span className="text-[10.5px] uppercase tracking-wider">
+                      IMEI
+                    </span>
+                    <span className="font-mono text-[14px] tabular-nums text-text select-all truncate">
+                      {s.imei}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        try {
+                          await navigator.clipboard.writeText(s.imei);
+                          toast.success(t("common.copied"));
+                        } catch {
+                          /* silent */
+                        }
+                      }}
+                      className="text-muted hover:text-[var(--accent)] transition"
+                      title={t("sale_detail.copy_imei")}
+                    >
+                      <Copy className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <div className="text-[12px] text-muted mt-1 truncate">
+                    {s.operator_name || "—"} · {s.channel_name || "—"}
+                  </div>
+                  {managers.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {managers.map((m) => (
+                        <span
+                          key={m.id}
+                          className="inline-block px-1.5 py-0.5 rounded-full bg-[var(--faint)] border border-[var(--border)] text-[10.5px]"
+                        >
+                          {m.full_name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {(s.client_name || s.client_phone) && (
+                    <div className="text-[11.5px] text-muted mt-0.5 truncate">
+                      {s.client_name} {s.client_phone}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex-1 min-w-0 p-3 pr-4">
-                <div className="flex justify-between items-baseline gap-2">
-                  <div className="text-[14px] font-semibold truncate">
-                    {s.phone_model}
-                  </div>
-                  <div className="text-[14px] font-semibold tabular-nums flex-shrink-0">
-                    {formatUZS(Number(s.amount))}
-                  </div>
-                </div>
-                <div className="text-[11.5px] text-muted mt-1 font-mono truncate">
-                  IMEI: {s.imei}
-                </div>
-                <div className="text-[12px] text-muted mt-1.5 truncate">
-                  {s.operator_name || "—"} · {s.channel_name || "—"}
-                </div>
-                {(s.client_name || s.client_phone) && (
-                  <div className="text-[11.5px] text-muted mt-0.5 truncate">
-                    {s.client_name} {s.client_phone}
-                  </div>
-                )}
-              </div>
-            </div>
-          </Link>
-        ))}
+            </Link>
+          );
+        })}
       </div>
     </div>
   );

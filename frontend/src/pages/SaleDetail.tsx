@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RotateCcw, Sparkles, Trash2 } from "lucide-react";
+import { Copy, RotateCcw, Sparkles, Trash2, Users } from "lucide-react";
 import { api } from "../lib/api";
 import { formatDate, formatUZS } from "../lib/format";
 import {
@@ -30,6 +30,17 @@ interface Gift {
   id: number;
   name: string;
   cost: string | null;
+}
+interface AssignedManager {
+  id: number;
+  full_name: string;
+  role: string | null;
+}
+interface ContractPhoto {
+  id: number;
+  url: string | null;
+  position: number;
+  uploaded_at: string;
 }
 
 function fmtRelativeTime(iso: string | null | undefined, t: (k: string, p?: Record<string, string | number>) => string): string {
@@ -195,6 +206,7 @@ export default function SaleDetail() {
   const [showReject, setShowReject] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [showPhotoFull, setShowPhotoFull] = useState(false);
+  const [galleryIndex, setGalleryIndex] = useState(0);
 
   const q = useQuery({
     queryKey: ["sale", id],
@@ -260,6 +272,25 @@ export default function SaleDetail() {
 
   const operatorLines: OperatorLine[] = s?.operator_lines ?? [];
   const partnerLines: PartnerLine[] = s?.partner_lines ?? [];
+  const assignedManagers: AssignedManager[] = s?.assigned_managers ?? [];
+  // Photo gallery: prefer the new list; fall back to the legacy single
+  // field so old records still render. `photos` is what the UI iterates
+  // over — the caller never has to special-case either shape.
+  const photos: ContractPhoto[] = (() => {
+    const list: ContractPhoto[] = s?.contract_photos_all ?? [];
+    if (list.length > 0) return list;
+    if (s?.contract_photo) {
+      return [
+        {
+          id: -1,
+          url: s.contract_photo as string,
+          position: 0,
+          uploaded_at: s.created_at ?? "",
+        },
+      ];
+    }
+    return [];
+  })();
 
   const opTotal = useMemo(
     () => operatorLines.reduce((sum, l) => sum + Number(l.amount), 0),
@@ -393,11 +424,52 @@ export default function SaleDetail() {
                 >
                   {s.phone_model || t("sale_detail.model_unknown")}
                 </h1>
-                <div className="text-[13px] text-muted mt-1.5">
-                  IMEI <span className="font-mono text-text">{s.imei}</span>
-                  {" · "}
+                {/* Prominent IMEI row — mono 18 with a copy button so the
+                    manager can grab it in one click for warranty checks
+                    or backoffice lookups. Date moves to a secondary line. */}
+                <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] uppercase tracking-wider text-muted">
+                    IMEI
+                  </span>
+                  <span className="font-mono text-[18px] tabular-nums font-semibold select-all">
+                    {s.imei}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(s.imei);
+                        toast.success(t("common.copied"));
+                      } catch {
+                        toast.error(t("sale_detail.copy_failed"));
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 text-[12px] text-muted hover:text-[var(--accent)] transition"
+                    title={t("sale_detail.copy_imei")}
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    {t("common.copy")}
+                  </button>
+                </div>
+                <div className="text-[12.5px] text-muted mt-1">
                   {fmtRelativeTime(s.sold_at, t)}
                 </div>
+                {assignedManagers.length > 0 && (
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 text-[11px] uppercase tracking-wider text-muted">
+                      <Users className="w-3 h-3" />
+                      {t("sale_detail.assigned_managers")}
+                    </span>
+                    {assignedManagers.map((m) => (
+                      <span
+                        key={m.id}
+                        className="inline-flex items-center px-2 py-0.5 rounded-full bg-[var(--faint)] text-[12px] border border-[var(--border)]"
+                      >
+                        {m.full_name}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
               <StatusBadge tone={badge.tone}>{badge.text}</StatusBadge>
             </div>
@@ -476,20 +548,41 @@ export default function SaleDetail() {
               </div>
             )}
 
-            {s.contract_photo && (
+            {photos.length > 0 && (
               <div className="mt-5">
-                <div className="nf-col mb-1.5">{t("sale_pending.contract_photo")}</div>
-                <button
-                  type="button"
-                  onClick={() => setShowPhotoFull(true)}
-                  className="block w-full max-w-sm rounded-2xl overflow-hidden border border-[var(--border)] hover:border-[var(--accent)] transition"
-                >
-                  <img
-                    src={s.contract_photo}
-                    alt="contract"
-                    className="w-full max-h-[280px] object-contain bg-[var(--surface2)]"
-                  />
-                </button>
+                <div className="nf-col mb-1.5">
+                  {t("sale_pending.contract_photo")}
+                  {photos.length > 1 && (
+                    <span className="ml-2 text-[11px] text-muted font-normal">
+                      {photos.length}
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-w-lg">
+                  {photos.map((p, idx) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setGalleryIndex(idx);
+                        setShowPhotoFull(true);
+                      }}
+                      className="aspect-square rounded-xl overflow-hidden border border-[var(--border)] hover:border-[var(--accent)] transition bg-[var(--surface2)]"
+                    >
+                      {p.url ? (
+                        <img
+                          src={p.url}
+                          alt={`contract ${idx + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full grid place-items-center text-[11px] text-muted">
+                          —
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -624,15 +717,45 @@ export default function SaleDetail() {
         </div>
       </Modal>
 
-      {/* Photo fullscreen */}
-      {s.contract_photo && (
+      {/* Photo fullscreen — supports multi-photo navigation (prev/next).
+          MVP: just prev/next arrows; no swipe gesture, no thumbnail strip. */}
+      {photos.length > 0 && (
         <Modal open={showPhotoFull} onClose={() => setShowPhotoFull(false)} width={900}>
-          <div className="p-2">
-            <img
-              src={s.contract_photo}
-              alt="contract"
-              className="w-full max-h-[85vh] object-contain rounded-xl"
-            />
+          <div className="p-2 relative">
+            {photos[galleryIndex]?.url && (
+              <img
+                src={photos[galleryIndex].url as string}
+                alt={`contract ${galleryIndex + 1}`}
+                className="w-full max-h-[85vh] object-contain rounded-xl"
+              />
+            )}
+            {photos.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setGalleryIndex((i) => (i - 1 + photos.length) % photos.length)
+                  }
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 text-white grid place-items-center transition"
+                  aria-label="prev"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setGalleryIndex((i) => (i + 1) % photos.length)
+                  }
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 text-white grid place-items-center transition"
+                  aria-label="next"
+                >
+                  ›
+                </button>
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/60 text-white text-[12px] tabular-nums">
+                  {galleryIndex + 1} / {photos.length}
+                </div>
+              </>
+            )}
           </div>
         </Modal>
       )}
