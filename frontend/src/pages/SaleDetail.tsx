@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, RotateCcw, Sparkles, Trash2, Users } from "lucide-react";
+import { Copy, RotateCcw, Sparkles, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
 import { formatDate, formatUZS } from "../lib/format";
 import {
@@ -30,11 +30,6 @@ interface Gift {
   id: number;
   name: string;
   cost: string | null;
-}
-interface AssignedManager {
-  id: number;
-  full_name: string;
-  role: string | null;
 }
 interface ContractPhoto {
   id: number;
@@ -272,7 +267,6 @@ export default function SaleDetail() {
 
   const operatorLines: OperatorLine[] = s?.operator_lines ?? [];
   const partnerLines: PartnerLine[] = s?.partner_lines ?? [];
-  const assignedManagers: AssignedManager[] = s?.assigned_managers ?? [];
   // Photo gallery: prefer the new list; fall back to the legacy single
   // field so old records still render. `photos` is what the UI iterates
   // over — the caller never has to special-case either shape.
@@ -353,8 +347,15 @@ export default function SaleDetail() {
     return `${pct.toFixed(0)}%`;
   };
 
+  // Payment split: one row per partner channel used. When there's a
+  // single channel the tile shows just the name; when there are two
+  // (Anor + TBC, Alif + Birzum, ...), the tile shows a compact "A + B"
+  // summary and the full breakdown is rendered below the tile grid.
+  const isMultiChannel = partnerLines.length > 1;
   const partnerSummary = partnerLines.length
-    ? partnerLines.map((p) => p.partner_name).join(", ")
+    ? isMultiChannel
+      ? partnerLines.map((p) => p.partner_name).join(" + ")
+      : partnerLines[0].partner_name
     : s.channel_name ?? "—";
 
   const giftsSummary = isGift
@@ -363,7 +364,13 @@ export default function SaleDetail() {
 
   const tiles = [
     { label: t("common.amount"), value: formatUZS(s.total_price ?? s.amount) },
-    { label: t("sale_detail.tile_channel"), value: partnerSummary },
+    {
+      label: isMultiChannel
+        ? t("sale_detail.payment_split_title")
+        : t("sale_detail.tile_channel"),
+      value: partnerSummary,
+      hint: isMultiChannel ? `${partnerLines.length}` : "",
+    },
     { label: t("sale_detail.tile_operator"), value: opSummary, hint: primaryOp ? opSplitLabel(primaryOp) : "" },
     { label: t("sale_detail.tile_client"), value: s.client_name || s.client_phone || "—" },
     { label: t("common.date"), value: formatDate(s.sold_at) },
@@ -454,22 +461,6 @@ export default function SaleDetail() {
                 <div className="text-[12.5px] text-muted mt-1">
                   {fmtRelativeTime(s.sold_at, t)}
                 </div>
-                {assignedManagers.length > 0 && (
-                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                    <span className="inline-flex items-center gap-1 text-[11px] uppercase tracking-wider text-muted">
-                      <Users className="w-3 h-3" />
-                      {t("sale_detail.assigned_managers")}
-                    </span>
-                    {assignedManagers.map((m) => (
-                      <span
-                        key={m.id}
-                        className="inline-flex items-center px-2 py-0.5 rounded-full bg-[var(--faint)] text-[12px] border border-[var(--border)]"
-                      >
-                        {m.full_name}
-                      </span>
-                    ))}
-                  </div>
-                )}
               </div>
               <StatusBadge tone={badge.tone}>{badge.text}</StatusBadge>
             </div>
@@ -499,6 +490,31 @@ export default function SaleDetail() {
                 </div>
               ))}
             </div>
+
+            {isMultiChannel && (
+              <div
+                className="mt-4 pt-4"
+                style={{ borderTop: "1px solid var(--border)" }}
+              >
+                <div className="text-[12.5px] font-semibold mb-2">
+                  {t("sale_detail.payment_split_title")}
+                </div>
+                <div className="grid gap-1.5 sm:grid-cols-2">
+                  {partnerLines.map((l, i) => (
+                    <div
+                      key={i}
+                      className="flex items-baseline justify-between gap-3 nf-tile"
+                      style={{ padding: "10px 14px" }}
+                    >
+                      <span className="text-[13px] truncate">{l.partner_name}</span>
+                      <span className="text-[13.5px] font-semibold tabular-nums flex-shrink-0">
+                        {formatUZS(l.amount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {operatorLines.length > 1 && (
               <div

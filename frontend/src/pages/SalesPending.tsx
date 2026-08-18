@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { api } from "../lib/api";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
-import { formatUZS } from "../lib/format";
+import { formatNumber, formatUZS } from "../lib/format";
 
 type PendingSale = {
   id: number;
@@ -18,7 +18,15 @@ type PendingSale = {
   client_phone: string;
   contract_photo: string | null;
   contract_photos_all?: { id: number; url: string | null; position: number }[];
-  assigned_managers?: { id: number; full_name: string; role: string | null }[];
+  // Multi-channel payment split. Empty on legacy single-channel sales;
+  // populated (2 entries) when the operator paid via a split. The UI
+  // decides whether to render the compact channel_name summary or the
+  // A+B chip pair based on `partner_lines.length`.
+  partner_lines?: {
+    partner: number;
+    partner_name: string;
+    amount: string;
+  }[];
   created_at: string;
 };
 
@@ -69,7 +77,8 @@ export default function SalesPending() {
             0,
             (s.contract_photos_all?.length ?? 0) - 1,
           );
-          const managers = s.assigned_managers ?? [];
+          const splitLines = s.partner_lines ?? [];
+          const isSplit = splitLines.length > 1;
           return (
             <Link
               key={s.id}
@@ -134,16 +143,21 @@ export default function SalesPending() {
                     </button>
                   </div>
                   <div className="text-[12px] text-muted mt-1 truncate">
-                    {s.operator_name || "—"} · {s.channel_name || "—"}
+                    {s.operator_name || "—"}
+                    {!isSplit && ` · ${s.channel_name || "—"}`}
                   </div>
-                  {managers.length > 0 && (
+                  {isSplit && (
                     <div className="mt-1 flex flex-wrap gap-1">
-                      {managers.map((m) => (
+                      {splitLines.map((line, i) => (
                         <span
-                          key={m.id}
-                          className="inline-block px-1.5 py-0.5 rounded-full bg-[var(--faint)] border border-[var(--border)] text-[10.5px]"
+                          key={i}
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-[var(--faint)] border border-[var(--border)] text-[10.5px] tabular-nums"
+                          title={`${line.partner_name}: ${formatUZS(line.amount)}`}
                         >
-                          {m.full_name}
+                          <span className="font-medium">{line.partner_name}</span>
+                          <span className="text-muted">
+                            {formatNumber(Number(line.amount))}
+                          </span>
                         </span>
                       ))}
                     </div>

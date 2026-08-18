@@ -186,17 +186,41 @@ export function validateContractPhotos(
 }
 
 /**
- * Manager-partners select validator. Optional field — empty list is OK,
- * but if the operator picked more than `max` (should be impossible via
- * the UI but belt-and-braces) or included duplicates, fail hard.
+ * Multi-channel payment-split validator. Rules:
+ *   - at least one row with a chosen channel
+ *   - length ≤ `max` (backend cap: 2)
+ *   - no duplicate channels across rows
+ *   - in split-mode (>1 row) each row's amount must be positive AND the
+ *     sum of row amounts must equal the total `amount` — otherwise the
+ *     backend rejects the sale with a hard error
+ * Single-channel rows don't need a per-row amount — the total field is
+ * authoritative and the backend copies it via the `channel_id` fallback.
  */
-export function validateManagerPartners(
-  ids: number[],
+export function validatePartnerSplit(
+  rows: { channel_id: number | null; amount: string }[],
+  totalAmount: string,
   max: number = 2,
 ): FieldError {
-  if (!ids || ids.length === 0) return null;
-  if (ids.length > max) return "validation.manager_partners_too_many";
-  const unique = new Set(ids);
-  if (unique.size !== ids.length) return "validation.manager_partners_dup";
+  if (!rows || rows.length === 0) return "validation.channel_required";
+  if (rows.length > max) return "validation.payment_split_too_many";
+  const chosen = rows.filter((r) => r.channel_id != null);
+  if (chosen.length === 0) return "validation.channel_required";
+  if (chosen.length !== rows.length) return "validation.channel_required";
+  const uniqueChannels = new Set(chosen.map((r) => r.channel_id));
+  if (uniqueChannels.size !== chosen.length) {
+    return "validation.payment_split_dup_channel";
+  }
+  // Single-channel: skip the per-row amount check — total is authoritative.
+  if (rows.length <= 1) return null;
+  const total = Number((totalAmount || "").replace(/\s+/g, ""));
+  if (!Number.isFinite(total) || total <= 0) return null; // amount-field owns this
+  let sum = 0;
+  for (const r of rows) {
+    const n = Number((r.amount || "").replace(/\s+/g, ""));
+    if (!Number.isFinite(n) || n <= 0) return "validation.payment_split_amount_required";
+    if (!Number.isInteger(n)) return "validation.payment_split_amount_integer";
+    sum += n;
+  }
+  if (sum !== total) return "validation.payment_split_sum_mismatch";
   return null;
 }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { api } from "../lib/api";
 import { useT } from "../lib/i18n";
 import { usePageHeader } from "../store/page";
@@ -15,17 +15,16 @@ import {
   imeiLuhnStatus,
   normalizeUzPhone,
   validateAmount,
-  validateChannel,
   validateClientName,
   validateClientPhone,
   validateComment,
   validateContractPhotos,
   validateImei,
-  validateManagerPartners,
+  validatePartnerSplit,
   validatePhoneModel,
 } from "../lib/validation";
 
-const MAX_MANAGER_PARTNERS = 2;
+const MAX_PAYMENT_CHANNELS = 2;
 const MAX_CONTRACT_PHOTOS = 5;
 
 type LeadMatch = {
@@ -39,27 +38,34 @@ type FieldName =
   | "imei"
   | "phone_model"
   | "amount"
-  | "channel_id"
+  | "partners"
   | "client_name"
   | "client_phone"
   | "comment"
-  | "contract_photos"
-  | "manager_partner_ids";
+  | "contract_photos";
 
-type ManagerOption = { id: number; full_name: string; username: string; role: string };
+// Ordered array of {channel_id, amount} — one row per payment channel.
+// The user starts with a single row (channel_id=null, amount=""); adding
+// a second row switches the UI into split-mode and reveals per-row amount
+// inputs. See the render section below for the repeater UI.
+type PartnerRow = { channel_id: number | null; amount: string };
 
 /**
  * Operator's own "New sale" form. Compact + mobile-first.
  * Submits multipart POST /api/sales/ — backend forces status=pending
- * and requires contract_photo for operator role.
+ * and requires a contract photo for operator role.
+ *
+ * Multi-channel payment split (up to 2): the operator can log a sale
+ * paid through 1 or 2 payment channels (e.g. 6M Anor + 4M TBC). In
+ * single-channel mode the row-level amount input is hidden — the total
+ * `amount` field is authoritative. As soon as the operator adds a second
+ * channel, per-row amounts become editable and must sum to `amount`.
  *
  * All fields are validated on the client BEFORE the request goes out —
  * inline errors appear on blur (or on submit for untouched fields), the
  * submit button stays disabled until every rule passes, and on submit
  * we scroll to the first invalid field so the operator can see what's
- * wrong on a phone screen. Optional empty strings are NOT appended to
- * the FormData so the backend serializer doesn't have to special-case
- * "null-as-string" values.
+ * wrong on a phone screen.
  */
 export default function OperatorSaleCreate() {
   const t = useT();
@@ -79,9 +85,10 @@ export default function OperatorSaleCreate() {
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState(CLIENT_PHONE_PREFIX);
   const [comment, setComment] = useState("");
-  const [channelId, setChannelId] = useState<number | null>(null);
+  const [partnerRows, setPartnerRows] = useState<PartnerRow[]>([
+    { channel_id: null, amount: "" },
+  ]);
   const [contractPhotos, setContractPhotos] = useState<File[]>([]);
-  const [managerPartnerIds, setManagerPartnerIds] = useState<number[]>([]);
   const [leadId, setLeadId] = useState<number | null>(null);
   const [matchedLead, setMatchedLead] = useState<LeadMatch | null>(null);
   const [phoneMatches, setPhoneMatches] = useState<LeadMatch[]>([]);
@@ -97,12 +104,11 @@ export default function OperatorSaleCreate() {
     imei: false,
     phone_model: false,
     amount: false,
-    channel_id: false,
+    partners: false,
     client_name: false,
     client_phone: false,
     comment: false,
     contract_photos: false,
-    manager_partner_ids: false,
   });
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
@@ -154,12 +160,11 @@ export default function OperatorSaleCreate() {
     imei: null,
     phone_model: null,
     amount: null,
-    channel_id: null,
+    partners: null,
     client_name: null,
     client_phone: null,
     comment: null,
     contract_photos: null,
-    manager_partner_ids: null,
   });
 
   const partnersQ = useQuery({
@@ -167,22 +172,6 @@ export default function OperatorSaleCreate() {
     queryFn: () => api.get("/channels/?limit=200").then((r) => r.data),
   });
   const partners: { id: number; name: string }[] = partnersQ.data?.results || [];
-
-  // Roster of manager-partners the operator may attach (max 2) to a sale.
-  // Backend filter includes managers + superadmins; team_lead is hidden
-  // from the operator UI per project role policy.
-  const managersQ = useQuery({
-    queryKey: ["op-manager-partners"],
-    queryFn: () =>
-      api
-        .get<ManagerOption[]>("/users/?role=manager,superadmin")
-        .then((r) => r.data),
-    staleTime: 5 * 60_000,
-  });
-  const managers: ManagerOption[] = managersQ.data || [];
-  const managerLabel = (m: ManagerOption) =>
-    (m.full_name && m.full_name !== m.username ? m.full_name : m.username) ||
-    m.username;
 
   // TAC autofill on 15-digit IMEI.
   useEffect(() => {
@@ -222,23 +211,48 @@ export default function OperatorSaleCreate() {
     return () => window.clearTimeout(h);
   }, [clientPhone, leadId]);
 
+  // Multi-channel split state helpers.
+  const isSplitMode = partnerRows.length > 1;
+  const addPartnerRow = () => {
+    if (partnerRows.length >= MAX_PAYMENT_CHANNELS) return;
+    setPartnerRows((rows) => [...rows, { channel_id: null, amount: "" }]);
+    clearServerError("partners");
+    markTouched("partners");
+  };
+  const removePartnerRow = (idx: number) => {
+    if (partnerRows.length <= 1) return;
+    setPartnerRows((rows) => rows.filter((_, i) => i !== idx));
+    clearServerError("partners");
+    markTouched("partners");
+  };
+  const setRowChannel = (idx: number, id: number | null) => {
+    setPartnerRows((rows) =>
+      rows.map((r, i) => (i === idx ? { ...r, channel_id: id } : r)),
+    );
+    clearServerError("partners");
+    markTouched("partners");
+  };
+  const setRowAmount = (idx: number, val: string) => {
+    setPartnerRows((rows) =>
+      rows.map((r, i) => (i === idx ? { ...r, amount: val } : r)),
+    );
+    clearServerError("partners");
+    markTouched("partners");
+  };
+
   // Compute all errors up-front so we can drive both `canSubmit` and the
   // inline messages from the same source of truth.
   const errors: Record<FieldName, string | null> = {
     imei: validateImei(imei),
     phone_model: validatePhoneModel(model),
     amount: validateAmount(amount),
-    channel_id: validateChannel(channelId),
+    partners: validatePartnerSplit(partnerRows, amount, MAX_PAYMENT_CHANNELS),
     client_name: validateClientName(clientName),
     // If the operator picked a lead, we trust the lead's phone even if
     // it doesn't match the +998 format (legacy imports).
     client_phone: matchedLead ? null : validateClientPhone(clientPhone),
     comment: validateComment(comment),
     contract_photos: validateContractPhotos(contractPhotos, MAX_CONTRACT_PHOTOS),
-    manager_partner_ids: validateManagerPartners(
-      managerPartnerIds,
-      MAX_MANAGER_PARTNERS,
-    ),
   };
 
   const showError = (f: FieldName): string | null => {
@@ -285,8 +299,7 @@ export default function OperatorSaleCreate() {
         "imei",
         "phone_model",
         "amount",
-        "channel_id",
-        "manager_partner_ids",
+        "partners",
         "client_name",
         "client_phone",
         "comment",
@@ -316,7 +329,6 @@ export default function OperatorSaleCreate() {
       // Required scalars — validators above guarantee non-empty.
       fd.append("imei", imei);
       fd.append("phone_model", model.trim());
-      fd.append("channel_id", String(channelId));
       fd.append("amount", amount);
       fd.append("client_name", clientName.trim());
       // Send phone in canonical form so backend + dedup see the same thing.
@@ -328,15 +340,33 @@ export default function OperatorSaleCreate() {
       // serializer's `allow_blank=True` default kicks in cleanly.
       if (comment.trim()) fd.append("comment", comment.trim());
       if (leadId) fd.append("lead_id", String(leadId));
-      // New multi-fields: append each entry with the SAME key so the
+
+      // Multi-channel payment split. In single-channel mode we still send
+      // both the legacy `channel_id` (for the older prod backend, and as
+      // a safety net that hits the fallback code path) AND `partners[0]`.
+      // In split-mode we send `partners[i]` rows; backend enforces the
+      // sum-equals-`amount` invariant.
+      partnerRows.forEach((row, i) => {
+        if (row.channel_id == null) return;
+        // Single-channel row inherits the total amount; split-mode rows
+        // send their own amount.
+        const rowAmount = isSplitMode ? row.amount : amount;
+        fd.append(`partners[${i}][channel_id]`, String(row.channel_id));
+        fd.append(`partners[${i}][amount]`, rowAmount);
+      });
+      // Legacy single-channel key — first row's channel. Keeps the older
+      // prod backend paths (and any tooling that only reads `channel_id`)
+      // functional during the multi-channel rollout.
+      if (partnerRows[0]?.channel_id != null) {
+        fd.append("channel_id", String(partnerRows[0].channel_id));
+      }
+
+      // New multi-photos: append each entry with the SAME key so the
       // backend gets a real list via QueryDict.getlist(). Also emit the
       // legacy single `contract_photo` = first file for maximum back-compat
       // with any older manager tooling that reads `sale.contract_photo`.
       contractPhotos.forEach((f) => fd.append("contract_photos", f));
       if (contractPhotos[0]) fd.append("contract_photo", contractPhotos[0]);
-      managerPartnerIds.forEach((id) =>
-        fd.append("manager_partner_ids", String(id)),
-      );
 
       const r = await api.post("/sales/", fd);
       toast.success(t("op_sale.sent_for_review"));
@@ -351,12 +381,11 @@ export default function OperatorSaleCreate() {
         "imei",
         "phone_model",
         "amount",
-        "channel_id",
+        "partners",
         "client_name",
         "client_phone",
         "comment",
         "contract_photos",
-        "manager_partner_ids",
       ];
       const collected: Partial<Record<FieldName, string>> = {};
       const localizeMsg = (raw: string): string => {
@@ -386,7 +415,10 @@ export default function OperatorSaleCreate() {
         // required for pending" error even though the UI now sends a list;
         // re-route it onto the multi-photo inline slot so the operator sees
         // the red hint under the new gallery, not orphaned in the banner.
-        const rawKey = d.field === "contract_photo" ? "contract_photos" : d.field;
+        // Legacy `channel_id` errors → the partners repeater block.
+        let rawKey = d.field;
+        if (rawKey === "contract_photo") rawKey = "contract_photos";
+        if (rawKey === "channel_id") rawKey = "partners";
         const f = rawKey as FieldName;
         if (fields.includes(f) && !collected[f]) {
           collected[f] = localizeMsg(d.detail);
@@ -460,6 +492,13 @@ export default function OperatorSaleCreate() {
       return { tone: "warn", text: t("validation.imei_luhn_warn") } as const;
     return { tone: "ok", text: t("validation.imei_valid") } as const;
   })();
+
+  // Sum of split rows — used for a live "осталось" hint in split-mode.
+  const splitSum = isSplitMode
+    ? partnerRows.reduce((s, r) => s + (Number(r.amount) || 0), 0)
+    : 0;
+  const totalNum = Number(amount) || 0;
+  const splitRemaining = totalNum - splitSum;
 
   return (
     <div className="max-w-xl mx-auto">
@@ -564,6 +603,10 @@ export default function OperatorSaleCreate() {
               onChange={(v) => {
                 setAmount(v);
                 clearServerError("amount");
+                // Amount edits invalidate any per-row split sums — nudge
+                // the split-block into "recheck" state so the sum hint
+                // updates before the operator taps submit.
+                clearServerError("partners");
                 if (!touched.amount && v) markTouched("amount");
               }}
               placeholder="5 000 000"
@@ -580,92 +623,114 @@ export default function OperatorSaleCreate() {
           )}
         </div>
 
-        <div>
+        {/* Multi-channel payment split. Repeater of up to 2 rows: each row
+            is one payment channel + its share. In single-channel mode the
+            per-row amount input is hidden — the total `amount` field is
+            authoritative. Adding a second row switches to split-mode. */}
+        <div ref={setRef("partners")}>
           <label className="nf-col mb-1.5 block">
-            {t("sale_create.channel")}{" "}
-            <span className="text-red-500">*</span>
+            {isSplitMode
+              ? t("sale_create.payment_split_label")
+              : t("sale_create.channel")}
+            <span className="text-red-500 ml-0.5">*</span>
+            {isSplitMode && (
+              <span className="ml-2 text-[11px] text-muted font-normal">
+                {partnerRows.length}/{MAX_PAYMENT_CHANNELS}
+              </span>
+            )}
           </label>
-          <div ref={setRef("channel_id")}>
-            <SingleSelectCombobox
-              options={partners.map((p) => ({ id: p.id, label: p.name }))}
-              value={channelId}
-              allowFreeText={false}
-              placeholder={t("op_sale.channel_ph")}
-              onChange={(v) => {
-                setChannelId(typeof v === "number" ? v : null);
-                clearServerError("channel_id");
-                markTouched("channel_id");
-              }}
-            />
-          </div>
-          {showError("channel_id") && (
-            <div className="text-[11.5px] text-red-500 mt-1">
-              {showError("channel_id")}
-            </div>
-          )}
-        </div>
 
-        <div ref={setRef("manager_partner_ids")}>
-          <label className="nf-col mb-1.5 block">
-            {t("sale_create.manager_partners_label")}
-            <span className="ml-2 text-[11px] text-muted font-normal">
-              {managerPartnerIds.length}/{MAX_MANAGER_PARTNERS}
-            </span>
-          </label>
-          {managerPartnerIds.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {managerPartnerIds.map((id) => {
-                const m = managers.find((x) => x.id === id);
-                const label = m ? managerLabel(m) : `#${id}`;
-                return (
-                  <span
-                    key={id}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--faint)] text-[12.5px] border border-[var(--border)]"
+          <div className="space-y-2">
+            {partnerRows.map((row, idx) => (
+              <div
+                key={idx}
+                className={`flex gap-2 items-start ${
+                  isSplitMode ? "" : ""
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <SingleSelectCombobox
+                    options={partners
+                      .filter(
+                        (p) =>
+                          // Hide already-picked channels from other rows so
+                          // the operator can't accidentally pick the same
+                          // channel twice.
+                          !partnerRows.some(
+                            (r, i) => i !== idx && r.channel_id === p.id,
+                          ),
+                      )
+                      .map((p) => ({ id: p.id, label: p.name }))}
+                    value={row.channel_id}
+                    allowFreeText={false}
+                    placeholder={t("op_sale.channel_ph")}
+                    onChange={(v) =>
+                      setRowChannel(idx, typeof v === "number" ? v : null)
+                    }
+                  />
+                </div>
+                {isSplitMode && (
+                  <div className="w-[42%] min-w-0">
+                    <NumericInput
+                      className="nf-input"
+                      value={row.amount}
+                      onChange={(v) => setRowAmount(idx, v)}
+                      placeholder={t("sale_create.split_amount_ph")}
+                      maxDigits={10}
+                    />
+                  </div>
+                )}
+                {isSplitMode && partnerRows.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removePartnerRow(idx)}
+                    className="shrink-0 w-9 h-9 grid place-items-center rounded-lg text-muted hover:text-red-500 hover:bg-red-500/10 transition"
+                    aria-label={t("common.remove")}
+                    title={t("common.remove")}
                   >
-                    {label}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setManagerPartnerIds((prev) =>
-                          prev.filter((x) => x !== id),
-                        );
-                        clearServerError("manager_partner_ids");
-                        markTouched("manager_partner_ids");
-                      }}
-                      className="text-muted hover:text-text"
-                      aria-label={t("common.remove")}
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                );
-              })}
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {partnerRows.length < MAX_PAYMENT_CHANNELS && (
+            <button
+              type="button"
+              onClick={addPartnerRow}
+              className="mt-2 inline-flex items-center gap-1.5 text-[13px] text-[var(--accent)] hover:opacity-80 transition"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              {t("sale_create.add_channel")}
+            </button>
+          )}
+
+          {isSplitMode && totalNum > 0 && (
+            <div
+              className={`text-[11.5px] mt-2 tabular-nums ${
+                splitRemaining === 0
+                  ? "text-emerald-500"
+                  : splitRemaining < 0
+                    ? "text-red-500"
+                    : "text-muted"
+              }`}
+            >
+              {splitRemaining === 0
+                ? t("sale_create.split_balanced")
+                : splitRemaining > 0
+                  ? t("sale_create.split_remaining", {
+                      n: formatNumber(splitRemaining),
+                    })
+                  : t("sale_create.split_over", {
+                      n: formatNumber(Math.abs(splitRemaining)),
+                    })}
             </div>
           )}
-          {managerPartnerIds.length < MAX_MANAGER_PARTNERS && (
-            <SingleSelectCombobox
-              options={managers
-                .filter((m) => !managerPartnerIds.includes(m.id))
-                .map((m) => ({ id: m.id, label: managerLabel(m) }))}
-              value={null}
-              allowFreeText={false}
-              placeholder={t("sale_create.manager_partners_ph")}
-              onChange={(v) => {
-                if (typeof v !== "number") return;
-                setManagerPartnerIds((prev) =>
-                  prev.includes(v) ? prev : [...prev, v].slice(0, MAX_MANAGER_PARTNERS),
-                );
-                clearServerError("manager_partner_ids");
-                markTouched("manager_partner_ids");
-              }}
-            />
-          )}
-          <div className="text-[11.5px] text-muted mt-1">
-            {t("sale_create.manager_partners_hint")}
-          </div>
-          {showError("manager_partner_ids") && (
+
+          {showError("partners") && (
             <div className="text-[11.5px] text-red-500 mt-1">
-              {showError("manager_partner_ids")}
+              {showError("partners")}
             </div>
           )}
         </div>
