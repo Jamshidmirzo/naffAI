@@ -180,34 +180,6 @@ class SalePartner(models.Model):
         return f"{self.partner_id} = {self.amount} (sale#{self.sale_id})"
 
 
-class SaleAssignedManager(models.Model):
-    """
-    Партнёр-менеджер, «прикреплённый» оператором к продаже при её создании.
-
-    Не влияет на payroll / commission split — используется только для
-    сквозной аналитики (кто из менеджеров помогал / участвовал в сделке)
-    и для будущих co-ownership отчётов. Оператор может выбрать до 2
-    менеджеров; уникальность (sale, manager) защищена БД.
-    """
-
-    sale = models.ForeignKey(
-        Sale, on_delete=models.CASCADE, related_name="assigned_managers"
-    )
-    manager = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
-        related_name="+",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = [("sale", "manager")]
-        ordering = ["id"]
-
-    def __str__(self) -> str:
-        return f"manager={self.manager_id} (sale#{self.sale_id})"
-
-
 class SaleContractPhoto(models.Model):
     """
     Одна из до 5 фотографий договора, приложенных оператором к продаже.

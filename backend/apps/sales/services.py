@@ -20,7 +20,6 @@ from apps.operators.models import Operator, OperatorStatus
 from .models import (
     GiftItem,
     Sale,
-    SaleAssignedManager,
     SaleContractPhoto,
     SaleOperator,
     SalePartner,
@@ -28,11 +27,15 @@ from .models import (
 )
 from .selectors import sale_imei_duplicate_count
 
-# Business-rule caps for the manager-partners + multi-photo feature.
-# Live in the service (not the model) so DB inserts stay flexible for
-# future overrides while the operator UX gets a hard rail.
-MAX_ASSIGNED_MANAGERS = 2
+# Business-rule cap for the multi-photo contract gallery. Kept in the
+# service (not the model) so the DB stays flexible while the operator
+# UX gets a hard rail.
 MAX_CONTRACT_PHOTOS = 5
+
+# Business-rule cap for the multi-channel payment split: one sale can
+# be paid through up to N distinct partner channels (Anor+TBC, etc).
+# Kept in sync with the operator UI repeater.
+MAX_PAYMENT_CHANNELS = 2
 
 # Money is stored as Decimal(14, 2). All proportional splits round
 # half-up to two decimal places and dump any rounding remainder onto
@@ -91,58 +94,6 @@ def _apply_discount_to_operator_lines(
     return scaled
 
 
-def _validate_manager_partner_ids(ids: list[int] | None) -> list[int]:
-    """
-    Normalise + validate the operator-selected list of partner-manager
-    user ids. Rules:
-      - length ≤ MAX_ASSIGNED_MANAGERS (2)
-      - unique
-      - every id points to an active User whose Profile.role is manager
-        or superadmin (team_lead is hidden from the operator UI but
-        accepted server-side just in case a manager assigns themselves).
-    Returns the deduped, preserved-order list. Empty/None input → [].
-    """
-    if not ids:
-        return []
-    # Dedup while preserving first-seen order.
-    seen: set[int] = set()
-    cleaned: list[int] = []
-    for raw in ids:
-        try:
-            uid = int(raw)
-        except (TypeError, ValueError) as exc:
-            raise ApplicationError(
-                "Некорректный id менеджера-партнёра",
-                {"field": "manager_partner_ids"},
-            ) from exc
-        if uid in seen:
-            continue
-        seen.add(uid)
-        cleaned.append(uid)
-    if len(cleaned) > MAX_ASSIGNED_MANAGERS:
-        raise ApplicationError(
-            f"Можно выбрать не более {MAX_ASSIGNED_MANAGERS} менеджеров-партнёров",
-            {"field": "manager_partner_ids"},
-        )
-    # Import here to avoid circular deps on module load — users → sales.
-    from apps.users.models import Profile, Role  # noqa: WPS433
-
-    valid_ids = set(
-        Profile.objects.filter(
-            user_id__in=cleaned,
-            user__is_active=True,
-            role__in=[Role.MANAGER, Role.SUPERADMIN, Role.TEAM_LEAD],
-        ).values_list("user_id", flat=True)
-    )
-    missing = [uid for uid in cleaned if uid not in valid_ids]
-    if missing:
-        raise ApplicationError(
-            "Один или несколько выбранных менеджеров недоступны",
-            {"field": "manager_partner_ids", "invalid_ids": missing},
-        )
-    return cleaned
-
-
 def _validate_contract_photos(photos: list | None) -> list:
     """Trim None entries + enforce the ≤ MAX_CONTRACT_PHOTOS cap."""
     if not photos:
@@ -154,14 +105,6 @@ def _validate_contract_photos(photos: list | None) -> list:
             {"field": "contract_photos"},
         )
     return cleaned
-
-
-def _write_assigned_managers(sale: Sale, manager_ids: list[int]) -> None:
-    if not manager_ids:
-        return
-    SaleAssignedManager.objects.bulk_create(
-        [SaleAssignedManager(sale=sale, manager_id=uid) for uid in manager_ids]
-    )
 
 
 def _write_contract_photos(sale: Sale, photos: list, *, legacy_single) -> None:
@@ -224,9 +167,16 @@ def _coerce_lines(
     Normalise create-form payload:
       - if `raw_lines` is given, return [(model, amount), ...] using the resolver.
       - else fall back to a single line built from the legacy single-FK + amount.
+
+    For `role == "partners"` we additionally enforce:
+      - length ≤ MAX_PAYMENT_CHANNELS (business rule: a sale can be split
+        across at most 2 payment channels — Anor+TBC, Alif+cash, etc.)
+      - each channel is unique per sale (no "Anor 3M + Anor 2M" — merge
+        client-side or model as a single 5M line).
     """
     if raw_lines:
         out = []
+        seen_partner_ids: set[int] = set()
         for line in raw_lines:
             try:
                 amount_raw = line.get("amount", 0)
@@ -240,7 +190,19 @@ def _coerce_lines(
                     f"Сумма у каждого {role} должна быть > 0", {"field": role}
                 )
             obj = _resolve_operator(line) if role == "operators" else _resolve_partner(line)
+            if role == "partners":
+                if obj.id in seen_partner_ids:
+                    raise ApplicationError(
+                        "Один и тот же канал выбран дважды",
+                        {"field": "partners"},
+                    )
+                seen_partner_ids.add(obj.id)
             out.append((obj, amount))
+        if role == "partners" and len(out) > MAX_PAYMENT_CHANNELS:
+            raise ApplicationError(
+                f"Можно указать не более {MAX_PAYMENT_CHANNELS} каналов оплаты",
+                {"field": "partners"},
+            )
         return out
     if not fallback_id:
         raise ApplicationError(f"Укажите минимум одного: {role}", {"field": role})
@@ -277,23 +239,26 @@ def sale_create(
     sheet_source_id: int | None = None,
     lead_id: int | None = None,
     contract_photo=None,
-    manager_partner_ids: list[int] | None = None,
     contract_photos: list | None = None,
 ) -> Sale:
     """
     Create a sale.
 
-    Multi-allocation: pass `operators=[{operator_id|operator_name, amount}, ...]`
-    and `partners=[{partner_id|partner_name, amount}, ...]`. Names that don't
-    match an existing record are auto-created (operator → status=active,
-    partner → is_active=True).
+    Multi-allocation:
+      - `operators=[{operator_id|operator_name, amount}, ...]` — payroll split.
+      - `partners=[{partner_id|partner_name, amount}, ...]` — payment channels
+        (up to MAX_PAYMENT_CHANNELS = 2, unique per sale). Sum of partner
+        amounts is the sale total (`amount` field), so one 10M sale split
+        6M through Anor + 4M through TBC is expressed as two partner lines.
+
+    Names that don't match an existing record are auto-created (operator →
+    status=active, channel/partner → is_active=True).
 
     Legacy single-FK payload (`operator_id`, `channel_id`, `amount`) is still
-    accepted and wrapped into a single allocation line per role.
+    accepted and wrapped into a single allocation line per role — that path
+    stays alive for the older prod frontend which sends only one channel.
 
-    Optional add-ons introduced with the manager-partners + multi-photo pass:
-      - `manager_partner_ids` — до 2 user-id менеджеров, кого оператор хочет
-        «прикрепить» к продаже (аналитика, не payroll).
+    Optional add-ons:
       - `contract_photos` — до 5 фото договора (список UploadedFile).
         Legacy single `contract_photo` остаётся принят: если пришёл только
         он — он же кладётся первым в новую таблицу.
@@ -302,9 +267,8 @@ def sale_create(
     if not is_valid_imei(imei):
         raise ApplicationError("IMEI должен быть из 6–15 цифр", {"field": "imei"})
 
-    # Validate the two new optional inputs BEFORE any DB writes, so an
-    # invalid manager id or a 6th photo aborts the transaction cleanly.
-    manager_ids = _validate_manager_partner_ids(manager_partner_ids)
+    # Validate optional inputs BEFORE any DB writes so a 6th photo
+    # aborts the transaction cleanly with a per-field error.
     photos = _validate_contract_photos(contract_photos)
 
     duplicates = sale_imei_duplicate_count(imei=imei)
@@ -330,6 +294,30 @@ def sale_create(
     total = sum(amt for _, amt in partner_lines)
     if total <= 0:
         raise ApplicationError("Сумма должна быть положительной", {"field": "amount"})
+
+    # Multi-channel split invariant: when the caller supplies BOTH an
+    # `amount` (total) AND a `partners` list with more than one entry,
+    # the sum of partner shares must equal `amount` to the cent. Guards
+    # against typos like "10M total = 6M Anor + 3M TBC" (should be 4M).
+    if partners and amount not in (None, "") and len(partner_lines) > 1:
+        try:
+            expected_total = Decimal(str(amount))
+        except (InvalidOperation, TypeError) as exc:
+            raise ApplicationError(
+                "Некорректная общая сумма", {"field": "amount"}
+            ) from exc
+        if expected_total.quantize(_MONEY_Q) != total.quantize(_MONEY_Q):
+            raise ApplicationError(
+                (
+                    f"Сумма по каналам ({total}) не равна общей сумме "
+                    f"продажи ({expected_total})"
+                ),
+                {
+                    "field": "partners",
+                    "expected_total": str(expected_total),
+                    "partners_total": str(total),
+                },
+            )
 
     discount_dec = _coerce_decimal(discount, field="discount")
     if discount_dec < 0:
@@ -402,7 +390,6 @@ def sale_create(
             ]
         )
 
-    _write_assigned_managers(sale, manager_ids)
     _write_contract_photos(sale, photos, legacy_single=contract_photo)
 
     audit_log_create(
@@ -426,7 +413,6 @@ def sale_create(
             "net": str(total - discount_dec),
             "sheet_source_id": sheet_source_id,
             "bonus_note": sale.bonus_note[:120] if sale.bonus_note else "",
-            "assigned_manager_ids": manager_ids,
             "contract_photos_count": len(photos) if photos else (1 if contract_photo else 0),
         },
         comment=duplicate_override_comment if duplicates else "",
@@ -579,7 +565,6 @@ def sale_full_update(
     gifts: Iterable[dict] | None = None,
     allow_duplicate_imei: bool = False,
     duplicate_override_comment: str = "",
-    manager_partner_ids: list[int] | None = None,
     contract_photos: list | None = None,
     contract_photo=None,
     **_kwargs,
@@ -589,7 +574,6 @@ def sale_full_update(
         raise ApplicationError("IMEI должен быть из 6–15 цифр", {"field": "imei"})
 
     # Validate optional add-ons BEFORE mutating any rows.
-    manager_ids = _validate_manager_partner_ids(manager_partner_ids)
     photos = _validate_contract_photos(contract_photos)
 
     if imei != sale.imei:
@@ -611,6 +595,29 @@ def sale_full_update(
     total = sum(amt for _, amt in partner_lines)
     if total <= 0:
         raise ApplicationError("Сумма должна быть положительной", {"field": "amount"})
+
+    # Multi-channel split invariant (see sale_create for the reasoning):
+    # if the caller sends both `amount` (total) and a multi-line partners
+    # list, their sums must match to the cent.
+    if partners and amount not in (None, "") and len(partner_lines) > 1:
+        try:
+            expected_total = Decimal(str(amount))
+        except (InvalidOperation, TypeError) as exc:
+            raise ApplicationError(
+                "Некорректная общая сумма", {"field": "amount"}
+            ) from exc
+        if expected_total.quantize(_MONEY_Q) != total.quantize(_MONEY_Q):
+            raise ApplicationError(
+                (
+                    f"Сумма по каналам ({total}) не равна общей сумме "
+                    f"продажи ({expected_total})"
+                ),
+                {
+                    "field": "partners",
+                    "expected_total": str(expected_total),
+                    "partners_total": str(total),
+                },
+            )
 
     # If the caller omits `discount` from the payload (legacy clients),
     # preserve the current value rather than silently zeroing it out.
@@ -662,16 +669,8 @@ def sale_full_update(
         [SalePartner(sale=sale, partner=p, amount=a) for p, a in partner_lines]
     )
 
-    # Replace the assigned-managers set only if the caller sent the key at
-    # all. `None` / missing → keep existing links intact (partial-friendly).
-    managers_updated = False
-    if manager_partner_ids is not None:
-        sale.assigned_managers.all().delete()
-        _write_assigned_managers(sale, manager_ids)
-        managers_updated = True
-
-    # Same policy for photos: pass an explicit list (even []) to replace;
-    # omit the key to keep the existing gallery.
+    # Photos: pass an explicit list (even []) to replace; omit the key
+    # to keep the existing gallery.
     photos_updated = False
     if contract_photos is not None:
         sale.contract_photos_all.all().delete()
@@ -693,8 +692,6 @@ def sale_full_update(
         "discount": str(discount_dec),
         "net": str(total - discount_dec),
     }
-    if managers_updated:
-        audit_changes["assigned_manager_ids"] = manager_ids
     if photos_updated:
         audit_changes["contract_photos_count"] = len(photos) if photos else (
             1 if contract_photo else 0

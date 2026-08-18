@@ -20,7 +20,6 @@ from .imports.excel_importer import import_file
 from .models import (
     GiftItem,
     Sale,
-    SaleAssignedManager,
     SaleContractPhoto,
     SaleOperator,
     SalePartner,
@@ -36,6 +35,37 @@ from .services import (
     sale_reject,
     sale_soft_delete,
 )
+
+
+def _extract_indexed_dict_list(qd, key: str) -> list[dict] | None:
+    """
+    Reconstruct a list-of-dicts from bracketed multipart keys:
+        partners[0][channel_id]=1
+        partners[0][amount]=6000000
+        partners[1][channel_id]=2
+        partners[1][amount]=4000000
+      → [{"channel_id": "1", "amount": "6000000"},
+         {"channel_id": "2", "amount": "4000000"}]
+
+    Returns `None` if no matching keys are present (so the caller can
+    fall back to the plain-list branch used by JSON payloads).
+    Robust to sparse indices (`partners[3][...]` with nothing else) by
+    sorting on the numeric index we parse out of the key.
+    """
+    import re
+
+    pattern = re.compile(rf"^{re.escape(key)}\[(\d+)\]\[([^\]]+)\]$")
+    buckets: dict[int, dict[str, str]] = {}
+    for full_key in qd.keys():
+        m = pattern.match(full_key)
+        if not m:
+            continue
+        idx = int(m.group(1))
+        field = m.group(2)
+        buckets.setdefault(idx, {})[field] = qd.get(full_key)
+    if not buckets:
+        return None
+    return [buckets[i] for i in sorted(buckets)]
 
 
 class GiftItemSerializer(serializers.ModelSerializer):
@@ -58,30 +88,6 @@ class SalePartnerLineSerializer(serializers.ModelSerializer):
     class Meta:
         model = SalePartner
         fields = ["partner", "partner_name", "amount"]
-
-
-class AssignedManagerBriefSerializer(serializers.ModelSerializer):
-    """Nested read-only view of one partner-manager attached to a sale."""
-
-    id = serializers.IntegerField(source="manager.id", read_only=True)
-    full_name = serializers.SerializerMethodField()
-    role = serializers.CharField(source="manager.profile.role", read_only=True, default=None)
-
-    class Meta:
-        model = SaleAssignedManager
-        fields = ["id", "full_name", "role"]
-
-    def get_full_name(self, obj) -> str:
-        u = obj.manager
-        if not u:
-            return ""
-        # Profile.operator.full_name is the friendlier display where set;
-        # otherwise fall back to the User's own full name / username.
-        prof = getattr(u, "profile", None)
-        op = getattr(prof, "operator", None) if prof else None
-        if op and op.full_name:
-            return op.full_name
-        return u.get_full_name() or u.username
 
 
 class ContractPhotoBriefSerializer(serializers.ModelSerializer):
@@ -114,10 +120,8 @@ class SaleSerializer(serializers.ModelSerializer):
     gifts = GiftItemSerializer(many=True, read_only=True)
     operator_lines = SaleOperatorLineSerializer(many=True, read_only=True)
     partner_lines = SalePartnerLineSerializer(many=True, read_only=True)
-    # Manager-partners + multi-photo enhancement — both nested + optional
-    # so the legacy prod frontend (which knows nothing about these) simply
-    # ignores the extra keys.
-    assigned_managers = AssignedManagerBriefSerializer(many=True, read_only=True)
+    # Multi-photo enhancement — nested + optional so the legacy prod
+    # frontend (which knows nothing about it) simply ignores the extra key.
     contract_photos_all = ContractPhotoBriefSerializer(many=True, read_only=True)
     # NET amount (`amount − discount`) — derived on read so clients don't
     # have to recompute it. Both the SaleListCreateApi queryset and the
@@ -155,7 +159,6 @@ class SaleSerializer(serializers.ModelSerializer):
             "is_deleted",
             "gifts",
             "contract_photo",
-            "assigned_managers",
             "contract_photos_all",
             "rejection_reason",
             "rejected_at",
@@ -176,7 +179,6 @@ class SaleSerializer(serializers.ModelSerializer):
             "returned_at",
             "return_reason",
             "contract_photo",
-            "assigned_managers",
             "contract_photos_all",
             "rejection_reason",
             "rejected_at",
@@ -244,17 +246,10 @@ class SaleCreateInputSerializer(serializers.Serializer):
     # is also empty.
     contract_photo = serializers.ImageField(required=False, allow_null=True)
 
-    # Manager-partners + multi-photo enhancement.
-    # Both must be extracted with `getlist()` from a QueryDict BEFORE the
-    # `.dict()` flatten below — otherwise multipart clients that repeat
-    # `manager_partner_ids=1&manager_partner_ids=2` (and 5 `contract_photos`)
-    # would silently lose everything but the last value.
-    manager_partner_ids = serializers.ListField(
-        child=serializers.IntegerField(min_value=1),
-        required=False,
-        allow_empty=True,
-        max_length=2,
-    )
+    # Multi-photo (up to 5) — must be extracted with `getlist()` from a
+    # QueryDict BEFORE the `.dict()` flatten below, otherwise multipart
+    # clients that repeat `contract_photos=<file1>&contract_photos=<file2>`
+    # would silently lose everything but the last file.
     contract_photos = serializers.ListField(
         child=serializers.ImageField(),
         required=False,
@@ -279,28 +274,30 @@ class SaleCreateInputSerializer(serializers.Serializer):
         # exposed once the OperatorSaleCreate form started sending
         # multipart FormData with the contract photo.
         if isinstance(data, dict):
-            # Pull the two genuinely-multi fields BEFORE `.dict()` flattens
-            # them — otherwise a client that sends the 2 partner ids and 5
-            # photos loses everything but the last of each. Only touch the
-            # branch that actually needs it: QueryDict → getlist,
-            # plain dict → the value is either already a list or absent.
-            multi_manager_ids: list | None = None
+            # Pull the multi fields BEFORE `.dict()` flattens them.
+            # `partners` may arrive from a multipart form as indexed keys
+            # (`partners[0][channel_id]=1&partners[0][amount]=6000000&...`)
+            # — reconstruct the list-of-dicts here so the service gets a
+            # native Python shape. JSON callers keep sending a plain list.
             multi_contract_photos: list | None = None
+            multi_partners: list[dict] | None = None
+            multi_operators: list[dict] | None = None
             if hasattr(data, "getlist"):
-                mm = data.getlist("manager_partner_ids")
-                if mm:
-                    multi_manager_ids = mm
                 cp = data.getlist("contract_photos")
                 if cp:
                     multi_contract_photos = cp
+                multi_partners = _extract_indexed_dict_list(data, "partners")
+                multi_operators = _extract_indexed_dict_list(data, "operators")
             if hasattr(data, "dict"):
                 data = data.dict()
             else:
                 data = dict(data)
-            if multi_manager_ids is not None:
-                data["manager_partner_ids"] = multi_manager_ids
             if multi_contract_photos is not None:
                 data["contract_photos"] = multi_contract_photos
+            if multi_partners is not None:
+                data["partners"] = multi_partners
+            if multi_operators is not None:
+                data["operators"] = multi_operators
             if "operator" in data and "operator_id" not in data:
                 data["operator_id"] = data.pop("operator")
             if "channel" in data and "channel_id" not in data:

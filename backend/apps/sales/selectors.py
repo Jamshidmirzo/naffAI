@@ -11,10 +11,11 @@ from .models import Sale, SaleOperator
 def sale_queryset(*, include_deleted: bool = False) -> QuerySet[Sale]:
     qs = Sale.objects.select_related("operator", "channel", "created_by").prefetch_related(
         "gifts",
-        # Manager-partners + multi-photo enhancements. Prefetched here so the
-        # SaleSerializer's nested output (`assigned_managers`, `contract_photos_all`)
-        # doesn't fire per-row queries on lists / pending queue.
-        "assigned_managers__manager__profile",
+        # Payment-split + multi-photo prefetches so the SaleSerializer's
+        # nested output (`partner_lines`, `contract_photos_all`) doesn't
+        # fire per-row queries on lists / pending queue.
+        "partner_lines__partner",
+        "operator_lines__operator",
         "contract_photos_all",
     )
     if not include_deleted:
