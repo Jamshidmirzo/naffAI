@@ -48,6 +48,7 @@ const STRINGS: Lookup = {
     "common.theme_dark": "Тёмная",
     "common.forgot_password": "Забыли пароль?",
     "common.copied": "Скопировано",
+    "common.uzs": "сум",
 
     // ------ roles ------
     "role.manager": "Менеджер",
@@ -163,6 +164,22 @@ const STRINGS: Lookup = {
     "dash.sales_feed": "Лента продаж",
     "dash.realtime": "реалтайм",
     "dash.subtitle": "Сводка по продажам и операторам",
+
+    // ------ dashboard v2 «Сводка дня» (менеджерская главная) ------
+    "dash.title_today_brief": "Сводка дня",
+    "dash.kpi_done_today": "ПРОВЕДЕНО СЕГОДНЯ",
+    "dash.kpi_turnover_sum": "ОБОРОТ, СУМ",
+    "dash.kpi_conversion": "КОНВЕРСИЯ ЛИДОВ",
+    "dash.kpi_on_shift": "НА СМЕНЕ",
+    "dash.hint_pending_check": "{n} ждут проверки",
+    "dash.shift_hint_late": "{n} опоздали",
+    "dash.vs_prev_period": "vs прошлый период",
+    "dash.pp": "п.п.",
+    "dash.sales_bar_title": "Продажи · 14 дней, шт. в день",
+    "dash.sales_bar_subtitle_14d": "Динамика по дням, план и рекорд подсвечены",
+    "dash.plan_per_day": "план {n} шт./день",
+    "dash.attention_title": "Требует решения",
+    "dash.auto_refresh_hint": "автообновление каждую минуту",
 
     // ------ pieces used by many pages ------
     "sales.title": "Продажи",
@@ -2024,6 +2041,7 @@ const STRINGS: Lookup = {
     "common.theme_dark": "Qorong'i",
     "common.forgot_password": "Parolni unutdingizmi?",
     "common.copied": "Nusxalandi",
+    "common.uzs": "so'm",
 
     // ------ roles ------
     "role.manager": "Menejer",
@@ -2139,6 +2157,22 @@ const STRINGS: Lookup = {
     "dash.sales_feed": "Sotuvlar oqimi",
     "dash.realtime": "realtayn",
     "dash.subtitle": "Sotuv va operatorlar bo'yicha xulosa",
+
+    // ------ dashboard v2 «Kun xulosasi» (menejer bosh sahifasi) ------
+    "dash.title_today_brief": "Kun xulosasi",
+    "dash.kpi_done_today": "BUGUN SOTILDI",
+    "dash.kpi_turnover_sum": "AYLANMA, SO'M",
+    "dash.kpi_conversion": "LID KONVERSIYASI",
+    "dash.kpi_on_shift": "SMENADA",
+    "dash.hint_pending_check": "{n} ta tekshiruv kutmoqda",
+    "dash.shift_hint_late": "{n} ta kech qoldi",
+    "dash.vs_prev_period": "o'tgan davrga nisbatan",
+    "dash.pp": "p.p.",
+    "dash.sales_bar_title": "Sotuvlar · 14 kun, kunlik dona",
+    "dash.sales_bar_subtitle_14d": "Kunma-kun dinamika, reja va rekord ajratilgan",
+    "dash.plan_per_day": "reja {n} dona/kun",
+    "dash.attention_title": "Yechim kerak",
+    "dash.auto_refresh_hint": "har daqiqa avtomatik yangilanadi",
 
     // ------ pieces used by many pages ------
     "sales.title": "Sotuvlar",
