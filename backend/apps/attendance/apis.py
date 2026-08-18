@@ -33,6 +33,7 @@ from .services import (
     qr_token_verify,
 )
 from .selectors import (
+    attendance_dashboard_snapshot,
     attendance_settings_get,
     attendance_report,
     attendance_photos_queryset,
@@ -846,3 +847,18 @@ class ManualCloseAttendanceApi(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class DashboardSnapshotAttendanceApi(APIView):
+    """
+    Компактный срез посещаемости для менеджерского дашборда «Сводка дня».
+
+    Не под PIN-гейтом (в отличие от /report/) — сюда попадают только
+    сводные счётчики без имён и лог-строк:
+      {"on_shift": N, "expected": M, "late_today": K}
+    """
+
+    permission_classes = [IsAuthenticated, IsTeamLeadOrManager]
+
+    def get(self, request):
+        return Response(attendance_dashboard_snapshot())

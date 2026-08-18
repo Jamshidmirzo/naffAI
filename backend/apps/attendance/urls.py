@@ -1,5 +1,6 @@
 from django.urls import path
 from .apis import (
+    DashboardSnapshotAttendanceApi,
     ScanAttendanceApi,
     ScanWithPhotoAttendanceApi,
     QrPreviewAttendanceApi,
@@ -35,6 +36,8 @@ urlpatterns = [
     path("me/qr-token/", MeQrTokenAttendanceApi.as_view(), name="attendance-me-qr-token"),
     path("report/", ReportAttendanceApi.as_view(), name="attendance-report"),
     path("today/", ReportAttendanceApi.as_view(), name="attendance-today"),
+    # Открытый (без PIN) сводный срез — только счётчики, для дашборда.
+    path("dashboard-snapshot/", DashboardSnapshotAttendanceApi.as_view(), name="attendance-dashboard-snapshot"),
     path("photos/", PhotosGalleryAttendanceApi.as_view(), name="attendance-photos"),
     path(
         "operators/<int:operator_id>/logs/",

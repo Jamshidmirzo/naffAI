@@ -187,6 +187,56 @@ def attendance_report(day: dt.date) -> dict:
     }
 
 
+def attendance_dashboard_snapshot() -> dict:
+    """
+    Компактный срез посещаемости для менеджерского дашборда «Сводка дня».
+
+    Возвращает ТОЛЬКО счётчики, без имён — этот endpoint открыт всем
+    менеджерам (без PIN-гейта), поэтому чувствительные ФИО-ряды туда не
+    попадают. Для полной таблицы есть `/api/attendance/report/` под PIN.
+
+    Схема:
+      {
+        "on_shift":  <int>,   # сколько ЩАС открытых смен (checked_out_at IS NULL)
+        "expected":  <int>,   # сколько операторов ожидается сегодня
+                              # (все не-inactive; воскресенье → 0)
+        "late_today":<int>,   # сколько логов сегодня с was_late=True
+      }
+    """
+    now = timezone.now()
+    tz = timezone.get_current_timezone()
+    today_local = timezone.localdate(now)
+    start_dt = dt.datetime.combine(today_local, dt.time.min).replace(tzinfo=tz)
+    end_dt = dt.datetime.combine(today_local, dt.time.max).replace(tzinfo=tz)
+
+    # Открытые смены прямо сейчас — устойчиво к «висящим» логам:
+    # берём только те, что открыты сегодня. Ночевать никто не должен —
+    # auto_close_at по умолчанию 23:00.
+    on_shift = AttendanceLog.objects.filter(
+        checked_out_at__isnull=True,
+        checked_in_at__gte=start_dt,
+    ).count()
+
+    # Ожидаемые сегодня: все активные + trainee операторы. Воскресенье =
+    # выходной по правилам магазина → 0.
+    if today_local.weekday() == 6:
+        expected = 0
+    else:
+        expected = Operator.objects.exclude(status=OperatorStatus.INACTIVE).count()
+
+    late_today = AttendanceLog.objects.filter(
+        checked_in_at__gte=start_dt,
+        checked_in_at__lte=end_dt,
+        was_late=True,
+    ).count()
+
+    return {
+        "on_shift": on_shift,
+        "expected": expected,
+        "late_today": late_today,
+    }
+
+
 def attendance_photos_queryset(
     *,
     date_from: dt.date | None = None,
