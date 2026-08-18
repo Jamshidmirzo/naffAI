@@ -131,6 +131,13 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Up-scaled from Django's stock 2.5 MB defaults so an operator can attach
+# up to 5 contract photos of ~5–10 MB each (phone cameras) without hitting
+# a silent "Request Entity Too Large" from the parser layer. Nginx also
+# has a matching `client_max_body_size 60m` on the VPS.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 60 * 1024 * 1024  # 60 MB total request body
+FILE_UPLOAD_MAX_MEMORY_SIZE = 15 * 1024 * 1024  # 15 MB per single file
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- DRF ---
