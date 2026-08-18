@@ -499,6 +499,21 @@ export default function OperatorSaleCreate() {
     : 0;
   const totalNum = Number(amount) || 0;
   const splitRemaining = totalNum - splitSum;
+  // Per-row remainder — total minus every OTHER row's share. Powers the
+  // "Заполнить остаток" affordance so the operator doesn't have to
+  // subtract in their head when the split is uneven (10M − 6M = 4M).
+  const rowRemainder = (idx: number): number => {
+    if (!isSplitMode || totalNum <= 0) return 0;
+    const others = partnerRows.reduce(
+      (s, r, i) => (i === idx ? s : s + (Number(r.amount) || 0)),
+      0,
+    );
+    return Math.max(0, totalNum - others);
+  };
+  const canFillRow = (idx: number): boolean => {
+    const rem = rowRemainder(idx);
+    return rem > 0 && (Number(partnerRows[idx].amount) || 0) !== rem;
+  };
 
   return (
     <div className="max-w-xl mx-auto">
@@ -678,6 +693,19 @@ export default function OperatorSaleCreate() {
                       placeholder={t("sale_create.split_amount_ph")}
                       maxDigits={10}
                     />
+                    {canFillRow(idx) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setRowAmount(idx, String(rowRemainder(idx)))
+                        }
+                        className="mt-1 text-[10.5px] text-[var(--accent)] hover:opacity-80 tabular-nums whitespace-nowrap"
+                      >
+                        {t("sale_create.fill_remainder", {
+                          n: formatNumber(rowRemainder(idx)),
+                        })}
+                      </button>
+                    )}
                   </div>
                 )}
                 {isSplitMode && partnerRows.length > 1 && (

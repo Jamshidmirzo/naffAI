@@ -98,6 +98,28 @@ export default function NumericInput({
         ) {
           e.preventDefault();
         }
+        // Backspace/Delete over a formatting separator (the thin space
+        // in "1 234 567") looks broken to the operator: native input
+        // eats the space, we re-format, and the number appears
+        // unchanged. Snap the caret past the separator so the next key
+        // press deletes a real digit.
+        const el = e.currentTarget;
+        const start = el.selectionStart ?? 0;
+        const end = el.selectionEnd ?? 0;
+        if (start !== end) return;
+        if (e.key === "Backspace" && start > 0) {
+          const prev = el.value.charAt(start - 1);
+          if (prev && !/\d/.test(prev)) {
+            e.preventDefault();
+            el.setSelectionRange(start - 1, start - 1);
+          }
+        } else if (e.key === "Delete" && start < el.value.length) {
+          const next = el.value.charAt(start);
+          if (next && !/\d/.test(next)) {
+            e.preventDefault();
+            el.setSelectionRange(start + 1, start + 1);
+          }
+        }
       }}
     />
   );
