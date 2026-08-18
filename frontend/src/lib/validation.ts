@@ -166,3 +166,37 @@ export function validateContractPhoto(file: File | null): FieldError {
   }
   return null;
 }
+
+/**
+ * Multi-photo variant used by the new PhotosUploader on OperatorSaleCreate.
+ * Requires ≥ 1 photo (operator submits pending sale — proof of contract),
+ * caps at `max`, and verifies each individual file.
+ */
+export function validateContractPhotos(
+  files: File[],
+  max: number = 5,
+): FieldError {
+  if (!files || files.length === 0) return "validation.photo_required";
+  if (files.length > max) return "validation.photos_too_many";
+  for (const f of files) {
+    const single = validateContractPhoto(f);
+    if (single) return single;
+  }
+  return null;
+}
+
+/**
+ * Manager-partners select validator. Optional field — empty list is OK,
+ * but if the operator picked more than `max` (should be impossible via
+ * the UI but belt-and-braces) or included duplicates, fail hard.
+ */
+export function validateManagerPartners(
+  ids: number[],
+  max: number = 2,
+): FieldError {
+  if (!ids || ids.length === 0) return null;
+  if (ids.length > max) return "validation.manager_partners_too_many";
+  const unique = new Set(ids);
+  if (unique.size !== ids.length) return "validation.manager_partners_dup";
+  return null;
+}
