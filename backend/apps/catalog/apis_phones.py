@@ -18,7 +18,7 @@ from rest_framework.response import Response
 from apps.users.permissions import IsAuthenticatedAnyRole, IsManager
 
 from .models import PhoneColor, PhoneGalleryPhoto, PhoneModel
-from .quote_builder import build_phone_quote, installment_rows
+from .quote_builder import build_marketing_text, build_phone_quote, installment_rows
 
 
 class WritesManager(BasePermission):
@@ -60,6 +60,13 @@ class PhoneModelSerializer(serializers.ModelSerializer):
     colors = PhoneColorSerializer(many=True, required=False)
     cover_image_url = serializers.SerializerMethodField()
     gallery = PhoneGalleryPhotoSerializer(many=True, read_only=True)
+    # Pre-baked marketing text so the frontend copy-to-clipboard button
+    # can call navigator.clipboard.writeText SYNCHRONOUSLY in the click
+    # handler — awaiting a fetch first would drop the user gesture on
+    # Safari/iOS and the browser blocks the paste with "not allowed by
+    # the user agent." Payload cost: ~700 bytes/phone; acceptable at
+    # catalog scale (~dozens of items).
+    marketing_text_uz = serializers.SerializerMethodField()
 
     class Meta:
         model = PhoneModel
@@ -82,10 +89,17 @@ class PhoneModelSerializer(serializers.ModelSerializer):
             "sort_order",
             "colors",
             "gallery",
+            "marketing_text_uz",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["cover_image_url", "gallery", "created_at", "updated_at"]
+        read_only_fields = [
+            "cover_image_url",
+            "gallery",
+            "marketing_text_uz",
+            "created_at",
+            "updated_at",
+        ]
         extra_kwargs = {
             "cover_image": {"write_only": True, "required": False, "allow_null": True},
             "tagline": {"required": False, "allow_blank": True},
@@ -100,6 +114,12 @@ class PhoneModelSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         url = obj.cover_image.url
         return request.build_absolute_uri(url) if request else url
+
+    def get_marketing_text_uz(self, obj: PhoneModel) -> str:
+        try:
+            return build_marketing_text(obj, language="uz")
+        except Exception:
+            return ""
 
     def create(self, validated_data):
         colors_data = validated_data.pop("colors", None) or []

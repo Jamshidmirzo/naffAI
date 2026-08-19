@@ -46,6 +46,7 @@ export type Phone = {
   sort_order: number;
   colors: PhoneColor[];
   gallery: PhoneGalleryPhoto[];
+  marketing_text_uz?: string;
 };
 
 export type PhoneColor = {
@@ -199,11 +200,36 @@ export default function Catalog() {
     setCopying({ id: phone.id, mode });
     try {
       if (mode === "marketing") {
-        const r = await api.get<{ text: string }>(
-          `/catalog/phones/${phone.id}/marketing/?lang=uz`,
-        );
+        // Sync writeText from pre-baked text in the list response. Any
+        // `await` here would drop the user gesture on Safari/iOS and
+        // the browser blocks clipboard writes with "not allowed by the
+        // user agent." If the field is somehow missing (older backend
+        // or stale cache), fall back to the ClipboardItem+Promise
+        // pattern which preserves the gesture across async work.
+        const text = phone.marketing_text_uz || "";
+        if (text) {
+          try {
+            navigator.clipboard.writeText(text);
+            toast.success(t("catalog.marketing_copied"));
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error("[copy] marketing clipboard failed:", err);
+            toast.error(`${t("catalog.copy_failed")}: ${msg}`);
+          }
+          return;
+        }
         try {
-          await navigator.clipboard.writeText(r.data.text || "");
+          const item = new ClipboardItem({
+            "text/plain": api
+              .get<{ text: string }>(
+                `/catalog/phones/${phone.id}/marketing/?lang=uz`,
+              )
+              .then(
+                (r) =>
+                  new Blob([r.data.text || ""], { type: "text/plain" }),
+              ),
+          });
+          await navigator.clipboard.write([item]);
           toast.success(t("catalog.marketing_copied"));
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
