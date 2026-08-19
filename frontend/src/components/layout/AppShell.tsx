@@ -62,6 +62,9 @@ function useManagerGroups(t: (k: string) => string, showPhotos: boolean): Sideba
       title: t("sidebar.catalogs"),
       items: [
         { to: "/catalog", label: t("nav.catalog") },
+        { to: "/calculator", label: t("nav.calculator") },
+        { to: "/catalog/tiers", label: t("nav.tiers") },
+        { to: "/catalog/marketing-settings", label: t("nav.marketing_settings") },
         { to: "/partners", label: t("nav.partners") },
         { to: "/sheet-sources", label: t("nav.sheet_sources") },
         { to: "/statuses", label: t("nav.statuses") },
@@ -94,6 +97,7 @@ function useOperatorGroups(t: (k: string) => string): SidebarGroup[] {
         { to: "/notifications", label: t("nav.notifications"), badgeKey: "notifs" },
         { to: "/leaderboard", label: t("nav.leaderboard") },
         { to: "/catalog", label: t("nav.catalog") },
+        { to: "/calculator", label: t("nav.calculator") },
         { to: "/lessons/today", label: t("nav.lesson_today"), badgeKey: "lessonNew" },
         { to: "/lessons/history", label: t("nav.lesson_history") },
         { to: "/profile", label: t("nav.profile") },

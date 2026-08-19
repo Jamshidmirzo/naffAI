@@ -41,6 +41,9 @@ import SalesPending from "./pages/SalesPending";
 import BotConfig from "./pages/BotConfig";
 import Catalog from "./pages/Catalog";
 import CatalogBanks from "./pages/CatalogBanks";
+import Calculator from "./pages/Calculator";
+import MarketingSettingsPage from "./pages/MarketingSettingsPage";
+import InstallmentTiersPage from "./pages/InstallmentTiersPage";
 import { useAuth } from "./store/auth";
 import { RoleGate, normaliseRole } from "./components/RoleGate";
 import PinGate from "./components/PinGate";
@@ -92,6 +95,9 @@ export default function App() {
           <Route path="/reports" element={<RoleGate allow={["manager"]}><Reports /></RoleGate>} />
           <Route path="/catalog" element={<RoleGate allow={["manager", "operator"]}><Catalog /></RoleGate>} />
           <Route path="/catalog/banks" element={<RoleGate allow={["manager"]}><CatalogBanks /></RoleGate>} />
+          <Route path="/catalog/marketing-settings" element={<RoleGate allow={["manager"]}><MarketingSettingsPage /></RoleGate>} />
+          <Route path="/catalog/tiers" element={<RoleGate allow={["manager"]}><InstallmentTiersPage /></RoleGate>} />
+          <Route path="/calculator" element={<RoleGate allow={["manager", "operator"]}><Calculator /></RoleGate>} />
           <Route path="/stickers" element={<RoleGate allow={["manager"]}><Placeholder title="Стикеры" /></RoleGate>} />
           <Route path="/users" element={<RoleGate allow={["manager"]}><Users /></RoleGate>} />
           <Route path="/sales-today" element={<RoleGate allow={["manager"]}><SalesToday /></RoleGate>} />
