@@ -2,7 +2,9 @@
 Phone catalog API — CRUD for PhoneModel + PhoneColor + quote endpoint.
 
 GET (list/detail/quote) is open to any authenticated user (operators
-need read access to send offers to clients). Writes are team-lead only.
+need read access to send offers to clients). Writes are manager-only
+(team_lead role kept for backward-compat but hidden from UI — see
+`project_naffai_roles` in agent memory).
 """
 
 from __future__ import annotations
@@ -13,17 +15,23 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 
-from apps.users.permissions import IsAuthenticatedAnyRole, IsTeamLead
+from apps.users.permissions import IsAuthenticatedAnyRole, IsManager
 
-from .models import PhoneColor, PhoneModel
+from .models import PhoneColor, PhoneGalleryPhoto, PhoneModel
 from .quote_builder import build_phone_quote, installment_rows
 
 
-class WritesTeamLead(BasePermission):
+class WritesManager(BasePermission):
     def has_permission(self, request, view):
         if request.method in ("GET", "HEAD", "OPTIONS"):
             return IsAuthenticatedAnyRole().has_permission(request, view)
-        return IsTeamLead().has_permission(request, view)
+        return IsManager().has_permission(request, view)
+
+
+# Legacy alias — kept so downstream imports don't break if anything else
+# in the codebase references `WritesTeamLead`. Both classes now behave
+# identically: manager-only writes.
+WritesTeamLead = WritesManager
 
 
 class PhoneColorSerializer(serializers.ModelSerializer):
@@ -32,9 +40,26 @@ class PhoneColorSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "hex_code", "price_override", "is_available", "sort_order"]
 
 
+class PhoneGalleryPhotoSerializer(serializers.ModelSerializer):
+    photo_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PhoneGalleryPhoto
+        fields = ["id", "position", "photo_url", "uploaded_at"]
+        read_only_fields = fields
+
+    def get_photo_url(self, obj: PhoneGalleryPhoto) -> str | None:
+        if not obj.photo:
+            return None
+        request = self.context.get("request")
+        url = obj.photo.url
+        return request.build_absolute_uri(url) if request else url
+
+
 class PhoneModelSerializer(serializers.ModelSerializer):
     colors = PhoneColorSerializer(many=True, required=False)
     cover_image_url = serializers.SerializerMethodField()
+    gallery = PhoneGalleryPhotoSerializer(many=True, read_only=True)
 
     class Meta:
         model = PhoneModel
@@ -48,16 +73,25 @@ class PhoneModelSerializer(serializers.ModelSerializer):
             "cover_image",
             "cover_image_url",
             "description",
+            "tagline",
+            "camera_mp",
+            "battery_mah",
+            "specs_json",
             "stock_status",
             "is_active",
             "sort_order",
             "colors",
+            "gallery",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["cover_image_url", "created_at", "updated_at"]
+        read_only_fields = ["cover_image_url", "gallery", "created_at", "updated_at"]
         extra_kwargs = {
             "cover_image": {"write_only": True, "required": False, "allow_null": True},
+            "tagline": {"required": False, "allow_blank": True},
+            "camera_mp": {"required": False, "allow_null": True},
+            "battery_mah": {"required": False, "allow_null": True},
+            "specs_json": {"required": False},
         }
 
     def get_cover_image_url(self, obj: PhoneModel) -> str | None:
@@ -88,7 +122,7 @@ class PhoneModelSerializer(serializers.ModelSerializer):
 
 
 class PhoneModelViewSet(viewsets.ModelViewSet):
-    permission_classes = [WritesTeamLead]
+    permission_classes = [WritesManager]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
     serializer_class = PhoneModelSerializer
 
@@ -146,3 +180,31 @@ class PhoneModelViewSet(viewsets.ModelViewSet):
         phone.cover_image = f
         phone.save(update_fields=["cover_image", "updated_at"])
         return Response(PhoneModelSerializer(phone, context={"request": request}).data)
+
+    @action(detail=True, methods=["post"], url_path="gallery/upload")
+    def gallery_upload(self, request, pk=None):
+        """Append one gallery photo. Front-end calls this per-file."""
+        phone = self.get_object()
+        f = request.FILES.get("photo") or request.FILES.get("file")
+        if not f:
+            return Response({"detail": "photo file is required"}, status=400)
+        last = phone.gallery.order_by("-position").first()
+        next_pos = (last.position + 1) if last else 0
+        item = PhoneGalleryPhoto.objects.create(phone=phone, photo=f, position=next_pos)
+        return Response(
+            PhoneGalleryPhotoSerializer(item, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"gallery/(?P<photo_id>[0-9]+)",
+    )
+    def gallery_delete(self, request, pk=None, photo_id=None):
+        phone = self.get_object()
+        item = phone.gallery.filter(pk=photo_id).first()
+        if not item:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        item.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
