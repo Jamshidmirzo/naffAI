@@ -467,7 +467,10 @@ def lead_stats_snapshot(
         "total": int,
         "by_status": [{code, label_ru, label_uz, tone, emoji, count, pct}],
         "by_operator": [{operator_id, operator_name, total, won, lost,
-                          in_progress, conversion_pct}],
+                          in_progress, sold_total, conversion_pct}],
+          - `won`        = leads со статусом "won" (продажи через лид)
+          - `sold_total` = все confirmed sales оператора в периоде
+                           (независимо от того, связаны с лидом или нет)
         "daily": [{date: 'YYYY-MM-DD', created: N, won: N, lost: N}]
       }
 
@@ -528,21 +531,74 @@ def lead_stats_snapshot(
         )
         .order_by("-total")
     )
+
+    # Sold TOTAL by operator = every confirmed, non-returned, non-deleted
+    # Sale where the operator is credited via SaleOperator (covers splits
+    # too — a sale credited to A+B counts once for A AND once for B).
+    # This is the "физически зарегистрировал" metric — independent of
+    # whether the lead was linked. Uses the same period bounds as the
+    # lead qs to keep the two numbers directly comparable in the UI.
+    sold_qs = SaleOperator.objects.filter(
+        sale__status="confirmed",
+        sale__is_deleted=False,
+        sale__is_returned=False,
+    )
+    if date_from:
+        sold_qs = sold_qs.filter(sale__sold_at__gte=date_from)
+    if date_to:
+        sold_qs = sold_qs.filter(sale__sold_at__lte=date_to)
+    sold_rows = (
+        sold_qs.exclude(operator__isnull=True)
+        .values("operator_id")
+        .annotate(n=Count("sale_id", distinct=True))
+    )
+    sold_map = {int(r["operator_id"]): int(r["n"] or 0) for r in sold_rows}
+
     by_operator: list[dict] = []
+    seen_op_ids: set[int] = set()
     for r in per_op_rows:
         t = int(r["total"] or 0)
         w = int(r["won"] or 0)
+        op_id = int(r["operator_id"])
+        seen_op_ids.add(op_id)
         by_operator.append(
             {
-                "operator_id": r["operator_id"],
+                "operator_id": op_id,
                 "operator_name": r["operator__full_name"] or "",
                 "total": t,
                 "won": w,
                 "lost": int(r["lost"] or 0),
                 "in_progress": int(r["in_progress"] or 0),
+                "sold_total": sold_map.get(op_id, 0),
                 "conversion_pct": round(w * 100.0 / t, 1) if t else 0.0,
             }
         )
+
+    # Include operators who have sales in this period but zero leads —
+    # otherwise the "Sotildi (jami)" number would disappear for the very
+    # people the metric was added for (dostik on prod has 261 sales, 0
+    # linked leads → 0 rows without this).
+    missing_ids = set(sold_map.keys()) - seen_op_ids
+    if missing_ids:
+        op_names = dict(
+            Operator.objects.filter(id__in=missing_ids).values_list("id", "full_name")
+        )
+        for op_id in missing_ids:
+            by_operator.append(
+                {
+                    "operator_id": op_id,
+                    "operator_name": op_names.get(op_id, ""),
+                    "total": 0,
+                    "won": 0,
+                    "lost": 0,
+                    "in_progress": 0,
+                    "sold_total": sold_map[op_id],
+                    "conversion_pct": 0.0,
+                }
+            )
+        # Re-sort so the section stays readable: leads-total desc, then
+        # sold_total desc as a tiebreaker.
+        by_operator.sort(key=lambda r: (r["total"], r["sold_total"]), reverse=True)
 
     # ---- daily: created / won / lost per calendar day in [from..to].
     daily: list[dict] = []

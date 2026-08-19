@@ -34,6 +34,9 @@ type OperatorRow = {
   won: number;
   lost: number;
   in_progress: number;
+  // Backend may not send this field on older deploys — treat as optional
+  // and default to 0 in the render step so the UI stays graceful.
+  sold_total?: number;
   conversion_pct: number;
 };
 
@@ -234,7 +237,18 @@ export default function LeadsStats() {
                 <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
                   <th className="py-2 pr-3">{t("leads_stats.op_name")}</th>
                   <th className="py-2 px-3 text-right">{t("leads_stats.op_total")}</th>
-                  <th className="py-2 px-3 text-right">{t("leads_stats.op_won")}</th>
+                  <th
+                    className="py-2 px-3 text-right"
+                    title={t("leads_stats.op_won_hint")}
+                  >
+                    {t("leads_stats.op_won")}
+                  </th>
+                  <th
+                    className="py-2 px-3 text-right"
+                    title={t("leads_stats.op_sold_total_hint")}
+                  >
+                    {t("leads_stats.op_sold_total")}
+                  </th>
                   <th className="py-2 px-3 text-right">{t("leads_stats.op_in_progress")}</th>
                   <th className="py-2 px-3 text-right">{t("leads_stats.op_lost")}</th>
                   <th className="py-2 pl-3 text-right">{t("leads_stats.op_conversion")}</th>
@@ -247,6 +261,9 @@ export default function LeadsStats() {
                     <td className="py-2 px-3 text-right tabular-nums font-medium">{r.total}</td>
                     <td className="py-2 px-3 text-right tabular-nums" style={{ color: "#059669" }}>
                       {r.won}
+                    </td>
+                    <td className="py-2 px-3 text-right tabular-nums font-medium" style={{ color: "#059669" }}>
+                      {r.sold_total ?? 0}
                     </td>
                     <td className="py-2 px-3 text-right tabular-nums">{r.in_progress}</td>
                     <td className="py-2 px-3 text-right tabular-nums" style={{ color: "#dc2626" }}>

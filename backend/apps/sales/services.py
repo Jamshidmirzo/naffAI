@@ -14,7 +14,7 @@ from apps.audit.services import AuditAction, audit_log_create
 from apps.catalog.imei_service import imei_lookup
 from apps.catalog.models import Channel
 from apps.common.exceptions import ApplicationError, DuplicateError
-from apps.common.validators import is_valid_imei
+from apps.common.validators import is_valid_imei, normalize_uz_phone
 from apps.operators.models import Operator, OperatorStatus
 
 from .models import (
@@ -418,11 +418,87 @@ def sale_create(
         comment=duplicate_override_comment if duplicates else "",
     )
 
-    if lead_id is not None:
-        _link_sale_to_lead_and_mark_won(sale=sale, lead_id=lead_id, user=user)
+    resolved_lead_id = lead_id
+    auto_matched = False
+    if resolved_lead_id is None and client_phone:
+        # Auto-link by phone: 98% of manually-created sales on prod arrive
+        # without lead_id (the dashboard/admin form doesn't pass it), which
+        # broke the "operator conversion" metric because leads never got
+        # flipped to WON. Try to find an existing lead by normalised phone
+        # and, if found, run the same linkage as an explicit lead_id.
+        # Best-effort: any failure here MUST NOT abort the sale — it's
+        # already saved and payroll-correct without a lead link.
+        try:
+            matched = _find_lead_by_client_phone(client_phone)
+            if matched is not None:
+                resolved_lead_id = matched.id
+                auto_matched = True
+                logger.info(
+                    "sale_create.auto_match sale_id=%s lead_id=%s status=%s",
+                    sale.id,
+                    matched.id,
+                    matched.status,
+                )
+        except Exception:
+            logger.warning(
+                "sale_create.auto_match_failed sale_id=%s",
+                sale.id,
+                exc_info=True,
+            )
+
+    if resolved_lead_id is not None:
+        _link_sale_to_lead_and_mark_won(
+            sale=sale, lead_id=resolved_lead_id, user=user
+        )
+        if auto_matched:
+            logger.info(
+                "sale_create.auto_match_applied sale_id=%s lead_id=%s",
+                sale.id,
+                resolved_lead_id,
+            )
 
     _broadcast_new_sale(sale, primary_op, credited_operator_lines, total)
     return sale
+
+
+def _find_lead_by_client_phone(client_phone: str):
+    """
+    Find a Lead matching a client phone, preferring the most useful one:
+      1. non-terminal (still workable) leads first — flipping to WON is
+         valuable there.
+      2. else an already-WON lead (idempotent re-link for repeat customers).
+      3. else the newest match (LOST/ARCHIVED) — link but don't overwrite.
+
+    Phone normalization uses `normalize_uz_phone` so `+998 90 123 45 67`,
+    `998901234567`, `+998901234567`, `90 123-45-67` all match the same
+    canonical `+998901234567`. Returns `None` if no match or the phone
+    can't be normalised.
+    """
+    from apps.leads.models import Lead
+    from apps.leads.selectors import terminal_lead_status_codes
+
+    normalized, ok = normalize_uz_phone(client_phone)
+    if not ok:
+        return None
+
+    base_qs = Lead.objects.filter(phone=normalized)
+    if not base_qs.exists():
+        return None
+
+    terminal = list(terminal_lead_status_codes())
+    # 1. Active (non-terminal) — highest priority; newest first so a fresh
+    #    lead outranks a stale duplicate.
+    active = base_qs.exclude(status__in=terminal).order_by("-updated_at").first()
+    if active is not None:
+        return active
+    # 2. Already WON — idempotent re-link (safe: _link…and_mark_won won't
+    #    flip a lead already in a terminal status).
+    won = base_qs.filter(status="won").order_by("-updated_at").first()
+    if won is not None:
+        return won
+    # 3. Fallback: any (LOST/ARCHIVED/…). Sale still gets a lead link for
+    #    the analytics pipeline, but status stays terminal.
+    return base_qs.order_by("-updated_at").first()
 
 
 def _link_sale_to_lead_and_mark_won(*, sale: Sale, lead_id: int, user) -> None:
