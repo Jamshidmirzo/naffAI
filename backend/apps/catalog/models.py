@@ -67,6 +67,13 @@ class PhoneModel(TimestampedModel):
         upload_to="catalog/phones/%Y/%m/", null=True, blank=True
     )
     description = models.TextField(blank=True, default="")
+    # Extended catalog fields (all optional) — feed the marketing-text
+    # builder and the /calculator page. Missing values are dropped from
+    # the copy-and-paste template silently.
+    tagline = models.CharField(max_length=200, blank=True, default="")
+    camera_mp = models.PositiveSmallIntegerField(null=True, blank=True)
+    battery_mah = models.PositiveIntegerField(null=True, blank=True)
+    specs_json = models.JSONField(default=dict, blank=True)
     stock_status = models.CharField(
         max_length=16,
         choices=PhoneStockStatus.choices,
@@ -164,3 +171,92 @@ class InstallmentPlan(TimestampedModel):
 
     def __str__(self) -> str:
         return f"{self.bank.name} {self.term_months}m ×{self.multiplier}"
+
+
+class PhoneGalleryPhoto(models.Model):
+    """
+    Additional gallery photos for a phone. `cover_image` on PhoneModel is
+    the primary; these are extras that don't render in the marketing text
+    but appear on the /catalog product card lightbox / editor.
+    """
+
+    phone = models.ForeignKey(
+        PhoneModel, on_delete=models.CASCADE, related_name="gallery"
+    )
+    photo = models.ImageField(upload_to="catalog/gallery/%Y/%m/")
+    position = models.PositiveSmallIntegerField(default=0)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.phone_id}::gallery#{self.position}"
+
+
+class InstallmentTier(models.Model):
+    """
+    Global (shop-wide) installment tier used by the /calculator page and
+    the marketing-copy template. Distinct from InstallmentBank/InstallmentPlan
+    — those live per-bank on the phone card; these tiers are shop-wide
+    (Alif/Anor/whoever apply the same 7/15/25/32/38/50 rates).
+    """
+
+    months = models.PositiveSmallIntegerField(unique=True)
+    commission_pct = models.DecimalField(max_digits=5, decimal_places=2)
+    is_active = models.BooleanField(default=True)
+    show_in_marketing = models.BooleanField(default=False)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "months"]
+
+    def __str__(self) -> str:
+        return f"{self.months} мес / {self.commission_pct}%"
+
+
+class MarketingSettings(models.Model):
+    """
+    Singleton row (pk=1) holding shop-wide marketing defaults — phones,
+    telegram, address, benefits block. Managed by manager through the
+    /catalog/marketing-settings admin page; consumed by the
+    build_marketing_text() template.
+    """
+
+    default_tagline = models.CharField(
+        max_length=200, default="Yuqori sifat va yuqori mustahkamlik!"
+    )
+    phone_primary = models.CharField(max_length=32, blank=True, default="")
+    phone_secondary = models.CharField(max_length=32, blank=True, default="")
+    telegram_handle = models.CharField(max_length=64, blank=True, default="")
+    address = models.CharField(max_length=200, blank=True, default="")
+    benefits = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "Одна строка = один пункт. Первый символ строки — эмодзи, "
+            "дальше — текст."
+        ),
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Marketing settings"
+        verbose_name_plural = "Marketing settings"
+
+    def save(self, *args, **kwargs):
+        # Enforce singleton — always pk=1.
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):  # pragma: no cover
+        # Prevent accidental deletion of the singleton.
+        pass
+
+    @classmethod
+    def load(cls) -> "MarketingSettings":
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self) -> str:
+        return "MarketingSettings (singleton)"
