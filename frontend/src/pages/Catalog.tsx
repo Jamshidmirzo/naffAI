@@ -24,6 +24,7 @@ import {
   copyPhoneTextOnly,
   copyPhoneImageOnly,
 } from "../components/CopyPhoneButton";
+import { copyText } from "../lib/clipboard";
 
 export type Phone = {
   id: number;
@@ -86,6 +87,72 @@ const emptyDraft = (): PhoneDraft => ({
 function fmtPrice(v: string | number): string {
   const n = Math.round(Number(v || 0));
   return n.toLocaleString("ru-RU").replace(/,/g, " ");
+}
+
+/**
+ * Product card image block: main image + thumbnail strip.
+ *
+ * The main image defaults to `cover_image_url` and falls back to the
+ * first `gallery` photo (so a phone without an explicit cover but with
+ * uploaded gallery shots still shows something). Thumbnails render for
+ * every gallery entry; clicking one swaps the main image. The manager
+ * uploads photos through PhoneEditor; this is where they finally
+ * appear on the shop-side card.
+ */
+function PhoneImages({
+  phone,
+  noPhotoLabel,
+}: {
+  phone: Phone;
+  noPhotoLabel: string;
+}) {
+  const fallbackUrl =
+    phone.cover_image_url ?? phone.gallery[0]?.photo_url ?? null;
+  const [activeUrl, setActiveUrl] = useState<string | null>(fallbackUrl);
+  const displayed = activeUrl ?? fallbackUrl;
+  const thumbs: { key: string; url: string }[] = [];
+  if (phone.cover_image_url) {
+    thumbs.push({ key: "cover", url: phone.cover_image_url });
+  }
+  for (const g of phone.gallery) {
+    thumbs.push({ key: `g-${g.id}`, url: g.photo_url });
+  }
+  return (
+    <>
+      <div className="aspect-[4/3] bg-[var(--surface2)] flex items-center justify-center overflow-hidden">
+        {displayed ? (
+          <img
+            src={displayed}
+            alt={phone.model_name}
+            className="w-full h-full object-contain"
+          />
+        ) : (
+          <div className="text-muted text-[12px]">{noPhotoLabel}</div>
+        )}
+      </div>
+      {thumbs.length > 1 && (
+        <div className="flex gap-1.5 px-3 py-2 overflow-x-auto bg-[var(--surface2)]/60">
+          {thumbs.map((th) => {
+            const active = displayed === th.url;
+            return (
+              <button
+                key={th.key}
+                type="button"
+                onClick={() => setActiveUrl(th.url)}
+                className={`shrink-0 w-11 h-11 rounded-md overflow-hidden border-2 transition ${
+                  active
+                    ? "border-[var(--accent)]"
+                    : "border-transparent opacity-70 hover:opacity-100"
+                }`}
+              >
+                <img src={th.url} alt="" className="w-full h-full object-cover" />
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
 }
 
 export default function Catalog() {
@@ -197,36 +264,25 @@ export default function Catalog() {
     setCopying({ id: phone.id, mode });
     try {
       if (mode === "marketing") {
-        // Sync writeText from pre-baked text in the list response. Any
-        // `await` here would drop the user gesture on Safari/iOS and
-        // the browser blocks clipboard writes with "not allowed by the
-        // user agent." If the field is somehow missing (older backend
-        // or stale cache), fall back to the ClipboardItem+Promise
-        // pattern which preserves the gesture across async work.
-        const text = phone.marketing_text_uz || "";
-        if (text) {
+        // Prefer the text baked into the list response — no fetch, so
+        // the user-gesture flag stays alive on Safari/iOS. If it's
+        // missing (stale cache, older backend), do a one-shot fetch;
+        // most browsers still honour the gesture across a single await
+        // and `copyText` falls back to the legacy execCommand path if
+        // the promise API refuses.
+        let text = phone.marketing_text_uz || "";
+        if (!text) {
           try {
-            navigator.clipboard.writeText(text);
-            toast.success(t("catalog.marketing_copied"));
+            const r = await api.get<{ text: string }>(
+              `/catalog/phones/${phone.id}/marketing/?lang=uz`,
+            );
+            text = r.data.text || "";
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            console.error("[copy] marketing clipboard failed:", err);
-            toast.error(`${t("catalog.copy_failed")}: ${msg}`);
+            console.error("[copy] marketing fetch failed:", err);
           }
-          return;
         }
         try {
-          const item = new ClipboardItem({
-            "text/plain": api
-              .get<{ text: string }>(
-                `/catalog/phones/${phone.id}/marketing/?lang=uz`,
-              )
-              .then(
-                (r) =>
-                  new Blob([r.data.text || ""], { type: "text/plain" }),
-              ),
-          });
-          await navigator.clipboard.write([item]);
+          await copyText(text);
           toast.success(t("catalog.marketing_copied"));
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -342,17 +398,7 @@ export default function Catalog() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map((p) => (
           <div key={p.id} className="nf-card overflow-hidden flex flex-col">
-            <div className="aspect-[4/3] bg-[var(--surface2)] flex items-center justify-center overflow-hidden">
-              {p.cover_image_url ? (
-                <img
-                  src={p.cover_image_url}
-                  alt={p.model_name}
-                  className="w-full h-full object-contain"
-                />
-              ) : (
-                <div className="text-muted text-[12px]">{t("catalog.no_photo")}</div>
-              )}
-            </div>
+            <PhoneImages phone={p} noPhotoLabel={t("catalog.no_photo")} />
             <div className="p-4 flex-1 flex flex-col">
               <div className="text-[15px] font-semibold truncate">
                 {p.brand} {p.model_name}
