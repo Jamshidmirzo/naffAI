@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from rest_framework import serializers, viewsets
 
-from apps.users.permissions import IsTeamLead
+from apps.users.permissions import IsManager
 
 from .models import InstallmentBank, InstallmentPlan
 
@@ -27,12 +27,14 @@ class InstallmentBankSerializer(serializers.ModelSerializer):
 
 
 class InstallmentBankViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsTeamLead]
+    # Manager-only (per business rule — team_lead is hidden from the UI).
+    # See `project_naffai_roles` in agent memory.
+    permission_classes = [IsManager]
     serializer_class = InstallmentBankSerializer
     queryset = InstallmentBank.objects.all().prefetch_related("plans")
 
 
 class InstallmentPlanViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsTeamLead]
+    permission_classes = [IsManager]
     serializer_class = InstallmentPlanSerializer
     queryset = InstallmentPlan.objects.all()

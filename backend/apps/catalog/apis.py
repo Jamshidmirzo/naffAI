@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from apps.common.exceptions import ApplicationError
 from apps.users.permissions import (
     IsAuthenticatedAnyRole,
-    IsTeamLead,
+    IsManager,
     IsTeamLeadOrManagerReadOnly,
 )
 from apps.users.models import Role
@@ -68,7 +68,7 @@ class ChannelListCreateApi(ListCreateAPIView):
 
 
 class ChannelDetailApi(RetrieveUpdateAPIView):
-    permission_classes = [IsTeamLead]
+    permission_classes = [IsManager]
     serializer_class = ChannelSerializer
     queryset = Channel.objects.all()
 
