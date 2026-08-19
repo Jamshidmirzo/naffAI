@@ -12,6 +12,7 @@ import {
   Loader2,
   Image as ImageIcon,
   Type,
+  Megaphone,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
@@ -36,10 +37,15 @@ export type Phone = {
   price: string;
   cover_image_url: string | null;
   description: string;
+  tagline: string;
+  camera_mp: number | null;
+  battery_mah: number | null;
+  specs_json: Record<string, string>;
   stock_status: "available" | "on_order" | "out";
   is_active: boolean;
   sort_order: number;
   colors: PhoneColor[];
+  gallery: PhoneGalleryPhoto[];
 };
 
 export type PhoneColor = {
@@ -51,6 +57,13 @@ export type PhoneColor = {
   sort_order: number;
 };
 
+export type PhoneGalleryPhoto = {
+  id: number;
+  position: number;
+  photo_url: string;
+  uploaded_at: string;
+};
+
 const emptyDraft = (): PhoneDraft => ({
   brand: "",
   model_name: "",
@@ -58,10 +71,16 @@ const emptyDraft = (): PhoneDraft => ({
   ram_gb: null,
   price: "",
   description: "",
+  tagline: "",
+  camera_mp: null,
+  battery_mah: null,
+  specs_json: {},
   stock_status: "available",
   is_active: true,
   sort_order: 0,
   colors: [],
+  gallery: [],
+  new_gallery_files: [],
   cover_image_file: null,
   cover_image_url: null,
 });
@@ -85,7 +104,7 @@ export default function Catalog() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [copying, setCopying] = useState<{
     id: number;
-    mode: "text" | "photo";
+    mode: "text" | "photo" | "marketing";
   } | null>(null);
 
   const phones = useQuery({
@@ -110,6 +129,10 @@ export default function Catalog() {
         ram_gb: draft.ram_gb || null,
         price: draft.price,
         description: draft.description,
+        tagline: draft.tagline || "",
+        camera_mp: draft.camera_mp || null,
+        battery_mah: draft.battery_mah || null,
+        specs_json: draft.specs_json || {},
         stock_status: draft.stock_status,
         is_active: draft.is_active,
         sort_order: draft.sort_order,
@@ -130,6 +153,21 @@ export default function Catalog() {
         const fd = new FormData();
         fd.append("cover_image", draft.cover_image_file);
         await api.post(`/catalog/phones/${phoneId}/upload_photo/`, fd);
+      }
+      // Append new gallery photos (one request per file — backend appends
+      // to the tail of `phone.gallery` and assigns the next position).
+      if (draft.new_gallery_files && draft.new_gallery_files.length > 0 && phoneId) {
+        for (const f of draft.new_gallery_files) {
+          const fd = new FormData();
+          fd.append("photo", f);
+          await api.post(`/catalog/phones/${phoneId}/gallery/upload/`, fd);
+        }
+      }
+      // Delete gallery items marked for removal.
+      if (draft.gallery_delete_ids && draft.gallery_delete_ids.length > 0 && phoneId) {
+        for (const id of draft.gallery_delete_ids) {
+          await api.delete(`/catalog/phones/${phoneId}/gallery/${id}/`);
+        }
       }
       return resp;
     },
@@ -156,10 +194,24 @@ export default function Catalog() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["catalog-phones"] }),
   });
 
-  const handleCopy = async (phone: Phone, mode: "text" | "photo") => {
+  const handleCopy = async (phone: Phone, mode: "text" | "photo" | "marketing") => {
     if (copying !== null) return;
     setCopying({ id: phone.id, mode });
     try {
+      if (mode === "marketing") {
+        const r = await api.get<{ text: string }>(
+          `/catalog/phones/${phone.id}/marketing/?lang=uz`,
+        );
+        try {
+          await navigator.clipboard.writeText(r.data.text || "");
+          toast.success(t("catalog.marketing_copied"));
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error("[copy] marketing clipboard failed:", err);
+          toast.error(`${t("catalog.copy_failed")}: ${msg}`);
+        }
+        return;
+      }
       const r = await api.get<{ text: string; cover_image_url: string | null }>(
         `/catalog/phones/${phone.id}/quote/?lang=uz`,
       );
@@ -202,10 +254,17 @@ export default function Catalog() {
       ram_gb: p.ram_gb,
       price: p.price,
       description: p.description,
+      tagline: p.tagline || "",
+      camera_mp: p.camera_mp ?? null,
+      battery_mah: p.battery_mah ?? null,
+      specs_json: p.specs_json || {},
       stock_status: p.stock_status,
       is_active: p.is_active,
       sort_order: p.sort_order,
       colors: p.colors || [],
+      gallery: p.gallery || [],
+      new_gallery_files: [],
+      gallery_delete_ids: [],
       cover_image_file: null,
       cover_image_url: p.cover_image_url,
     });
@@ -317,7 +376,7 @@ export default function Catalog() {
 
               <div className="flex-1" />
               <div className="mt-3 space-y-2">
-                <div className="grid grid-cols-2 gap-1.5">
+                <div className="grid grid-cols-3 gap-1.5">
                   <button
                     type="button"
                     className="nf-btn nf-btn--secondary !px-2 !text-[12px]"
@@ -345,6 +404,20 @@ export default function Catalog() {
                       <ImageIcon className="w-3.5 h-3.5" />
                     )}{" "}
                     {t("catalog.copy_photo")}
+                  </button>
+                  <button
+                    type="button"
+                    className="nf-btn nf-btn--primary !px-2 !text-[12px]"
+                    onClick={() => handleCopy(p, "marketing")}
+                    disabled={copying !== null}
+                    title={t("catalog.copy_marketing")}
+                  >
+                    {copying?.id === p.id && copying?.mode === "marketing" ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Megaphone className="w-3.5 h-3.5" />
+                    )}{" "}
+                    {t("catalog.copy_marketing")}
                   </button>
                 </div>
                 {canEdit && (

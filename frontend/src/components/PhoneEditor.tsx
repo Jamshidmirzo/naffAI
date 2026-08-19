@@ -1,9 +1,10 @@
 import { Plus, X } from "lucide-react";
 import PhotoUploader from "./PhotoUploader";
+import PhotosUploader from "./PhotosUploader";
 import NumericInput from "./NumericInput";
 import { Select } from "./Select";
 import { useT } from "../lib/i18n";
-import type { PhoneColor } from "../pages/Catalog";
+import type { PhoneColor, PhoneGalleryPhoto } from "../pages/Catalog";
 
 export type PhoneDraft = {
   brand: string;
@@ -12,10 +13,17 @@ export type PhoneDraft = {
   ram_gb: number | null;
   price: string;
   description: string;
+  tagline: string;
+  camera_mp: number | null;
+  battery_mah: number | null;
+  specs_json: Record<string, string>;
   stock_status: "available" | "on_order" | "out";
   is_active: boolean;
   sort_order: number;
   colors: PhoneColor[];
+  gallery: PhoneGalleryPhoto[];
+  new_gallery_files: File[];
+  gallery_delete_ids?: number[];
   cover_image_file: File | null;
   cover_image_url: string | null;
 };
@@ -44,6 +52,56 @@ export default function PhoneEditor({ draft, onChange, onSave, onCancel, saving 
     set("colors", next);
   };
   const removeColor = (i: number) => set("colors", draft.colors.filter((_, j) => j !== i));
+
+  // --- specs_json editors (list of {key, value} rows) ------------------------
+  const specEntries = Object.entries(draft.specs_json || {});
+  const setSpecKey = (idx: number, newKey: string) => {
+    const entries = specEntries.map(([k, v], i): [string, string] =>
+      i === idx ? [newKey, v] : [k, v as string],
+    );
+    // De-dup: last write wins on collision — user rename will overwrite.
+    const obj: Record<string, string> = {};
+    for (const [k, v] of entries) {
+      if (k) obj[k] = v as string;
+    }
+    set("specs_json", obj);
+  };
+  const setSpecValue = (idx: number, newValue: string) => {
+    const entries = specEntries.map(([k, v], i): [string, string] =>
+      i === idx ? [k, newValue] : [k, v as string],
+    );
+    const obj: Record<string, string> = {};
+    for (const [k, v] of entries) {
+      if (k) obj[k] = v as string;
+    }
+    set("specs_json", obj);
+  };
+  const addSpec = () => {
+    // Empty-key row placeholder — user renames it and it enters the map on
+    // save. To avoid losing focus while typing, we key rows by index below.
+    let base = "field";
+    let n = 1;
+    while (Object.prototype.hasOwnProperty.call(draft.specs_json, `${base}_${n}`)) n += 1;
+    set("specs_json", { ...(draft.specs_json || {}), [`${base}_${n}`]: "" });
+  };
+  const removeSpec = (idx: number) => {
+    const entries = specEntries.filter((_, i) => i !== idx);
+    const obj: Record<string, string> = {};
+    for (const [k, v] of entries) obj[k] = v as string;
+    set("specs_json", obj);
+  };
+
+  // --- Gallery removal (existing photos) ------------------------------------
+  const existingGalleryUrls = (draft.gallery || []).map((g) => g.photo_url);
+  const removeExisting = (idx: number) => {
+    const g = draft.gallery[idx];
+    if (!g) return;
+    onChange({
+      ...draft,
+      gallery: draft.gallery.filter((_, i) => i !== idx),
+      gallery_delete_ids: [...(draft.gallery_delete_ids || []), g.id],
+    });
+  };
 
   const canSave =
     draft.brand.trim() &&
@@ -76,6 +134,16 @@ export default function PhoneEditor({ draft, onChange, onSave, onCancel, saving 
             placeholder="iPhone 17 Pro Max"
           />
         </div>
+      </div>
+
+      <div>
+        <label className="nf-col mb-1.5 block">{t("catalog.tagline")}</label>
+        <input
+          className="nf-input"
+          value={draft.tagline}
+          onChange={(e) => set("tagline", e.target.value)}
+          placeholder={t("catalog.tagline_ph")}
+        />
       </div>
 
       <div className="grid grid-cols-3 gap-4">
@@ -114,6 +182,29 @@ export default function PhoneEditor({ draft, onChange, onSave, onCancel, saving 
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="nf-col mb-1.5 block">{t("catalog.camera_mp")}</label>
+          <input
+            className="nf-input"
+            type="number"
+            value={draft.camera_mp ?? ""}
+            onChange={(e) => set("camera_mp", e.target.value ? Number(e.target.value) : null)}
+            placeholder="108"
+          />
+        </div>
+        <div>
+          <label className="nf-col mb-1.5 block">{t("catalog.battery_mah")}</label>
+          <input
+            className="nf-input"
+            type="number"
+            value={draft.battery_mah ?? ""}
+            onChange={(e) => set("battery_mah", e.target.value ? Number(e.target.value) : null)}
+            placeholder="7000"
+          />
+        </div>
+      </div>
+
       <div>
         <label className="nf-col mb-1.5 block">{t("catalog.price")}</label>
         <NumericInput
@@ -131,6 +222,75 @@ export default function PhoneEditor({ draft, onChange, onSave, onCancel, saving 
         hint={t("catalog.cover_photo_hint")}
         existingUrl={draft.cover_image_url || undefined}
       />
+
+      <div>
+        <label className="nf-col mb-1.5 block">{t("catalog.gallery")}</label>
+        <PhotosUploader
+          value={draft.new_gallery_files || []}
+          onChange={(files) => set("new_gallery_files", files)}
+          max={10}
+          existingUrls={existingGalleryUrls}
+          hint={t("catalog.gallery_hint")}
+          captureGlobalPaste={false}
+        />
+        {existingGalleryUrls.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {(draft.gallery || []).map((g, i) => (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => removeExisting(i)}
+                className="text-[11px] px-2 py-1 rounded-lg bg-[var(--faint)] hover:bg-red-500/10 text-muted hover:text-red-500 transition"
+                title={t("catalog.gallery_remove_existing")}
+              >
+                #{i + 1} <X className="w-3 h-3 inline" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="nf-col">{t("catalog.specs")}</label>
+          <button
+            type="button"
+            className="nf-btn nf-btn--ghost !py-1 !px-2 text-[12px]"
+            onClick={addSpec}
+          >
+            <Plus className="w-3 h-3" /> {t("catalog.add_spec")}
+          </button>
+        </div>
+        <div className="space-y-2">
+          {specEntries.map(([key, value], i) => (
+            <div key={i} className="flex gap-2 items-start">
+              <input
+                className="nf-input flex-1"
+                placeholder={t("catalog.spec_key_ph")}
+                value={key}
+                onChange={(e) => setSpecKey(i, e.target.value)}
+              />
+              <input
+                className="nf-input flex-[2]"
+                placeholder={t("catalog.spec_value_ph")}
+                value={value as string}
+                onChange={(e) => setSpecValue(i, e.target.value)}
+              />
+              <button
+                type="button"
+                className="nf-btn nf-btn--ghost !p-2 text-red-500 flex-shrink-0"
+                onClick={() => removeSpec(i)}
+                aria-label="remove spec"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+          {specEntries.length === 0 && (
+            <div className="text-[12px] text-muted">{t("catalog.no_specs")}</div>
+          )}
+        </div>
+      </div>
 
       <div>
         <div className="flex items-center justify-between mb-2">
