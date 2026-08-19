@@ -24,7 +24,7 @@ import {
   copyPhoneTextOnly,
   copyPhoneImageOnly,
 } from "../components/CopyPhoneButton";
-import { copyText } from "../lib/clipboard";
+import { copyImageByUrl, copyText } from "../lib/clipboard";
 
 export type Phone = {
   id: number;
@@ -92,24 +92,28 @@ function fmtPrice(v: string | number): string {
 /**
  * Product card image block: main image + thumbnail strip.
  *
- * The main image defaults to `cover_image_url` and falls back to the
- * first `gallery` photo (so a phone without an explicit cover but with
- * uploaded gallery shots still shows something). Thumbnails render for
- * every gallery entry; clicking one swaps the main image. The manager
- * uploads photos through PhoneEditor; this is where they finally
- * appear on the shop-side card.
+ * Every image is a copy button. Click main or any thumbnail → the
+ * image goes to the clipboard so the operator can paste it straight
+ * into Telegram/WhatsApp. Main image is static (cover, or the first
+ * gallery photo if no cover) — we deliberately do not swap it on
+ * thumbnail click so operators know at a glance that each thumbnail
+ * is a distinct copyable item, not a preview toggle.
  */
 function PhoneImages({
   phone,
   noPhotoLabel,
+  copyLabel,
+  copyFailedLabel,
+  t,
 }: {
   phone: Phone;
   noPhotoLabel: string;
+  copyLabel: string;
+  copyFailedLabel: string;
+  t: (key: string, params?: Record<string, string | number>) => string;
 }) {
-  const fallbackUrl =
+  const mainUrl =
     phone.cover_image_url ?? phone.gallery[0]?.photo_url ?? null;
-  const [activeUrl, setActiveUrl] = useState<string | null>(fallbackUrl);
-  const displayed = activeUrl ?? fallbackUrl;
   const thumbs: { key: string; url: string }[] = [];
   if (phone.cover_image_url) {
     thumbs.push({ key: "cover", url: phone.cover_image_url });
@@ -117,38 +121,49 @@ function PhoneImages({
   for (const g of phone.gallery) {
     thumbs.push({ key: `g-${g.id}`, url: g.photo_url });
   }
+  const copyOne = async (url: string) => {
+    try {
+      await copyImageByUrl(url);
+      toast.success(copyLabel);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[copy] image failed", err);
+      toast.error(`${copyFailedLabel}: ${msg}`);
+    }
+  };
   return (
     <>
       <div className="aspect-[4/3] bg-[var(--surface2)] flex items-center justify-center overflow-hidden">
-        {displayed ? (
-          <img
-            src={displayed}
-            alt={phone.model_name}
-            className="w-full h-full object-contain"
-          />
+        {mainUrl ? (
+          <button
+            type="button"
+            onClick={() => copyOne(mainUrl)}
+            className="w-full h-full block group relative"
+            title={t("catalog.click_to_copy")}
+          >
+            <img
+              src={mainUrl}
+              alt={phone.model_name}
+              className="w-full h-full object-contain transition group-hover:opacity-90"
+            />
+          </button>
         ) : (
           <div className="text-muted text-[12px]">{noPhotoLabel}</div>
         )}
       </div>
       {thumbs.length > 1 && (
         <div className="flex gap-1.5 px-3 py-2 overflow-x-auto bg-[var(--surface2)]/60">
-          {thumbs.map((th) => {
-            const active = displayed === th.url;
-            return (
-              <button
-                key={th.key}
-                type="button"
-                onClick={() => setActiveUrl(th.url)}
-                className={`shrink-0 w-11 h-11 rounded-md overflow-hidden border-2 transition ${
-                  active
-                    ? "border-[var(--accent)]"
-                    : "border-transparent opacity-70 hover:opacity-100"
-                }`}
-              >
-                <img src={th.url} alt="" className="w-full h-full object-cover" />
-              </button>
-            );
-          })}
+          {thumbs.map((th) => (
+            <button
+              key={th.key}
+              type="button"
+              onClick={() => copyOne(th.url)}
+              className="shrink-0 w-11 h-11 rounded-md overflow-hidden border-2 border-transparent opacity-80 hover:opacity-100 hover:border-[var(--accent)] transition"
+              title={t("catalog.click_to_copy")}
+            >
+              <img src={th.url} alt="" className="w-full h-full object-cover" />
+            </button>
+          ))}
         </div>
       )}
     </>
@@ -398,7 +413,13 @@ export default function Catalog() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map((p) => (
           <div key={p.id} className="nf-card overflow-hidden flex flex-col">
-            <PhoneImages phone={p} noPhotoLabel={t("catalog.no_photo")} />
+            <PhoneImages
+              phone={p}
+              noPhotoLabel={t("catalog.no_photo")}
+              copyLabel={t("catalog.photo_copied")}
+              copyFailedLabel={t("catalog.copy_failed")}
+              t={t}
+            />
             <div className="p-4 flex-1 flex flex-col">
               <div className="text-[15px] font-semibold truncate">
                 {p.brand} {p.model_name}

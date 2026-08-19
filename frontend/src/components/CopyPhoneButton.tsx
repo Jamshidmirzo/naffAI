@@ -30,7 +30,7 @@ function getClipboardItemCtor(): ClipboardItemCtor | undefined {
     | undefined;
 }
 
-async function fetchImageAsPng(url: string): Promise<Blob> {
+export async function fetchImageAsPng(url: string): Promise<Blob> {
   console.info("[copy] fetch image", url);
   const resp = await fetch(url, {
     mode: "cors",

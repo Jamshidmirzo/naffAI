@@ -1,3 +1,5 @@
+import { fetchImageAsPng } from "../components/CopyPhoneButton";
+
 /**
  * Copy text to the clipboard in a way that survives Safari/iOS quirks.
  *
@@ -36,6 +38,28 @@ export async function copyText(text: string): Promise<void> {
   }
   if (legacyCopy(value)) return;
   throw new Error("Clipboard API unavailable");
+}
+
+/**
+ * Copy an arbitrary image URL to the clipboard as `image/png`. Reuses
+ * the fetch → canvas → PNG transcoder from CopyPhoneButton so we don't
+ * ship the same clipboard shape twice. Callers only need to pass the
+ * URL — no PhoneQuoteData wrapper required.
+ */
+export async function copyImageByUrl(url: string): Promise<void> {
+  if (!url) throw new Error("empty_url");
+  const ClipboardItemCtor = (
+    globalThis as { ClipboardItem?: unknown }
+  ).ClipboardItem as
+    | (new (items: Record<string, Blob>) => ClipboardItem)
+    | undefined;
+  if (typeof ClipboardItemCtor !== "function") {
+    throw new Error("ClipboardItem_not_supported");
+  }
+  const png = await fetchImageAsPng(url);
+  await navigator.clipboard.write([
+    new ClipboardItemCtor({ "image/png": png }),
+  ]);
 }
 
 function legacyCopy(text: string): boolean {
