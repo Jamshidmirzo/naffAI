@@ -1,10 +1,8 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Plus,
   Search,
-  Settings2,
   Trash2,
   Edit3,
   Eye,
@@ -26,7 +24,6 @@ import {
   copyPhoneTextOnly,
   copyPhoneImageOnly,
 } from "../components/CopyPhoneButton";
-import InstallmentPanel from "../components/InstallmentPanel";
 
 export type Phone = {
   id: number;
@@ -328,14 +325,9 @@ export default function Catalog() {
           ))}
         </div>
         {canEdit && (
-          <>
-            <Link to="/catalog/banks" className="nf-btn nf-btn--secondary">
-              <Settings2 className="w-4 h-4" /> {t("catalog.banks_link")}
-            </Link>
-            <button type="button" className="nf-btn nf-btn--primary" onClick={() => openEdit()}>
-              <Plus className="w-4 h-4" /> {t("catalog.new_phone")}
-            </button>
-          </>
+          <button type="button" className="nf-btn nf-btn--primary" onClick={() => openEdit()}>
+            <Plus className="w-4 h-4" /> {t("catalog.new_phone")}
+          </button>
         )}
       </div>
 
@@ -397,8 +389,6 @@ export default function Catalog() {
                   {t(`catalog.stock_${p.stock_status}`)}
                 </div>
               )}
-
-              <InstallmentPanel phoneId={p.id} />
 
               <div className="flex-1" />
               <div className="mt-3 space-y-2">
