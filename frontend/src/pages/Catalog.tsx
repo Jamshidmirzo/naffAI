@@ -453,14 +453,41 @@ export default function Catalog() {
                 {fmtPrice(p.price)} <span className="text-[13px] text-muted">сум</span>
               </div>
               {p.installment_preview && p.installment_preview.length > 0 && (
-                <div className="mt-1.5 text-[11.5px] text-muted flex flex-wrap gap-x-2 gap-y-0.5 tabular-nums">
-                  <span className="text-[var(--accent)]">💳</span>
-                  {p.installment_preview.map((row, i) => (
-                    <span key={row.months}>
-                      {row.months} {t("catalog.month_short")} → {fmtPrice(row.monthly)}
-                      {i < p.installment_preview!.length - 1 ? " ·" : ` ${t("catalog.installment_from")}`}
-                    </span>
-                  ))}
+                <div className="mt-3">
+                  <div className="text-[10.5px] uppercase tracking-wider text-muted mb-1.5 flex items-center gap-1">
+                    <span className="text-[var(--accent)]">💳</span>
+                    {t("catalog.installment_preview_title")}
+                  </div>
+                  <div
+                    className="grid gap-1.5"
+                    style={{
+                      gridTemplateColumns: `repeat(${p.installment_preview.length}, minmax(0, 1fr))`,
+                    }}
+                  >
+                    {p.installment_preview.map((row) => (
+                      <div
+                        key={row.months}
+                        className="rounded-lg px-2 py-2 text-center"
+                        style={{
+                          background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+                          border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
+                        }}
+                      >
+                        <div className="text-[10.5px] uppercase tracking-wider text-muted font-medium">
+                          {row.months} {t("catalog.month_short")}
+                        </div>
+                        <div
+                          className="text-[15px] font-bold tabular-nums leading-tight mt-0.5"
+                          style={{ color: "var(--accent)" }}
+                        >
+                          {fmtPrice(row.monthly)}
+                        </div>
+                        <div className="text-[9.5px] text-muted mt-0.5">
+                          {t("catalog.installment_from")}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
               {p.stock_status !== "available" && (
