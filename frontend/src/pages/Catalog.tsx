@@ -45,6 +45,7 @@ export type Phone = {
   colors: PhoneColor[];
   gallery: PhoneGalleryPhoto[];
   marketing_text_uz?: string;
+  installment_preview?: { months: number; monthly: number }[];
 };
 
 export type PhoneColor = {
@@ -451,6 +452,17 @@ export default function Catalog() {
               <div className="mt-3 text-[18px] font-semibold tabular-nums">
                 {fmtPrice(p.price)} <span className="text-[13px] text-muted">сум</span>
               </div>
+              {p.installment_preview && p.installment_preview.length > 0 && (
+                <div className="mt-1.5 text-[11.5px] text-muted flex flex-wrap gap-x-2 gap-y-0.5 tabular-nums">
+                  <span className="text-[var(--accent)]">💳</span>
+                  {p.installment_preview.map((row, i) => (
+                    <span key={row.months}>
+                      {row.months} {t("catalog.month_short")} → {fmtPrice(row.monthly)}
+                      {i < p.installment_preview!.length - 1 ? " ·" : ` ${t("catalog.installment_from")}`}
+                    </span>
+                  ))}
+                </div>
+              )}
               {p.stock_status !== "available" && (
                 <div className="text-[11.5px] text-amber-500 mt-1">
                   {t(`catalog.stock_${p.stock_status}`)}

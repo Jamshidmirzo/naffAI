@@ -17,8 +17,15 @@ from rest_framework.response import Response
 
 from apps.users.permissions import IsAuthenticatedAnyRole, IsManager
 
-from .models import PhoneColor, PhoneGalleryPhoto, PhoneModel
-from .quote_builder import build_marketing_text, build_phone_quote, installment_rows
+from decimal import Decimal
+
+from .models import InstallmentTier, PhoneColor, PhoneGalleryPhoto, PhoneModel
+from .quote_builder import (
+    _ceil_thousand,
+    build_marketing_text,
+    build_phone_quote,
+    installment_rows,
+)
 
 
 class WritesManager(BasePermission):
@@ -67,6 +74,12 @@ class PhoneModelSerializer(serializers.ModelSerializer):
     # the user agent." Payload cost: ~700 bytes/phone; acceptable at
     # catalog scale (~dozens of items).
     marketing_text_uz = serializers.SerializerMethodField()
+    # Pre-computed monthly payments for the tiers flagged
+    # `show_in_marketing`. Rendered as a compact "6 oy → 750 000 · 12 oy
+    # → 414 000" strip under the price on the catalog card so the
+    # operator sees ready-to-quote monthly instalments at a glance
+    # without opening a calculator or the marketing text.
+    installment_preview = serializers.SerializerMethodField()
 
     class Meta:
         model = PhoneModel
@@ -90,6 +103,7 @@ class PhoneModelSerializer(serializers.ModelSerializer):
             "colors",
             "gallery",
             "marketing_text_uz",
+            "installment_preview",
             "created_at",
             "updated_at",
         ]
@@ -97,6 +111,7 @@ class PhoneModelSerializer(serializers.ModelSerializer):
             "cover_image_url",
             "gallery",
             "marketing_text_uz",
+            "installment_preview",
             "created_at",
             "updated_at",
         ]
@@ -120,6 +135,25 @@ class PhoneModelSerializer(serializers.ModelSerializer):
             return build_marketing_text(obj, language="uz")
         except Exception:
             return ""
+
+    def get_installment_preview(self, obj: PhoneModel) -> list[dict]:
+        price = obj.price or Decimal("0")
+        if price <= 0:
+            return []
+        tiers = InstallmentTier.objects.filter(
+            is_active=True, show_in_marketing=True
+        ).order_by("sort_order", "months")
+        out: list[dict] = []
+        for t in tiers:
+            if not t.months:
+                continue
+            total = price * (Decimal("1") + t.commission_pct / Decimal("100"))
+            monthly = total / Decimal(t.months)
+            rounded = _ceil_thousand(monthly)
+            if rounded <= 0:
+                continue
+            out.append({"months": int(t.months), "monthly": rounded})
+        return out
 
     def create(self, validated_data):
         colors_data = validated_data.pop("colors", None) or []
