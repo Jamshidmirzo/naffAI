@@ -367,10 +367,18 @@ def process_attendance_event(
             raise ScanRateLimitError("Подождите 30 секунд.")
 
     if source == "qr" and ip and user_agent:
+        # Auto-close ONLY truly stale sessions of other operators from the
+        # same device. Cutoff = 3 hours so an operator whose colleague
+        # checks in from the same office WiFi + similar phone doesn't get
+        # their fresh session ripped out from under them. Two operators
+        # actually sharing one phone within a shift is rare; a forgotten
+        # session from the morning is the case this branch exists for.
+        stale_cutoff = timezone.now() - dt.timedelta(hours=3)
         stale_logs = AttendanceLog.objects.filter(
             checked_out_at__isnull=True,
             checked_in_ip=ip,
             checked_in_user_agent=user_agent,
+            checked_in_at__lt=stale_cutoff,
         ).exclude(operator=operator)
         for stale_log in stale_logs:
             _force_close_stale_log(stale_log, current_ip=ip, current_user_agent=user_agent)
