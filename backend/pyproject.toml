@@ -32,6 +32,11 @@ dependencies = [
   # our Haar fallback becomes silent-no-op. 4.10 is the LTS ARM64 wheel.
   "opencv-python-headless>=4.10,<5",
   "imagehash>=4.3",
+  # 2026-08-22 Wave-1: Redis cache для dashboard-summary + lead-stats
+  # (TTL 60s, ручная инвалидация в sale-services + lead_update_status).
+  # `django-redis` — тонкий backend поверх `redis-py`; LocMemCache остаётся
+  # автоматическим fallback'ом когда REDIS_URL пуст (тесты, dev без docker).
+  "django-redis>=5.4",
 ]
 
 [dependency-groups]

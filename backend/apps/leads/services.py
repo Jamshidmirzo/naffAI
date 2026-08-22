@@ -1154,6 +1154,13 @@ def lead_update_status(
     )
     _schedule_writeback(lead.id, comment=comment)
 
+    # Wave-1 (2026-08-22): смена статуса лида пересчитывает dashboard-summary
+    # (лид ушёл из «в работе» в won/lost/etc → KPI меняется) и lead-stats
+    # (breakdown-by-status). Инвалидируем ПОСЛЕ commit'а, чтобы соседний
+    # запрос не перезаполнил ключ старой версией пре-commit'a.
+    from apps.analytics.cache import invalidate_lead_caches
+    transaction.on_commit(invalidate_lead_caches)
+
     # Continuous refill до RR_BATCH_SIZE: доливаем оператору столько
     # лидов, сколько не хватает до цели (target - working). Обычно 1,
     # если только что закрыл 1 лид.

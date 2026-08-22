@@ -1,5 +1,6 @@
 import datetime as dt
 
+from django.core.cache import cache
 from django.utils.dateparse import parse_datetime
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -7,6 +8,12 @@ from rest_framework.views import APIView
 from apps.common.excel import new_workbook, workbook_response, write_sheet
 from apps.users.permissions import IsAuthenticatedAnyRole, IsTeamLeadOrManagerReadOnly
 
+from .cache import (
+    DASHBOARD_SUMMARY_TTL,
+    LEAD_STATS_TTL,
+    dashboard_summary_key,
+    lead_stats_key,
+)
 from .selectors import (
     by_channel,
     by_model,
@@ -131,6 +138,11 @@ class LeadStatsApi(APIView):
     Manager stats page: total leads in the period + status/operator/daily
     breakdowns. Accepts `?period=day|week|month` or explicit
     `?date_from=&date_to=`.
+
+    Wave-1 (2026-08-22): результат кешируется на 60 сек по (date_from,
+    date_to). Инвалидация — в `sale_create` / `sale_confirm` / `sale_reject`
+    / `sale_full_update` / `sale_partial_update` / `sale_mark_returned` /
+    `sale_soft_delete` + `lead_update_status`.
     """
 
     permission_classes = [IsTeamLeadOrManagerReadOnly]
@@ -144,9 +156,17 @@ class LeadStatsApi(APIView):
             now = timezone.now()
             date_from = now.replace(hour=0, minute=0, second=0, microsecond=0)
             date_to = now
-        return Response(
-            lead_stats_snapshot(date_from=date_from, date_to=date_to)
+
+        key = lead_stats_key(
+            date_from.isoformat(),
+            date_to.isoformat(),
         )
+        payload = cache.get_or_set(
+            key,
+            lambda: lead_stats_snapshot(date_from=date_from, date_to=date_to),
+            timeout=LEAD_STATS_TTL,
+        )
+        return Response(payload)
 
 
 class LeadsDistributionApi(APIView):
@@ -213,7 +233,16 @@ class DashboardSummaryApi(APIView):
 
     def get(self, request):
         period = (request.query_params.get("period") or "week").lower()
-        return Response(dashboard_summary(period=period))
+        # Wave-1 (2026-08-22): каждая mutation'а Sale инвалидирует все три
+        # известные значения period одним delete_many — держатся синхронно
+        # с реальностью в пределах commit'а mutation.
+        key = dashboard_summary_key(period)
+        payload = cache.get_or_set(
+            key,
+            lambda: dashboard_summary(period=period),
+            timeout=DASHBOARD_SUMMARY_TTL,
+        )
+        return Response(payload)
 
 
 class AnalyticsExportApi(APIView):

@@ -10,12 +10,22 @@ logger = logging.getLogger(__name__)
 from django.db import transaction
 from django.utils import timezone
 
+from apps.analytics.cache import invalidate_sale_caches
 from apps.audit.services import AuditAction, audit_log_create
 from apps.catalog.imei_service import imei_lookup
 from apps.catalog.models import Channel
 from apps.common.exceptions import ApplicationError, DuplicateError
 from apps.common.validators import is_valid_imei, normalize_uz_phone
 from apps.operators.models import Operator, OperatorStatus
+
+
+def _schedule_dashboard_cache_bust() -> None:
+    """
+    Wave-1 (2026-08-22): дёргаем инвалидацию dashboard/lead-stats
+    только ПОСЛЕ commit'а. Иначе конкурентный запрос успеет заполнить
+    старый ключ прежде чем наш commit «применится».
+    """
+    transaction.on_commit(invalidate_sale_caches)
 
 from .models import (
     GiftItem,
@@ -458,6 +468,7 @@ def sale_create(
             )
 
     _broadcast_new_sale(sale, primary_op, credited_operator_lines, total)
+    _schedule_dashboard_cache_bust()
     return sale
 
 
@@ -779,6 +790,7 @@ def sale_full_update(
         entity_id=sale.id,
         changes=audit_changes,
     )
+    _schedule_dashboard_cache_bust()
     return sale
 
 
@@ -945,6 +957,7 @@ def sale_partial_update(*, sale: Sale, user=None, fields: dict) -> Sale:
             comment="Скидка",
         )
 
+    _schedule_dashboard_cache_bust()
     return sale
 
 
@@ -964,6 +977,7 @@ def sale_mark_returned(*, sale: Sale, reason: str, user=None) -> Sale:
         changes={"is_returned": True, "return_reason": reason},
         comment="Возврат",
     )
+    _schedule_dashboard_cache_bust()
     return sale
 
 
@@ -981,6 +995,7 @@ def sale_soft_delete(*, sale: Sale, user=None) -> Sale:
         entity_id=sale.id,
         changes={"is_deleted": True},
     )
+    _schedule_dashboard_cache_bust()
     return sale
 
 
@@ -1002,6 +1017,7 @@ def sale_confirm(*, sale: Sale, user=None) -> Sale:
         entity_id=sale.id,
         changes={"status": {"old": old_status, "new": "confirmed"}},
     )
+    _schedule_dashboard_cache_bust()
     return sale
 
 
@@ -1043,6 +1059,7 @@ def sale_reject(*, sale: Sale, user, reason: str) -> Sale:
         },
     )
     _notify_operator_of_reject(sale=sale, reason=reason, user=user)
+    _schedule_dashboard_cache_bust()
     return sale
 
 
@@ -1072,3 +1089,103 @@ def _notify_operator_of_reject(*, sale: Sale, reason: str, user) -> None:
         logging.getLogger(__name__).exception(
             "reject notification failed sale=%s", sale.id
         )
+
+
+# --- bulk approve / reject ---------------------------------------------
+#
+# Wave-1 (2026-08-22): менеджеру нужно выделить N pending-продаж на
+# /sales/pending и одним кликом либо approve, либо reject-with-reason.
+# Каждый элемент прогоняется через существующие `sale_confirm` /
+# `sale_reject` — весь audit-trail + notifications + cache-bust
+# остаются в силе. Мы НЕ оборачиваем всё в один transaction.atomic:
+# если один sale уже подтверждён, менеджер не хочет видеть 500 —
+# он хочет получить per-sale-статус (`ok` / `skipped` / `error`) и
+# двинуться дальше. Каждый sale_* — сам под своей `@transaction.atomic`.
+def sale_bulk_action(
+    *,
+    user,
+    sale_ids: list[int],
+    mode: str,
+    reason: str = "",
+) -> dict:
+    """
+    Массовое подтверждение или отклонение pending-продаж.
+
+    Args:
+        user: менеджер, инициировавший действие.
+        sale_ids: список ID продаж (up to N — вызывающий валидирует).
+        mode: "approve" или "reject".
+        reason: причина отклонения (обязательна для mode="reject").
+
+    Returns:
+        {
+          "processed":  [{"sale_id": 12, "status": "confirmed"|"rejected"}, …],
+          "skipped":    [{"sale_id": 8,  "reason": "already_confirmed"}, …],
+          "errors":     [{"sale_id": 5,  "detail": "…"}, …],
+          "counts":     {"ok": N, "skipped": M, "errors": K},
+        }
+
+    Raises:
+        ApplicationError — если аргументы невалидны (пустой список,
+        неизвестный mode, reject без reason).
+    """
+    if mode not in ("approve", "reject"):
+        raise ApplicationError(
+            "Неизвестный режим действия.", {"field": "mode"}
+        )
+    if not sale_ids:
+        raise ApplicationError(
+            "Не выбрано ни одной продажи.", {"field": "sale_ids"}
+        )
+    if mode == "reject" and not (reason or "").strip():
+        raise ApplicationError(
+            "Причина отклонения обязательна.", {"field": "reason"}
+        )
+
+    processed: list[dict] = []
+    skipped: list[dict] = []
+    errors: list[dict] = []
+
+    for sale_id in sale_ids:
+        sale = Sale.objects.filter(pk=sale_id, is_deleted=False).first()
+        if sale is None:
+            errors.append({"sale_id": sale_id, "detail": "not_found"})
+            continue
+
+        # Обе операции идемпотентны/консервативны:
+        # - confirm: если уже confirmed, sale_confirm вернёт без изменений —
+        #   считаем skipped, чтобы менеджер видел точный подсчёт.
+        # - reject: разрешён только для PENDING, всё остальное — skipped.
+        if mode == "approve":
+            if sale.status == SaleStatus.CONFIRMED:
+                skipped.append({"sale_id": sale_id, "reason": "already_confirmed"})
+                continue
+            try:
+                sale_confirm(sale=sale, user=user)
+                processed.append({"sale_id": sale_id, "status": "confirmed"})
+            except ApplicationError as exc:
+                errors.append({"sale_id": sale_id, "detail": exc.message})
+            except Exception as exc:  # noqa: BLE001 — surface unexpected
+                errors.append({"sale_id": sale_id, "detail": str(exc)})
+        else:  # reject
+            if sale.status != SaleStatus.PENDING:
+                skipped.append({"sale_id": sale_id, "reason": "not_pending"})
+                continue
+            try:
+                sale_reject(sale=sale, user=user, reason=reason)
+                processed.append({"sale_id": sale_id, "status": "rejected"})
+            except ApplicationError as exc:
+                errors.append({"sale_id": sale_id, "detail": exc.message})
+            except Exception as exc:  # noqa: BLE001
+                errors.append({"sale_id": sale_id, "detail": str(exc)})
+
+    return {
+        "processed": processed,
+        "skipped": skipped,
+        "errors": errors,
+        "counts": {
+            "ok": len(processed),
+            "skipped": len(skipped),
+            "errors": len(errors),
+        },
+    }

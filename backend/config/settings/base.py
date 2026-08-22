@@ -140,6 +140,40 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 15 * 1024 * 1024  # 15 MB per single file
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# --- Cache ---
+# Wave-1 (2026-08-22): dashboard-summary + lead-stats select-heavy endpoints
+# кешируются на 60 секунд с ручной инвалидацией из sale/lead-сервисов.
+# Prod получает Redis (REDIS_URL=redis://redis:6379/1), dev/test молча
+# падают в LocMemCache — тесты остаются per-process, никакой сетевой
+# зависимости.
+REDIS_URL = config("REDIS_URL", default="")
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": REDIS_URL,
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                # Short socket timeout so a crashed Redis doesn't stall
+                # gunicorn workers on every request — cache is best-effort.
+                "SOCKET_CONNECT_TIMEOUT": 3,
+                "SOCKET_TIMEOUT": 3,
+                "IGNORE_EXCEPTIONS": True,
+            },
+            "KEY_PREFIX": "naffai",
+        }
+    }
+    # Global escape hatch: any raise inside a redis operation is swallowed
+    # and treated as a cache miss instead of 500ing user's request.
+    DJANGO_REDIS_IGNORE_EXCEPTIONS = True
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "naffai-locmem",
+        }
+    }
+
 # --- DRF ---
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

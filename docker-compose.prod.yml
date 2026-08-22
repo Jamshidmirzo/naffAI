@@ -14,6 +14,29 @@ services:
       timeout: 3s
       retries: 10
 
+  # 2026-08-22 Wave-1 — Redis for dashboard-summary + lead-stats cache
+  # (TTL 60s, ручная инвалидация из sale/lead сервисов). База 1
+  # (0 зарезервирована на будущее — celery/queue). Данных мало (десятки
+  # ключей, до килобайта каждый) — no-persistence, restart сбрасывает всё.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - "redis-server"
+      - "--save"
+      - ""
+      - "--appendonly"
+      - "no"
+      - "--maxmemory"
+      - "128mb"
+      - "--maxmemory-policy"
+      - "allkeys-lru"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   web:
     build:
       context: ./backend
@@ -22,6 +45,8 @@ services:
     env_file: .env
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     ports:
       - "127.0.0.1:8000:8000"
