@@ -5,6 +5,7 @@ import { Plus, Trash2, X } from "lucide-react";
 import { api } from "../lib/api";
 import { SingleSelectCombobox } from "../components/SingleSelectCombobox";
 import NumericInput from "../components/NumericInput";
+import { PhoneInput } from "../components/ui/PhoneInput";
 import { useT } from "../lib/i18n";
 import { formatNumber } from "../lib/format";
 import { LEAD_STATUS_BADGE, LEAD_STATUS_LABEL } from "../lib/leads";
@@ -442,15 +443,12 @@ export default function SaleCreate() {
                 </button>
               </div>
             ) : (
-              <input
-                className="nf-input"
+              <PhoneInput
                 value={clientPhone}
-                onChange={(e) => setClientPhone(e.target.value)}
+                onChange={setClientPhone}
                 onFocus={() => {
                   if (phoneMatches.length > 0) setPhoneDropdownOpen(true);
                 }}
-                placeholder={t("sale_create.client_phone_ph")}
-                autoComplete="off"
               />
             )}
             {phoneDropdownOpen && phoneMatches.length > 0 && !matchedLead && (

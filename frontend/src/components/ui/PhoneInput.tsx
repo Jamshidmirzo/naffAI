@@ -30,6 +30,7 @@ interface Props {
   className?: string;
   name?: string;
   onBlur?: React.FocusEventHandler<HTMLInputElement>;
+  onFocus?: React.FocusEventHandler<HTMLInputElement>;
   autoComplete?: string;
   "aria-label"?: string;
 }
@@ -75,6 +76,7 @@ export const PhoneInput = forwardRef<HTMLInputElement, Props>(function PhoneInpu
     className,
     name,
     onBlur,
+    onFocus,
     autoComplete = "tel",
     ...rest
   },
@@ -115,7 +117,7 @@ export const PhoneInput = forwardRef<HTMLInputElement, Props>(function PhoneInpu
     }
   };
 
-  const onFocus: React.FocusEventHandler<HTMLInputElement> = (e) => {
+  const handleFocus: React.FocusEventHandler<HTMLInputElement> = (e) => {
     // If the field is at its resting "+998 " state, park the caret
     // right after the prefix so the operator starts typing digits
     // without having to click past the mask.
@@ -123,6 +125,7 @@ export const PhoneInput = forwardRef<HTMLInputElement, Props>(function PhoneInpu
     if (el.value === PREFIX) {
       requestAnimationFrame(() => el.setSelectionRange(PREFIX.length, PREFIX.length));
     }
+    onFocus?.(e);
   };
 
   return (
@@ -133,7 +136,7 @@ export const PhoneInput = forwardRef<HTMLInputElement, Props>(function PhoneInpu
       value={visible}
       onChange={onInput}
       onKeyDown={onKeyDown}
-      onFocus={onFocus}
+      onFocus={handleFocus}
       onBlur={onBlur}
       disabled={disabled}
       autoFocus={autoFocus}
