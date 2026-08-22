@@ -11,6 +11,7 @@ from __future__ import annotations
 from django.utils.dateparse import parse_datetime
 from rest_framework import serializers, status
 from rest_framework.generics import ListCreateAPIView, RetrieveAPIView
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -597,9 +598,14 @@ class LeadPhoneSearchApi(APIView):
 
     Any authenticated app-user (operator / team_lead / manager) can call.
     Returns at most 10 rows, sorted by -updated_at.
+
+    Uses DRF's stock `IsAuthenticated` instead of role-gated
+    `IsAuthenticatedAnyRole` so a transient profile-role loading hiccup
+    (Safari cookie flakes seen on prod 2026-08-22) doesn't 403 the
+    autocomplete and hide the whole SaleCreate lead-linking UX.
     """
 
-    permission_classes = [IsAuthenticatedAnyRole]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         raw = (request.query_params.get("q") or "").strip()

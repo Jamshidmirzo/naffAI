@@ -4,6 +4,7 @@ import { Copy, Eye, EyeOff, KeyRound, Lock, RefreshCcw, Trash2, Unlock, UserPlus
 import { api } from "../lib/api";
 import { apiErrorMessage } from "../lib/api-types";
 import { useT } from "../lib/i18n";
+import { PhoneInput } from "./ui/PhoneInput";
 
 /**
  * Account state as rendered next to each Operator row.
@@ -344,11 +345,9 @@ export default function AccountControls({
                     <label className="label">
                       {t("common.phone")} <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      className="input"
+                    <PhoneInput
                       value={phoneInput}
-                      onChange={(e) => setPhoneInput(e.target.value)}
-                      placeholder="+998901234567"
+                      onChange={setPhoneInput}
                       autoFocus
                     />
                     <div className="text-xs text-amber-700 dark:text-amber-400 mt-1">

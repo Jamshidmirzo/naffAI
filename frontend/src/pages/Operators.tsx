@@ -10,6 +10,7 @@ import NumericInput from "../components/NumericInput";
 import { StickerPicker } from "../components/StickerPicker";
 import { Select } from "../components/Select";
 import DateInput from "../components/DateInput";
+import { PhoneInput } from "../components/ui/PhoneInput";
 import {
   Button,
   Card,
@@ -511,12 +512,9 @@ export default function Operators() {
             </div>
             <div>
               <div className="nf-col mb-1.5">{t("op_edit.phone")}</div>
-              <input
-                className="nf-input"
+              <PhoneInput
                 value={editModal.phone}
-                onChange={(e) => setEditModal({ ...editModal, phone: e.target.value })}
-                placeholder="+998 90 123 45 67"
-                inputMode="tel"
+                onChange={(v) => setEditModal({ ...editModal, phone: v })}
               />
             </div>
             <div>
@@ -701,10 +699,9 @@ export default function Operators() {
             </div>
             <div>
               <div className="nf-col mb-1.5">{t("common.phone")}</div>
-              <input
-                className="nf-input"
+              <PhoneInput
                 value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                onChange={(v) => setForm({ ...form, phone: v })}
               />
             </div>
             <div>
