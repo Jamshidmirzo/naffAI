@@ -27,6 +27,7 @@ from .models import (
 )
 from .selectors import sale_get, sale_list
 from .services import (
+    sale_bulk_action,
     sale_confirm,
     sale_create,
     sale_full_update,
@@ -35,6 +36,12 @@ from .services import (
     sale_reject,
     sale_soft_delete,
 )
+
+
+# Wave-1 (2026-08-22): cap на количество продаж в bulk-запросе — чтобы
+# случайное «выделить всё 10к строк» не убило воркер. Пенлдинг очередь
+# редко больше сотни; менеджер не увидит 200-ю кнопку.
+MAX_BULK_SALES = 200
 
 
 def _extract_indexed_dict_list(qd, key: str) -> list[dict] | None:
@@ -581,6 +588,58 @@ class SaleRejectApi(APIView):
                 {"detail": exc.message, **exc.extra}, status=status.HTTP_400_BAD_REQUEST
             )
         return Response(SaleSerializer(sale).data)
+
+
+class SaleBulkActionApi(APIView):
+    """
+    POST /api/sales/bulk-confirm/
+    Body: {"sale_ids": [12, 34, …], "mode": "approve"|"reject", "reason": "…"}
+
+    Bulk-подтверждение или отклонение pending-продаж (Wave-1 2026-08-22).
+    Endpoint возвращает per-sale расклад — фронт показывает toast
+    вида «12 подтверждено · 2 пропущено · 0 ошибок».
+
+    Каждая обработанная продажа проходит через существующие сервисы
+    `sale_confirm` / `sale_reject`, поэтому audit-log, notifications
+    и cache-invalidation работают без изменений.
+    """
+
+    permission_classes = [IsTeamLead]
+
+    def post(self, request):
+        raw_ids = (request.data or {}).get("sale_ids") or []
+        if not isinstance(raw_ids, list):
+            return Response(
+                {"detail": "sale_ids должен быть списком."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(raw_ids) > MAX_BULK_SALES:
+            return Response(
+                {"detail": f"Слишком много продаж (>{MAX_BULK_SALES})."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            sale_ids = [int(v) for v in raw_ids]
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "sale_ids должны быть целыми числами."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        mode = (request.data or {}).get("mode", "").strip().lower()
+        reason = (request.data or {}).get("reason", "") or ""
+        try:
+            result = sale_bulk_action(
+                user=request.user,
+                sale_ids=sale_ids,
+                mode=mode,
+                reason=reason,
+            )
+        except ApplicationError as exc:
+            return Response(
+                {"detail": exc.message, **exc.extra},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(result)
 
 
 class SalePendingListApi(APIView):
