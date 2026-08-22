@@ -117,6 +117,14 @@ class Sale(TimestampedModel):
             models.Index(fields=["sold_at", "operator"]),
             models.Index(fields=["is_returned", "is_deleted"]),
             models.Index(fields=["status"]),
+            # Wave-1 (2026-08-22): ускоряет /sales/pending/ (status=pending
+            # + order by -sold_at) и analytics lead-stats split-metric,
+            # где выборка идёт по (status, sold_at window).
+            models.Index(fields=["status", "sold_at"], name="sale_status_sold_at_idx"),
+            # /my/sales — оператор видит только свои по статусу.
+            models.Index(
+                fields=["created_by", "status"], name="sale_created_by_status_idx"
+            ),
         ]
 
     def __str__(self) -> str:

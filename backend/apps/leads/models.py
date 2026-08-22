@@ -384,6 +384,12 @@ class Lead(TimestampedModel):
             models.Index(fields=["status", "operator"]),
             models.Index(fields=["needs_review"]),
             models.Index(fields=["phone_invalid"]),
+            # Wave-1 (2026-08-22): ускоряет /leads-stats и любые селекторы,
+            # которые фильтруют по статусу + сортируют/окно по updated_at.
+            models.Index(fields=["status", "updated_at"], name="lead_status_updated_idx"),
+            # /leads/my/ и leads-stats-by-operator — оператор + статус для
+            # быстрой выборки «мои активные».
+            models.Index(fields=["operator", "status"], name="lead_operator_status_idx"),
         ]
         constraints = [
             models.UniqueConstraint(

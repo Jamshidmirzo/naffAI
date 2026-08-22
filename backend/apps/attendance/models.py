@@ -128,6 +128,15 @@ class AttendanceLog(TimestampedModel):
         indexes = [
             models.Index(fields=["operator", "-checked_in_at"]),
             models.Index(fields=["checked_in_at"]),
+            # Wave-1 (2026-08-22): open_log_for_operator фильтрует
+            # `operator=… AND checked_out_at IS NULL` — этот составной
+            # индекс превращает full scan по частичному uniq в направленный
+            # lookup. Не заменяет partial uniq (тот про целостность), лишь
+            # ускоряет hot-path.
+            models.Index(
+                fields=["operator", "checked_out_at"],
+                name="attlog_op_checkedout_idx",
+            ),
         ]
 
     @property
