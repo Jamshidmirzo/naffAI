@@ -2,14 +2,22 @@ import { forwardRef, useMemo } from "react";
 import { cn } from "./cn";
 
 /**
- * Uzbek phone input.
- * — Always shows `+998` as a locked prefix on the left.
- * — Accepts digits only; strips everything else on paste.
- * — Visual mask: `+998 90 123 45 67`.
- * — Emits the canonical form `+998XXXXXXXXX` (13 chars) to `onChange`
- *   so the backend sees the same shape it expects for auth/TG/etc.
- * — `invalid` — soft red border when we know the value is bad
- *   (e.g. wrong length after blur).
+ * Uzbek phone input — single-input variant.
+ *
+ * — Renders as a normal `<input>` with `+998 ` baked into the visible
+ *   value as a locked prefix (not a separate DOM element). The operator
+ *   sees exactly what will be sent, and paste/copy pulls the full
+ *   canonical string.
+ * — Backspacing past the prefix snaps back — you cannot erase `+998 `.
+ * — Accepts digits only in the tail; strips letters, punctuation,
+ *   country codes on paste.
+ * — Hard cap: 9 local digits after `+998 ` (Uz phone length). Anything
+ *   longer is silently truncated at the source (`toDigits9`), so
+ *   pasting `2345678987654325...` never lets the field grow.
+ * — Emits the canonical form `+998XXXXXXXXX` (13 chars) to `onChange`,
+ *   or `""` when nothing but the prefix is left.
+ * — `invalid` — soft red border for a known-bad value (wrong length
+ *   after blur, etc.).
  */
 
 interface Props {
@@ -26,22 +34,23 @@ interface Props {
   "aria-label"?: string;
 }
 
+const PREFIX = "+998 ";
+const LOCAL_MAX = 9;
 const DIGITS_RE = /\D+/g;
 
 function toDigits9(raw: string): string {
   const digits = raw.replace(DIGITS_RE, "");
-  // If the user typed leading 998 — keep only the trailing 9 digits.
   const trimmed = digits.startsWith("998") ? digits.slice(3) : digits;
-  return trimmed.slice(0, 9);
+  return trimmed.slice(0, LOCAL_MAX);
 }
 
 function formatVisible(digits9: string): string {
-  // 90 123 45 67  →  chunks 2 3 2 2
   const p1 = digits9.slice(0, 2);
   const p2 = digits9.slice(2, 5);
   const p3 = digits9.slice(5, 7);
   const p4 = digits9.slice(7, 9);
-  return [p1, p2, p3, p4].filter(Boolean).join(" ");
+  const tail = [p1, p2, p3, p4].filter(Boolean).join(" ");
+  return PREFIX + tail;
 }
 
 export function normalizeUzPhone(canonicalOrRaw: string): {
@@ -51,7 +60,7 @@ export function normalizeUzPhone(canonicalOrRaw: string): {
   const d = toDigits9(canonicalOrRaw);
   return {
     canonical: d ? `+998${d}` : "",
-    valid: d.length === 9,
+    valid: d.length === LOCAL_MAX,
   };
 }
 
@@ -61,7 +70,7 @@ export const PhoneInput = forwardRef<HTMLInputElement, Props>(function PhoneInpu
     onChange,
     invalid,
     disabled,
-    placeholder = "90 123 45 67",
+    placeholder = "+998 90 123 45 67",
     autoFocus,
     className,
     name,
@@ -72,58 +81,71 @@ export const PhoneInput = forwardRef<HTMLInputElement, Props>(function PhoneInpu
   ref,
 ) {
   const digits9 = useMemo(() => toDigits9(value), [value]);
-  const visible = formatVisible(digits9);
+  const visible = digits9 ? formatVisible(digits9) : PREFIX;
 
-  const onInput: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    const nextDigits = toDigits9(e.target.value);
+  const emit = (nextDigits: string) => {
     onChange(nextDigits ? `+998${nextDigits}` : "");
   };
 
+  const onInput: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    const raw = e.target.value;
+    // Anything before the "+998 " boundary was tampered with (user
+    // backspaced past it, or blanked the field, or pasted junk that
+    // stripped the prefix) — treat the whole thing as digits and
+    // re-derive the tail. `toDigits9` also handles pastes that included
+    // "998" upfront by trimming it once.
+    if (!raw.startsWith(PREFIX)) {
+      emit(toDigits9(raw));
+      return;
+    }
+    emit(toDigits9(raw.slice(PREFIX.length)));
+  };
+
+  const onKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
+    const el = e.currentTarget;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    // Prevent Backspace/Delete from chewing into the "+998 " prefix.
+    if (
+      (e.key === "Backspace" && start === end && start <= PREFIX.length) ||
+      (e.key === "Delete" && start === end && start < PREFIX.length)
+    ) {
+      e.preventDefault();
+      el.setSelectionRange(PREFIX.length, PREFIX.length);
+    }
+  };
+
+  const onFocus: React.FocusEventHandler<HTMLInputElement> = (e) => {
+    // If the field is at its resting "+998 " state, park the caret
+    // right after the prefix so the operator starts typing digits
+    // without having to click past the mask.
+    const el = e.currentTarget;
+    if (el.value === PREFIX) {
+      requestAnimationFrame(() => el.setSelectionRange(PREFIX.length, PREFIX.length));
+    }
+  };
+
   return (
-    <div
+    <input
+      ref={ref}
+      type="tel"
+      inputMode="numeric"
+      value={visible}
+      onChange={onInput}
+      onKeyDown={onKeyDown}
+      onFocus={onFocus}
+      onBlur={onBlur}
+      disabled={disabled}
+      autoFocus={autoFocus}
+      placeholder={placeholder}
+      name={name}
+      autoComplete={autoComplete}
       className={cn(
-        "flex items-stretch rounded-input overflow-hidden transition",
+        "nf-input font-mono text-[14px] tabular-nums",
+        invalid && "border-red-500",
         className,
       )}
-      style={{
-        background: "var(--surface2)",
-        border: `1px solid ${
-          invalid ? "rgba(220,60,40,.6)" : "var(--border)"
-        }`,
-        borderRadius: 14,
-      }}
-    >
-      <div
-        className="grid place-items-center font-mono text-[14px] font-semibold select-none px-3.5"
-        style={{
-          background: "var(--faint)",
-          color: "var(--muted)",
-          borderRight: "1px solid var(--border)",
-          minWidth: 66,
-        }}
-      >
-        +998
-      </div>
-      <input
-        ref={ref}
-        type="tel"
-        inputMode="numeric"
-        value={visible}
-        onChange={onInput}
-        onBlur={onBlur}
-        disabled={disabled}
-        autoFocus={autoFocus}
-        placeholder={placeholder}
-        name={name}
-        autoComplete={autoComplete}
-        className="flex-1 font-mono text-[14px] tabular-nums bg-transparent outline-none"
-        style={{
-          padding: "12px 16px",
-          color: "var(--text)",
-          letterSpacing: "0.02em",
-        }}
-        aria-label={rest["aria-label"]}
-      />
-    </div>
+      aria-label={rest["aria-label"]}
+    />
   );
 });
