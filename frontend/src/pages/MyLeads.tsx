@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Phone,
   MessageCircle,
@@ -414,11 +414,29 @@ function BlockingGateRow({
 export default function MyLeads() {
   const qc = useQueryClient();
   const nav = useNavigate();
+  const [searchParams] = useSearchParams();
+  // Read initial view/chip from URL — allows deep-links from HelperPanel
+  // (`/my?view=active`, `/my?chip=no_answer`) to actually switch state
+  // when the user is already on /my. Without this, navigate to the same
+  // path is a no-op and the helper's "Показать очередь" button looks broken.
+  const initialView: MyLeadsView =
+    (searchParams.get("view") as MyLeadsView) === "postponed" ? "postponed" : "active";
+  const initialChip = (searchParams.get("chip") as StatusChipKey | null) ?? "all";
   const [page, setPage] = useState(1);
-  const [view, setView] = useState<MyLeadsView>("active");
+  const [view, setView] = useState<MyLeadsView>(initialView);
   const [postponeFor, setPostponeFor] = useState<Lead | null>(null);
   const [scheduleFor, setScheduleFor] = useState<Lead | null>(null);
-  const [statusChip, setStatusChip] = useState<StatusChipKey>("all");
+  const [statusChip, setStatusChip] = useState<StatusChipKey>(initialChip);
+
+  // Keep state in sync when URL query changes on the fly (helper panel
+  // navigate to the same pathname with different query = React Router
+  // remounts search params but not the component).
+  useEffect(() => {
+    const v = searchParams.get("view");
+    if (v === "postponed" || v === "active") setView(v);
+    const chip = searchParams.get("chip");
+    if (chip) setStatusChip(chip as StatusChipKey);
+  }, [searchParams]);
 
   const t = useT();
   usePageHeader({ title: t("my.title"), subtitle: t("my.subtitle") }, [t("my.title")]);
