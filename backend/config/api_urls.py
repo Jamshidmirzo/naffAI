@@ -75,4 +75,6 @@ urlpatterns = [
     path("notifications/", include("apps.notifications.urls")),
     # Global toggles (auto-distribution killswitch, etc.). Manager-only.
     path("settings/", include("apps.system_settings.urls")),
+    # In-app operator helper (floating widget): rule-based auto suggestions + FAQ.
+    path("helper/", include("apps.helper.urls")),
 ]

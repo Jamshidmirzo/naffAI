@@ -4,6 +4,7 @@ import { normaliseRole, isSuperadmin } from "../RoleGate";
 import { Sidebar, type SidebarGroup } from "./Sidebar";
 import { Header } from "./Header";
 import MorningGreeting from "../MorningGreeting";
+import { HelperButton } from "../helper/HelperButton";
 import { useT } from "../../lib/i18n";
 import { useMe } from "../../hooks/useMe";
 
@@ -135,6 +136,9 @@ export default function AppShell() {
         </main>
       </div>
       {role === "operator" && <MorningGreeting language={greetingLang} />}
+      {/* Floating helper — оператор-only. Manager/team_lead виджет не видят
+          (у них своя админка + и так знают систему; клат-нить в углу лишний). */}
+      {role === "operator" && <HelperButton />}
     </div>
   );
 }

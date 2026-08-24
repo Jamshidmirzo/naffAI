@@ -2090,6 +2090,22 @@ const STRINGS: Lookup = {
     "settings.pin.set_btn": "Установить PIN",
     "settings.pin.change_btn": "Сменить PIN",
     "settings.pin.reset_btn": "Сбросить PIN",
+
+    // ------ Helper (floating widget, operator only) ------
+    "helper.button_aria": "Помощник",
+    "helper.title": "Помощник",
+    "helper.close": "Закрыть",
+    "helper.tab_suggestions": "Подсказки",
+    "helper.tab_faq": "Частые вопросы",
+    "helper.no_suggestions": "Всё в порядке — рекомендаций сейчас нет.",
+    "helper.refresh_hint": "Обновляется каждую минуту.",
+    "helper.severity_urgent": "Срочно",
+    "helper.severity_warning": "Внимание",
+    "helper.severity_info": "К сведению",
+    "helper.open_action": "Открыть",
+    "helper.faq_empty": "Пока нет вопросов.",
+    "helper.loading": "Загрузка подсказок…",
+    "helper.error": "Не удалось загрузить подсказки. Попробуйте позже.",
   },
 
   uz: {
@@ -4129,6 +4145,22 @@ const STRINGS: Lookup = {
     "settings.pin.set_btn": "PIN belgilash",
     "settings.pin.change_btn": "PINni o'zgartirish",
     "settings.pin.reset_btn": "PINni qayta o'rnatish",
+
+    // ------ Helper (floating widget, operator only) ------
+    "helper.button_aria": "Yordamchi",
+    "helper.title": "Yordamchi",
+    "helper.close": "Yopish",
+    "helper.tab_suggestions": "Maslahatlar",
+    "helper.tab_faq": "Tez-tez beriladigan savollar",
+    "helper.no_suggestions": "Hammasi yaxshi — hozir maslahat yo'q.",
+    "helper.refresh_hint": "Har daqiqada yangilanadi.",
+    "helper.severity_urgent": "Shoshilinch",
+    "helper.severity_warning": "Diqqat",
+    "helper.severity_info": "Ma'lumot",
+    "helper.open_action": "Ochish",
+    "helper.faq_empty": "Hozircha savollar yo'q.",
+    "helper.loading": "Maslahatlar yuklanmoqda…",
+    "helper.error": "Maslahatlarni yuklab bo'lmadi. Keyinroq urinib ko'ring.",
   },
 };
 

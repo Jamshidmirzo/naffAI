@@ -1,0 +1,270 @@
+"""
+Rule-engine — набор проверок (operator, state) → Suggestion | None.
+
+Каждое правило — чистая функция, без SQL-запросов внутри: всё берётся
+из preloaded `state`-dict, который `services.build_operator_state`
+собирает одним batch'ем. Это гарантирует, что даже когда правил станет
+30, число SQL-запросов на /api/helper/operator-suggestions/ останется
+константным.
+
+Порядок в RULES влияет только на порядок «внутри одной severity» —
+итоговая сортировка в services (urgent → warning → info) стабильна.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Callable, Optional
+
+
+# ---------------------------------------------------------------------------
+# Suggestion — read-model, который улетает во фронт.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Suggestion:
+    id: str
+    severity: str  # "info" | "warning" | "urgent"
+    title_ru: str
+    title_uz: str
+    body_ru: str
+    body_uz: str
+    action_label_ru: str | None = None
+    action_label_uz: str | None = None
+    action_href: str | None = None
+    count: int | None = None  # for UI badge / word-form
+
+    # Machine-readable payload — фронт может использовать для micro-cta
+    # (например показать «Сегодня N лидов» без парсинга title). Пока
+    # оставлено пустым; правила заполняют по необходимости.
+    meta: dict = field(default_factory=dict)
+
+
+RuleFn = Callable[[object, dict], Optional[Suggestion]]
+
+
+# ---------------------------------------------------------------------------
+# Rules
+# ---------------------------------------------------------------------------
+
+
+def check_full_working_queue(op, state) -> Optional[Suggestion]:
+    """
+    #1 (WARNING) — тот самый вчерашний кейс с Мухлисой.
+
+    `working_count` считает только non-carry сегодняшние лиды — если их
+    >= RR_BATCH_SIZE (5), distribute-watcher не даёт новых. Оператору
+    надо закрыть/обработать хотя бы один, чтобы получить свежий.
+    """
+    working = int(state.get("working_count") or 0)
+    if working < 5:
+        return None
+    return Suggestion(
+        id="full_working_queue",
+        severity="warning",
+        title_ru=f"У вас {working} лидов в работе — очередь заполнена",
+        title_uz=f"Sizda {working} ta lid ish jarayonida — navbat to'la",
+        body_ru=(
+            "Новые лиды не приходят пока в работе больше 5. Закройте несколько "
+            "старых (перевод в no_answer / lost / won), чтобы система выдала свежие."
+        ),
+        body_uz=(
+            "Ish jarayonida 5 tadan ko'p lid bo'lsa, yangilari kelmaydi. "
+            "Bir nechta eskisini yoping (no_answer / lost / won ga o'tkazing) — "
+            "tizim yangilarini beradi."
+        ),
+        action_label_ru="Показать очередь",
+        action_label_uz="Navbatni ochish",
+        action_href="/my?view=active",
+        count=working,
+        meta={"working_count": working},
+    )
+
+
+def check_old_assigned_leads(op, state) -> Optional[Suggestion]:
+    """
+    #2 (WARNING) — 3+ лида в `assigned`, updated_at > 24ч.
+
+    Значит оператор давно не открывал карточку — либо забыл, либо
+    новый батч разлит утром и он не заметил. Свежие лиды «стынут».
+    """
+    stale = int(state.get("stale_assigned") or 0)
+    if stale < 3:
+        return None
+    return Suggestion(
+        id="old_assigned",
+        severity="warning",
+        title_ru=f"У вас {stale} лидов в assigned без действия > 24ч",
+        title_uz=f"Sizda {stale} ta lid 24 soatdan beri tegilmagan (assigned)",
+        body_ru=(
+            "Эти лиды раздали давно, а вы ещё не позвонили. Откройте их "
+            "и хотя бы отметьте no_answer / phone_on — иначе тимлид увидит "
+            "просрочку в отчёте."
+        ),
+        body_uz=(
+            "Bu lidlar allaqachon berilgan, lekin siz hali qo'ng'iroq qilmagansiz. "
+            "Ochib, hech bo'lmasa no_answer / phone_on qo'ying — aks holda "
+            "tim-lider hisobotda kechikish ko'radi."
+        ),
+        action_label_ru="Открыть активные",
+        action_label_uz="Faollarni ochish",
+        action_href="/my?view=active",
+        count=stale,
+        meta={"stale_assigned": stale},
+    )
+
+
+def check_stale_no_answer(op, state) -> Optional[Suggestion]:
+    """
+    #3 (INFO) — 3+ лида в `no_answer`, updated_at > 12ч.
+
+    Классика: клиент не взял утром, оператор поставил no_answer и забыл.
+    Мягкое напоминание: перезвонить или закрыть.
+    """
+    stale = int(state.get("stale_no_answer") or 0)
+    if stale < 3:
+        return None
+    return Suggestion(
+        id="stale_no_answer",
+        severity="info",
+        title_ru=f"{stale} лидов в no_answer давно не трогали",
+        title_uz=f"{stale} ta lidga no_answer qo'yilgan, ancha vaqt bo'ldi",
+        body_ru="Попробуйте перезвонить ещё раз или закройте (lost) — они висят в carry-хвосте.",
+        body_uz="Yana bir marta qo'ng'iroq qiling yoki lost qilib yoping — ular carry-ro'yxatida turibdi.",
+        action_label_ru="Открыть лиды",
+        action_label_uz="Lidlarni ochish",
+        action_href="/my?view=active",
+        count=stale,
+        meta={"stale_no_answer": stale},
+    )
+
+
+def check_overdue_callbacks(op, state) -> Optional[Suggestion]:
+    """
+    #4 (URGENT) — просроченные callback'и.
+
+    Клиент попросил перезвонить в 14:00, сейчас 15:30 — оператор
+    подводит клиента. Отдельно urgent, чтобы sort-by-severity
+    подтянул наверх.
+    """
+    overdue = int(state.get("overdue_callbacks") or 0)
+    if overdue < 1:
+        return None
+    return Suggestion(
+        id="overdue_callbacks",
+        severity="urgent",
+        title_ru=f"У вас {overdue} просроченных callback'ов",
+        title_uz=f"Sizda {overdue} ta muddati o'tgan callback bor",
+        body_ru="Клиент ждёт вашего звонка. Позвоните сейчас или переназначьте время.",
+        body_uz="Mijoz qo'ng'iroqingizni kutmoqda. Hoziroq qo'ng'iroq qiling yoki vaqtini o'zgartiring.",
+        action_label_ru="Перейти к callback'ам",
+        action_label_uz="Callback'larga o'tish",
+        action_href="/my?view=active",
+        count=overdue,
+        meta={"overdue_callbacks": overdue},
+    )
+
+
+def check_not_checked_in_today(op, state) -> Optional[Suggestion]:
+    """
+    #5 (URGENT) — оператор ещё не отметился на смене, а уже > 10:00 Ташкент.
+
+    Смена начинается в 10:00 (AttendanceSettings.shift_start), после
+    этого no-check-in считается опозданием. Показываем только когда
+    время сработало — чтобы утренняя login-сессия не спамила.
+    """
+    if state.get("checked_in_today"):
+        return None
+    if not state.get("shift_started_now"):
+        return None
+    return Suggestion(
+        id="not_checked_in",
+        severity="urgent",
+        title_ru="Вы ещё не отметились на смене",
+        title_uz="Siz smenaga hali belgilanmadingiz",
+        body_ru=(
+            "Смена уже началась — отметьтесь через QR у менеджера или у себя в профиле, "
+            "иначе рабочее время не засчитается."
+        ),
+        body_uz=(
+            "Smena boshlandi — menejerdagi QR orqali yoki profilingiz orqali belgilaning, "
+            "aks holda ish vaqti hisobga olinmaydi."
+        ),
+        action_label_ru="Открыть профиль",
+        action_label_uz="Profilni ochish",
+        action_href="/profile",
+        meta={"shift_started": True},
+    )
+
+
+def check_postponed_stale(op, state) -> Optional[Suggestion]:
+    """
+    #6 (INFO) — postponed-хвост > 3 дней.
+
+    Оператор отложил лиды и забыл про них. Иногда там реальные
+    клиенты «после зарплаты» — надо разобрать.
+    """
+    stale = int(state.get("stale_postponed") or 0)
+    if stale < 1:
+        return None
+    return Suggestion(
+        id="postponed_stale",
+        severity="info",
+        title_ru=f"{stale} отложенных лидов старше 3 дней",
+        title_uz=f"{stale} ta kechiktirilgan lid 3 kundan ko'p vaqtdan beri turibdi",
+        body_ru="Загляните в раздел «Отложено» и разберитесь — вернуть в работу или закрыть.",
+        body_uz="«Kechiktirilgan» bo'limiga kirib ko'ring — ishga qaytaring yoki yoping.",
+        action_label_ru="Открыть отложенные",
+        action_label_uz="Kechiktirilganlarni ochish",
+        action_href="/my?view=postponed",
+        count=stale,
+        meta={"stale_postponed": stale},
+    )
+
+
+def check_pending_sales(op, state) -> Optional[Suggestion]:
+    """
+    #7 (INFO) — pending-продажи ждут approve менеджера.
+
+    Оператор создал продажу с фото, менеджер ещё не подтвердил.
+    Показываем чтобы оператор не забывал добить (фото ретаком если
+    отклонили и т.п.).
+    """
+    pending = int(state.get("pending_sales") or 0)
+    if pending < 1:
+        return None
+    return Suggestion(
+        id="pending_sales",
+        severity="info",
+        title_ru=f"{pending} ваших продаж ждут approve менеджера",
+        title_uz=f"{pending} ta sotuvingiz menejer tasdig'ini kutmoqda",
+        body_ru=(
+            "Пока менеджер не подтвердит — они не идут в зарплату. "
+            "Обычно это в течение дня; если висит долго — напишите менеджеру."
+        ),
+        body_uz=(
+            "Menejer tasdiqlaguncha — bu sotuvlar oyligingizga tushmaydi. "
+            "Odatda kun davomida tasdiqlanadi; agar uzoq turaversa — menejerga yozing."
+        ),
+        action_label_ru="Мои продажи",
+        action_label_uz="Mening sotuvlarim",
+        action_href="/my/sales",
+        count=pending,
+        meta={"pending_sales": pending},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Registry — ORDER matters только внутри одной severity (см. services).
+# ---------------------------------------------------------------------------
+
+RULES: list[RuleFn] = [
+    check_full_working_queue,   # WARNING — вчерашний кейс, вверху warning-группы
+    check_old_assigned_leads,   # WARNING
+    check_overdue_callbacks,    # URGENT — поднимется наверх сортировкой
+    check_not_checked_in_today,  # URGENT
+    check_stale_no_answer,      # INFO
+    check_postponed_stale,      # INFO
+    check_pending_sales,        # INFO
+]
