@@ -47,6 +47,19 @@ class Operator(TimestampedModel):
             "Включайте для тестовых операторов или после обучения."
         ),
     )
+    # Per-operator opt-in для UI-гейта check-in (2026-08-26).
+    # Когда True — фронт показывает fullscreen «Отметьтесь чтобы работать»
+    # для этого оператора при отсутствии open AttendanceLog. Backend
+    # никакие endpoints не блокирует — enforcement только на UI. По
+    # умолчанию False, чтобы включать выборочно (demo / после обучения).
+    require_checkin_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "UI-гейт: показывать оператору блокирующий модал «Отметьтесь чтобы работать» "
+            "пока open AttendanceLog не создан. Backend API остаётся открытым. "
+            "По умолчанию OFF — включайте выборочно для обкатки."
+        ),
+    )
 
     class Meta:
         ordering = ["full_name"]

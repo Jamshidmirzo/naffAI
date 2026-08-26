@@ -1438,6 +1438,38 @@ const STRINGS: Lookup = {
     "att_widget.use_pc_camera": "Использовать камеру этого ПК",
     "att_widget.qr_waiting": "Ожидаем скан…",
 
+    // ------ enforcement wave 2026-08-26 (RU) ------
+    // Fullscreen «Отметьтесь чтобы работать» — CheckinGate.
+    "checkin_gate.eyebrow": "Отметьтесь чтобы работать",
+    "checkin_gate.title": "Начните смену — отсканируйте QR",
+    "checkin_gate.subtitle":
+      "Без отметки прихода рабочие экраны CRM недоступны. Возьмите телефон и наведите камеру на QR-код ниже.",
+    "checkin_gate.steps_title": "Что делать",
+    // Backfill-модал «Во сколько вы вчера ушли?» — CheckoutBackfillGate.
+    "backfill.eyebrow": "Вчерашняя смена не закрыта",
+    "backfill.title": "Во сколько вы вчера ушли?",
+    "backfill.subtitle":
+      "Вы забыли отметить уход. Смена была авто-закрыта в 23:00 — введите фактическое время, чтобы часы посчитались правильно. Приход был {date} в {time}.",
+    "backfill.picker_label": "Фактическое время ухода",
+    "backfill.duration_hint": "Смена получится: {h} ч {m} мин",
+    "backfill.err_too_short": "Уход не может быть раньше чем через 30 минут после прихода",
+    "backfill.err_too_long": "Смена не может длиться больше 14 часов",
+    "backfill.btn_confirm": "Подтвердить время ухода",
+    "backfill.no_skip_hint": "Пропустить нельзя — введите время когда реально ушли",
+    // Soft banner «Не забудьте отметиться об уходе» — CheckoutReminderBanner.
+    "checkout_reminder.title": "Не забудьте отметиться об уходе",
+    "checkout_reminder.subtitle":
+      "Прошло 8 часов работы. Если сейчас не отметитесь, смена закроется автоматически в 23:00.",
+    "checkout_reminder.btn_finish": "Завершить смену",
+    // Manager UI — колонка «Забыл выйти» в списке операторов.
+    "operators.forgotten_badge": "Забыл: {n}",
+    "operators.forgotten_tooltip":
+      "За последние 30 дней {n} раз забыл отметить уход. Поговорите с оператором.",
+    // op_edit checkbox «UI-гейт check-in».
+    "op_edit.require_checkin": "Требовать отметку прихода для работы",
+    "op_edit.require_checkin_hint":
+      "Если ВКЛ — оператору при отсутствии отметки прихода блокируется весь UI CRM (кроме отметки). Backend API остаётся открытым (это только UI). По умолчанию ВЫКЛ.",
+
     // ------ photo uploader extras ------
     "photo.use_camera": "Камера",
 
@@ -3496,6 +3528,33 @@ const STRINGS: Lookup = {
     "att_widget.qr_step_3": "Selfi oling — status shu yerda o'zi yangilanadi",
     "att_widget.use_pc_camera": "Shu kompyuter kamerasidan foydalanish",
     "att_widget.qr_waiting": "Skan kutilmoqda…",
+
+    // ------ enforcement wave 2026-08-26 — UZ ------
+    "checkin_gate.eyebrow": "Ishlash uchun belgilaning",
+    "checkin_gate.title": "Smenani boshlang — QR-ni skanerlang",
+    "checkin_gate.subtitle":
+      "Kelish belgisisiz CRM ish ekranlari mavjud emas. Telefonni oling va kamerani pastdagi QR-kodga qarating.",
+    "checkin_gate.steps_title": "Nima qilish kerak",
+    "backfill.eyebrow": "Kechagi smena yopilmagan",
+    "backfill.title": "Kecha soat nechada ishdan chiqdingiz?",
+    "backfill.subtitle":
+      "Siz ketishni belgilamadingiz. Smena 23:00 da avtomatik yopildi — soatlar to'g'ri hisoblanishi uchun haqiqiy vaqtni kiriting. Kelish {date} soat {time}.",
+    "backfill.picker_label": "Haqiqiy ketish vaqti",
+    "backfill.duration_hint": "Smena: {h} soat {m} daq",
+    "backfill.err_too_short": "Ketish kelishdan 30 daqiqadan oldin bo'lishi mumkin emas",
+    "backfill.err_too_long": "Smena 14 soatdan uzoq bo'lishi mumkin emas",
+    "backfill.btn_confirm": "Ketish vaqtini tasdiqlash",
+    "backfill.no_skip_hint": "O'tkazib bo'lmaydi — haqiqiy ketgan vaqtni kiriting",
+    "checkout_reminder.title": "Ketishni belgilashni unutmang",
+    "checkout_reminder.subtitle":
+      "8 soat ishladingiz. Agar hozir belgilamasangiz, smena 23:00 da avtomatik yopiladi.",
+    "checkout_reminder.btn_finish": "Smenani yakunlash",
+    "operators.forgotten_badge": "Unutdi: {n}",
+    "operators.forgotten_tooltip":
+      "Oxirgi 30 kun ichida {n} marta ketishni belgilashni unutgan. Operator bilan gaplashing.",
+    "op_edit.require_checkin": "Ishlash uchun kelish belgisi majburiy",
+    "op_edit.require_checkin_hint":
+      "YOQIQ bo'lsa — operator kelishni belgilamasa CRM UI to'liq bloklanadi (belgilashdan tashqari). Backend API ochiq qoladi (bu faqat UI). Standart holat O'CHIQ.",
 
     // ------ photo uploader — UZ ------
     "photo.use_camera": "Kamera",

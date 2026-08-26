@@ -16,6 +16,84 @@ def open_log_for_operator(operator: Operator) -> AttendanceLog | None:
     ).first()
 
 
+def pending_backfill_log_for_operator(
+    operator: Operator,
+    *,
+    lookback_days: int = 3,
+) -> AttendanceLog | None:
+    """
+    Самый свежий лог оператора за последние `lookback_days`, который cron
+    закрыл автоматически (`auto_closed=True`) и который оператор ещё не
+    подтвердил вручную (`backfilled_by_operator_at IS NULL`).
+
+    Используется на фронте для показа блокирующего модала «во сколько вы
+    вчера ушли?» — до тех пор, пока оператор не введёт фактическое время
+    ухода (или пока лог не устареет за окном lookback'а).
+
+    Лимит 3 дня выбран прагматично: если оператор был в отпуске и вернулся
+    через неделю, старый auto_closed лог не должен внезапно всплыть на
+    экране (backfill за такую даль всё равно теряет смысл).
+    """
+    threshold = timezone.now() - dt.timedelta(days=lookback_days)
+    return (
+        AttendanceLog.objects.filter(
+            operator=operator,
+            auto_closed=True,
+            backfilled_by_operator_at__isnull=True,
+            checked_in_at__gte=threshold,
+        )
+        .order_by("-checked_in_at")
+        .first()
+    )
+
+
+def forgotten_checkouts_count(operator: Operator, *, days: int = 30) -> int:
+    """
+    Сколько раз оператор «забыл выйти» за последние `days` дней:
+    логи, которые cron auto-close'нул И оператор так и не ввёл
+    фактическое время ухода задним числом.
+
+    Rolling window (по умолчанию 30 дней) — счётчик естественно
+    «сбрасывается» со временем: старые нарушения выпадают. Порог для
+    менеджерского алерта — 5 (см. UI-бейдж).
+    """
+    threshold = timezone.now() - dt.timedelta(days=days)
+    return AttendanceLog.objects.filter(
+        operator=operator,
+        auto_closed=True,
+        backfilled_by_operator_at__isnull=True,
+        checked_in_at__gte=threshold,
+    ).count()
+
+
+def forgotten_checkouts_bulk(
+    operator_ids: list[int], *, days: int = 30
+) -> dict[int, int]:
+    """
+    Пакетный вариант `forgotten_checkouts_count` для списка операторов
+    (менеджерская страница `/operators/`). Один GROUP BY вместо N запросов.
+    """
+    from django.db.models import Count
+
+    if not operator_ids:
+        return {}
+    threshold = timezone.now() - dt.timedelta(days=days)
+    rows = (
+        AttendanceLog.objects.filter(
+            operator_id__in=operator_ids,
+            auto_closed=True,
+            backfilled_by_operator_at__isnull=True,
+            checked_in_at__gte=threshold,
+        )
+        .values("operator_id")
+        .annotate(n=Count("id"))
+    )
+    counts = {op_id: 0 for op_id in operator_ids}
+    for row in rows:
+        counts[row["operator_id"]] = row["n"]
+    return counts
+
+
 def logs_for_operator(operator: Operator, *, since: dt.date, until: dt.date) -> QuerySet:
     # Get datetime bounds in the active (Tashkent) timezone. Django 5 /
     # Python 3.9+ ships zoneinfo which uses `.replace(tzinfo=...)`, not

@@ -40,6 +40,7 @@ class OperatorSerializer(serializers.ModelSerializer):
     )
     account = serializers.SerializerMethodField()
     sticker = serializers.SerializerMethodField()
+    forgotten_checkouts_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Operator
@@ -52,20 +53,30 @@ class OperatorSerializer(serializers.ModelSerializer):
             "hired_at",
             "note",
             "blocking_gate_enabled",
+            "require_checkin_enabled",
             "created_at",
             "updated_at",
             "plan_target",
             "plan_actual",
             "account",
             "sticker",
+            "forgotten_checkouts_count",
         ]
-        read_only_fields = ["id", "created_at", "updated_at", "account", "sticker"]
+        read_only_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "account",
+            "sticker",
+            "forgotten_checkouts_count",
+        ]
         extra_kwargs = {
             # Опциональный на write — существующие PATCH'и без него
             # (edit-модалка правит full_name/phone/hired_at/status/note)
             # должны продолжать работать. Только если явно передан —
             # `operator_update` его применит.
             "blocking_gate_enabled": {"required": False},
+            "require_checkin_enabled": {"required": False},
         }
 
     def get_account(self, obj: Operator) -> dict:
@@ -81,6 +92,25 @@ class OperatorSerializer(serializers.ModelSerializer):
             "is_rare": sticker.is_rare,
         }
 
+    def get_forgotten_checkouts_count(self, obj: Operator) -> int:
+        """
+        Сколько раз этот оператор «забыл выйти» за последние 30 дней
+        (auto_closed логи без backfill'a). Для менеджерского списка —
+        колонка с бейджем; ≥5 подсвечивается красным.
+
+        Реализация: если сериалайзер получает готовый dict из контекста
+        (bulk-preloaded), используем его — иначе fallback на per-row
+        селектор. Так на списке из ~15 операторов делаем один GROUP BY
+        вместо 15 отдельных запросов.
+        """
+        preloaded = self.context.get("forgotten_counts") if self.context else None
+        if isinstance(preloaded, dict):
+            return int(preloaded.get(obj.id, 0))
+        # Fallback (detail view / non-list contexts).
+        from apps.attendance.selectors import forgotten_checkouts_count
+
+        return forgotten_checkouts_count(obj)
+
 
 class OperatorListCreateApi(ListCreateAPIView):
     permission_classes = [IsTeamLeadOrManagerReadOnly]
@@ -93,6 +123,29 @@ class OperatorListCreateApi(ListCreateAPIView):
             include_inactive=self.request.query_params.get("include_inactive", "1") != "0",
             with_plan=True,
         )
+
+    def get_serializer_context(self):
+        """
+        Preload forgotten-checkouts counts one query per list, not N.
+
+        Мы пейджим список операторов (даже если пагинация внутри
+        `operator_list` не включена явно, DRF всё равно применяет
+        page-slice в `list()` → paginate_queryset). Достаём id'шники из
+        уже-отрендеренного queryset'а через `filter_queryset`, идём в
+        selectors bulk-batch — сериалайзер потом читает готовый dict
+        через self.context.
+        """
+        context = super().get_serializer_context()
+        try:
+            qs = self.filter_queryset(self.get_queryset())
+            operator_ids = list(qs.values_list("id", flat=True))
+        except Exception:
+            operator_ids = []
+        if operator_ids:
+            from apps.attendance.selectors import forgotten_checkouts_bulk
+
+            context["forgotten_counts"] = forgotten_checkouts_bulk(operator_ids)
+        return context
 
     def perform_create(self, serializer):
         instance = operator_create(user=self.request.user, **serializer.validated_data)

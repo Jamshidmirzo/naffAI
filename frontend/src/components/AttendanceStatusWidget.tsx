@@ -237,6 +237,10 @@ export default function AttendanceStatusWidget() {
   return (
     <div
       className="nf-card p-5 relative overflow-hidden"
+      // data-attendance-widget — метка для CheckoutReminderBanner: он
+      // прячется и скроллит сюда при клике «Завершить смену», чтобы
+      // оператор увидел QR-кнопку без ручного поиска.
+      data-attendance-widget
       style={{
         background: isOn
           ? "linear-gradient(135deg, rgba(249,115,22,.08), rgba(249,115,22,.02))"

@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 
 from apps.operators.models import Operator
 from apps.users.permissions import (
@@ -30,6 +30,7 @@ from .services import (
     IpNotAllowedError,
     PhotoRequiredError,
     attendance_log_manual_close,
+    attendance_log_backfill_checkout,
     qr_token_verify,
 )
 from .selectors import (
@@ -41,6 +42,7 @@ from .selectors import (
     open_log_for_operator,
     operator_qr_png_bytes,
     operator_qr_current,
+    pending_backfill_log_for_operator,
 )
 from .permissions import IsTeamLeadOrManager, IsAttendancePinVerified
 
@@ -252,7 +254,13 @@ class MeCurrentAttendanceApi(APIView):
         profile = getattr(request.user, "profile", None)
         if not profile or not profile.operator_id:
             return Response(
-                {"open_log": None, "today_events": []},
+                {
+                    "open_log": None,
+                    "today_events": [],
+                    "require_checkin_enabled": False,
+                    "checkout_reminder_active": False,
+                    "pending_backfill_log": None,
+                },
                 status=status.HTTP_200_OK,
             )
 
@@ -280,10 +288,138 @@ class MeCurrentAttendanceApi(APIView):
                 "checked_in_at": open_log.checked_in_at.isoformat(),
                 "was_late": open_log.was_late,
                 "checkin_photo_url": open_log.checkin_photo.url if open_log.checkin_photo else None,
+                "checkout_reminder_sent_at": (
+                    open_log.checkout_reminder_sent_at.isoformat()
+                    if open_log.checkout_reminder_sent_at
+                    else None
+                ),
+            }
+
+        # Enforcement wave 2026-08-26.
+        # `require_checkin_enabled` — фронт использует, чтобы решить, показывать
+        # ли fullscreen-gate. Backend НИ ОДИН endpoint не блокирует по этому
+        # флагу — enforcement только на UI.
+        require_checkin = bool(operator.require_checkin_enabled)
+
+        # Reminder активен, если cron уже пометил open_log — фронт покажет
+        # оранжевый баннер, локально приглушает через localStorage-dismiss.
+        checkout_reminder_active = bool(
+            open_log and open_log.checkout_reminder_sent_at is not None
+        )
+
+        # «Вчера забыли выйти» — есть auto_closed лог без backfill за
+        # последние 3 дня. Фронт показывает блокирующий модал с time-picker.
+        pending_backfill = pending_backfill_log_for_operator(operator)
+        pending_backfill_data = None
+        if pending_backfill is not None:
+            pending_backfill_data = {
+                "id": pending_backfill.id,
+                "checked_in_at": pending_backfill.checked_in_at.isoformat(),
+                "auto_closed_at": (
+                    pending_backfill.checked_out_at.isoformat()
+                    if pending_backfill.checked_out_at
+                    else None
+                ),
             }
 
         return Response(
-            {"open_log": open_log_data, "today_events": today_events, "operator_id": profile.operator_id},
+            {
+                "open_log": open_log_data,
+                "today_events": today_events,
+                "operator_id": profile.operator_id,
+                "require_checkin_enabled": require_checkin,
+                "checkout_reminder_active": checkout_reminder_active,
+                "pending_backfill_log": pending_backfill_data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class MeBackfillCheckoutAttendanceApi(APIView):
+    """
+    Оператор задним числом вводит фактическое время своего ухода, когда
+    вчера забыл /checkout и cron auto-close'нул смену в 23:00.
+
+    Body: `{ log_id: int, checked_out_at: "YYYY-MM-DDTHH:MM" (local naive)
+    или ISO с tz }`.
+
+    Валидация в service (`attendance_log_backfill_checkout`):
+      - лог принадлежит текущему оператору,
+      - лог был `auto_closed=True` и ещё не backfilled,
+      - `checked_out_at` в окне [check_in + 30мин, check_in + N часов],
+      - `checked_out_at <= log.checked_out_at` (момент cron auto-close).
+
+    Возвращает обновлённый лог. Фронт снимает блокирующий модал по
+    успешному ответу и refetch'ит `/attendance/me/current/`.
+    """
+
+    permission_classes = [IsAuthenticated, IsAuthenticatedAnyRole]
+
+    def post(self, request):
+        profile = getattr(request.user, "profile", None)
+        if not profile or not profile.operator_id:
+            return Response(
+                {"error": "Нет привязанного оператора"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        log_id_raw = request.data.get("log_id")
+        checked_out_raw = request.data.get("checked_out_at")
+
+        try:
+            log_id = int(log_id_raw)
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "log_id обязателен и должен быть числом"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not checked_out_raw or not isinstance(checked_out_raw, str):
+            return Response(
+                {"error": "checked_out_at обязателен (ISO datetime)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Принимаем ISO (`2026-08-25T18:30:00`) без tz — считаем локальным
+        # временем Ташкента. С tz — уважаем tz. `parse_datetime` вернёт
+        # None если строка не парсится.
+        from django.utils.dateparse import parse_datetime
+
+        checked_out_at = parse_datetime(checked_out_raw)
+        if checked_out_at is None:
+            return Response(
+                {"error": "Некорректный формат checked_out_at (ожидается ISO datetime)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            log = AttendanceLog.objects.get(id=log_id)
+        except AttendanceLog.DoesNotExist:
+            return Response({"error": "Лог не найден"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            log = attendance_log_backfill_checkout(
+                operator=profile.operator,
+                log=log,
+                checked_out_at=checked_out_at,
+            )
+        except PermissionDenied as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except ValidationError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            {
+                "id": log.id,
+                "operator_id": log.operator_id,
+                "checked_in_at": log.checked_in_at.isoformat(),
+                "checked_out_at": log.checked_out_at.isoformat(),
+                "auto_closed": log.auto_closed,
+                "backfilled_by_operator_at": log.backfilled_by_operator_at.isoformat(),
+                "duration_min": log.duration_seconds // 60
+                if log.duration_seconds is not None
+                else None,
+            },
             status=status.HTTP_200_OK,
         )
 
@@ -674,6 +810,8 @@ class SettingsAttendanceApi(APIView):
             "require_photo": settings_obj.require_photo,
             "require_face": settings_obj.require_face,
             "photo_max_size_mb": settings_obj.photo_max_size_mb,
+            "checkout_reminder_after_hours": settings_obj.checkout_reminder_after_hours,
+            "max_backfill_hours": settings_obj.max_backfill_hours,
         }
 
     def get(self, request):
@@ -707,6 +845,14 @@ class SettingsAttendanceApi(APIView):
             settings_obj.require_face = bool(require_face)
         if photo_max_size_mb is not None:
             settings_obj.photo_max_size_mb = max(1, min(20, int(photo_max_size_mb)))
+        checkout_reminder_after_hours = request.data.get("checkout_reminder_after_hours")
+        max_backfill_hours = request.data.get("max_backfill_hours")
+        if checkout_reminder_after_hours is not None:
+            settings_obj.checkout_reminder_after_hours = max(
+                0, min(24, int(checkout_reminder_after_hours))
+            )
+        if max_backfill_hours is not None:
+            settings_obj.max_backfill_hours = max(1, min(24, int(max_backfill_hours)))
 
         settings_obj.updated_by = request.user
         settings_obj.save()

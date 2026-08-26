@@ -116,6 +116,27 @@ class AttendanceLog(TimestampedModel):
         default="",
         db_index=True,
     )
+    # 2026-08-26 enforcement wave.
+    # Спам-защита для reminder'a об уходе (см. attendance_checkout_reminder
+    # cron): один DM/баннер на смену — как только выставлено, повторный
+    # запуск команды пропускает лог.
+    checkout_reminder_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Момент отправки reminder'a «прошло 8 часов, отметьтесь об уходе».",
+    )
+    # Заполняется, когда оператор задним числом ввёл `checked_out_at`
+    # через POST /api/attendance/me/backfill-checkout/. `auto_closed`
+    # при этом НЕ сбрасывается — сохраняем аудит («cron закрыл в 23:00»),
+    # а `checked_out_at` уже показывает реальный уход. Для «forgotten
+    # checkouts count» селектор берёт auto_closed=True AND
+    # backfilled_by_operator_at IS NULL — так после backfill лог перестаёт
+    # считаться «забытым».
+    backfilled_by_operator_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Момент, когда оператор ввёл фактическое время ухода задним числом.",
+    )
 
     class Meta:
         constraints = [
@@ -184,6 +205,24 @@ class AttendanceSettings(models.Model):
     long_shift_warning_hours = models.PositiveSmallIntegerField(
         default=10,
         help_text="После скольких часов открытой смены слать warning",
+    )
+    # 2026-08-26 enforcement wave.
+    # После скольких часов от **личного** check-in слать оператору мягкий
+    # reminder «не забудьте отметиться об уходе» (TG DM + in-app баннер).
+    # Cron `attendance_checkout_reminder` крутится каждые 15 минут и
+    # ставит `AttendanceLog.checkout_reminder_sent_at` — спам-защита.
+    checkout_reminder_after_hours = models.PositiveSmallIntegerField(
+        default=8,
+        help_text="После скольких часов от check-in слать reminder об уходе (0 = выкл).",
+    )
+    # Верхняя граница «во сколько вы вчера ушли?» — backfill-endpoint
+    # отклоняет значения `> checked_in_at + N часов`. Держим отдельно
+    # от long_shift_warning_hours, чтобы менеджер мог настроить более
+    # либеральный порог для forgotten-checkout backfill (реальные смены
+    # могут длиться дольше warning-порога).
+    max_backfill_hours = models.PositiveSmallIntegerField(
+        default=14,
+        help_text="Максимальная длительность смены при backfill забытого ухода.",
     )
     # 2026-08-14 attendance redesign — фото-подтверждение и face-check.
     # По умолчанию require_photo=False → обратная совместимость (prod поведение

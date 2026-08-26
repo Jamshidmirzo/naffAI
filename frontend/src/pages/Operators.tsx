@@ -38,7 +38,13 @@ interface OperatorRow {
   month_total?: string | number | null;
   month_count?: number | null;
   blocking_gate_enabled?: boolean;
+  require_checkin_enabled?: boolean;
+  forgotten_checkouts_count?: number;
 }
+
+// Порог красного бейджа «Забыл выйти» — 5 auto_closed без backfill за 30 дней.
+// При меньшем — серый бейдж (или скрыт при 0).
+const FORGOTTEN_ALERT_THRESHOLD = 5;
 
 function initials(name: string) {
   return (
@@ -107,6 +113,7 @@ export default function Operators() {
     note: string;
     status: OperatorStatus;
     blocking_gate_enabled: boolean;
+    require_checkin_enabled: boolean;
   } | null>(null);
   const [deleteError, setDeleteError] = useState("");
 
@@ -183,6 +190,7 @@ export default function Operators() {
       note: string;
       status: OperatorStatus;
       blocking_gate_enabled: boolean;
+      require_checkin_enabled: boolean;
     }) =>
       api.patch(`/operators/${id}/`, {
         full_name: body.full_name,
@@ -191,6 +199,7 @@ export default function Operators() {
         note: body.note || "",
         status: body.status,
         blocking_gate_enabled: body.blocking_gate_enabled,
+        require_checkin_enabled: body.require_checkin_enabled,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["operators"] });
@@ -329,6 +338,29 @@ export default function Operators() {
                             {o.sticker.emoji}
                           </span>
                         )}
+                        {/* «Забыл выйти» бейдж — красный при ≥5 за 30
+                            дней (см. FORGOTTEN_ALERT_THRESHOLD), серый
+                            при 1-4. При 0 скрыт, чтобы не шумел. */}
+                        {(() => {
+                          const n = o.forgotten_checkouts_count ?? 0;
+                          if (n <= 0) return null;
+                          const isAlert = n >= FORGOTTEN_ALERT_THRESHOLD;
+                          return (
+                            <span
+                              title={t("operators.forgotten_tooltip", { n })}
+                              className="shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums"
+                              style={{
+                                background: isAlert
+                                  ? "rgba(220,38,38,.12)"
+                                  : "rgba(148,163,184,.15)",
+                                color: isAlert ? "#dc2626" : "var(--muted)",
+                              }}
+                            >
+                              {isAlert ? "⚠ " : ""}
+                              {t("operators.forgotten_badge", { n })}
+                            </span>
+                          );
+                        })()}
                       </div>
                       <div className="text-[12px] text-muted truncate">
                         {o.phone || t("leads.no_phone")}
@@ -438,6 +470,7 @@ export default function Operators() {
                           note: (selected as any).note || "",
                           status: selected.status,
                           blocking_gate_enabled: !!selected.blocking_gate_enabled,
+                          require_checkin_enabled: !!selected.require_checkin_enabled,
                         })
                       }
                     >
@@ -578,6 +611,39 @@ export default function Operators() {
                 </div>
                 <div className="text-[12px] text-muted mt-0.5 leading-snug">
                   {t("op_edit.blocking_gate_hint")}
+                </div>
+              </div>
+            </label>
+            {/* Per-operator check-in gate opt-in (2026-08-26 enforcement wave).
+                OFF по умолчанию: UI-гейт «Отметьтесь чтобы работать» не
+                показывается. ON — фронт блокирует рабочие экраны до
+                check-in. Backend API остаётся открытым в любом случае. */}
+            <label
+              className="flex items-start gap-3 rounded-xl px-3 py-3 cursor-pointer"
+              style={{
+                border: "1.5px solid var(--border)",
+                background: editModal.require_checkin_enabled
+                  ? "rgba(22,163,74,0.05)"
+                  : "var(--bg-card)",
+              }}
+            >
+              <input
+                type="checkbox"
+                className="mt-0.5 shrink-0 h-4 w-4 accent-green-600"
+                checked={editModal.require_checkin_enabled}
+                onChange={(e) =>
+                  setEditModal({
+                    ...editModal,
+                    require_checkin_enabled: e.target.checked,
+                  })
+                }
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-[13.5px] font-semibold">
+                  {t("op_edit.require_checkin")}
+                </div>
+                <div className="text-[12px] text-muted mt-0.5 leading-snug">
+                  {t("op_edit.require_checkin_hint")}
                 </div>
               </div>
             </label>

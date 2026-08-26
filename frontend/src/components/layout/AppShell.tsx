@@ -5,6 +5,9 @@ import { Sidebar, type SidebarGroup } from "./Sidebar";
 import { Header } from "./Header";
 import MorningGreeting from "../MorningGreeting";
 import { HelperButton } from "../helper/HelperButton";
+import CheckinGate from "../CheckinGate";
+import CheckoutBackfillGate from "../CheckoutBackfillGate";
+import CheckoutReminderBanner from "../CheckoutReminderBanner";
 import { useT } from "../../lib/i18n";
 import { useMe } from "../../hooks/useMe";
 
@@ -128,6 +131,10 @@ export default function AppShell() {
       <Sidebar groups={groups} role={role} />
       <div className="flex-1 min-w-0 flex flex-col">
         <Header />
+        {/* Enforcement wave 2026-08-26 — soft reminder про уход. Только
+            для роли operator: sits в самом верху контентной колонки,
+            под Header'ом, чтобы был замечен но не занимал экран. */}
+        {role === "operator" && <CheckoutReminderBanner />}
         <main
           className="flex-1"
           style={{ padding: "30px 40px 70px" }}
@@ -136,6 +143,19 @@ export default function AppShell() {
         </main>
       </div>
       {role === "operator" && <MorningGreeting language={greetingLang} />}
+      {/* Enforcement wave 2026-08-26 — fullscreen блокирующие модалы.
+          BackfillGate имеет более высокий z-index (310) и рендерится
+          сверху CheckinGate (300), чтобы «вчерашний долг» закрывался
+          в первую очередь. Оба показывают-скрываются по /me/current/
+          флагам, поэтому монтируем безусловно (внутренний if вернёт null).
+          Только для operator: manager/team_lead к require_checkin_enabled
+          вообще не относится (у них нет operator FK). */}
+      {role === "operator" && (
+        <>
+          <CheckinGate />
+          <CheckoutBackfillGate />
+        </>
+      )}
       {/* Floating helper — оператор-only. Manager/team_lead виджет не видят
           (у них своя админка + и так знают систему; клат-нить в углу лишний). */}
       {role === "operator" && <HelperButton />}

@@ -659,6 +659,138 @@ def auto_close_open_logs(*, at: dt.datetime | None = None) -> int:
 
 
 @transaction.atomic
+def attendance_log_backfill_checkout(
+    *,
+    operator: Operator,
+    log: AttendanceLog,
+    checked_out_at: dt.datetime,
+) -> AttendanceLog:
+    """
+    Оператор задним числом вводит фактическое время своего ухода — когда
+    вчера забыл /checkout и cron auto-close'нул смену в 23:00.
+
+    Что делаем:
+      - валидируем: лог принадлежит оператору, был auto_closed, ещё не
+        backfilled, `checked_out_at` в допустимом диапазоне;
+      - переписываем `checked_out_at` на реальное время;
+      - выставляем `backfilled_by_operator_at=now()` — селектор
+        `forgotten_checkouts_count` перестаёт считать этот лог;
+      - `auto_closed` **не сбрасываем** — сохраняем аудит (было закрыто
+        кроном), но `backfilled_by_operator_at` даёт фронту и статистике
+        понять, что оператор ответственно оформил уход.
+
+    Валидация окна:
+      - `>= checked_in_at + 30 минут` — защита от «случайно ввёл то же
+        время что и приход».
+      - `<= checked_in_at + AttendanceSettings.max_backfill_hours` (14
+        часов по умолчанию) — защита от абсурдных значений.
+      - `<= log.updated_at` (auto_closed timestamp) — уход не может быть
+        позже момента, когда cron уже закрыл смену. `updated_at` тут
+        proxy для «когда cron auto-close'нул», т.к. отдельного поля мы
+        не заводили (auto_closed выставляется одной update-транзакцией).
+    """
+    if log.operator_id != operator.id:
+        raise PermissionDenied("Это не ваш лог смены")
+    if not log.auto_closed:
+        raise ValidationError("Лог не был закрыт автоматически — backfill не нужен")
+    if log.backfilled_by_operator_at is not None:
+        raise ValidationError("Лог уже подтверждён — нельзя переписать повторно")
+    if log.checked_out_at is None:
+        raise ValidationError("Лог ещё открыт — backfill не применим")
+
+    if timezone.is_naive(checked_out_at):
+        checked_out_at = timezone.make_aware(
+            checked_out_at, timezone.get_current_timezone()
+        )
+
+    settings_obj = attendance_settings_get()
+    max_hours = int(settings_obj.max_backfill_hours or 14)
+
+    lower_bound = log.checked_in_at + dt.timedelta(minutes=30)
+    upper_bound = log.checked_in_at + dt.timedelta(hours=max_hours)
+
+    if checked_out_at < lower_bound:
+        raise ValidationError(
+            f"Время ухода должно быть минимум через 30 минут после прихода"
+        )
+    if checked_out_at > upper_bound:
+        raise ValidationError(
+            f"Время ухода не может быть позже {max_hours} часов от прихода"
+        )
+    # auto_closed timestamp — верхняя граница «cron уже сработал».
+    # `log.checked_out_at` was set by `auto_close_open_logs` — не даём
+    # ввести время позже этого момента (значит, оператор был бы всё ещё
+    # на смене после cron auto-close, что противоречит логике).
+    if log.checked_out_at is not None and checked_out_at > log.checked_out_at:
+        raise ValidationError(
+            "Время ухода не может быть позже момента, когда смена была авто-закрыта"
+        )
+
+    now = timezone.now()
+    log.checked_out_at = checked_out_at
+    log.backfilled_by_operator_at = now
+    log.save(update_fields=["checked_out_at", "backfilled_by_operator_at"])
+
+    audit_log_create(
+        user=None,
+        action="attendance.checkout_backfilled",
+        entity="AttendanceLog",
+        entity_id=log.id,
+        changes={
+            "log_id": log.id,
+            "operator_id": operator.id,
+            "new_checked_out_at": checked_out_at.isoformat(),
+            "auto_closed_still": True,
+        },
+    )
+
+    # Уведомляем менеджеров, что оператор оформил забытый уход задним
+    # числом — прозрачность для «форбидд/забыл выйти» разговоров.
+    def _notify_managers_backfill():
+        try:
+            from apps.notifications.models import Notification, NotificationKind
+            from apps.users.models import Role
+
+            managers = User.objects.filter(
+                profile__role__in=(Role.MANAGER, Role.TEAM_LEAD, Role.SUPERADMIN),
+                is_active=True,
+            )
+            if not managers.exists():
+                return
+            duration_min = int(
+                (checked_out_at - log.checked_in_at).total_seconds() / 60
+            )
+            hours = round(duration_min / 60, 1)
+            Notification.objects.bulk_create(
+                [
+                    Notification(
+                        recipient=m,
+                        kind=NotificationKind.SYSTEM,
+                        title=f"⏱ {operator.full_name} — уход задним числом",
+                        body=f"Смена {hours} ч (оформлено сегодня)",
+                        link=f"/operators/{operator.id}",
+                        metadata={
+                            "kind": "attendance_backfill",
+                            "operator_id": operator.id,
+                            "log_id": log.id,
+                            "duration_min": duration_min,
+                        },
+                    )
+                    for m in managers
+                ]
+            )
+        except Exception:
+            import logging
+
+            logging.getLogger("attendance").warning(
+                "backfill notify failed log=%s", log.id, exc_info=True
+            )
+
+    transaction.on_commit(_notify_managers_backfill)
+    return log
+
+
+@transaction.atomic
 def attendance_log_manual_close(*, log: AttendanceLog, user, note: str = "") -> AttendanceLog:
     if log.checked_out_at is not None:
         raise ValidationError("Лог уже закрыт")

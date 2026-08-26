@@ -4,6 +4,7 @@ from .apis import (
     ScanAttendanceApi,
     ScanWithPhotoAttendanceApi,
     QrPreviewAttendanceApi,
+    MeBackfillCheckoutAttendanceApi,
     MeCurrentAttendanceApi,
     MeHistoryAttendanceApi,
     MeQrAttendanceApi,
@@ -34,6 +35,12 @@ urlpatterns = [
     path("me/toggle/", MeToggleAttendanceApi.as_view(), name="attendance-me-toggle"),
     path("me/history/", MeHistoryAttendanceApi.as_view(), name="attendance-me-history"),
     path("me/qr-token/", MeQrTokenAttendanceApi.as_view(), name="attendance-me-qr-token"),
+    # Enforcement wave 2026-08-26 — backfill забытого ухода вчера.
+    path(
+        "me/backfill-checkout/",
+        MeBackfillCheckoutAttendanceApi.as_view(),
+        name="attendance-me-backfill-checkout",
+    ),
     path("report/", ReportAttendanceApi.as_view(), name="attendance-report"),
     path("today/", ReportAttendanceApi.as_view(), name="attendance-today"),
     # Открытый (без PIN) сводный срез — только счётчики, для дашборда.
