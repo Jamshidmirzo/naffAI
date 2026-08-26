@@ -691,6 +691,15 @@ def attendance_log_backfill_checkout(
     """
     if log.operator_id != operator.id:
         raise PermissionDenied("Это не ваш лог смены")
+    # Prod-safety (2026-08-26): backfill доступен только тем операторам,
+    # у которых явно включён enforcement (`require_checkin_enabled=True`).
+    # Иначе кто угодно с валидным auto_closed логом мог бы через прямой
+    # POST переписать время своего ухода — не то, что мы хотим на prod до
+    # массового rollout'a.
+    if not getattr(operator, "require_checkin_enabled", False):
+        raise PermissionDenied(
+            "Backfill недоступен: для вашего профиля не включена обязательная отметка прихода/ухода"
+        )
     if not log.auto_closed:
         raise ValidationError("Лог не был закрыт автоматически — backfill не нужен")
     if log.backfilled_by_operator_at is not None:

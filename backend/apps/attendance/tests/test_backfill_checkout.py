@@ -38,7 +38,14 @@ def client():
 
 @pytest.fixture
 def op(db):
-    return Operator.objects.create(full_name="Backfill Op", status="active")
+    # Backfill endpoint требует require_checkin_enabled=True (prod-safety
+    # 2026-08-26). Тесты этого файла проверяют happy path enforcement'a,
+    # поэтому дефолтный оператор — с включённым флагом.
+    return Operator.objects.create(
+        full_name="Backfill Op",
+        status="active",
+        require_checkin_enabled=True,
+    )
 
 
 @pytest.fixture
@@ -50,7 +57,9 @@ def op_user(db, op):
 
 @pytest.fixture
 def other_op(db):
-    return Operator.objects.create(full_name="Other", status="active")
+    return Operator.objects.create(
+        full_name="Other", status="active", require_checkin_enabled=True
+    )
 
 
 @pytest.fixture
@@ -221,6 +230,29 @@ def test_backfill_rejected_for_non_auto_closed(client, op, op_user, att_settings
     )
     assert r.status_code == 400
     assert "автоматически" in r.json()["error"]
+
+
+@pytest.mark.django_db
+def test_backfill_forbidden_when_flag_off(client, op, op_user, att_settings):
+    """
+    Prod-safety (2026-08-26): endpoint отклоняет операторов без
+    `require_checkin_enabled=True`. Второй слой защиты на случай, если
+    фронт (или прямой curl) попадёт на pending лог помимо гейта.
+    """
+    op.require_checkin_enabled = False
+    op.save(update_fields=["require_checkin_enabled"])
+    log = _make_yesterday_auto_closed_log(op)
+    real = log.checked_in_at + dt.timedelta(hours=8)
+    client.force_authenticate(op_user)
+    r = client.post(
+        "/api/attendance/me/backfill-checkout/",
+        data={"log_id": log.id, "checked_out_at": real.isoformat()},
+        format="json",
+    )
+    assert r.status_code == 403
+    assert "не включена" in r.json()["error"].lower() or "включена" in r.json()["error"].lower()
+    log.refresh_from_db()
+    assert log.backfilled_by_operator_at is None
 
 
 @pytest.mark.django_db

@@ -309,18 +309,25 @@ class MeCurrentAttendanceApi(APIView):
 
         # «Вчера забыли выйти» — есть auto_closed лог без backfill за
         # последние 3 дня. Фронт показывает блокирующий модал с time-picker.
-        pending_backfill = pending_backfill_log_for_operator(operator)
+        #
+        # ВАЖНО (prod-safety, 2026-08-26): pending_backfill возвращаем ТОЛЬКО
+        # операторам с `require_checkin_enabled=True`. Иначе prod-операторы,
+        # которые исторически не отмечались, получили бы кучу старых
+        # auto_closed логов и утром словили бы блокирующий backfill-модал —
+        # регрессия ломала бы их работу. Enforcement включается per-operator.
         pending_backfill_data = None
-        if pending_backfill is not None:
-            pending_backfill_data = {
-                "id": pending_backfill.id,
-                "checked_in_at": pending_backfill.checked_in_at.isoformat(),
-                "auto_closed_at": (
-                    pending_backfill.checked_out_at.isoformat()
-                    if pending_backfill.checked_out_at
-                    else None
-                ),
-            }
+        if require_checkin:
+            pending_backfill = pending_backfill_log_for_operator(operator)
+            if pending_backfill is not None:
+                pending_backfill_data = {
+                    "id": pending_backfill.id,
+                    "checked_in_at": pending_backfill.checked_in_at.isoformat(),
+                    "auto_closed_at": (
+                        pending_backfill.checked_out_at.isoformat()
+                        if pending_backfill.checked_out_at
+                        else None
+                    ),
+                }
 
         return Response(
             {
