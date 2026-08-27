@@ -16,6 +16,7 @@ class NotificationKind(models.TextChoices):
     SALE_REJECTED = "sale_rejected", "Продажа отклонена"
     CALLBACK_OVERDUE = "callback_overdue", "Просроченный колбэк"
     LEAD_ASSIGNED = "lead_assigned", "Новый лид"
+    BIRTHDAY = "birthday", "День рождения оператора"
     SYSTEM = "system", "Системное сообщение"
 
 

@@ -60,6 +60,33 @@ class Operator(TimestampedModel):
             "По умолчанию OFF — включайте выборочно для обкатки."
         ),
     )
+    # День рождения оператора — ДД.ММ.ГГГГ. Год виден только менеджеру
+    # в карточке; в общем UI показываем только ДД.ММ. По умолчанию NULL
+    # — новые операторы «prod-безопасны» и никаких уведомлений/баннеров
+    # не получают, пока сами (через профиль) или менеджер не заполнят
+    # дату. `birthday_notify` cron идёт только по тем, у кого дата
+    # заполнена и совпадает с сегодняшним днём/месяцем.
+    birth_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Дата рождения оператора (ДД.ММ.ГГГГ). Год виден только "
+            "менеджерам в карточке; в остальном UI — только день и месяц."
+        ),
+    )
+    # Idempotency-guard для `manage.py birthday_notify` — записываем сюда
+    # `today` после успешной отправки поздравления. Повторный запуск
+    # cron'a в тот же день (рестарт сервера, ручной run) пропустит этого
+    # оператора и не задублирует Notification/DM менеджерам.
+    birthday_notified_on = models.DateField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Idempotency: дата, за которую уже разослали поздравление "
+            "менеджерам. Пустое → cron ещё не отправлял в этом году. "
+            "Guards от дублей при рестарте / ручном повторном запуске."
+        ),
+    )
 
     class Meta:
         ordering = ["full_name"]
@@ -67,6 +94,31 @@ class Operator(TimestampedModel):
 
     def __str__(self) -> str:
         return self.full_name
+
+    def is_birthday_today(self, today=None) -> bool:
+        """
+        True если сегодняшняя дата (в текущем локальном TZ) совпадает
+        с day/month у `birth_date`. Год игнорируется — важно только,
+        что «сегодня твой день рождения». 29 февраля в невисокосный
+        год трактуем как 28 февраля (см. `birthday_matches_today`
+        в selectors для той же логики на уровне QuerySet).
+        """
+        if self.birth_date is None:
+            return False
+        from django.utils import timezone as _tz
+
+        if today is None:
+            today = _tz.localdate()
+        bd = self.birth_date
+        # 29 февраля именинник в невисокосный год празднует 28 февраля.
+        try:
+            import calendar as _cal
+
+            if bd.month == 2 and bd.day == 29 and not _cal.isleap(today.year):
+                return today.month == 2 and today.day == 28
+        except Exception:
+            pass
+        return bd.month == today.month and bd.day == today.day
 
 
 class OperatorMonthlyPlan(TimestampedModel):

@@ -1860,8 +1860,26 @@ const STRINGS: Lookup = {
     "op_edit.blocking_gate": "Блокировка по спец-лидам",
     "op_edit.blocking_gate_hint":
       "Если ВКЛ — оператор не получает новых лидов пока не закроет спец-лиды (phone_on, no_answer, has_debt) и просроченные колбэки. По умолчанию ВЫКЛ — включайте для тестовых операторов или тех, кому хотите жёсткую дисциплину.",
+    "op_edit.birth_date": "Дата рождения",
+    "op_edit.birth_date_hint": "год виден только менеджеру",
     "op_edit.saved": "Оператор обновлён",
     "op_edit.save_failed": "Не удалось сохранить",
+
+    // ------ birthday ------
+    "birthday.toast": "🎂 С днём рождения, {name}!",
+    "birthday.banner": "Сегодня ваш день рождения — {name}. Хорошего дня!",
+    "birthday.managerCard.title": "Сегодня день рождения",
+    "birthday.managerCard.age": "· {n} лет",
+    "birthday.list_badge_title": "Сегодня у оператора день рождения",
+
+    // ------ profile: personal / birth date ------
+    "profile.section_personal": "Мои данные",
+    "profile.birth_date_title": "Дата рождения",
+    "profile.birth_date_hint":
+      "Год виден только менеджеру. В команде поздравим вас автоматически.",
+    "profile.birth_date_empty": "Не указана",
+
+    "op_detail.birthday_manager_prefix": "ДР",
 
     // ------ bot v2 (demo) ------
     "nav.bot": "Бот и рассылки",
@@ -3946,8 +3964,26 @@ const STRINGS: Lookup = {
     "op_edit.blocking_gate": "Maxsus lidlar bo'yicha blokirovka",
     "op_edit.blocking_gate_hint":
       "YOQIQ bo'lsa — operator maxsus lidlarni (phone_on, no_answer, has_debt) va muddati o'tgan callbacklarni yakunlamaguncha yangi lid olmaydi. Standart holat OCHIQ — sinov operatorlari yoki qattiq nazorat kerak bo'lganlar uchun yoqing.",
+    "op_edit.birth_date": "Tug'ilgan sana",
+    "op_edit.birth_date_hint": "yil faqat menejerga ko'rinadi",
     "op_edit.saved": "Operator yangilandi",
     "op_edit.save_failed": "Saqlab bo'lmadi",
+
+    // ------ birthday ------
+    "birthday.toast": "🎂 Tug'ilgan kuningiz bilan, {name}!",
+    "birthday.banner": "Bugun sizning tug'ilgan kuningiz — {name}. Yaxshi kun tilaymiz!",
+    "birthday.managerCard.title": "Bugun tug'ilgan kun",
+    "birthday.managerCard.age": "· {n} yosh",
+    "birthday.list_badge_title": "Bugun operatorning tug'ilgan kuni",
+
+    // ------ profile: personal / birth date ------
+    "profile.section_personal": "Mening ma'lumotlarim",
+    "profile.birth_date_title": "Tug'ilgan sana",
+    "profile.birth_date_hint":
+      "Yil faqat menejerga ko'rinadi. Jamoa sizni avtomatik tabriklaydi.",
+    "profile.birth_date_empty": "Ko'rsatilmagan",
+
+    "op_detail.birthday_manager_prefix": "TS",
 
     // ------ bot v2 (demo) ------
     "nav.bot": "Bot va tarqatmalar",

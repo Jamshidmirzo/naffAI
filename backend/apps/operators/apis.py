@@ -19,6 +19,7 @@ from .selectors import (
     operator_list,
     operator_plan_progress,
     operator_stats,
+    operators_with_birthday_today_public,
 )
 from .services import (
     operator_create,
@@ -54,6 +55,7 @@ class OperatorSerializer(serializers.ModelSerializer):
             "note",
             "blocking_gate_enabled",
             "require_checkin_enabled",
+            "birth_date",
             "created_at",
             "updated_at",
             "plan_target",
@@ -77,6 +79,7 @@ class OperatorSerializer(serializers.ModelSerializer):
             # `operator_update` его применит.
             "blocking_gate_enabled": {"required": False},
             "require_checkin_enabled": {"required": False},
+            "birth_date": {"required": False, "allow_null": True},
         }
 
     def get_account(self, obj: Operator) -> dict:
@@ -330,3 +333,25 @@ class MePreferencesApi(APIView):
             **serializer.validated_data,
         )
         return Response({"daily_lesson_opt_out": op.daily_lesson_opt_out})
+
+
+class OperatorsBirthdayTodayApi(APIView):
+    """
+    GET /operators/birthdays-today/ — список активных именинников на
+    сегодня. Только для менеджера / team-lead / superadmin (карточка на
+    дашборде). Год ДР наружу не отдаём, только `age`.
+
+    Ответ:
+        [
+          {"operator_id": 51, "full_name": "Test Bonu", "phone": "+998…",
+           "age": 30, "status": "active"},
+          ...
+        ]
+    Пустой ответ = сегодня никто не празднует. Клиент может тогда просто
+    не рендерить карточку.
+    """
+
+    permission_classes = [IsTeamLeadOrManagerReadOnly]
+
+    def get(self, request):
+        return Response(operators_with_birthday_today_public())

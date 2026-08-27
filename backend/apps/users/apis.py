@@ -79,9 +79,16 @@ class MeApi(APIView):
     def get(self, request):
         user = request.user
         profile = getattr(user, "profile", None)
-        operator_name = profile.operator.full_name if profile and profile.operator else None
+        operator = profile.operator if profile and profile.operator else None
+        operator_name = operator.full_name if operator else None
         display_name = operator_name or (user.get_full_name() or None)
         preferred_language = getattr(profile, "preferred_language", None) or "uz"
+        # ДР — только для operator-роли. Managers/team_lead operator FK
+        # не имеют, поэтому оба поля будут null. Год ДР отдаём только
+        # владельцу профиля (сам оператор себе видит полную дату);
+        # менеджер видит год через /operators/<id>/ (карточка).
+        birth_date = operator.birth_date.isoformat() if operator and operator.birth_date else None
+        is_birthday_today = bool(operator and operator.is_birthday_today())
         return Response(
             {
                 "username": user.username,
@@ -92,32 +99,90 @@ class MeApi(APIView):
                 "display_name": display_name,
                 "telegram_user_id": profile.telegram_user_id if profile else None,
                 "preferred_language": preferred_language,
+                "birth_date": birth_date,
+                "is_birthday_today": is_birthday_today,
             }
         )
 
     def patch(self, request):
-        """Self-service partial update — currently only `preferred_language`.
+        """Self-service partial update.
 
-        Any authenticated user can flip their own language preference
-        (used by operators when they want RU / UZ; managers may also
-        set their own). Managers change other users' language through
-        the dedicated admin endpoints below.
+        Поддерживаемые поля:
+          - `preferred_language` — RU/UZ, любой аутентифицированный юзер;
+          - `birth_date` — ISO-дата (или null для очистки), доступно
+            только пользователю, у которого профиль привязан к оператору.
+
+        Оба поля опциональны, PATCH принимает любой их набор.
         """
+        import datetime as _dt
+
         user = request.user
         profile = getattr(user, "profile", None)
         if profile is None:
             from .models import Profile as _Profile
             profile = _Profile.objects.create(user=user)
 
-        lang = request.data.get("preferred_language")
-        if lang not in ("ru", "uz"):
+        response_payload: dict = {}
+        errors: dict = {}
+
+        # --- preferred_language ---
+        if "preferred_language" in request.data:
+            lang = request.data.get("preferred_language")
+            if lang not in ("ru", "uz"):
+                errors["preferred_language"] = "must be 'ru' or 'uz'"
+            else:
+                profile.preferred_language = lang
+                profile.save(update_fields=["preferred_language"])
+                response_payload["preferred_language"] = profile.preferred_language
+
+        # --- birth_date ---
+        if "birth_date" in request.data:
+            operator = profile.operator if profile.operator_id else None
+            if operator is None:
+                errors["birth_date"] = "Только операторы могут задавать дату рождения"
+            else:
+                raw = request.data.get("birth_date")
+                if raw in (None, ""):
+                    new_val = None
+                else:
+                    try:
+                        new_val = _dt.date.fromisoformat(str(raw))
+                    except (TypeError, ValueError):
+                        new_val = "__invalid__"
+                if new_val == "__invalid__":
+                    errors["birth_date"] = "Неверный формат даты (ожидается YYYY-MM-DD)"
+                else:
+                    # Разумные границы: не в будущем, не раньше 1930.
+                    if new_val is not None:
+                        today = _dt.date.today()
+                        if new_val > today:
+                            errors["birth_date"] = "Дата рождения не может быть в будущем"
+                        elif new_val.year < 1930:
+                            errors["birth_date"] = "Год рождения слишком старый (<1930)"
+                    if "birth_date" not in errors:
+                        # Идёт через сервис, чтобы попасть в audit log.
+                        from apps.operators.services import operator_self_update_birth_date
+
+                        operator = operator_self_update_birth_date(
+                            operator=operator, user=user, birth_date=new_val
+                        )
+                        response_payload["birth_date"] = (
+                            operator.birth_date.isoformat() if operator.birth_date else None
+                        )
+                        response_payload["is_birthday_today"] = operator.is_birthday_today()
+
+        # Fallback совместимости: старый контракт возвращал 400 при
+        # отсутствии preferred_language — сохраняем то же поведение,
+        # если пришёл пустой PATCH (никаких известных полей).
+        if not response_payload and not errors:
             return Response(
-                {"preferred_language": "must be 'ru' or 'uz'"},
+                {"detail": "no supported fields provided"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        profile.preferred_language = lang
-        profile.save(update_fields=["preferred_language"])
-        return Response({"preferred_language": profile.preferred_language})
+
+        if errors:
+            return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(response_payload)
 
 
 class LogoutApi(APIView):

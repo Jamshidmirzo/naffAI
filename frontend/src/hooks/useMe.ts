@@ -10,6 +10,10 @@ export interface Me {
   display_name: string | null;
   telegram_user_id: number | null;
   preferred_language: "ru" | "uz";
+  /** ISO YYYY-MM-DD, только для оператора; null пока не заполнена. */
+  birth_date: string | null;
+  /** True если сегодня совпадает с day/month у birth_date (год игнор). */
+  is_birthday_today: boolean;
 }
 
 /**

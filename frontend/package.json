@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.0",
+    "@types/canvas-confetti": "^1.9.0",
     "@types/three": "^0.185.1",
     "axios": "^1.7.7",
+    "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
     "framer-motion": "^11.18.2",
     "html5-qrcode": "^2.3.8",

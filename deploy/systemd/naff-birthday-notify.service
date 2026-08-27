@@ -1,0 +1,11 @@
+[Unit]
+Description=naffAI birthday notify (managers get bell + TG DM)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/naffAI
+EnvironmentFile=/opt/naffAI/.env
+ExecStart=/opt/naffAI/.venv/bin/python manage.py birthday_notify
+StandardOutput=append:/var/log/naffAI/birthday-notify.log
+StandardError=append:/var/log/naffAI/birthday-notify.log

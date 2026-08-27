@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar as _cal
 import datetime as dt
 from decimal import Decimal
 
@@ -353,3 +354,94 @@ def operator_stats(
         "by_partner": by_partner,
         "by_day": by_day,
     }
+
+
+# ---------------------------------------------------------------------------
+# Birthdays
+# ---------------------------------------------------------------------------
+
+
+def _birthday_effective_month_day(today: dt.date) -> tuple[int, int]:
+    """
+    Возвращает (month, day) — какие день/месяц считаем «сегодняшним ДР»
+    для матчинга с birth_date.
+    Обычный случай: сам (today.month, today.day).
+    Edge-case високосного года: если сегодня 28 февраля в НЕвисокосный
+    год, дополнительно матчим 29 февраля (для операторов, родившихся
+    29.02). Это делается в `operators_with_birthday_today` через OR-ветку.
+    """
+    return (today.month, today.day)
+
+
+def operators_with_birthday_today(*, today: dt.date | None = None) -> QuerySet[Operator]:
+    """
+    Активные (или стажёры) операторы с ДР сегодня. Год ДР игнорируется.
+
+    Правило 29 февраля: в невисокосный год «29-февральские» именинники
+    празднуют 28 февраля — включаем их в выборку 28-го.
+
+    Inactive операторы исключены — мы не поздравляем уволенных.
+    """
+    if today is None:
+        today = timezone.localdate()
+
+    month, day = today.month, today.day
+    qs = Operator.objects.filter(
+        status__in=(OperatorStatus.ACTIVE, OperatorStatus.TRAINEE),
+        birth_date__isnull=False,
+    )
+
+    day_filter = Q(birth_date__month=month, birth_date__day=day)
+    # 28 февраля в невисокосный год → тянем и «29 фев» именинников.
+    if month == 2 and day == 28 and not _cal.isleap(today.year):
+        day_filter |= Q(birth_date__month=2, birth_date__day=29)
+    return qs.filter(day_filter).order_by("full_name")
+
+
+def operators_with_birthday_today_public(*, today: dt.date | None = None) -> list[dict]:
+    """
+    Тонкий проекция-хелпер для API `birthdays-today` (менеджер-only):
+    возвращает только те поля, что рендерятся на dashboard-карточке.
+    Возраст считается по birth_date.year, но само значение года наружу
+    не отдаём — только `age`.
+    """
+    if today is None:
+        today = timezone.localdate()
+    ops = operators_with_birthday_today(today=today)
+    out: list[dict] = []
+    for op in ops:
+        bd = op.birth_date
+        # На всякий случай — не должно быть None, но защита от гонок.
+        if bd is None:
+            continue
+        age = _age_years(bd, today)
+        out.append(
+            {
+                "operator_id": op.id,
+                "full_name": op.full_name,
+                "phone": op.phone or "",
+                "age": age,
+                "status": op.status,
+            }
+        )
+    return out
+
+
+def _age_years(birth_date: dt.date, today: dt.date) -> int:
+    """
+    Полное число лет на сегодня. Для 29-февральских именинников в
+    невисокосный год трактуем «сегодняшний ДР» как 28 февраля.
+    Никогда не возвращаем отрицательное — если birth_date почему-то
+    в будущем (data-glitch), возвращаем 0.
+    """
+    if birth_date > today:
+        return 0
+    age = today.year - birth_date.year
+    # Точный порог: если день/месяц ДР ещё не наступил в этом году —
+    # минус один. Для 29.02 в невисокосный: считаем ДР наступившим 28.02.
+    bd_month, bd_day = birth_date.month, birth_date.day
+    if bd_month == 2 and bd_day == 29 and not _cal.isleap(today.year):
+        bd_month, bd_day = 2, 28
+    if (today.month, today.day) < (bd_month, bd_day):
+        age -= 1
+    return max(0, age)

@@ -9,10 +9,14 @@ from .apis import (
     OperatorPlanApi,
     OperatorReactivateApi,
     OperatorStatsApi,
+    OperatorsBirthdayTodayApi,
 )
 
 urlpatterns = [
     path("", OperatorListCreateApi.as_view()),
+    # NB: конкретные пути ДОЛЖНЫ идти ДО `<int:pk>/`, иначе Django/DRF
+    # съест «birthdays-today» как pk и упадёт с 404.
+    path("birthdays-today/", OperatorsBirthdayTodayApi.as_view()),
     path("<int:pk>/", OperatorDetailApi.as_view()),
     path("<int:pk>/stats/", OperatorStatsApi.as_view()),
     path("<int:pk>/plan/", OperatorPlanApi.as_view()),

@@ -1,0 +1,13 @@
+[Unit]
+Description=naffAI birthday notify — daily at 00:00 Asia/Tashkent
+# 00:00 Tashkent = 19:00 UTC previous day.
+# Prefer OnCalendar with explicit timezone so systemd handles TZ math
+# and DST edge cases without our help.
+
+[Timer]
+OnCalendar=*-*-* 00:00:00 Asia/Tashkent
+Persistent=true
+Unit=naff-birthday-notify.service
+
+[Install]
+WantedBy=timers.target

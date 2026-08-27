@@ -8,6 +8,7 @@ import { HelperButton } from "../helper/HelperButton";
 import CheckinGate from "../CheckinGate";
 import CheckoutBackfillGate from "../CheckoutBackfillGate";
 import CheckoutReminderBanner from "../CheckoutReminderBanner";
+import BirthdayCelebration from "../BirthdayCelebration";
 import { useT } from "../../lib/i18n";
 import { useMe } from "../../hooks/useMe";
 
@@ -135,6 +136,10 @@ export default function AppShell() {
             для роли operator: sits в самом верху контентной колонки,
             под Header'ом, чтобы был замечен но не занимал экран. */}
         {role === "operator" && <CheckoutReminderBanner />}
+        {/* Birthday celebration — only visible when оператор именинник
+            (is_birthday_today=true из /api/auth/me/). Manager/team-lead
+            operator FK не имеют → флаг всегда false → компонент null. */}
+        {role === "operator" && <BirthdayCelebration />}
         <main
           className="flex-1"
           style={{ padding: "30px 40px 70px" }}

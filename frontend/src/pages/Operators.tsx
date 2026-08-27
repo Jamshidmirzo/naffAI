@@ -31,6 +31,8 @@ interface OperatorRow {
   phone: string | null;
   status: OperatorStatus;
   hired_at: string | null;
+  /** ISO YYYY-MM-DD; null пока не заполнено. */
+  birth_date: string | null;
   plan_target: string | null;
   plan_actual: string | null;
   sticker?: { emoji: string | null; is_rare: boolean } | null;
@@ -40,6 +42,30 @@ interface OperatorRow {
   blocking_gate_enabled?: boolean;
   require_checkin_enabled?: boolean;
   forgotten_checkouts_count?: number;
+}
+
+/**
+ * True если у оператора сегодня день рождения. Год ДР игнорируем —
+ * матчим только day+month. Локально (не по backend'у), чтобы бейдж
+ * появлялся мгновенно после редактирования, без ре-фетча /operators/.
+ * 29 фев в невисокосный год → празднуем 28 фев (симметрия с backend
+ * selector'ом `operators_with_birthday_today`).
+ */
+function isBirthdayToday(iso: string | null): boolean {
+  if (!iso) return false;
+  const bd = new Date(iso);
+  if (Number.isNaN(bd.getTime())) return false;
+  const today = new Date();
+  const bdM = bd.getUTCMonth() + 1;
+  const bdD = bd.getUTCDate();
+  const tM = today.getMonth() + 1;
+  const tD = today.getDate();
+  if (bdM === tM && bdD === tD) return true;
+  // 29 фев → в невисокосный год празднуем 28 фев
+  const yr = today.getFullYear();
+  const isLeap = (yr % 4 === 0 && yr % 100 !== 0) || yr % 400 === 0;
+  if (bdM === 2 && bdD === 29 && !isLeap && tM === 2 && tD === 28) return true;
+  return false;
 }
 
 // Порог красного бейджа «Забыл выйти» — 5 auto_closed без backfill за 30 дней.
@@ -110,6 +136,7 @@ export default function Operators() {
     full_name: string;
     phone: string;
     hired_at: string;
+    birth_date: string;
     note: string;
     status: OperatorStatus;
     blocking_gate_enabled: boolean;
@@ -187,6 +214,7 @@ export default function Operators() {
       full_name: string;
       phone: string;
       hired_at: string;
+      birth_date: string;
       note: string;
       status: OperatorStatus;
       blocking_gate_enabled: boolean;
@@ -196,6 +224,7 @@ export default function Operators() {
         full_name: body.full_name,
         phone: body.phone || null,
         hired_at: body.hired_at || null,
+        birth_date: body.birth_date || null,
         note: body.note || "",
         status: body.status,
         blocking_gate_enabled: body.blocking_gate_enabled,
@@ -338,6 +367,15 @@ export default function Operators() {
                             {o.sticker.emoji}
                           </span>
                         )}
+                        {isBirthdayToday(o.birth_date) && (
+                          <span
+                            className="text-[15px] leading-none shrink-0"
+                            title={t("birthday.list_badge_title")}
+                            aria-label={t("birthday.list_badge_title")}
+                          >
+                            🎂
+                          </span>
+                        )}
                         {/* «Забыл выйти» бейдж — красный при ≥5 за 30
                             дней (см. FORGOTTEN_ALERT_THRESHOLD), серый
                             при 1-4. При 0 скрыт, чтобы не шумел. */}
@@ -399,11 +437,31 @@ export default function Operators() {
                   {initials(selected.full_name)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[19px] font-semibold tracking-tight truncate">
-                    {selected.full_name}
+                  <div className="text-[19px] font-semibold tracking-tight truncate flex items-center gap-2">
+                    <span className="truncate">{selected.full_name}</span>
+                    {isBirthdayToday(selected.birth_date) && (
+                      <span
+                        title={t("birthday.list_badge_title")}
+                        aria-label={t("birthday.list_badge_title")}
+                        className="shrink-0"
+                      >
+                        🎂
+                      </span>
+                    )}
                   </div>
                   <div className="text-[13px] text-muted mt-0.5 truncate">
                     {selected.phone || t("leads.no_phone")}
+                    {selected.birth_date && (
+                      <>
+                        {" · "}
+                        {t("op_detail.birthday_manager_prefix")}{" "}
+                        {new Date(selected.birth_date).toLocaleDateString("ru-RU", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "numeric",
+                        })}
+                      </>
+                    )}
                   </div>
                   <div className="mt-2">
                     <StatusBadge tone={selected.status === "active" ? "hot" : "neutral"}>
@@ -467,6 +525,7 @@ export default function Operators() {
                           full_name: selected.full_name,
                           phone: selected.phone || "",
                           hired_at: selected.hired_at || "",
+                          birth_date: selected.birth_date || "",
                           note: (selected as any).note || "",
                           status: selected.status,
                           blocking_gate_enabled: !!selected.blocking_gate_enabled,
@@ -556,6 +615,20 @@ export default function Operators() {
                 value={editModal.hired_at ? editModal.hired_at.slice(0, 10) : ""}
                 onChange={(v) => setEditModal({ ...editModal, hired_at: v })}
                 ariaLabel={t("op_edit.hired_at")}
+                allowClear
+              />
+            </div>
+            <div>
+              <div className="nf-col mb-1.5">
+                {t("op_edit.birth_date")}
+                <span className="ml-1 text-muted" style={{ fontWeight: 400 }}>
+                  · {t("op_edit.birth_date_hint")}
+                </span>
+              </div>
+              <DateInput
+                value={editModal.birth_date ? editModal.birth_date.slice(0, 10) : ""}
+                onChange={(v) => setEditModal({ ...editModal, birth_date: v })}
+                ariaLabel={t("op_edit.birth_date")}
                 allowClear
               />
             </div>

@@ -530,6 +530,62 @@ def operator_self_update_preferences(
 
 
 @transaction.atomic
+def operator_self_update_birth_date(
+    *,
+    operator: Operator,
+    user=None,
+    birth_date=None,
+) -> Operator:
+    """
+    Operator-facing update своей даты рождения.
+
+    Отдельный сервис (а не общий `operator_update`), потому что:
+      1. Оператор не имеет права трогать другие поля модели —
+         сериалайзер даёт наружу только `birth_date` через `PATCH /me/`;
+      2. Меняя ДР, сбрасываем `birthday_notified_on` в None только если
+         дата сдвинулась на другой день/месяц — иначе теряется
+         idempotency-guard cron'a (перестанет считать «уже поздравил»).
+      3. Audit-log-ем изменение с полем `self_birth_date` — легко
+         фильтровать в аудите (кто менял ДР, было/стало).
+
+    `birth_date=None` очищает дату (оператор передумал делиться).
+    """
+    old = operator.birth_date
+    if old == birth_date:
+        return operator
+
+    operator.birth_date = birth_date
+    # Если день/месяц поменялись — сбрасываем idempotency guard.
+    # Если это тот же day/month, но другой год — не сбрасываем, cron уже
+    # поздравил на этот день, повторно не надо.
+    same_day = (
+        old is not None
+        and birth_date is not None
+        and old.month == birth_date.month
+        and old.day == birth_date.day
+    )
+    if not same_day:
+        operator.birthday_notified_on = None
+        operator.save(update_fields=["birth_date", "birthday_notified_on", "updated_at"])
+    else:
+        operator.save(update_fields=["birth_date", "updated_at"])
+
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="operators.Operator",
+        entity_id=operator.id,
+        changes={
+            "self_birth_date": {
+                "old": old.isoformat() if old else None,
+                "new": birth_date.isoformat() if birth_date else None,
+            }
+        },
+    )
+    return operator
+
+
+@transaction.atomic
 def operator_plan_upsert(*, operator: Operator, year: int, month: int, target_amount, user=None) -> OperatorMonthlyPlan:
     plan, created = OperatorMonthlyPlan.objects.update_or_create(
         operator=operator, year=year, month=month,

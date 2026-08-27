@@ -9,6 +9,7 @@ import { useLang } from "../store/lang";
 import { tgStatus, tgRevoke, TG_STATUS_KEY } from "../lib/tgUserclient";
 import TgConnectWizard from "../components/TgConnectWizard";
 import { StickerPicker } from "../components/StickerPicker";
+import DateInput from "../components/DateInput";
 import {
   Button,
   Eyebrow,
@@ -29,6 +30,8 @@ type Me = {
   operator_id: number | null;
   operator_name: string | null;
   telegram_user_id: number | null;
+  birth_date: string | null;
+  is_birthday_today: boolean;
 };
 
 type Preferences = {
@@ -330,6 +333,21 @@ export default function Profile() {
           </section>
         );
       })()}
+
+      {/* --- Мои данные (только оператор) --- */}
+      {me.data?.operator_id && (
+        <BirthDateSection
+          currentBirthDate={me.data.birth_date ?? null}
+          onSaved={() => {
+            // Инвалидируем оба ключа /auth/me — тот, что использует
+            // Profile.tsx (["me"]), и общий (["auth","me"] в useMe),
+            // чтобы AppShell → BirthdayCelebration сразу увидел
+            // is_birthday_today=true, если оператор ввёл сегодняшнюю дату.
+            qc.invalidateQueries({ queryKey: ["me"] });
+            qc.invalidateQueries({ queryKey: ["auth", "me"] });
+          }}
+        />
+      )}
 
       {/* --- Settings --- */}
       <section
@@ -681,6 +699,112 @@ function TelegramBotSection({
         <div className="mt-4">
           <Button onClick={() => genMut.mutate()} disabled={genMut.isPending}>
             {genMut.isPending ? t("common.loading") : t("profile.tg_notif_get_code")}
+          </Button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BirthDateSection({
+  currentBirthDate,
+  onSaved,
+}: {
+  currentBirthDate: string | null;
+  onSaved: () => void;
+}) {
+  const t = useT();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState<string>(currentBirthDate || "");
+
+  useEffect(() => {
+    setValue(currentBirthDate || "");
+  }, [currentBirthDate]);
+
+  const save = useMutation({
+    mutationFn: (birthDate: string | null) =>
+      api.patch("/auth/me/", { birth_date: birthDate }).then((r) => r.data),
+    onSuccess: () => {
+      toast.success(t("profile.saved"));
+      setEditing(false);
+      onSaved();
+    },
+    onError: (e: unknown) => {
+      const detail =
+        (e as { response?: { data?: { birth_date?: string } } })?.response?.data
+          ?.birth_date || t("profile.settings_save_failed");
+      toast.error(String(detail));
+    },
+  });
+
+  const currentDisplay = currentBirthDate
+    ? new Date(currentBirthDate).toLocaleDateString("ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+    : null;
+
+  return (
+    <section
+      className="nf-card animate-nfFadeUp"
+      style={{ padding: "22px 26px", animationDelay: "0.04s" }}
+    >
+      <Eyebrow>{t("profile.section_personal")}</Eyebrow>
+      <div className="text-[15px] font-semibold mt-2">{t("profile.birth_date_title")}</div>
+      <p className="text-[13px] text-muted mt-1.5 max-w-md">
+        {t("profile.birth_date_hint")}
+      </p>
+
+      {!editing ? (
+        <div className="mt-4 flex items-center gap-3 flex-wrap">
+          <div
+            className="rounded-xl px-4 py-2 text-[14px] font-medium"
+            style={{
+              background: "var(--faint)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            {currentDisplay ?? t("profile.birth_date_empty")}
+          </div>
+          <Button variant="ghost" onClick={() => setEditing(true)}>
+            {currentDisplay ? t("common.edit") : t("common.select")}
+          </Button>
+          {currentDisplay && (
+            <Button
+              variant="ghost"
+              onClick={() => save.mutate(null)}
+              disabled={save.isPending}
+            >
+              {t("common.remove")}
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="mt-4 flex items-center gap-3 flex-wrap">
+          <div style={{ maxWidth: 240 }}>
+            <DateInput
+              value={value}
+              onChange={setValue}
+              ariaLabel={t("profile.birth_date_title")}
+              allowClear
+            />
+          </div>
+          <Button
+            onClick={() => save.mutate(value || null)}
+            disabled={save.isPending}
+          >
+            {save.isPending ? t("common.saving") : t("common.save")}
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setValue(currentBirthDate || "");
+              setEditing(false);
+            }}
+            disabled={save.isPending}
+          >
+            {t("common.cancel")}
           </Button>
         </div>
       )}

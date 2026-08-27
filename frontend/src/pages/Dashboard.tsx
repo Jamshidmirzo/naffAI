@@ -11,6 +11,7 @@ import {
   type AttentionCounters,
 } from "../components/dashboard/RequiresAttentionCard";
 import { TopOperators } from "../components/dashboard/TopOperators";
+import BirthdaysTodayCard from "../components/dashboard/BirthdaysTodayCard";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
 
@@ -216,6 +217,9 @@ export default function Dashboard() {
           title={t("dash.attention_title")}
         />
       </section>
+
+      {/* --- Birthdays today (renders only when non-empty) --- */}
+      <BirthdaysTodayCard />
 
       {/* --- BOTTOM ROW: top operators leaderboard --- */}
       <section>
