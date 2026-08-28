@@ -1593,3 +1593,210 @@ def lead_unpostpone(*, lead: Lead, operator: Operator, user=None) -> Lead:
     )
     _schedule_writeback(lead.id, comment="Возвращён в работу")
     return lead
+
+
+# ---- Retry-export to Google Sheets ---------------------------------------
+
+
+# Module-level import so tests can `patch("apps.leads.services.GoogleSheetsClient")`
+# without reaching into the integration package. Both symbols are safe to
+# import at load — the client constructor is what performs the auth work.
+from .integrations.google_sheets.client import (  # noqa: E402
+    GoogleSheetsClient,
+    GoogleSheetsUnavailable,
+)
+
+
+class RetryExportBusy(ApplicationError):
+    """Another retry-export is currently running — caller should back off."""
+
+
+class RetryExportMisconfigured(ApplicationError):
+    """No spreadsheet is configured and no active SheetSource exists."""
+
+
+class RetryExportUpstreamError(ApplicationError):
+    """Google Sheets API returned a non-2xx or was unreachable."""
+
+
+_RETRY_EXPORT_LOCK_KEY = "retry_export:running"
+_RETRY_EXPORT_LOCK_TTL_SEC = 60
+
+
+def _retry_export_target() -> tuple[str, str]:
+    """
+    Resolve `(spreadsheet_id, tab_name)` for retry-export.
+
+    Priority:
+      1. SystemSetting.retry_export_spreadsheet_id (if set).
+      2. First active SheetSource.spreadsheet_id.
+    Raises `RetryExportMisconfigured` if neither is available.
+    """
+    from apps.system_settings.models import SystemSetting
+
+    from .models import SheetSource
+
+    setting = SystemSetting.get_solo()
+    tab_name = (setting.retry_export_tab_name or "Retry SMS+TG").strip() or "Retry SMS+TG"
+
+    sid = (setting.retry_export_spreadsheet_id or "").strip()
+    if sid:
+        return sid, tab_name
+
+    fallback = (
+        SheetSource.objects.filter(active=True)
+        .exclude(spreadsheet_id="")
+        .order_by("id")
+        .first()
+    )
+    if not fallback:
+        raise RetryExportMisconfigured(
+            "Не настроен ни `SystemSetting.retry_export_spreadsheet_id`, ни один "
+            "активный SheetSource — некуда выгружать retry-лист."
+        )
+    return fallback.spreadsheet_id, tab_name
+
+
+def _retry_export_build_values(candidates) -> list[list[str]]:
+    """Serialize the queryset into a 2-D array suitable for Sheets update."""
+    from django.conf import settings
+
+    from .models import LeadStatusLabel
+
+    label_map = {
+        code: label
+        for code, label in LeadStatusLabel.objects.filter(
+            code__in=("sms_jonatildi", "contacted_telegram")
+        ).values_list("code", "label_ru")
+    }
+
+    public_base = (getattr(settings, "PUBLIC_APP_URL", "") or "https://naff.flek.uz").rstrip("/")
+
+    header = [
+        "Дата статуса",
+        "Телефон",
+        "Имя",
+        "Статус",
+        "Оператор",
+        "Комментарий",
+        "Sheet источник",
+        "CRM ссылка",
+    ]
+
+    rows: list[list[str]] = [header]
+    for lead in candidates:
+        updated_local = timezone.localtime(lead.updated_at)
+        date_str = updated_local.strftime("%d.%m %H:%M")
+        status_label = label_map.get(lead.status) or lead.status
+        operator_name = lead.operator.full_name if lead.operator_id else ""
+        # Prefer the sheet-imported comment (metadata.comment_text) if
+        # present, fall back to whatever the operator typed on last
+        # status change (stored on the LeadAssignment reason).
+        metadata = lead.metadata or {}
+        comment = (
+            metadata.get("comment_text")
+            or metadata.get("comment")
+            or metadata.get("last_comment")
+            or ""
+        )
+        sheet_source_name = lead.sheet_source.name if lead.sheet_source_id else ""
+        crm_link = f"{public_base}/leads/{lead.id}"
+
+        rows.append(
+            [
+                date_str,
+                lead.phone or lead.phone_raw or "",
+                lead.full_name or "",
+                str(status_label),
+                operator_name,
+                str(comment),
+                sheet_source_name,
+                crm_link,
+            ]
+        )
+    return rows
+
+
+def retry_export_to_sheet() -> dict:
+    """
+    Snapshot every lead in ('sms_jonatildi','contacted_telegram') into a
+    dedicated Google Sheet tab. Existing tab content is fully replaced.
+
+    Concurrency-safe: guarded by a 60 s Redis lock (`cache.add`), so two
+    parallel button-clicks don't race the Sheets API. The second caller
+    gets `RetryExportBusy` — the API translates that to HTTP 409.
+
+    Returns:
+        {
+          "count":           int,
+          "spreadsheet_id":  str,
+          "tab_name":        str,
+          "gid":             int,
+          "url":             str,   # deep link to that tab
+          "exported_at":     ISO8601 str
+        }
+    """
+    from django.core.cache import cache
+
+    from .selectors import retry_export_candidates
+
+    lock_acquired = cache.add(
+        _RETRY_EXPORT_LOCK_KEY, "1", timeout=_RETRY_EXPORT_LOCK_TTL_SEC
+    )
+    if not lock_acquired:
+        raise RetryExportBusy(
+            "Экспорт уже формируется — повторите через 30 секунд."
+        )
+
+    try:
+        spreadsheet_id, tab_name = _retry_export_target()
+        candidates = list(retry_export_candidates())
+        values = _retry_export_build_values(candidates)
+
+        try:
+            client = GoogleSheetsClient()
+        except GoogleSheetsUnavailable as exc:
+            raise RetryExportUpstreamError(
+                f"Google Sheets недоступен: {exc}"
+            ) from exc
+
+        try:
+            gid = client.ensure_tab(spreadsheet_id, tab_name)
+            client.overwrite_tab(spreadsheet_id, tab_name, values)
+        except Exception as exc:
+            # httpx / auth errors bubble up as domain exception so the
+            # API layer maps them to 502-ish 500 with a real message.
+            logger.exception("retry_export: Sheets API call failed")
+            raise RetryExportUpstreamError(
+                f"Ошибка при записи в Google Sheets: {exc}"
+            ) from exc
+
+        exported_at = timezone.now()
+        url = (
+            f"https://docs.google.com/spreadsheets/d/"
+            f"{spreadsheet_id}/edit#gid={gid}"
+        )
+
+        audit_log_create(
+            user=None,
+            action=AuditAction.UPDATE,
+            entity="leads.RetryExport",
+            entity_id=0,
+            changes={
+                "spreadsheet_id": spreadsheet_id,
+                "tab_name": tab_name,
+                "count": len(candidates),
+            },
+            comment=f"Retry-export: {len(candidates)} лидов",
+        )
+
+        return {
+            "count": len(candidates),
+            "spreadsheet_id": spreadsheet_id,
+            "tab_name": tab_name,
+            "gid": gid,
+            "url": url,
+            "exported_at": exported_at.isoformat(),
+        }
+    finally:
+        cache.delete(_RETRY_EXPORT_LOCK_KEY)

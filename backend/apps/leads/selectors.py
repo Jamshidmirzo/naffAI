@@ -1073,6 +1073,27 @@ def alias_lookup(alias_name: str) -> OperatorSheetAlias | None:
     return OperatorSheetAlias.objects.filter(alias_name__iexact=alias_name.strip()).first()
 
 
+# ---- Retry-export candidates ---------------------------------------------
+
+RETRY_EXPORT_STATUSES = ("sms_jonatildi", "contacted_telegram")
+
+
+def retry_export_candidates() -> QuerySet[Lead]:
+    """
+    Все лиды в статусах `sms_jonatildi` + `contacted_telegram` —
+    целевой пул для ручного retry-export'а в Google Sheets.
+
+    Порядок — `-updated_at`, чтобы менеджер в свежесозданном tab'е
+    видел последние по времени смены статуса сверху.
+    """
+    return (
+        Lead.objects
+        .filter(status__in=RETRY_EXPORT_STATUSES)
+        .select_related("operator", "sheet_source")
+        .order_by("-updated_at")
+    )
+
+
 # ---- Telegram link cache --------------------------------------------------
 
 

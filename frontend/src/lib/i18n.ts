@@ -95,6 +95,14 @@ const STRINGS: Lookup = {
     "leads_stats.d_created": "Пришло",
     "leads_stats.d_won": "Продано",
     "leads_stats.d_lost": "Потеряно",
+    "leads_stats.retry_export.button": "Сформировать retry-лист",
+    "leads_stats.retry_export.pending": "Формируется…",
+    "leads_stats.retry_export.hint":
+      "Снимок всех лидов в статусах «SMS отправлено» и «TG'га боғланди» в отдельный tab Google Sheets — для повторной раздачи.",
+    "leads_stats.retry_export.success": "Экспортировано {n} лидов",
+    "leads_stats.retry_export.open": "Открыть",
+    "leads_stats.retry_export.busy":
+      "Экспорт уже формируется, подождите ~30 секунд.",
     "nav.reports": "Отчёты",
     "nav.leaderboard": "Табло",
     "nav.screen": "TV-экран",
@@ -2267,6 +2275,14 @@ const STRINGS: Lookup = {
     "leads_stats.d_created": "Keldi",
     "leads_stats.d_won": "Sotildi",
     "leads_stats.d_lost": "Yo'qotildi",
+    "leads_stats.retry_export.button": "Retry ro'yxatini yaratish",
+    "leads_stats.retry_export.pending": "Yaratilyapti…",
+    "leads_stats.retry_export.hint":
+      "«SMS jo'natildi» va «TG'ga bog'landi» statusidagi barcha lidlarni alohida Google Sheets tab'iga chiqarish — qayta taqsimlash uchun.",
+    "leads_stats.retry_export.success": "{n} ta lid eksport qilindi",
+    "leads_stats.retry_export.open": "Ochish",
+    "leads_stats.retry_export.busy":
+      "Eksport allaqachon bajarilmoqda, ~30 soniya kuting.",
     "nav.reports": "Hisobotlar",
     "nav.leaderboard": "Tablo",
     "nav.screen": "TV-ekran",

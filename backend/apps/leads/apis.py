@@ -50,6 +50,9 @@ from .selectors import (
     telegram_link_for_phone,
 )
 from .services import (
+    RetryExportBusy,
+    RetryExportMisconfigured,
+    RetryExportUpstreamError,
     lead_convert_to_sale,
     lead_create,
     lead_postpone,
@@ -59,6 +62,7 @@ from .services import (
     leads_bulk_reassign,
     morning_distribute_leads,
     operator_alias_upsert,
+    retry_export_to_sheet,
     sheet_source_upsert,
     telegram_link_upsert,
 )
@@ -1098,3 +1102,44 @@ class LeadStatusLabelDetailApi(APIView):
 
 def _parse_dt(value):
     return parse_datetime(value) if value else None
+
+
+# ---- Retry-export --------------------------------------------------------
+
+
+class RetryExportApi(APIView):
+    """
+    POST /api/leads/retry-export/
+
+    Snapshot всех лидов в статусах `sms_jonatildi` + `contacted_telegram`
+    в отдельный tab Google Sheet'а (target из SystemSetting, fallback —
+    первый активный SheetSource).
+
+    Идемпотентно перезаписывает содержимое tab'а на каждый вызов.
+    Concurrency-safe: два одновременных вызова — второй получает 409.
+    """
+
+    permission_classes = [IsManager]
+
+    def post(self, request):
+        try:
+            result = retry_export_to_sheet()
+        except RetryExportBusy as exc:
+            resp = Response(
+                {"detail": exc.message},
+                status=status.HTTP_409_CONFLICT,
+            )
+            resp["Retry-After"] = "30"
+            return resp
+        except RetryExportMisconfigured as exc:
+            # 500-level: setup is broken, the caller can't fix it via retry.
+            return Response(
+                {"detail": exc.message},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        except RetryExportUpstreamError as exc:
+            return Response(
+                {"detail": exc.message},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response(result, status=status.HTTP_200_OK)

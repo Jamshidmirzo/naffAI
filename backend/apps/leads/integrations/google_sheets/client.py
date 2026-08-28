@@ -32,6 +32,18 @@ class GoogleSheetsUnavailable(Exception):
     """Raised when the client cannot be constructed (missing key, offline, etc.)."""
 
 
+def _idx_to_letter(n: int) -> str:
+    """1 → A, 26 → Z, 27 → AA, 52 → AZ, 53 → BA. Used to compute A1
+    ranges when the caller only knows the column count."""
+    if n <= 0:
+        return "A"
+    out = ""
+    while n > 0:
+        n, r = divmod(n - 1, 26)
+        out = chr(65 + r) + out
+    return out
+
+
 class GoogleSheetsClient:
     """
     Minimal service-account-authorised Google Sheets client.
@@ -147,6 +159,100 @@ class GoogleSheetsClient:
         )
         r.raise_for_status()
         return r.json()
+
+    def ensure_tab(self, spreadsheet_id: str, tab_name: str) -> int:
+        """
+        Idempotently ensure a worksheet named `tab_name` exists.
+        Returns the `sheetId` (the gid) of the tab.
+
+        If a tab with the same title is already present — return its
+        sheetId without touching the spreadsheet. Otherwise create one
+        via `spreadsheets.batchUpdate` addSheet request.
+        """
+        meta = self.sheet_metadata(spreadsheet_id)
+        for sheet in meta.get("sheets", []):
+            props = sheet.get("properties", {})
+            if props.get("title") == tab_name:
+                return int(props["sheetId"])
+
+        token = self._access_token()
+        url = f"{_SHEETS_API_ROOT}/{spreadsheet_id}:batchUpdate"
+        payload = {
+            "requests": [
+                {"addSheet": {"properties": {"title": tab_name}}}
+            ]
+        }
+        r = httpx.post(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            json=payload,
+            timeout=15.0,
+        )
+        r.raise_for_status()
+        data = r.json()
+        replies = data.get("replies") or []
+        if not replies or "addSheet" not in replies[0]:
+            raise RuntimeError(
+                f"Google Sheets addSheet response missing sheetId: {data!r}"
+            )
+        return int(replies[0]["addSheet"]["properties"]["sheetId"])
+
+    def overwrite_tab(
+        self,
+        spreadsheet_id: str,
+        tab_name: str,
+        values: list[list[str]],
+    ) -> None:
+        """
+        Clear the entire tab (`values.clear` on the whole worksheet),
+        then write `values` starting at A1 via `values.update` RAW mode.
+
+        `values` is a 2-D array — inner list per row. Empty rows are
+        allowed but must be present (Google Sheets clears blank cells
+        but leaves untouched rows below the write range intact — the
+        preceding clear handles that case).
+
+        Raises `httpx.HTTPError` on 4xx/5xx — the service wraps this.
+        """
+        from urllib.parse import quote
+
+        safe = tab_name.replace("'", "''")
+        # 1) values.clear — the whole worksheet.
+        token = self._access_token()
+        clear_range = f"'{safe}'"
+        clear_url = (
+            f"{_SHEETS_API_ROOT}/{spreadsheet_id}/values/"
+            f"{quote(clear_range, safe='!:')}:clear"
+        )
+        r_clear = httpx.post(
+            clear_url,
+            headers={"Authorization": f"Bearer {token}"},
+            json={},
+            timeout=30.0,
+        )
+        r_clear.raise_for_status()
+
+        # 2) values.update — write from A1 RAW.
+        if not values:
+            return
+        # Compute the write range: A1:<lastCol><lastRow>
+        cols = max((len(row) for row in values), default=0)
+        last_col = _idx_to_letter(cols) if cols > 0 else "A"
+        last_row = len(values)
+        write_range = f"'{safe}'!A1:{last_col}{last_row}"
+        token = self._access_token()
+        write_url = (
+            f"{_SHEETS_API_ROOT}/{spreadsheet_id}/values/"
+            f"{quote(write_range, safe='!:')}"
+        )
+        r_write = httpx.put(
+            write_url,
+            params={"valueInputOption": "RAW"},
+            headers={"Authorization": f"Bearer {token}"},
+            json={"values": values},
+            timeout=60.0,
+        )
+        r_write.raise_for_status()
 
     def get_rows(
         self, spreadsheet_id: str, worksheet_name: str

@@ -242,6 +242,14 @@ TELEGRAM_GROUP_ID = config("TELEGRAM_GROUP_ID", default="")
 # (`sync_sheets_leads` will refuse to run instead of crashing).
 GOOGLE_SHEETS_CREDENTIALS_JSON = config("GOOGLE_SHEETS_CREDENTIALS_JSON", default="")
 
+# --- Public app URL ---
+# Base URL of the CRM used to build absolute deep links (e.g. the
+# «CRM ссылка» column in the retry-export Google Sheet tab or share
+# links surfaced in bot notifications). Defaults to prod so a fresh
+# .env doesn't leak `localhost` into the sheet — override to point at
+# demo or dev instances.
+PUBLIC_APP_URL = config("PUBLIC_APP_URL", default="https://naff.flek.uz").rstrip("/")
+
 # --- Callback reminder policy ---
 # A callback is "overdue" (and blocks the operator from receiving new leads
 # via round-robin) once `remind_at + CALLBACK_OVERDUE_GRACE_MINUTES` has passed.

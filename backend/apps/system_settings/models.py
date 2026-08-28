@@ -31,6 +31,26 @@ class SystemSetting(models.Model):
             "поведение «спец-лиды блокируют раздачу»."
         ),
     )
+    retry_export_spreadsheet_id = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text=(
+            "ID Google Sheet, куда экспортируются лиды со статусами "
+            "sms_jonatildi + contacted_telegram по кнопке «Сформировать "
+            "retry-лист». Если пусто — берётся `spreadsheet_id` первого "
+            "активного SheetSource."
+        ),
+    )
+    retry_export_tab_name = models.CharField(
+        max_length=100,
+        default="Retry SMS+TG",
+        help_text=(
+            "Название tab'а внутри retry-export spreadsheet'а. Создаётся "
+            "автоматически на первом экспорте; при повторном экспорте "
+            "содержимое tab'а полностью перезаписывается."
+        ),
+    )
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,

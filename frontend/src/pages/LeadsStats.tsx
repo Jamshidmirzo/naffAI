@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Calendar } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Calendar, FileSpreadsheet } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -15,6 +15,8 @@ import {
 } from "recharts";
 
 import { api } from "../lib/api";
+import { apiErrorMessage, type ApiError } from "../lib/api-types";
+import { toast } from "../components/ui";
 import { useT } from "../lib/i18n";
 
 type StatusRow = {
@@ -133,6 +135,41 @@ export default function LeadsStats() {
         .then((r) => r.data),
   });
 
+  // Retry-export: снапшот всех лидов в sms_jonatildi + contacted_telegram
+  // в отдельный tab Google Sheet'а. Кнопка в шапке. При успехе toast с
+  // action-кнопкой «Открыть», при 409 (уже формируется) — info-toast.
+  interface RetryExportResponse {
+    count: number;
+    spreadsheet_id: string;
+    tab_name: string;
+    gid: number;
+    url: string;
+    exported_at: string;
+  }
+  const retryExportMut = useMutation({
+    mutationFn: () =>
+      api
+        .post<RetryExportResponse>("/leads/retry-export/")
+        .then((r) => r.data),
+    onSuccess: (d) => {
+      toast.success(t("leads_stats.retry_export.success", { n: d.count }), {
+        action: {
+          label: t("leads_stats.retry_export.open"),
+          onClick: () => window.open(d.url, "_blank", "noopener"),
+        },
+        duration: 8000,
+      });
+    },
+    onError: (err: unknown) => {
+      const status = (err as ApiError)?.response?.status;
+      if (status === 409) {
+        toast.message(t("leads_stats.retry_export.busy"));
+      } else {
+        toast.error(apiErrorMessage(err));
+      }
+    },
+  });
+
   const data = q.data;
 
   const statusChartData = useMemo(
@@ -202,6 +239,24 @@ export default function LeadsStats() {
               />
             </div>
           )}
+          {/* Retry-export: снимок SMS+TG лидов в отдельный tab Sheets */}
+          <button
+            type="button"
+            onClick={() => retryExportMut.mutate()}
+            disabled={retryExportMut.isPending}
+            title={t("leads_stats.retry_export.hint")}
+            className="ml-1 px-3 py-1.5 rounded-full text-[12.5px] font-medium border transition flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-wait"
+            style={{
+              borderColor: "var(--border)",
+              background: "var(--surface)",
+              color: "var(--fg)",
+            }}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            {retryExportMut.isPending
+              ? t("leads_stats.retry_export.pending")
+              : t("leads_stats.retry_export.button")}
+          </button>
         </div>
       </div>
 
