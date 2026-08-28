@@ -629,6 +629,10 @@ def lead_stats_snapshot(
                 "calls_total": calls_info["calls_total"],
                 "unique_leads_touched": calls_info["unique_leads_touched"],
                 "conversion_pct": round(w * 100.0 / t, 1) if t else 0.0,
+                # Полное распределение по статусам среди touched-лидов
+                # оператора: {status_code: count}. Пустая строка "" в ключе
+                # означает лид без статуса (крайний случай).
+                "by_status": {k: int(v) for k, v in statuses.items() if k},
             }
         )
 
@@ -658,6 +662,7 @@ def lead_stats_snapshot(
                     "calls_total": calls_info["calls_total"],
                     "unique_leads_touched": calls_info["unique_leads_touched"],
                     "conversion_pct": 0.0,
+                    "by_status": {},
                 }
             )
 

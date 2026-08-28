@@ -1,0 +1,20 @@
+import { chromium } from "playwright";
+const b = await chromium.launch();
+const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
+const p = await ctx.newPage();
+await p.goto("http://localhost:5180/login");
+await p.evaluate(() => {
+  localStorage.setItem("naffai_token", "e37b681e0e1779dcfea94d295601bf504a28610e");
+  localStorage.setItem("naffai_username", "qa");
+  localStorage.setItem("naffai_role", "manager");
+  localStorage.setItem("naffai_theme", "light");
+  document.documentElement.setAttribute("data-nf", "light");
+});
+await p.goto("http://localhost:5180/leads", { waitUntil: "networkidle" });
+await p.waitForTimeout(1500);
+await p.screenshot({ path: "/tmp/naff-qa/leads-seeded.png", fullPage: true });
+await p.goto("http://localhost:5180/analytics", { waitUntil: "networkidle" });
+await p.waitForTimeout(2000);
+await p.screenshot({ path: "/tmp/naff-qa/analytics-seeded.png", fullPage: true });
+await b.close();
+console.log("done");

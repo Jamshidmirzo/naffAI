@@ -1,0 +1,15 @@
+import { chromium } from "playwright";
+const b = await chromium.launch();
+const p = await b.newPage();
+p.on("console", (m) => m.type()==='error' && console.log("ERR:", m.text()));
+p.on("request", (r) => r.url().includes("/api/") && console.log("REQ:", r.method(), r.url()));
+p.on("response", (r) => r.url().includes("/api/") && console.log("RES:", r.status(), r.url()));
+await p.goto("http://localhost:5180/login");
+await p.waitForTimeout(1000);
+await p.fill('input[autocomplete="username"]', "qa");
+await p.fill('input[autocomplete="current-password"]', "qa12345");
+await p.click('button[type="submit"]');
+await p.waitForTimeout(2500);
+console.log("URL after:", p.url());
+await p.screenshot({ path: "/tmp/naff-qa/probe-login.png", fullPage: true });
+await b.close();

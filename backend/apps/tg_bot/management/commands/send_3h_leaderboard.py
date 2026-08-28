@@ -124,6 +124,17 @@ def _build_report(
         total_sold_lbl = "💰 Всего продаж"
         statuses_label = "📋 Статусы:"
 
+    # Status catalog (code → label+emoji) is on the snapshot's by_status list;
+    # rebuild a fast lookup so we can render per-operator breakdown below.
+    status_meta: dict[str, dict] = {}
+    for s in snapshot.get("by_status") or []:
+        code = s.get("code") or ""
+        if code:
+            status_meta[code] = {
+                "label": (s.get("label_uz") if lang == "uz" else s.get("label_ru")) or code,
+                "emoji": (s.get("emoji") or "").strip(),
+            }
+
     lines = [header, subhdr, "", top_label]
     if not active_rows:
         lines.append(empty_line)
@@ -132,10 +143,21 @@ def _build_report(
             name = (r.get("operator_name") or "—").strip() or "—"
             calls = int(r.get("unique_leads_touched", 0) or 0)
             sold = int(r.get("sold_total", 0) or 0)
-            lines.append(f"{i}. {name} — {calls} {calls_word}, {sold} {sold_word}")
+            lines.append(f"<b>{i}. {name}</b> — {calls} {calls_word}, {sold} {sold_word}")
+            # Per-operator status breakdown (DESC by count).
+            op_statuses = r.get("by_status") or {}
+            sorted_codes = sorted(
+                op_statuses.items(), key=lambda kv: int(kv[1] or 0), reverse=True
+            )
+            for code, cnt in sorted_codes:
+                if int(cnt or 0) <= 0:
+                    continue
+                meta = status_meta.get(code) or {"label": code, "emoji": ""}
+                emoji = f"{meta['emoji']} " if meta["emoji"] else ""
+                lines.append(f"   {emoji}{meta['label']}: <b>{int(cnt)}</b>")
+            lines.append("")  # blank line between operators
 
-    # Statuses breakdown across all leads touched today. Uses the same
-    # `by_status` shape /leads-stats renders. Sorted DESC by count, top 10.
+    # Overall statuses breakdown (across all operators, top 10).
     by_status = snapshot.get("by_status") or []
     status_rows = sorted(
         (s for s in by_status if int(s.get("count", 0) or 0) > 0),
@@ -143,15 +165,14 @@ def _build_report(
         reverse=True,
     )[:10]
     if status_rows:
-        lines.append("")
         lines.append(statuses_label)
         for s in status_rows:
             label = (s.get("label_uz") if lang == "uz" else s.get("label_ru")) or s.get("code") or "—"
             emoji = (s.get("emoji") or "").strip()
             prefix = f"{emoji} " if emoji else "• "
             lines.append(f"{prefix}{label}: <b>{int(s.get('count', 0) or 0)}</b>")
+        lines.append("")
 
-    lines.append("")
     lines.append(f"{total_calls_lbl}: <b>{total_calls}</b>")
     lines.append(f"{total_sold_lbl}: <b>{total_sold}</b>")
     return "\n".join(lines)

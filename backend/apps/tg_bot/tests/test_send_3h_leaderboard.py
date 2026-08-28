@@ -78,8 +78,8 @@ def test_build_report_ru_shape():
     txt = _build_report(snapshot, now=now, lang="ru")
     assert "Оперативная сводка" in txt
     assert "Топ операторов" in txt
-    assert "1. Bonu — 39 обзвонил, 12 продажи" in txt
-    assert "2. Umida — 31 обзвонил, 8 продажи" in txt
+    assert "1. Bonu</b> — 39 обзвонил, 12 продажи" in txt
+    assert "2. Umida</b> — 31 обзвонил, 8 продажи" in txt
     assert "Всего звонков" in txt
     assert "Всего продаж" in txt
 
@@ -94,7 +94,7 @@ def test_build_report_uz_shape():
     txt = _build_report(snapshot, now=now, lang="uz")
     assert "3 soatlik hisobot" in txt
     assert "Eng faol operatorlar" in txt
-    assert "1. Bonu — 3 obzvon, 1 sotuv" in txt
+    assert "1. Bonu</b> — 3 obzvon, 1 sotuv" in txt
     assert "Jami qo'ng'iroqlar" in txt
 
 
@@ -253,5 +253,5 @@ def test_live_send_end_to_end_with_real_activity(_now_working_hour):
     assert send_mock.await_count == 1
     sent_text = send_mock.await_args_list[0].args[1]
     # Bonu did 2 leads, Umida 1 → Bonu ranked #1.
-    assert "1. Bonu — 2 обзвонил" in sent_text
-    assert "2. Umida — 1 обзвонил" in sent_text
+    assert "1. Bonu</b> — 2 обзвонил" in sent_text
+    assert "2. Umida</b> — 1 обзвонил" in sent_text
