@@ -112,6 +112,7 @@ def _build_report(
         sold_word = "sotuv"
         total_calls_lbl = "📞 Jami qo'ng'iroqlar"
         total_sold_lbl = "💰 Jami sotuvlar"
+        statuses_label = "📋 Statuslar:"
     else:
         header = f"📊 <b>Оперативная сводка · {hh_mm}</b>"
         subhdr = f"За сегодня, {day_str}"
@@ -121,6 +122,7 @@ def _build_report(
         sold_word = "продажи"
         total_calls_lbl = "📞 Всего звонков"
         total_sold_lbl = "💰 Всего продаж"
+        statuses_label = "📋 Статусы:"
 
     lines = [header, subhdr, "", top_label]
     if not active_rows:
@@ -131,6 +133,23 @@ def _build_report(
             calls = int(r.get("unique_leads_touched", 0) or 0)
             sold = int(r.get("sold_total", 0) or 0)
             lines.append(f"{i}. {name} — {calls} {calls_word}, {sold} {sold_word}")
+
+    # Statuses breakdown across all leads touched today. Uses the same
+    # `by_status` shape /leads-stats renders. Sorted DESC by count, top 10.
+    by_status = snapshot.get("by_status") or []
+    status_rows = sorted(
+        (s for s in by_status if int(s.get("count", 0) or 0) > 0),
+        key=lambda s: int(s.get("count", 0) or 0),
+        reverse=True,
+    )[:10]
+    if status_rows:
+        lines.append("")
+        lines.append(statuses_label)
+        for s in status_rows:
+            label = (s.get("label_uz") if lang == "uz" else s.get("label_ru")) or s.get("code") or "—"
+            emoji = (s.get("emoji") or "").strip()
+            prefix = f"{emoji} " if emoji else "• "
+            lines.append(f"{prefix}{label}: <b>{int(s.get('count', 0) or 0)}</b>")
 
     lines.append("")
     lines.append(f"{total_calls_lbl}: <b>{total_calls}</b>")
