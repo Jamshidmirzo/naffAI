@@ -12,10 +12,14 @@ Endpoints:
 
 from __future__ import annotations
 
+import datetime as dt
+
 from rest_framework import serializers, status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.attendance.permissions import IsTeamLeadOrManager
 from apps.common.exceptions import ApplicationError
 from apps.leads.selectors import lead_get
 from apps.operators.selectors import operator_get
@@ -27,6 +31,7 @@ from .selectors import (
     callback_get,
     callbacks_due_soon_for_operator,
     callbacks_for_operator,
+    operator_activity_report,
 )
 from .services import (
     call_attempt_log,
@@ -244,3 +249,122 @@ class CallbackSnoozeApi(APIView):
         except ApplicationError as exc:
             return Response({"detail": exc.message, **exc.extra}, status=400)
         return Response(CallbackReminderSerializer(cb).data)
+
+
+# ---- Reports: operator activity ------------------------------------------
+
+
+def _parse_date_range(request) -> tuple[dt.date, dt.date] | Response:
+    """
+    Parse `date_from` / `date_to` from query params. Return Response on
+    error (caller can `if isinstance(result, Response): return result`)
+    or `(date_from, date_to)` tuple on success.
+    """
+    df = request.query_params.get("date_from")
+    dtq = request.query_params.get("date_to")
+    if not df or not dtq:
+        return Response(
+            {"error": "date_from и date_to обязательны (YYYY-MM-DD)"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        date_from = dt.datetime.strptime(df, "%Y-%m-%d").date()
+        date_to = dt.datetime.strptime(dtq, "%Y-%m-%d").date()
+    except ValueError:
+        return Response(
+            {"error": "Неверный формат даты, ожидается YYYY-MM-DD"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return date_from, date_to
+
+
+class OperatorActivityReportApi(APIView):
+    """
+    Manager-facing per-operator activity report.
+
+    GET /api/reports/operator-activity/?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+        [&operator=1,2,3]
+
+    Returns:
+      {
+        "period": {"from": "...", "to": "..."},
+        "rows": [
+          {"operator_id": 51, "operator_name": "...",
+           "unique_leads_touched": 12, "calls_total": 27,
+           "by_status": {"phone_on": 4, "no_answer": 5, ...}},
+          ...
+        ]
+      }
+
+    Not gated by attendance PIN — activity numbers are not as sensitive
+    as attendance/photo data (which stays behind PIN).
+    """
+
+    permission_classes = [IsAuthenticated, IsTeamLeadOrManager]
+
+    def get(self, request):
+        parsed = _parse_date_range(request)
+        if isinstance(parsed, Response):
+            return parsed
+        date_from, date_to = parsed
+
+        operator_ids: list[int] | None = None
+        operator_qp = request.query_params.get("operator")
+        if operator_qp:
+            try:
+                operator_ids = [int(x) for x in operator_qp.split(",") if x.strip()]
+            except ValueError:
+                return Response(
+                    {"error": "operator: список целых чисел через запятую"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        try:
+            report = operator_activity_report(
+                date_from=date_from,
+                date_to=date_to,
+                operator_ids=operator_ids,
+            )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(report, status=status.HTTP_200_OK)
+
+
+class MyActivityReportApi(APIView):
+    """
+    Operator-facing personal activity report.
+
+    GET /api/reports/my-activity/?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+
+    Same shape as OperatorActivityReportApi but hard-scoped to the caller's
+    `profile.operator_id`. Managers hitting this endpoint see their own
+    row *if* they have an operator FK (rare — usually managers have no
+    operator link, in which case we return 400).
+    """
+
+    permission_classes = [IsAuthenticated, IsAuthenticatedAnyRole]
+
+    def get(self, request):
+        profile = getattr(request.user, "profile", None)
+        if not profile or not profile.operator_id:
+            return Response(
+                {"error": "У пользователя не привязан оператор"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        parsed = _parse_date_range(request)
+        if isinstance(parsed, Response):
+            return parsed
+        date_from, date_to = parsed
+
+        try:
+            report = operator_activity_report(
+                date_from=date_from,
+                date_to=date_to,
+                operator_ids=[profile.operator_id],
+            )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(report, status=status.HTTP_200_OK)

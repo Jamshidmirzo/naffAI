@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import {
+  ArrowRight,
   BarChart3,
   Clock,
   Download,
@@ -23,6 +25,11 @@ interface ReportCard {
   meta: string;
   icon: React.ComponentType<{ className?: string }>;
   xlsxUrl?: string;
+  /**
+   * If set, the card renders as a link to an in-app page instead of an
+   * Excel-download card. Used for real, non-mock reports.
+   */
+  linkTo?: string;
 }
 
 interface RecentExport {
@@ -74,11 +81,12 @@ export default function Reports() {
       icon: Users2,
     },
     {
-      key: "calls",
-      title: t("reports.card_calls_title"),
-      description: t("reports.card_calls_desc"),
-      meta: t("reports.card_calls_meta"),
+      key: "activity",
+      title: t("reports.activity.title"),
+      description: t("reports.activity.card_desc"),
+      meta: t("reports.activity.card_meta"),
       icon: Phone,
+      linkTo: "/reports/operator-activity",
     },
     {
       key: "channels",
@@ -174,12 +182,22 @@ export default function Reports() {
                 <Eyebrow className="mt-3">{c.meta}</Eyebrow>
               </div>
               <div className="flex flex-col gap-2 shrink-0">
-                <Button size="sm" onClick={() => download(c, "xlsx")}>
-                  <Download className="w-3 h-3" /> Excel
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => download(c, "pdf")}>
-                  <FileText className="w-3 h-3" /> PDF
-                </Button>
+                {c.linkTo ? (
+                  <Link to={c.linkTo}>
+                    <Button size="sm">
+                      {t("reports.open")} <ArrowRight className="w-3 h-3" />
+                    </Button>
+                  </Link>
+                ) : (
+                  <>
+                    <Button size="sm" onClick={() => download(c, "xlsx")}>
+                      <Download className="w-3 h-3" /> Excel
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => download(c, "pdf")}>
+                      <FileText className="w-3 h-3" /> PDF
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           );

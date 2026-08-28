@@ -3,6 +3,7 @@ from django.urls import include, path
 from apps.calls.urls import (
     callback_urlpatterns,
     lead_nested_urlpatterns,
+    reports_urlpatterns as calls_reports_urlpatterns,
 )
 from apps.leads.urls import (
     alias_urlpatterns,
@@ -55,6 +56,8 @@ urlpatterns = [
     path("leads/", include("apps.leads.urls")),
     path("leads/", include((lead_nested_urlpatterns, "calls_nested"))),
     path("callbacks/", include((callback_urlpatterns, "callbacks"))),
+    # Reports (operator activity — manager & operator-facing).
+    path("reports/", include((calls_reports_urlpatterns, "calls_reports"))),
     path("sheet-sources/", include((sheet_source_urlpatterns, "sheet_sources"))),
     path("operator-sheet-aliases/", include((alias_urlpatterns, "operator_sheet_aliases"))),
     path("lead-statuses/", include((lead_status_urlpatterns, "lead_statuses"))),

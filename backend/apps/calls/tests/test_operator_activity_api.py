@@ -1,0 +1,164 @@
+"""
+API tests for the operator-activity report endpoints:
+
+  GET /api/reports/operator-activity/   — manager (IsTeamLeadOrManager)
+  GET /api/reports/my-activity/         — anyone with an operator FK
+
+Verifies:
+  - permission gates: operator can't hit manager endpoint (403)
+  - manager sees all rows; `operator=` filter narrows it
+  - my-activity returns exactly the caller's operator row
+  - query-string param validation (400 on bad dates / bad operator arg)
+  - report body shape
+"""
+
+from __future__ import annotations
+
+import pytest
+from django.contrib.auth import get_user_model
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from apps.calls.models import CallAttempt, CallOutcome
+from apps.leads.models import Lead, LeadStatus
+from apps.operators.models import Operator, OperatorStatus
+from apps.users.models import Profile, Role
+
+User = get_user_model()
+
+
+@pytest.fixture
+def api_client():
+    return APIClient()
+
+
+@pytest.fixture
+def op_a(db):
+    return Operator.objects.create(full_name="Alice", status=OperatorStatus.ACTIVE)
+
+
+@pytest.fixture
+def op_b(db):
+    return Operator.objects.create(full_name="Bob", status=OperatorStatus.ACTIVE)
+
+
+@pytest.fixture
+def user_alice(db, op_a):
+    u = User.objects.create_user(username="alice", password="x")
+    Profile.objects.create(user=u, role=Role.OPERATOR, operator=op_a)
+    return u
+
+
+@pytest.fixture
+def manager(db):
+    u = User.objects.create_user(username="mgr", password="x")
+    Profile.objects.create(user=u, role=Role.MANAGER)
+    return u
+
+
+@pytest.fixture
+def seed_calls(op_a, op_b):
+    """A couple of calls today so the report has something."""
+    lead1 = Lead.objects.create(full_name="L1", operator=op_a, status=LeadStatus.NEW)
+    lead2 = Lead.objects.create(full_name="L2", operator=op_b, status=LeadStatus.NEW)
+    CallAttempt.objects.create(lead=lead1, operator=op_a, outcome=CallOutcome.NO_ANSWER)
+    CallAttempt.objects.create(lead=lead2, operator=op_b, outcome=CallOutcome.NO_ANSWER)
+    CallAttempt.objects.create(lead=lead2, operator=op_b, outcome=CallOutcome.NO_ANSWER)
+    return lead1, lead2
+
+
+def _today() -> str:
+    return timezone.localdate().strftime("%Y-%m-%d")
+
+
+@pytest.mark.django_db
+def test_manager_sees_all_operators(api_client, manager, op_a, op_b, seed_calls):
+    api_client.force_authenticate(manager)
+    r = api_client.get(
+        f"/api/reports/operator-activity/?date_from={_today()}&date_to={_today()}"
+    )
+    assert r.status_code == 200
+    ids = {row["operator_id"] for row in r.json()["rows"]}
+    assert ids == {op_a.id, op_b.id}
+
+
+@pytest.mark.django_db
+def test_manager_operator_filter(api_client, manager, op_a, op_b, seed_calls):
+    api_client.force_authenticate(manager)
+    r = api_client.get(
+        f"/api/reports/operator-activity/?date_from={_today()}&date_to={_today()}"
+        f"&operator={op_a.id}"
+    )
+    assert r.status_code == 200
+    rows = r.json()["rows"]
+    assert len(rows) == 1
+    assert rows[0]["operator_id"] == op_a.id
+
+
+@pytest.mark.django_db
+def test_manager_bad_operator_arg_returns_400(api_client, manager):
+    api_client.force_authenticate(manager)
+    r = api_client.get(
+        f"/api/reports/operator-activity/?date_from={_today()}&date_to={_today()}"
+        f"&operator=foo,bar"
+    )
+    assert r.status_code == 400
+
+
+@pytest.mark.django_db
+def test_manager_missing_dates_returns_400(api_client, manager):
+    api_client.force_authenticate(manager)
+    r = api_client.get("/api/reports/operator-activity/")
+    assert r.status_code == 400
+
+
+@pytest.mark.django_db
+def test_manager_range_too_wide_returns_400(api_client, manager):
+    api_client.force_authenticate(manager)
+    # 200 days > 92-day guardrail.
+    r = api_client.get(
+        "/api/reports/operator-activity/?date_from=2026-01-01&date_to=2026-07-19"
+    )
+    assert r.status_code == 400
+
+
+@pytest.mark.django_db
+def test_operator_forbidden_on_manager_endpoint(api_client, user_alice):
+    api_client.force_authenticate(user_alice)
+    r = api_client.get(
+        f"/api/reports/operator-activity/?date_from={_today()}&date_to={_today()}"
+    )
+    assert r.status_code == 403
+
+
+@pytest.mark.django_db
+def test_my_activity_operator_scoped(api_client, user_alice, op_a, op_b, seed_calls):
+    api_client.force_authenticate(user_alice)
+    r = api_client.get(
+        f"/api/reports/my-activity/?date_from={_today()}&date_to={_today()}"
+    )
+    assert r.status_code == 200
+    rows = r.json()["rows"]
+    assert len(rows) == 1
+    assert rows[0]["operator_id"] == op_a.id
+    # Bob's calls must NOT leak.
+    assert rows[0]["calls_total"] == 1
+
+
+@pytest.mark.django_db
+def test_my_activity_unauth_returns_401(api_client):
+    r = api_client.get(
+        f"/api/reports/my-activity/?date_from={_today()}&date_to={_today()}"
+    )
+    assert r.status_code in (401, 403)
+
+
+@pytest.mark.django_db
+def test_my_activity_manager_without_operator_returns_400(api_client, manager):
+    """Manager profile has no operator FK — endpoint returns 400 (not
+    a crash)."""
+    api_client.force_authenticate(manager)
+    r = api_client.get(
+        f"/api/reports/my-activity/?date_from={_today()}&date_to={_today()}"
+    )
+    assert r.status_code == 400
