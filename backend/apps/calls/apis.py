@@ -13,13 +13,13 @@ Endpoints:
 from __future__ import annotations
 
 import datetime as dt
+from typing import TYPE_CHECKING
 
 from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.attendance.permissions import IsTeamLeadOrManager
 from apps.common.exceptions import ApplicationError
 from apps.leads.selectors import lead_get
 from apps.operators.selectors import operator_get
@@ -39,6 +39,9 @@ from .services import (
     callback_reminder_create,
     callback_reminder_snooze,
 )
+
+if TYPE_CHECKING:
+    from apps.operators.models import Operator
 
 # ---- Serializers ---------------------------------------------------------
 
@@ -276,59 +279,6 @@ def _parse_date_range(request) -> tuple[dt.date, dt.date] | Response:
             status=status.HTTP_400_BAD_REQUEST,
         )
     return date_from, date_to
-
-
-class OperatorActivityReportApi(APIView):
-    """
-    Manager-facing per-operator activity report.
-
-    GET /api/reports/operator-activity/?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
-        [&operator=1,2,3]
-
-    Returns:
-      {
-        "period": {"from": "...", "to": "..."},
-        "rows": [
-          {"operator_id": 51, "operator_name": "...",
-           "unique_leads_touched": 12, "calls_total": 27,
-           "by_status": {"phone_on": 4, "no_answer": 5, ...}},
-          ...
-        ]
-      }
-
-    Not gated by attendance PIN — activity numbers are not as sensitive
-    as attendance/photo data (which stays behind PIN).
-    """
-
-    permission_classes = [IsAuthenticated, IsTeamLeadOrManager]
-
-    def get(self, request):
-        parsed = _parse_date_range(request)
-        if isinstance(parsed, Response):
-            return parsed
-        date_from, date_to = parsed
-
-        operator_ids: list[int] | None = None
-        operator_qp = request.query_params.get("operator")
-        if operator_qp:
-            try:
-                operator_ids = [int(x) for x in operator_qp.split(",") if x.strip()]
-            except ValueError:
-                return Response(
-                    {"error": "operator: список целых чисел через запятую"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-        try:
-            report = operator_activity_report(
-                date_from=date_from,
-                date_to=date_to,
-                operator_ids=operator_ids,
-            )
-        except ValueError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-
-        return Response(report, status=status.HTTP_200_OK)
 
 
 class MyActivityReportApi(APIView):

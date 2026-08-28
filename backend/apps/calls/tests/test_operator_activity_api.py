@@ -1,15 +1,10 @@
 """
-API tests for the operator-activity report endpoints:
+API tests for the operator-facing activity report endpoint:
 
-  GET /api/reports/operator-activity/   — manager (IsTeamLeadOrManager)
-  GET /api/reports/my-activity/         — anyone with an operator FK
+  GET /api/reports/my-activity/  — anyone with an operator FK
 
-Verifies:
-  - permission gates: operator can't hit manager endpoint (403)
-  - manager sees all rows; `operator=` filter narrows it
-  - my-activity returns exactly the caller's operator row
-  - query-string param validation (400 on bad dates / bad operator arg)
-  - report body shape
+Manager-facing `/api/reports/operator-activity/` was merged into
+`/api/analytics/lead-stats/` — see `apps.analytics.apis.LeadStatsApi`.
 """
 
 from __future__ import annotations
@@ -69,66 +64,6 @@ def seed_calls(op_a, op_b):
 
 def _today() -> str:
     return timezone.localdate().strftime("%Y-%m-%d")
-
-
-@pytest.mark.django_db
-def test_manager_sees_all_operators(api_client, manager, op_a, op_b, seed_calls):
-    api_client.force_authenticate(manager)
-    r = api_client.get(
-        f"/api/reports/operator-activity/?date_from={_today()}&date_to={_today()}"
-    )
-    assert r.status_code == 200
-    ids = {row["operator_id"] for row in r.json()["rows"]}
-    assert ids == {op_a.id, op_b.id}
-
-
-@pytest.mark.django_db
-def test_manager_operator_filter(api_client, manager, op_a, op_b, seed_calls):
-    api_client.force_authenticate(manager)
-    r = api_client.get(
-        f"/api/reports/operator-activity/?date_from={_today()}&date_to={_today()}"
-        f"&operator={op_a.id}"
-    )
-    assert r.status_code == 200
-    rows = r.json()["rows"]
-    assert len(rows) == 1
-    assert rows[0]["operator_id"] == op_a.id
-
-
-@pytest.mark.django_db
-def test_manager_bad_operator_arg_returns_400(api_client, manager):
-    api_client.force_authenticate(manager)
-    r = api_client.get(
-        f"/api/reports/operator-activity/?date_from={_today()}&date_to={_today()}"
-        f"&operator=foo,bar"
-    )
-    assert r.status_code == 400
-
-
-@pytest.mark.django_db
-def test_manager_missing_dates_returns_400(api_client, manager):
-    api_client.force_authenticate(manager)
-    r = api_client.get("/api/reports/operator-activity/")
-    assert r.status_code == 400
-
-
-@pytest.mark.django_db
-def test_manager_range_too_wide_returns_400(api_client, manager):
-    api_client.force_authenticate(manager)
-    # 200 days > 92-day guardrail.
-    r = api_client.get(
-        "/api/reports/operator-activity/?date_from=2026-01-01&date_to=2026-07-19"
-    )
-    assert r.status_code == 400
-
-
-@pytest.mark.django_db
-def test_operator_forbidden_on_manager_endpoint(api_client, user_alice):
-    api_client.force_authenticate(user_alice)
-    r = api_client.get(
-        f"/api/reports/operator-activity/?date_from={_today()}&date_to={_today()}"
-    )
-    assert r.status_code == 403
 
 
 @pytest.mark.django_db

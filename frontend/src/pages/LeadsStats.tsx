@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Calendar } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -15,7 +16,6 @@ import {
 
 import { api } from "../lib/api";
 import { useT } from "../lib/i18n";
-import type { Period } from "../lib/period";
 
 type StatusRow = {
   code: string;
@@ -34,9 +34,12 @@ type OperatorRow = {
   won: number;
   lost: number;
   in_progress: number;
-  // Backend may not send this field on older deploys — treat as optional
-  // and default to 0 in the render step so the UI stays graceful.
+  // Backend may not send these fields on older deploys — treat as
+  // optional and default to 0 in the render step so the UI stays
+  // graceful during a rolling deploy (frontend can hit an old backend).
   sold_total?: number;
+  calls_total?: number;
+  unique_leads_touched?: number;
   conversion_pct: number;
 };
 
@@ -59,15 +62,74 @@ const TONE_ACCENT: Record<string, string> = {
   success: "#10b981", // emerald-500
 };
 
+// Six preset chips + one custom-range option. Presets are computed on
+// the client and always sent to the backend as YYYY-MM-DD `date_from`+
+// `date_to` — the backend also still accepts the legacy `?period=` param
+// (backwards compat), but the FE consistently uses the explicit shape.
+type Preset =
+  | "today"
+  | "yesterday"
+  | "week"
+  | "month"
+  | "this_month"
+  | "custom";
+
+function fmt(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function presetRange(preset: Preset): { from: string; to: string } | null {
+  const now = new Date();
+  const today = fmt(now);
+  if (preset === "today") return { from: today, to: today };
+  if (preset === "yesterday") {
+    const y = new Date(now);
+    y.setDate(y.getDate() - 1);
+    return { from: fmt(y), to: fmt(y) };
+  }
+  if (preset === "week") {
+    const past = new Date(now);
+    past.setDate(past.getDate() - 6);
+    return { from: fmt(past), to: today };
+  }
+  if (preset === "month") {
+    const past = new Date(now);
+    past.setDate(past.getDate() - 29);
+    return { from: fmt(past), to: today };
+  }
+  if (preset === "this_month") {
+    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { from: fmt(first), to: today };
+  }
+  return null; // custom
+}
+
 export default function LeadsStats() {
   const t = useT();
-  const [period, setPeriod] = useState<Period>("day");
+  const [preset, setPreset] = useState<Preset>("today");
+  const initial = presetRange("today")!;
+  const [dateFrom, setDateFrom] = useState(initial.from);
+  const [dateTo, setDateTo] = useState(initial.to);
+
+  const applyPreset = (p: Preset) => {
+    setPreset(p);
+    const r = presetRange(p);
+    if (r) {
+      setDateFrom(r.from);
+      setDateTo(r.to);
+    }
+  };
 
   const q = useQuery<StatsResponse>({
-    queryKey: ["lead-stats", period],
+    queryKey: ["lead-stats", dateFrom, dateTo],
     queryFn: () =>
       api
-        .get<StatsResponse>("/analytics/lead-stats/", { params: { period } })
+        .get<StatsResponse>("/analytics/lead-stats/", {
+          params: { date_from: dateFrom, date_to: dateTo },
+        })
         .then((r) => r.data),
   });
 
@@ -86,30 +148,60 @@ export default function LeadsStats() {
 
   const dailyChartData = useMemo(() => data?.daily || [], [data]);
 
+  const PRESETS: { value: Preset; label: string }[] = [
+    { value: "today", label: t("reports.activity.presets.today") },
+    { value: "yesterday", label: t("reports.activity.presets.yesterday") },
+    { value: "week", label: t("reports.activity.presets.week") },
+    { value: "month", label: t("reports.activity.presets.month") },
+    { value: "this_month", label: t("reports.activity.presets.this_month") },
+    { value: "custom", label: t("reports.activity.presets.custom") },
+  ];
+
   return (
-    <div className="mx-auto max-w-[1100px] flex flex-col gap-5">
-      {/* Header + period tabs */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
+      {/* Header + period chips + custom range */}
+      <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-[22px] font-semibold">{t("leads_stats.title")}</h1>
           <div className="text-[13px] text-muted mt-0.5">
             {t("leads_stats.subtitle")}
           </div>
         </div>
-        <div className="inline-flex rounded-full border" style={{ borderColor: "var(--border)" }}>
-          {(["day", "week", "month"] as Period[]).map((p) => (
+        <div className="flex flex-wrap items-center gap-2">
+          {PRESETS.map((p) => (
             <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className="px-4 py-2 text-[13px] font-medium first:rounded-l-full last:rounded-r-full"
+              key={p.value}
+              onClick={() => applyPreset(p.value)}
+              className="px-3 py-1.5 rounded-full text-[12.5px] font-medium border transition"
               style={{
-                background: period === p ? "var(--accent)" : "transparent",
-                color: period === p ? "#fff" : "var(--fg)",
+                borderColor:
+                  preset === p.value ? "var(--accent)" : "var(--border)",
+                background:
+                  preset === p.value ? "var(--accent)" : "transparent",
+                color: preset === p.value ? "#fff" : "var(--fg)",
               }}
             >
-              {t(`leads_stats.period_${p}`)}
+              {p.label}
             </button>
           ))}
+          {preset === "custom" && (
+            <div className="flex items-center gap-2 ml-1">
+              <Calendar className="w-3.5 h-3.5 text-muted" />
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="nf-input py-1.5 px-2.5 w-auto text-[12.5px]"
+              />
+              <span className="text-muted">—</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="nf-input py-1.5 px-2.5 w-auto text-[12.5px]"
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -239,6 +331,18 @@ export default function LeadsStats() {
                   <th className="py-2 px-3 text-right">{t("leads_stats.op_total")}</th>
                   <th
                     className="py-2 px-3 text-right"
+                    title={t("leads_stats.op_calls_total_hint")}
+                  >
+                    {t("leads_stats.op_calls_total")}
+                  </th>
+                  <th
+                    className="py-2 px-3 text-right"
+                    title={t("leads_stats.op_unique_leads_hint")}
+                  >
+                    {t("leads_stats.op_unique_leads")}
+                  </th>
+                  <th
+                    className="py-2 px-3 text-right"
                     title={t("leads_stats.op_won_hint")}
                   >
                     {t("leads_stats.op_won")}
@@ -259,6 +363,12 @@ export default function LeadsStats() {
                   <tr key={r.operator_id} className="border-b" style={{ borderColor: "var(--border)" }}>
                     <td className="py-2 pr-3">{r.operator_name}</td>
                     <td className="py-2 px-3 text-right tabular-nums font-medium">{r.total}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">
+                      {r.calls_total ?? 0}
+                    </td>
+                    <td className="py-2 px-3 text-right tabular-nums">
+                      {r.unique_leads_touched ?? 0}
+                    </td>
                     <td className="py-2 px-3 text-right tabular-nums" style={{ color: "#059669" }}>
                       {r.won}
                     </td>

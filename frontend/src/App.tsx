@@ -32,7 +32,6 @@ import Placeholder from "./pages/Placeholder";
 import Notifications from "./pages/Notifications";
 import SalesToday from "./pages/SalesToday";
 import Reports from "./pages/Reports";
-import OperatorActivityReport from "./pages/OperatorActivityReport";
 import MyActivity from "./pages/MyActivity";
 import TgQueue from "./pages/TgQueue";
 import Users from "./pages/Users";
@@ -95,7 +94,6 @@ export default function App() {
           <Route path="/settings" element={<RoleGate allow={["manager"]}><Settings /></RoleGate>} />
           <Route path="/calls" element={<RoleGate allow={["manager"]}><Placeholder title="Звонки" /></RoleGate>} />
           <Route path="/reports" element={<RoleGate allow={["manager"]}><Reports /></RoleGate>} />
-          <Route path="/reports/operator-activity" element={<RoleGate allow={["manager"]}><OperatorActivityReport /></RoleGate>} />
           <Route path="/my/activity" element={<RoleGate allow={["operator"]}><MyActivity /></RoleGate>} />
           <Route path="/catalog" element={<RoleGate allow={["manager", "operator"]}><Catalog /></RoleGate>} />
           <Route path="/catalog/banks" element={<RoleGate allow={["manager"]}><CatalogBanks /></RoleGate>} />

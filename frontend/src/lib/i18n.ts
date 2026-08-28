@@ -70,7 +70,7 @@ const STRINGS: Lookup = {
     "nav.analytics": "Аналитика",
     "nav.leads_stats": "Статистика лидов",
     "leads_stats.title": "Статистика лидов",
-    "leads_stats.subtitle": "Сколько пришло, куда ушли, кто разобрал",
+    "leads_stats.subtitle": "Лиды, звонки и продажи по операторам за период",
     "leads_stats.period_day": "Сегодня",
     "leads_stats.period_week": "Неделя",
     "leads_stats.period_month": "Месяц",
@@ -81,6 +81,10 @@ const STRINGS: Lookup = {
     "leads_stats.no_data": "Нет данных за период",
     "leads_stats.op_name": "Оператор",
     "leads_stats.op_total": "Всего",
+    "leads_stats.op_calls_total": "Звонков",
+    "leads_stats.op_calls_total_hint": "Всего попыток дозвона (CallAttempt) за период.",
+    "leads_stats.op_unique_leads": "Обзвонил лидов",
+    "leads_stats.op_unique_leads_hint": "Уникальных лидов, которых оператор коснулся хотя бы одним звонком.",
     "leads_stats.op_won": "Продажи (через лид)",
     "leads_stats.op_won_hint": "Лиды со статусом «Продажа» — конвертация лида в продажу.",
     "leads_stats.op_sold_total": "Продажи (всего)",
@@ -2158,10 +2162,12 @@ const STRINGS: Lookup = {
     "helper.error": "Не удалось загрузить подсказки. Попробуйте позже.",
 
     // ------ Reports: operator activity ------
-    "reports.activity.title": "Активность операторов",
-    "reports.activity.subtitle": "Сколько лидов обзвонили и с какими статусами",
-    "reports.activity.card_desc": "Кто сколько лидов обзвонил за период и в каких они сейчас статусах.",
-    "reports.activity.card_meta": "по CallAttempt + текущий статус лида",
+    // Менеджерская страница «Активность операторов» смёржена в
+    // /leads-stats — карточка в /reports теперь ссылается туда.
+    // Ключи `reports.activity.presets.*` и `reports.activity.col.*` +
+    // `my_title/my_subtitle/empty/by_status_title/no_statuses` всё ещё
+    // используются страницей `MyActivity.tsx` (оператор смотрит свою
+    // активность).
     "reports.activity.presets.today": "Сегодня",
     "reports.activity.presets.yesterday": "Вчера",
     "reports.activity.presets.week": "7 дней",
@@ -2172,11 +2178,13 @@ const STRINGS: Lookup = {
     "reports.activity.col.unique_leads": "Лидов",
     "reports.activity.col.calls_total": "Звонков",
     "reports.activity.empty": "Нет активности за выбранный период",
-    "reports.activity.total": "Итого",
     "reports.activity.by_status_title": "По статусам",
     "reports.activity.no_statuses": "Ни один лид ещё не в статусе",
     "reports.activity.my_title": "Моя активность",
     "reports.activity.my_subtitle": "Ваш обзвон и статусы лидов за период",
+    "reports.card_activity_title": "Активность операторов",
+    "reports.card_activity_desc": "Обзвон, покрытие лидов и конверсия по операторам — открывает страницу «Статистика лидов».",
+    "reports.card_activity_meta": "звонки + лиды + продажи в одном отчёте",
     "reports.open": "Открыть",
   },
 
@@ -2234,7 +2242,7 @@ const STRINGS: Lookup = {
     "nav.analytics": "Tahlil",
     "nav.leads_stats": "Lid statistikasi",
     "leads_stats.title": "Lid statistikasi",
-    "leads_stats.subtitle": "Necha ta keldi, qayerga ketdi, kim ishladi",
+    "leads_stats.subtitle": "Davr davomida lidlar, qo'ng'iroqlar va sotuvlar operatorlar bo'yicha",
     "leads_stats.period_day": "Bugun",
     "leads_stats.period_week": "Hafta",
     "leads_stats.period_month": "Oy",
@@ -2245,6 +2253,10 @@ const STRINGS: Lookup = {
     "leads_stats.no_data": "Davr uchun ma'lumot yo'q",
     "leads_stats.op_name": "Operator",
     "leads_stats.op_total": "Jami",
+    "leads_stats.op_calls_total": "Qo'ng'iroqlar",
+    "leads_stats.op_calls_total_hint": "Davr davomida barcha qo'ng'iroq urinishlari (CallAttempt).",
+    "leads_stats.op_unique_leads": "Qo'ng'iroq qilingan lidlar",
+    "leads_stats.op_unique_leads_hint": "Operator kamida bitta qo'ng'iroq qilgan noyob lidlar soni.",
     "leads_stats.op_won": "Sotildi (lid orqali)",
     "leads_stats.op_won_hint": "«Sotildi» statusidagi lidlar — lidni sotuvga aylantirish.",
     "leads_stats.op_sold_total": "Sotildi (jami)",
@@ -4280,10 +4292,8 @@ const STRINGS: Lookup = {
     "helper.error": "Maslahatlarni yuklab bo'lmadi. Keyinroq urinib ko'ring.",
 
     // ------ Reports: operator activity ------
-    "reports.activity.title": "Operatorlar faoliyati",
-    "reports.activity.subtitle": "Nechta lid qo'ng'iroq qilingan va ular qaysi statusda",
-    "reports.activity.card_desc": "Davr ichida kim nechta lidga qo'ng'iroq qilgan va ular hozir qaysi statusda.",
-    "reports.activity.card_meta": "CallAttempt va lidning joriy statusi bo'yicha",
+    // Menejer sahifasi «Operatorlar faoliyati» /leads-stats ga birlashtirildi
+    // — /reports dagi karta shu yerga o'tkazadi.
     "reports.activity.presets.today": "Bugun",
     "reports.activity.presets.yesterday": "Kecha",
     "reports.activity.presets.week": "7 kun",
@@ -4294,11 +4304,13 @@ const STRINGS: Lookup = {
     "reports.activity.col.unique_leads": "Lidlar",
     "reports.activity.col.calls_total": "Qo'ng'iroqlar",
     "reports.activity.empty": "Tanlangan davrda faoliyat yo'q",
-    "reports.activity.total": "Jami",
     "reports.activity.by_status_title": "Statuslar bo'yicha",
     "reports.activity.no_statuses": "Hech bir lid statusga tushmagan",
     "reports.activity.my_title": "Faoliyatim",
     "reports.activity.my_subtitle": "Sizning qo'ng'iroqlaringiz va lidlar statuslari",
+    "reports.card_activity_title": "Operatorlar faoliyati",
+    "reports.card_activity_desc": "Qo'ng'iroqlar, lidlar qamrovi va konversiya — «Lid statistikasi» sahifasini ochadi.",
+    "reports.card_activity_meta": "qo'ng'iroqlar + lidlar + sotuvlar bir hisobotda",
     "reports.open": "Ochish",
   },
 };

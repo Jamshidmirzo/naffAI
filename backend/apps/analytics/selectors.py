@@ -467,10 +467,13 @@ def lead_stats_snapshot(
         "total": int,
         "by_status": [{code, label_ru, label_uz, tone, emoji, count, pct}],
         "by_operator": [{operator_id, operator_name, total, won, lost,
-                          in_progress, sold_total, conversion_pct}],
+                          in_progress, sold_total, calls_total,
+                          unique_leads_touched, conversion_pct}],
           - `won`        = leads со статусом "won" (продажи через лид)
           - `sold_total` = все confirmed sales оператора в периоде
                            (независимо от того, связаны с лидом или нет)
+          - `calls_total` = всего CallAttempt в периоде у оператора
+          - `unique_leads_touched` = уникальных лидов, коснулся звонком
         "daily": [{date: 'YYYY-MM-DD', created: N, won: N, lost: N}]
       }
 
@@ -478,7 +481,11 @@ def lead_stats_snapshot(
     to those same leads and their CURRENT status (a lead created today
     that gets marked won today counts in both `created` and `won` for
     today).
+
+    Активность звонков (`calls_total` / `unique_leads_touched`) считается
+    по `CallAttempt.created_at` в том же окне.
     """
+    from apps.calls.models import CallAttempt
     from apps.leads.models import Lead, LeadStatusLabel
 
     qs = Lead.objects.all()
@@ -554,6 +561,28 @@ def lead_stats_snapshot(
     )
     sold_map = {int(r["operator_id"]): int(r["n"] or 0) for r in sold_rows}
 
+    # ---- calls_total + unique_leads_touched per operator.
+    # Считаем по CallAttempt.created_at в том же окне. `unique_leads_touched`
+    # = COUNT(DISTINCT lead_id) — тот же метод, что в calls.selectors.
+    # operator_activity_report(); мы не дёргаем его напрямую (там строгий
+    # 92-дневный guard + date-based интерфейс), а повторяем 2 aggregate'а.
+    calls_qs = CallAttempt.objects.filter(operator__isnull=False)
+    if date_from:
+        calls_qs = calls_qs.filter(created_at__gte=date_from)
+    if date_to:
+        calls_qs = calls_qs.filter(created_at__lte=date_to)
+    calls_rows = calls_qs.values("operator_id").annotate(
+        total=Count("id"),
+        unique_leads=Count("lead_id", distinct=True),
+    )
+    calls_map: dict[int, dict[str, int]] = {}
+    for r in calls_rows:
+        op_id = int(r["operator_id"])
+        calls_map[op_id] = {
+            "calls_total": int(r["total"] or 0),
+            "unique_leads_touched": int(r["unique_leads"] or 0),
+        }
+
     by_operator: list[dict] = []
     seen_op_ids: set[int] = set()
     for r in per_op_rows:
@@ -561,6 +590,7 @@ def lead_stats_snapshot(
         w = int(r["won"] or 0)
         op_id = int(r["operator_id"])
         seen_op_ids.add(op_id)
+        calls_info = calls_map.get(op_id, {"calls_total": 0, "unique_leads_touched": 0})
         by_operator.append(
             {
                 "operator_id": op_id,
@@ -570,20 +600,24 @@ def lead_stats_snapshot(
                 "lost": int(r["lost"] or 0),
                 "in_progress": int(r["in_progress"] or 0),
                 "sold_total": sold_map.get(op_id, 0),
+                "calls_total": calls_info["calls_total"],
+                "unique_leads_touched": calls_info["unique_leads_touched"],
                 "conversion_pct": round(w * 100.0 / t, 1) if t else 0.0,
             }
         )
 
-    # Include operators who have sales in this period but zero leads —
-    # otherwise the "Sotildi (jami)" number would disappear for the very
-    # people the metric was added for (dostik on prod has 261 sales, 0
-    # linked leads → 0 rows without this).
-    missing_ids = set(sold_map.keys()) - seen_op_ids
+    # Include operators who have sales OR calls in this period but zero
+    # leads — иначе «Sotildi (jami)» / «Звонки» исчезнут у тех, ради кого
+    # эти метрики и добавлялись (напр. dostik: 261 продажа, 0 лидов).
+    missing_ids = (set(sold_map.keys()) | set(calls_map.keys())) - seen_op_ids
     if missing_ids:
         op_names = dict(
             Operator.objects.filter(id__in=missing_ids).values_list("id", "full_name")
         )
         for op_id in missing_ids:
+            calls_info = calls_map.get(
+                op_id, {"calls_total": 0, "unique_leads_touched": 0}
+            )
             by_operator.append(
                 {
                     "operator_id": op_id,
@@ -592,13 +626,18 @@ def lead_stats_snapshot(
                     "won": 0,
                     "lost": 0,
                     "in_progress": 0,
-                    "sold_total": sold_map[op_id],
+                    "sold_total": sold_map.get(op_id, 0),
+                    "calls_total": calls_info["calls_total"],
+                    "unique_leads_touched": calls_info["unique_leads_touched"],
                     "conversion_pct": 0.0,
                 }
             )
         # Re-sort so the section stays readable: leads-total desc, then
-        # sold_total desc as a tiebreaker.
-        by_operator.sort(key=lambda r: (r["total"], r["sold_total"]), reverse=True)
+        # sold_total desc, then calls_total desc as tiebreakers.
+        by_operator.sort(
+            key=lambda r: (r["total"], r["sold_total"], r["calls_total"]),
+            reverse=True,
+        )
 
     # ---- daily: created / won / lost per calendar day in [from..to].
     daily: list[dict] = []

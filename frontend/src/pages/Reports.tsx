@@ -81,12 +81,15 @@ export default function Reports() {
       icon: Users2,
     },
     {
+      // Активность операторов теперь живёт внутри страницы «Статистика
+      // лидов» (/leads-stats) — там она смёржена с per-operator таблицей
+      // лидов/продаж/конверсии в единый отчёт с date-range фильтром.
       key: "activity",
-      title: t("reports.activity.title"),
-      description: t("reports.activity.card_desc"),
-      meta: t("reports.activity.card_meta"),
+      title: t("reports.card_activity_title"),
+      description: t("reports.card_activity_desc"),
+      meta: t("reports.card_activity_meta"),
       icon: Phone,
-      linkTo: "/reports/operator-activity",
+      linkTo: "/leads-stats",
     },
     {
       key: "channels",

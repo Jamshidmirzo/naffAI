@@ -1,6 +1,7 @@
 import datetime as dt
 
 from django.core.cache import cache
+from django.utils import timezone as djtz
 from django.utils.dateparse import parse_datetime
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -133,11 +134,36 @@ class TimeseriesApi(APIView):
         return Response(timeseries_daily(date_from=date_from, date_to=date_to))
 
 
+# Guardrail for the merged manager stats page: the by_operator table
+# blends leads + sales + calls, and calls-heavy days can produce huge
+# aggregates. 92-дневное окно совпадает с operator_activity_report()
+# (см. calls.selectors) — держим одну и ту же границу для консистентности.
+LEAD_STATS_MAX_DAYS = 92
+
+
+def _parse_date_ymd(value: str | None) -> dt.date | None:
+    """Parse strict YYYY-MM-DD → date. Return None on empty/invalid."""
+    if not value:
+        return None
+    try:
+        return dt.datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
 class LeadStatsApi(APIView):
     """
     Manager stats page: total leads in the period + status/operator/daily
-    breakdowns. Accepts `?period=day|week|month` or explicit
-    `?date_from=&date_to=`.
+    breakdowns + per-operator call activity (calls_total,
+    unique_leads_touched).
+
+    Accepts:
+      - `?period=day|week|month` — legacy, current-relative window
+        (backwards compat with the old FE preset chips), OR
+      - `?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` — explicit inclusive
+        date range in Asia/Tashkent. Range must be ≤ 92 days.
+
+    If both are supplied, explicit dates win (they are more precise).
 
     Wave-1 (2026-08-22): результат кешируется на 60 сек по (date_from,
     date_to). Инвалидация — в `sale_create` / `sale_confirm` / `sale_reject`
@@ -148,14 +174,50 @@ class LeadStatsApi(APIView):
     permission_classes = [IsTeamLeadOrManagerReadOnly]
 
     def get(self, request):
-        date_from, date_to = _window(request)
-        if date_from is None:
-            # Default: today (matches the FE default tab).
-            from django.utils import timezone
-
-            now = timezone.now()
-            date_from = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            date_to = now
+        # 1) Explicit YYYY-MM-DD range (new FE default): parse, validate,
+        # snap to local TZ midnights inclusive-inclusive.
+        df_ymd = request.query_params.get("date_from")
+        dt_ymd = request.query_params.get("date_to")
+        if df_ymd or dt_ymd:
+            # Both must be present together — otherwise a bare `date_from`
+            # would silently degrade to "no upper bound", which is
+            # confusing.
+            if not (df_ymd and dt_ymd):
+                return Response(
+                    {"detail": "date_from и date_to должны быть заданы одновременно"},
+                    status=400,
+                )
+            df_date = _parse_date_ymd(df_ymd)
+            dt_date = _parse_date_ymd(dt_ymd)
+            if df_date is None or dt_date is None:
+                return Response(
+                    {"detail": "Неверный формат даты, ожидается YYYY-MM-DD"},
+                    status=400,
+                )
+            if df_date > dt_date:
+                return Response(
+                    {"detail": "date_from не может быть позже date_to"},
+                    status=400,
+                )
+            span_days = (dt_date - df_date).days + 1
+            if span_days > LEAD_STATS_MAX_DAYS:
+                return Response(
+                    {"detail": f"Слишком большой диапазон: {span_days} дн. > {LEAD_STATS_MAX_DAYS} дн."},
+                    status=400,
+                )
+            tz = djtz.get_current_timezone()
+            date_from = dt.datetime.combine(df_date, dt.time.min, tzinfo=tz)
+            # inclusive-right: до конца календарного дня, чтобы 23:59 попал в окно
+            date_to = dt.datetime.combine(dt_date, dt.time.max, tzinfo=tz)
+        else:
+            # 2) Legacy path: ?period=day|week|month → resolve_period()
+            # gives (start, now); if `period` missing / unknown, default
+            # to today (matches previous behaviour + FE default tab).
+            date_from, date_to = _window(request)
+            if date_from is None:
+                now = djtz.now()
+                date_from = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                date_to = now
 
         key = lead_stats_key(
             date_from.isoformat(),

@@ -8,7 +8,6 @@ from .apis import (
     LeadCallAttemptCreateApi,
     LeadCallbackCreateApi,
     MyActivityReportApi,
-    OperatorActivityReportApi,
 )
 
 # Endpoints nested under /api/leads/<pk>/…
@@ -27,9 +26,10 @@ callback_urlpatterns = [
 ]
 
 
-# Endpoints under /api/reports/… — «отчёт активности оператора».
-# Manager видит всех (с фильтром operator=), operator — только себя.
+# Endpoints under /api/reports/… — операторский endpoint для страницы
+# «Моя активность». Менеджерский `/operator-activity/` смёржен в
+# `/api/analytics/lead-stats/` (см. analytics.apis.LeadStatsApi) —
+# по нему больше нет отдельного URL.
 reports_urlpatterns = [
-    path("operator-activity/", OperatorActivityReportApi.as_view()),
     path("my-activity/", MyActivityReportApi.as_view()),
 ]
