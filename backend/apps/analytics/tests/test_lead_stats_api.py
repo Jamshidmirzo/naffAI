@@ -98,6 +98,10 @@ def test_operator_with_only_calls_appears(api_client, manager, op_a, op_b):
     """
     op_b touched a lead via a call but wasn't the lead's operator FK and
     has no sales — must still land in `by_operator`.
+
+    Post-2026-08-28: under touched-leads semantics `total` counts distinct
+    leads the operator touched (via CallAttempt), not `Lead.operator_id`
+    ownership. So Bob's row now has total=1 (was 0 under old semantics).
     """
     lead = Lead.objects.create(full_name="L", operator=op_a, status=LeadStatus.NEW)
     CallAttempt.objects.create(lead=lead, operator=op_b, outcome=CallOutcome.NO_ANSWER)
@@ -112,8 +116,9 @@ def test_operator_with_only_calls_appears(api_client, manager, op_a, op_b):
     row_b = next(x for x in body["by_operator"] if x["operator_id"] == op_b.id)
     assert row_b["calls_total"] == 1
     assert row_b["unique_leads_touched"] == 1
-    # No leads / sales for Bob in this window.
-    assert row_b["total"] == 0
+    # Bob touched 1 lead in the period → total=1 under new touched-leads
+    # semantics. No sales for Bob in this window.
+    assert row_b["total"] == 1
     assert row_b["sold_total"] == 0
 
 

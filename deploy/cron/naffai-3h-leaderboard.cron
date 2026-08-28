@@ -1,0 +1,23 @@
+# naffAI — 3-hour operator leaderboard DM.
+#
+# Runs at 10:00, 13:00, 16:00, 19:00 Asia/Tashkent (UTC+5) which is
+# 05:00, 08:00, 11:00, 14:00 UTC. Host cron on prod is UTC; the command
+# itself has an extra --min-hour=10 / --max-hour=19 belt-and-suspenders
+# guard in Asia/Tashkent local time so a mistimed cron never DMs at 03:00.
+#
+# Install (prod, AWS Lightsail 63.186.179.240 /opt/naffAI):
+#   sudo cp deploy/cron/naffai-3h-leaderboard.cron \
+#       /etc/cron.d/naffai-3h-leaderboard
+#   sudo chmod 644 /etc/cron.d/naffai-3h-leaderboard
+#   sudo touch /var/log/naffai-3h-leaderboard.log
+#
+# One-off manual test:
+#   docker exec naffai-web-1 python manage.py send_3h_leaderboard --dry-run
+#
+# The `docker exec` container name matches the compose service `web` in
+# /opt/naffAI/docker-compose.prod.yml (project = "naffai").
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+0 5,8,11,14 * * * root cd /opt/naffAI && /usr/bin/docker exec naffai-web-1 python manage.py send_3h_leaderboard >> /var/log/naffai-3h-leaderboard.log 2>&1
