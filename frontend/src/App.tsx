@@ -40,6 +40,7 @@ import OrphanLeads from "./pages/OrphanLeads";
 import OperatorSaleCreate from "./pages/OperatorSaleCreate";
 import SalesPending from "./pages/SalesPending";
 import BotConfig from "./pages/BotConfig";
+import BotSubscribers from "./pages/BotSubscribers";
 import Catalog from "./pages/Catalog";
 import CatalogBanks from "./pages/CatalogBanks";
 import Calculator from "./pages/Calculator";
@@ -85,6 +86,7 @@ export default function App() {
           <Route path="/my/sale-new" element={<RoleGate allow={["operator"]}><OperatorSaleCreate /></RoleGate>} />
           <Route path="/sales/pending" element={<RoleGate allow={["manager"]}><SalesPending /></RoleGate>} />
           <Route path="/bot" element={<RoleGate allow={["manager"]}><BotConfig /></RoleGate>} />
+          <Route path="/bot-subscribers" element={<RoleGate allow={["manager"]}><BotSubscribers /></RoleGate>} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/lessons/today" element={<DailyLesson />} />

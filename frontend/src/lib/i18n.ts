@@ -2194,6 +2194,25 @@ const STRINGS: Lookup = {
     "reports.card_activity_desc": "Обзвон, покрытие лидов и конверсия по операторам — открывает страницу «Статистика лидов».",
     "reports.card_activity_meta": "звонки + лиды + продажи в одном отчёте",
     "reports.open": "Открыть",
+
+    // ------ bot subscribers ------
+    "nav.bot_subscribers": "Подписчики бота",
+    "bot_subs.title": "Подписчики бота",
+    "bot_subs.subtitle": "Кто получает автоматические рассылки менеджера",
+    "bot_subs.col.chat": "Чат",
+    "bot_subs.col.phone": "Телефон",
+    "bot_subs.col.linked": "Кто это",
+    "bot_subs.col.lang": "Язык",
+    "bot_subs.col.broadcast": "Слушает бот",
+    "bot_subs.col.last_seen": "Последняя активность",
+    "bot_subs.role_manager": "Менеджер",
+    "bot_subs.role_operator": "Оператор",
+    "bot_subs.blocked_badge": "Заблокирован",
+    "bot_subs.inactive_badge": "Отписан",
+    "bot_subs.empty_title": "Пока никто не подписан",
+    "bot_subs.empty_hint": "Дайте менеджерам и операторам ссылку на @naffai_bot и попросите нажать /start — они появятся в этой таблице автоматически.",
+    "bot_subs.toggle_saved": "Сохранено",
+    "bot_subs.toggle_failed": "Не удалось сохранить",
   },
 
   uz: {
@@ -4328,6 +4347,25 @@ const STRINGS: Lookup = {
     "reports.card_activity_desc": "Qo'ng'iroqlar, lidlar qamrovi va konversiya — «Lid statistikasi» sahifasini ochadi.",
     "reports.card_activity_meta": "qo'ng'iroqlar + lidlar + sotuvlar bir hisobotda",
     "reports.open": "Ochish",
+
+    // ------ bot subscribers ------
+    "nav.bot_subscribers": "Bot obunachilari",
+    "bot_subs.title": "Bot obunachilari",
+    "bot_subs.subtitle": "Menejer tarqatmalarini kim qabul qiladi",
+    "bot_subs.col.chat": "Chat",
+    "bot_subs.col.phone": "Telefon",
+    "bot_subs.col.linked": "Kim bu",
+    "bot_subs.col.lang": "Til",
+    "bot_subs.col.broadcast": "Bot xabarlari",
+    "bot_subs.col.last_seen": "So'nggi faoliyat",
+    "bot_subs.role_manager": "Menejer",
+    "bot_subs.role_operator": "Operator",
+    "bot_subs.blocked_badge": "Bloklangan",
+    "bot_subs.inactive_badge": "Obunadan chiqqan",
+    "bot_subs.empty_title": "Hozircha obunachi yo'q",
+    "bot_subs.empty_hint": "Menejer va operatorlarga @naffai_bot havolasini bering va /start bosishlarini so'rang — ular avtomatik ravishda jadvalga qo'shiladi.",
+    "bot_subs.toggle_saved": "Saqlandi",
+    "bot_subs.toggle_failed": "Saqlab bo'lmadi",
   },
 };
 

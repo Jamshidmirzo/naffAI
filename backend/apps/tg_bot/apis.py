@@ -19,10 +19,19 @@ from rest_framework.views import APIView
 
 from apps.users.permissions import IsTeamLead
 
-from .models import BotAuditLog, BotChat, BotReport, BotReportPeriod, BotReportTemplate
+from .models import (
+    BotAuditLog,
+    BotChat,
+    BotReport,
+    BotReportPeriod,
+    BotReportTemplate,
+    BotSubscription,
+)
 from .renderer import render_report_full
 from .report_blocks import BLOCKS, CATEGORIES
 from .scheduler import send_report_now_sync, send_report_to_chat_sync
+from .selectors import bot_subscribers_all
+from .services import subscription_update
 
 
 class BotChatSerializer(serializers.ModelSerializer):
@@ -321,6 +330,105 @@ class BotTemplateListApi(APIView):
     def get(self, request):
         qs = BotReportTemplate.objects.filter(is_active=True).order_by("sort_order", "id")
         return Response({"results": BotReportTemplateSerializer(qs, many=True).data})
+
+
+class BotSubscriberSerializer(serializers.ModelSerializer):
+    """
+    Row shape for `/bot/subscribers/` — enriched with resolved
+    Operator/Profile summaries so the UI doesn't need a second lookup.
+    """
+
+    linked_operator = serializers.SerializerMethodField()
+    linked_profile = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BotSubscription
+        fields = [
+            "id",
+            "chat_id",
+            "chat_title",
+            "phone",
+            "language",
+            "is_active",
+            "receives_broadcasts",
+            "blocked_at",
+            "linked_operator",
+            "linked_profile",
+            "last_seen_at",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_linked_operator(self, obj: BotSubscription) -> dict | None:
+        op = obj.linked_operator
+        if not op:
+            return None
+        return {
+            "id": op.id,
+            "full_name": op.full_name,
+            "status": op.status,
+            "phone": op.phone,
+        }
+
+    def get_linked_profile(self, obj: BotSubscription) -> dict | None:
+        prof = obj.linked_profile
+        if not prof:
+            return None
+        u = prof.user
+        return {
+            "id": prof.id,
+            "username": getattr(u, "username", ""),
+            "full_name": (u.get_full_name() if u else "") or "",
+            "role": prof.role,
+        }
+
+
+class BotSubscriberListApi(APIView):
+    """
+    GET /api/bot/subscribers/ — full list of `BotSubscription` rows
+    (active + inactive + blocked), sorted for the UI:
+      receives_broadcasts DESC (subscribers first), then
+      last_seen_at DESC (newest activity first).
+
+    Manager-only. The FE uses this list to toggle broadcast opt-in and
+    to verify who exactly is receiving the 3-hour leaderboard.
+    """
+
+    permission_classes = [IsTeamLead]
+
+    def get(self, request):
+        qs = bot_subscribers_all().order_by(
+            "-receives_broadcasts", "-last_seen_at", "-id"
+        )
+        data = BotSubscriberSerializer(qs, many=True).data
+        return Response({"results": data, "count": len(data)})
+
+
+class BotSubscriberDetailApi(APIView):
+    """
+    PATCH /api/bot/subscribers/{id}/ — surgical update of one row.
+
+    Body accepts any subset of `{receives_broadcasts, phone}`. Phone
+    changes trigger operator/profile re-linking inside the service.
+    Response is the refreshed row so the FE can drop the local optimistic
+    state without an extra GET.
+    """
+
+    permission_classes = [IsTeamLead]
+
+    def patch(self, request, pk: int):
+        sub = BotSubscription.objects.filter(pk=pk).first()
+        if not sub:
+            return Response({"detail": "Not found"}, status=404)
+        payload = request.data or {}
+        subscription_update(
+            subscription=sub,
+            actor=request.user,
+            receives_broadcasts=payload.get("receives_broadcasts"),
+            phone=payload.get("phone"),
+        )
+        sub.refresh_from_db()
+        return Response(BotSubscriberSerializer(sub).data)
 
 
 class BotAuditListApi(APIView):

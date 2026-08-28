@@ -21,6 +21,37 @@ class BotSubscription(TimestampedModel):
     language = models.CharField(max_length=4, choices=LANGUAGE_CHOICES, default="ru")
     blocked_at = models.DateTimeField(null=True, blank=True)
     last_daily_report_date = models.DateField(null=True, blank=True)
+    # 2026-08-28 phone-based broadcast management
+    # ------------------------------------------
+    # `phone` — normalised +998XXXXXXXXX, captured from the Telegram
+    # `Message.contact` payload the user sends after /start. Empty for
+    # legacy subs that pre-date the request_contact keyboard.
+    # `linked_operator` / `linked_profile` — auto-resolved by matching
+    # `phone` against `Operator.phone` and `Profile.user.username` when
+    # the contact arrives. Both nullable — a subscriber may be a manager
+    # without an operator FK, or an unlinked colleague whose contact
+    # we just want to see in the UI.
+    # `receives_broadcasts` — manager-controlled opt-in. Consumed by
+    # `bot_broadcast_recipients()` selector; the 3-hour leaderboard
+    # cron respects it so operators can subscribe (get link discovery,
+    # /find, personal DMs) without being spammed by the manager digest.
+    phone = models.CharField(max_length=16, blank=True, default="", db_index=True)
+    linked_operator = models.ForeignKey(
+        "operators.Operator",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    linked_profile = models.ForeignKey(
+        "users.Profile",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    receives_broadcasts = models.BooleanField(default=False)
+    last_seen_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]

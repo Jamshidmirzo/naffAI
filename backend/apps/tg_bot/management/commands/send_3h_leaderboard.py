@@ -35,7 +35,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from apps.analytics.selectors import lead_stats_snapshot
-from apps.tg_bot.models import BotSubscription
+from apps.tg_bot.selectors import bot_broadcast_recipients
 
 logger = logging.getLogger("tg_bot.leaderboard_3h")
 
@@ -267,11 +267,12 @@ class Command(BaseCommand):
         # into asyncio.run(), otherwise the ORM raises SynchronousOnlyOperation
         # when a coroutine touches the DB from inside the event loop.
         snapshot = lead_stats_snapshot(date_from=date_from, date_to=date_to)
-        subs = list(
-            BotSubscription.objects.filter(
-                is_active=True, blocked_at__isnull=True
-            ).exclude(chat_id__isnull=True)
-        )
+        # 2026-08-28: switched from raw `is_active` filter to the
+        # `bot_broadcast_recipients()` selector so each subscription's
+        # `receives_broadcasts` toggle is honoured. Operators who only
+        # need personal DMs (callback reminders, /find results) stay
+        # subscribed but don't receive the manager digest anymore.
+        subs = list(bot_broadcast_recipients().exclude(chat_id__isnull=True))
 
         # Render once per language — subscriptions with the same lang share
         # the same rendered text (saves N-1 renders per broadcast).

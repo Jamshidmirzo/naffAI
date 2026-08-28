@@ -8,6 +8,8 @@ from .apis import (
     BotChatListApi,
     BotReportPreviewAsApi,
     BotReportViewSet,
+    BotSubscriberDetailApi,
+    BotSubscriberListApi,
     BotTemplateListApi,
 )
 
@@ -19,6 +21,8 @@ urlpatterns = [
     path("chats/<int:pk>/", BotChatDetailApi.as_view()),
     path("blocks/", BotBlocksApi.as_view()),
     path("templates/", BotTemplateListApi.as_view()),
+    path("subscribers/", BotSubscriberListApi.as_view()),
+    path("subscribers/<int:pk>/", BotSubscriberDetailApi.as_view()),
     path("reports/preview_as/", BotReportPreviewAsApi.as_view()),
     path("audit/", BotAuditListApi.as_view()),
     path("", include(router.urls)),

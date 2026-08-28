@@ -87,7 +87,10 @@ async def main() -> None:
             CallbackQuery,
             InlineKeyboardButton,
             InlineKeyboardMarkup,
+            KeyboardButton,
             Message,
+            ReplyKeyboardMarkup,
+            ReplyKeyboardRemove,
         )
     except ImportError:
         logger.error("aiogram not installed — install with `uv pip install aiogram`")
@@ -381,13 +384,133 @@ async def main() -> None:
 
     # ---------- handlers ----------
 
+    def _subscription_has_phone_sync(chat_id: int) -> bool:
+        """
+        True iff we already captured the subscriber's phone via a prior
+        Message.contact. Used by /start to decide between the
+        request-contact prompt and the legacy sale FSM entry point.
+        """
+        from apps.tg_bot.models import BotSubscription
+
+        row = BotSubscription.objects.filter(chat_id=chat_id).values("phone").first()
+        return bool(row and row["phone"])
+
+    def _contact_request_kb(lang: str) -> ReplyKeyboardMarkup:
+        """Reply keyboard with a single `request_contact` button."""
+        label = "Yuborish" if lang == "uz" else "Отправить номер"
+        return ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text=label, request_contact=True)]],
+            resize_keyboard=True,
+            one_time_keyboard=True,
+            selective=True,
+        )
+
     @dp.message(CommandStart())
-    @dp.message(Command("new"))
     async def cmd_start(msg: Message, state: FSMContext) -> None:
+        """
+        /start in a private chat now asks for the user's phone the first
+        time (via request_contact) so a manager can identify the caller
+        in the /bot-subscribers UI. Subsequent /start (or any /new call)
+        drops straight into the legacy add-sale FSM.
+
+        Group / supergroup / channel chats keep the classic FSM path —
+        request_contact isn't valid there.
+        """
+        lang = await lang_for(msg)
+        await state.clear()
+        # request_contact is a private-chat-only feature.
+        chat_type = getattr(msg.chat, "type", "") or ""
+        if chat_type == "private":
+            has_phone = await asyncio.to_thread(
+                _subscription_has_phone_sync, msg.chat.id
+            )
+            if not has_phone:
+                greeting = (
+                    "Assalomu alaykum! 👋\n\n"
+                    "Iltimos, telefon raqamingizni yuboring — menejer sizni "
+                    "roʻyxatda koʻra oladi va kerak boʻlsa xabarlarga qoʻshadi."
+                    if lang == "uz"
+                    else (
+                        "Здравствуйте! 👋\n\n"
+                        "Пожалуйста, отправьте свой номер телефона — "
+                        "менеджер увидит вас в списке и при необходимости "
+                        "подключит к рассылкам."
+                    )
+                )
+                await msg.answer(greeting, reply_markup=_contact_request_kb(lang))
+                # Do NOT set state — the user is free to send the contact
+                # button, and the global Message.contact handler will pick
+                # it up regardless of FSM position.
+                return
+        # Legacy path — start the add-sale FSM.
+        await msg.answer(t("intro", lang), parse_mode="Markdown")
+        await state.set_state(NewSale.model)
+
+    @dp.message(Command("new"))
+    async def cmd_new(msg: Message, state: FSMContext) -> None:
+        """Explicit sale-entry point — bypasses the contact-request greeting."""
         lang = await lang_for(msg)
         await state.clear()
         await msg.answer(t("intro", lang), parse_mode="Markdown")
         await state.set_state(NewSale.model)
+
+    @dp.message(F.contact)
+    async def on_contact(msg: Message, state: FSMContext) -> None:
+        """
+        Global handler for `Message.contact` — fires when the user taps
+        the `request_contact` button we send in /start (or shares any
+        contact card). We only act on THEIR own contact (contact.user_id
+        == from_user.id), and only in private chats — receiving a
+        stranger's contact in a group must not link them.
+
+        The service layer normalises the phone, saves it on the row and
+        auto-resolves Operator + Profile. Broadcast opt-in stays OFF —
+        the manager decides via /bot-subscribers.
+        """
+        chat_type = getattr(msg.chat, "type", "") or ""
+        if chat_type != "private":
+            return
+        contact = msg.contact
+        if not contact:
+            return
+        # Only accept a contact the user is sharing about themselves.
+        if contact.user_id and msg.from_user and contact.user_id != msg.from_user.id:
+            return
+        raw_phone = contact.phone_number or ""
+        first_name = (contact.first_name or msg.from_user.full_name or "").strip()
+
+        def _link():
+            from apps.tg_bot.models import BotSubscription
+            from apps.tg_bot.services import subscription_link_by_phone
+
+            sub, _ = BotSubscription.objects.get_or_create(chat_id=msg.chat.id)
+            # Keep chat_title in sync so the manager UI shows a readable label.
+            new_title = (msg.chat.title or getattr(msg.chat, "full_name", "") or "")[:128]
+            if new_title and sub.chat_title != new_title:
+                sub.chat_title = new_title
+                sub.save(update_fields=["chat_title", "updated_at"])
+            return subscription_link_by_phone(subscription=sub, raw_phone=raw_phone)
+
+        try:
+            await asyncio.to_thread(_link)
+        except Exception:
+            logger.exception("contact link failed for chat=%s", msg.chat.id)
+
+        lang = await lang_for(msg)
+        if lang == "uz":
+            reply = (
+                f"Rahmat, {first_name}! ✅\n\n"
+                "Menejer sizni roʻyxatda koʻrdi. Kerak boʻlsa, u sizni "
+                "avtomatik xabarlarga qoʻshadi. Sotuv qoʻshish uchun /new bosing."
+            )
+        else:
+            reply = (
+                f"Спасибо, {first_name}! ✅\n\n"
+                "Менеджер видит вас в списке. При необходимости он "
+                "подключит вас к автоматическим рассылкам. Чтобы добавить "
+                "продажу — команда /new."
+            )
+        await msg.answer(reply, reply_markup=ReplyKeyboardRemove())
 
     @dp.message(Command("cancel"))
     async def cmd_cancel(msg: Message, state: FSMContext) -> None:

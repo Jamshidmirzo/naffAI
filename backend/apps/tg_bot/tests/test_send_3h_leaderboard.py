@@ -27,7 +27,6 @@ from apps.tg_bot.management.commands.send_3h_leaderboard import (
 )
 from apps.tg_bot.models import BotSubscription
 
-
 # --- fixtures ----------------------------------------------------------
 
 
@@ -147,8 +146,12 @@ def test_build_report_top_n_cap():
 @pytest.mark.django_db
 def test_dry_run_does_not_call_aiogram(_now_working_hour):
     """--dry-run must never touch the Bot HTTP client."""
-    BotSubscription.objects.create(chat_id=1001, is_active=True, language="ru")
-    BotSubscription.objects.create(chat_id=1002, is_active=True, language="uz")
+    BotSubscription.objects.create(
+        chat_id=1001, is_active=True, language="ru", receives_broadcasts=True
+    )
+    BotSubscription.objects.create(
+        chat_id=1002, is_active=True, language="uz", receives_broadcasts=True
+    )
 
     out = StringIO()
     with patch(
@@ -167,7 +170,9 @@ def test_dry_run_does_not_call_aiogram(_now_working_hour):
 @pytest.mark.django_db
 def test_hour_guard_below_min_skips(_now_working_hour):
     """--min-hour above current local hour → early return, no send attempts."""
-    BotSubscription.objects.create(chat_id=2001, is_active=True, language="ru")
+    BotSubscription.objects.create(
+        chat_id=2001, is_active=True, language="ru", receives_broadcasts=True
+    )
 
     out = StringIO()
     with patch(
@@ -183,7 +188,9 @@ def test_hour_guard_below_min_skips(_now_working_hour):
 
 @pytest.mark.django_db
 def test_hour_guard_above_max_skips(_now_working_hour):
-    BotSubscription.objects.create(chat_id=2002, is_active=True, language="ru")
+    BotSubscription.objects.create(
+        chat_id=2002, is_active=True, language="ru", receives_broadcasts=True
+    )
 
     out = StringIO()
     with patch(
@@ -200,16 +207,27 @@ def test_hour_guard_above_max_skips(_now_working_hour):
 @pytest.mark.django_db
 def test_live_send_hits_every_active_sub(_now_working_hour):
     """
-    2 active + 1 inactive + 1 blocked subs → exactly 2 aiogram send_dm calls.
+    2 broadcast-on + 1 broadcast-off + 1 inactive + 1 blocked subs →
+    exactly 2 aiogram send_dm calls (broadcast-off is muted even though
+    is_active=True, blocked/inactive are still muted for their reasons).
     """
-    BotSubscription.objects.create(chat_id=3001, is_active=True, language="ru")
-    BotSubscription.objects.create(chat_id=3002, is_active=True, language="uz")
+    BotSubscription.objects.create(
+        chat_id=3001, is_active=True, language="ru", receives_broadcasts=True
+    )
+    BotSubscription.objects.create(
+        chat_id=3002, is_active=True, language="uz", receives_broadcasts=True
+    )
+    # New: `receives_broadcasts=False` (operator who wants /find only) → skipped.
+    BotSubscription.objects.create(
+        chat_id=3005, is_active=True, language="ru", receives_broadcasts=False
+    )
     BotSubscription.objects.create(chat_id=3003, is_active=False, language="ru")
     BotSubscription.objects.create(
         chat_id=3004,
         is_active=True,
         language="ru",
         blocked_at=timezone.now(),
+        receives_broadcasts=True,
     )
 
     out = StringIO()
@@ -240,7 +258,9 @@ def test_live_send_end_to_end_with_real_activity(_now_working_hour):
     CallAttempt.objects.create(lead=lead2, operator=op1, outcome=CallOutcome.NO_ANSWER)
     CallAttempt.objects.create(lead=lead1, operator=op2, outcome=CallOutcome.NO_ANSWER)
 
-    BotSubscription.objects.create(chat_id=4001, is_active=True, language="ru")
+    BotSubscription.objects.create(
+        chat_id=4001, is_active=True, language="ru", receives_broadcasts=True
+    )
 
     out = StringIO()
     send_mock = AsyncMock(return_value=(True, ""))

@@ -82,6 +82,7 @@ function useManagerGroups(t: (k: string) => string, showPhotos: boolean): Sideba
         { to: "/ai-chat", label: t("nav.ai_chat") },
         { to: "/tg-queue", label: t("nav.tg_queue") },
         { to: "/bot", label: t("nav.bot") },
+        { to: "/bot-subscribers", label: t("nav.bot_subscribers") },
         { to: "/marketing", label: t("nav.marketing") },
       ],
     },
