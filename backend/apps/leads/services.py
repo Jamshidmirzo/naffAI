@@ -1675,7 +1675,10 @@ def _retry_export_build_values(candidates) -> list[list[str]]:
     header = [
         "Дата статуса",
         "Телефон",
+        "Доп. телефон",
         "Имя",
+        "Хочет купить",
+        "Карта",
         "Статус",
         "Оператор",
         "Комментарий",
@@ -1706,7 +1709,10 @@ def _retry_export_build_values(candidates) -> list[list[str]]:
             [
                 date_str,
                 lead.phone or lead.phone_raw or "",
+                lead.phone_alt or "",
                 lead.full_name or "",
+                lead.product_hint or "",
+                lead.has_card or "",
                 str(status_label),
                 operator_name,
                 str(comment),

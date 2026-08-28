@@ -191,7 +191,10 @@ def test_build_values_shape_header_and_rows(leads_mix, settings):
     assert header == [
         "Дата статуса",
         "Телефон",
+        "Доп. телефон",
         "Имя",
+        "Хочет купить",
+        "Карта",
         "Статус",
         "Оператор",
         "Комментарий",
@@ -199,11 +202,11 @@ def test_build_values_shape_header_and_rows(leads_mix, settings):
         "CRM ссылка",
     ]
 
-    # Every row: 8 columns, phone included, CRM link is absolute.
+    # Every row: 11 columns, phone included, CRM link is absolute.
     for row in values[1:]:
-        assert len(row) == 8
+        assert len(row) == 11
         assert row[1].startswith("+998")
-        assert row[7].startswith("https://example.test/leads/")
+        assert row[-1].startswith("https://example.test/leads/")
 
 
 @pytest.mark.django_db
@@ -214,7 +217,7 @@ def test_build_values_public_url_defaults_to_prod(leads_mix, settings):
     candidates = list(retry_export_candidates())
     values = _retry_export_build_values(candidates)
     for row in values[1:]:
-        assert row[7].startswith("https://naff.flek.uz/leads/")
+        assert row[-1].startswith("https://naff.flek.uz/leads/")
 
 
 # ---- Service happy path (mock client) ------------------------------------
