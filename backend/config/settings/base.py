@@ -62,6 +62,7 @@ LOCAL_APPS = [
     "apps.ai_chat",
     "apps.marketing",
     "apps.lessons",
+    "apps.training",
     "apps.attendance",
     "apps.notifications",
     "apps.system_settings",

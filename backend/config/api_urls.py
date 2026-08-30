@@ -71,6 +71,10 @@ urlpatterns = [
     # Bot v2: configurable scheduled reports + chat registry + audit log.
     path("bot/", include("apps.tg_bot.urls")),
     path("lessons/", include("apps.lessons.urls")),
+    # Manager-authored обучающие материалы (видео/файл + опциональный
+    # тест + комментарии). Отдельный app от apps.lessons (там AI-generated
+    # DailyLesson) — не путать.
+    path("training/", include("apps.training.urls")),
     path("attendance/", include("apps.attendance.urls")),
     # Manager-only user management (web accounts, not operators).
     path("users/", include((users_urlpatterns, "users"))),

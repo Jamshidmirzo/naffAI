@@ -23,6 +23,10 @@ import AIChat from "./pages/AIChat";
 import Marketing from "./pages/Marketing";
 import DailyLesson from "./pages/DailyLesson";
 import LessonsHistory from "./pages/LessonsHistory";
+import TrainingList from "./pages/TrainingList";
+import TrainingLessonView from "./pages/TrainingLessonView";
+import TrainingManage from "./pages/TrainingManage";
+import TrainingLessonForm from "./pages/TrainingLessonForm";
 import Scan from "./pages/Scan";
 import AttendanceToday from "./pages/AttendanceToday";
 import AttendanceReport from "./pages/AttendanceReport";
@@ -91,6 +95,22 @@ export default function App() {
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/lessons/today" element={<DailyLesson />} />
           <Route path="/lessons/history" element={<LessonsHistory />} />
+          {/* Обучение (manager-authored) — /training. Не путать с /lessons/*,
+              там AI-generated DailyLesson. */}
+          <Route path="/training" element={<TrainingList />} />
+          <Route path="/training/:id" element={<TrainingLessonView />} />
+          <Route
+            path="/training/manage"
+            element={<RoleGate allow={["manager"]}><TrainingManage /></RoleGate>}
+          />
+          <Route
+            path="/training/manage/new"
+            element={<RoleGate allow={["manager"]}><TrainingLessonForm /></RoleGate>}
+          />
+          <Route
+            path="/training/manage/:id"
+            element={<RoleGate allow={["manager"]}><TrainingLessonForm /></RoleGate>}
+          />
           <Route path="/leads" element={<RoleGate allow={["manager"]}><Leads /></RoleGate>} />
           <Route path="/leads/orphans" element={<RoleGate allow={["manager"]}><OrphanLeads /></RoleGate>} />
           <Route path="/settings" element={<RoleGate allow={["manager"]}><Settings /></RoleGate>} />
