@@ -309,19 +309,11 @@ class Command(BaseCommand):
         moves_agg: dict[str, int] = defaultdict(int)
 
         for phone in phones:
-            leads = list(
-                Lead.objects.filter(phone=phone).select_for_update()
-                if not dry_run
-                else Lead.objects.filter(phone=phone)
-            )
-            if len(leads) < 2:
-                # Race: another writer merged this since our discovery
-                # scan. Skip.
-                continue
-
-            winner, losers = _pick_winner(leads)
-
             if dry_run:
+                leads = list(Lead.objects.filter(phone=phone))
+                if len(leads) < 2:
+                    continue
+                winner, losers = _pick_winner(leads)
                 self._print_group_plan(
                     phone=phone,
                     winner=winner,
@@ -332,6 +324,14 @@ class Command(BaseCommand):
 
             try:
                 with transaction.atomic():
+                    leads = list(
+                        Lead.objects.filter(phone=phone).select_for_update()
+                    )
+                    if len(leads) < 2:
+                        # Race: another writer merged this since our discovery
+                        # scan. Skip inside the txn (lock released on commit).
+                        continue
+                    winner, losers = _pick_winner(leads)
                     group_moves = self._merge_group(
                         winner=winner, losers=losers
                     )
