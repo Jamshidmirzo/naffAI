@@ -42,6 +42,13 @@ class SyncResult:
     skipped: int
     errors: int
     max_row: int
+    # 2026-08-30: `imported` still counts every successful sheet row (both
+    # freshly created and folded-into-existing), but `merged` breaks out
+    # the phone-dedup path so operators can see how much noise sync would
+    # otherwise have created.
+    created: int = 0
+    merged: int = 0
+    resynced: int = 0
 
 
 def sync_one(
@@ -89,6 +96,9 @@ def sync_one(
 
             read = len(rows)
             imported = 0
+            created = 0
+            merged = 0
+            resynced = 0
             skipped = 0
             errors = 0
             max_row = sheet_source.last_synced_row
@@ -104,11 +114,17 @@ def sync_one(
                     continue
                 try:
                     with transaction.atomic():
-                        lead = lead_create_from_sheet_row(
+                        lead, outcome = lead_create_from_sheet_row(
                             sheet_source=sheet_source, row_index=row_index, raw_row=row
                         )
                         if lead is not None:
                             imported += 1
+                            if outcome == "created":
+                                created += 1
+                            elif outcome == "merged":
+                                merged += 1
+                            elif outcome == "resynced":
+                                resynced += 1
                 except Exception:
                     logger.exception(
                         "sheet_source=%s row=%s failed to import",
@@ -135,6 +151,9 @@ def sync_one(
                 skipped=skipped,
                 errors=errors,
                 max_row=max_row,
+                created=created,
+                merged=merged,
+                resynced=resynced,
             )
     except Exception as exc:
         SheetSource.objects.filter(pk=sheet_source.id).update(
@@ -157,10 +176,14 @@ def sync_all(*, force_full_scan: bool = False) -> list[SyncResult]:
             r = sync_one(client=client, sheet_source=src, force_full_scan=force_full_scan)
             results.append(r)
             logger.info(
-                "sheet_source=%s read=%s imported=%s skipped=%s errors=%s max_row=%s",
+                "sheet_source=%s read=%s imported=%s (created=%s merged=%s resynced=%s) "
+                "skipped=%s errors=%s max_row=%s",
                 src.id,
                 r.read,
                 r.imported,
+                r.created,
+                r.merged,
+                r.resynced,
                 r.skipped,
                 r.errors,
                 r.max_row,

@@ -40,7 +40,11 @@ from .models import (
     SheetSource,
     TelegramLink,
 )
-from .selectors import alias_lookup, next_operator_for_round_robin
+from .selectors import (
+    TERMINAL_LEAD_STATUSES,
+    alias_lookup,
+    next_operator_for_round_robin,
+)
 
 # ---- helpers -------------------------------------------------------------
 
@@ -439,10 +443,20 @@ def lead_create_from_sheet_row(
     sheet_source: SheetSource,
     row_index: int,
     raw_row: dict,
-) -> Lead | None:
+) -> tuple[Lead, str]:
     """
-    Idempotent by `(sheet_source, row_index)`. If a lead for that pair already
-    exists we return it untouched — sync loops don't overwrite manual edits.
+    Returns `(lead, outcome)` where outcome is:
+      - `"resynced"` — the (sheet_source, row_index) pair already existed.
+        Idempotent path: sync loops don't overwrite manual edits, but we
+        do pull through freshly-typed status changes from the sheet.
+      - `"merged"` — a different lead with the same normalized phone was
+        already active in the DB. We reuse it, update «soft» fields
+        (name / product hint / has_card / phone_alt) if the new row has
+        richer values, and append a `duplicate_sheet_rows` audit trail
+        entry so history is preserved. `sheet_source` / `sheet_row_index`
+        on the winning lead stay pointed at the ORIGINAL row.
+      - `"created"` — no existing match; a fresh Lead is created and
+        (optionally) auto-assigned.
 
     Column resolution goes through `_pick_column`, which supports both
     header-name and positional (`{"column_index": N}`) specs so the same
@@ -466,7 +480,7 @@ def lead_create_from_sheet_row(
                 status=mapped_sheet_status,
                 comment=f"resync: sheet status «{sheet_status_raw}»",
             )
-        return existing
+        return existing, "resynced"
 
     full_name = _pick_column(raw_row, cm.get("full_name"))
     phone_raw = _pick_column(raw_row, cm.get("phone"))
@@ -503,6 +517,43 @@ def lead_create_from_sheet_row(
                 phone_alt = candidate
                 break
     metadata = _extract_metadata(raw_row, cm)
+
+    # Phone-level dedup (2026-08-30): the historical idempotency key was
+    # (sheet_source, sheet_row_index) — but managers routinely re-add the
+    # same customer from a different channel or a copy-pasted row, which
+    # would create a fresh Lead each time and leave the CRM showing two
+    # cards for the same person. If the normalized phone already belongs
+    # to a NON-terminal Lead, we reuse it: soft-update name/product hint
+    # /card/alt-phone if the new row has richer values, append a row
+    # trail into `metadata["duplicate_sheet_rows"]`, and DO NOT touch
+    # status/operator/sheet_source/sheet_row_index (those still point to
+    # the original row so per-sheet writeback stays aligned).
+    #
+    # A phone that only exists on terminal leads (won/lost/archived/…)
+    # still creates a fresh Lead — the client came back after a closed
+    # history and deserves a new working card.
+    if valid and normalized:
+        from .selectors import terminal_lead_status_codes
+
+        terminal = set(terminal_lead_status_codes()) | set(TERMINAL_LEAD_STATUSES)
+        active_dup = (
+            Lead.objects
+            .filter(phone=normalized)
+            .exclude(status__in=terminal)
+            .order_by("-updated_at")
+            .first()
+        )
+        if active_dup is not None:
+            merged = _merge_sheet_row_into_existing(
+                existing=active_dup,
+                sheet_source=sheet_source,
+                row_index=row_index,
+                full_name=full_name,
+                product_hint=product_hint,
+                has_card=has_card,
+                phone_alt=phone_alt,
+            )
+            return merged, "merged"
 
     default_status = sheet_source.default_status or LeadStatus.NEW
     needs_review = False
@@ -630,7 +681,87 @@ def lead_create_from_sheet_row(
             entity_id=lead.id,
             changes={"needs_review_reason": assignment_reason},
         )
-    return lead
+    return lead, "created"
+
+
+def _merge_sheet_row_into_existing(
+    *,
+    existing: Lead,
+    sheet_source: SheetSource,
+    row_index: int,
+    full_name: str,
+    product_hint: str,
+    has_card: str,
+    phone_alt: str,
+) -> Lead:
+    """
+    Fold a fresh sheet row into an already-existing active Lead with the
+    same normalized phone. Called from `lead_create_from_sheet_row` — see
+    the docstring there for why we do this.
+
+    Contract:
+      - «Soft» fields (`full_name`, `product_hint`, `has_card`, `phone_alt`)
+        are updated ONLY when the incoming value is non-empty AND differs
+        from the current one. We never overwrite existing data with blanks.
+      - «Hard» fields (`status`, `operator`, `sheet_source`,
+        `sheet_row_index`, `phone`, `phone_invalid`, `source`) are left
+        untouched: the operator's status choice on the winner lead wins,
+        and the ORIGINAL sheet_row_index stays pointed at the original row
+        so per-lead writeback keeps updating the right cell.
+      - A `duplicate_sheet_rows` list is appended to `metadata` — one entry
+        per merged row — so the audit trail survives.
+      - Emits an `AuditAction.UPDATE` entry so the merge is visible in
+        the audit log timeline.
+    """
+    changed_fields: list[str] = []
+    change_diff: dict[str, dict[str, str]] = {}
+    for field, new_val in (
+        ("full_name", (full_name or "").strip()[:128]),
+        ("product_hint", (product_hint or "").strip()[:256]),
+        ("has_card", (has_card or "").strip()[:64]),
+        ("phone_alt", (phone_alt or "").strip()[:16]),
+    ):
+        if not new_val:
+            continue
+        old_val = getattr(existing, field) or ""
+        if old_val != new_val:
+            setattr(existing, field, new_val)
+            changed_fields.append(field)
+            change_diff[field] = {"old": old_val, "new": new_val}
+
+    metadata = dict(existing.metadata or {})
+    trail = list(metadata.get("duplicate_sheet_rows") or [])
+    trail.append(
+        {
+            "sheet_source_id": sheet_source.id,
+            "sheet_row_index": row_index,
+            "at": timezone.now().isoformat(),
+        }
+    )
+    metadata["duplicate_sheet_rows"] = trail
+    existing.metadata = metadata
+    changed_fields.append("metadata")
+
+    # updated_at bumps automatically via auto_now, but only if we include
+    # it in update_fields explicitly.
+    changed_fields.append("updated_at")
+    existing.save(update_fields=list(dict.fromkeys(changed_fields)))
+
+    audit_log_create(
+        user=None,
+        action=AuditAction.UPDATE,
+        entity="leads.Lead",
+        entity_id=existing.id,
+        changes={
+            "merged_from_sheet_row": {
+                "sheet_source_id": sheet_source.id,
+                "sheet_row_index": row_index,
+            },
+            "soft_field_diff": change_diff,
+        },
+        comment="Дедуп на импорте: строка Sheets склеена с существующим лидом",
+    )
+    return existing
 
 
 @transaction.atomic
