@@ -62,6 +62,7 @@ function useManagerGroups(t: (k: string) => string, showPhotos: boolean): Sideba
         // (/payroll) остаётся доступным по прямому URL, но убран из nav —
         // он редко используется и запутывал команду.
         { to: "/attendance/payroll", label: t("nav.payroll") },
+        { to: "/settings/attendance", label: t("nav.attendance_settings") },
         { to: "/lessons/today", label: t("nav.lessons") },
         { to: "/training", label: t("nav.training") },
         { to: "/training/manage", label: t("nav.training_manage") },
