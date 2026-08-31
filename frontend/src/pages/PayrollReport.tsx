@@ -237,11 +237,27 @@ export default function PayrollReport() {
                 <div className="text-right tabular-nums text-[13px]">
                   {formatUZS(r.sales.actual_uzs)}
                 </div>
-                <div className="text-center">
+                <div className="text-center flex items-center justify-center gap-2">
                   <GateFlag passed={r.attendance.gate_passed} />
+                  <span
+                    className="tabular-nums text-[13px] font-medium"
+                    style={{
+                      color: r.attendance.gate_passed ? "#059669" : "#dc2626",
+                    }}
+                  >
+                    {r.attendance.rate_pct.toFixed(1)}%
+                  </span>
                 </div>
-                <div className="text-center">
+                <div className="text-center flex items-center justify-center gap-2">
                   <GateFlag passed={r.sales.gate_passed} />
+                  <span
+                    className="tabular-nums text-[13px] font-medium"
+                    style={{
+                      color: r.sales.gate_passed ? "#059669" : "#dc2626",
+                    }}
+                  >
+                    {r.sales.rate_pct.toFixed(1)}%
+                  </span>
                 </div>
                 <div
                   className="text-right font-semibold tabular-nums"
