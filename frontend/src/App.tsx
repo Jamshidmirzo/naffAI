@@ -32,6 +32,8 @@ import AttendanceToday from "./pages/AttendanceToday";
 import AttendanceReport from "./pages/AttendanceReport";
 import AttendancePhotos from "./pages/AttendancePhotos";
 import AttendanceKiosk from "./pages/AttendanceKiosk";
+import PayrollReport from "./pages/PayrollReport";
+import MyPayroll from "./pages/MyPayroll";
 import Placeholder from "./pages/Placeholder";
 import Notifications from "./pages/Notifications";
 import SalesToday from "./pages/SalesToday";
@@ -146,6 +148,14 @@ export default function App() {
           <Route path="/attendance/report" element={<RoleGate allow={["manager"]}><PinGate><AttendanceReport /></PinGate></RoleGate>} />
           <Route path="/attendance/photos" element={<RoleGate allow={["manager"]}><PinGate><AttendancePhotos /></PinGate></RoleGate>} />
           <Route path="/attendance/kiosk" element={<RoleGate allow={["manager"]}><PinGate><AttendanceKiosk /></PinGate></RoleGate>} />
+          {/* 2026-08-31 attendance-based payroll. Manager: сводка по всем
+              операторам + drilldown + Excel/PDF per-operator. PinGate,
+              как и остальные /attendance/* — совпадает с backend
+              permission IsAttendancePinVerified. */}
+          <Route path="/attendance/payroll" element={<RoleGate allow={["manager"]}><PinGate><PayrollReport /></PinGate></RoleGate>} />
+          {/* Operator: свой отчёт за месяц (PIN не нужен, backend уже
+              фильтрует по profile.operator). */}
+          <Route path="/my/payroll" element={<RoleGate allow={["operator"]}><MyPayroll /></RoleGate>} />
         </Route>
       </Routes>
     </>

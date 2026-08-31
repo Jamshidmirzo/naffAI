@@ -57,7 +57,11 @@ function useManagerGroups(t: (k: string) => string, showPhotos: boolean): Sideba
       title: t("sidebar.team"),
       items: [
         { to: "/operators", label: t("nav.operators") },
-        { to: "/payroll", label: t("nav.payroll") },
+        // 2026-08-31: nav.payroll теперь ведёт на новый attendance-based
+        // «Зарплата» (/attendance/payroll). Старый sales-bonus payroll
+        // (/payroll) остаётся доступным по прямому URL, но убран из nav —
+        // он редко используется и запутывал команду.
+        { to: "/attendance/payroll", label: t("nav.payroll") },
         { to: "/lessons/today", label: t("nav.lessons") },
         { to: "/training", label: t("nav.training") },
         { to: "/training/manage", label: t("nav.training_manage") },
@@ -109,6 +113,9 @@ function useOperatorGroups(t: (k: string) => string): SidebarGroup[] {
         { to: "/lessons/today", label: t("nav.lesson_today"), badgeKey: "lessonNew" },
         { to: "/lessons/history", label: t("nav.lesson_history") },
         { to: "/training", label: t("nav.training") },
+        // 2026-08-31: свой месячный зарплатный отчёт (attendance-based).
+        // PIN не требуется — backend фильтрует по profile.operator.
+        { to: "/my/payroll", label: t("nav.my_payroll") },
         { to: "/profile", label: t("nav.profile") },
       ],
     },

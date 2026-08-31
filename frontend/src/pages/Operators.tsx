@@ -42,6 +42,17 @@ interface OperatorRow {
   blocking_gate_enabled?: boolean;
   require_checkin_enabled?: boolean;
   forgotten_checkouts_count?: number;
+  // 2026-08-31 payroll overrides. Nullable — при пустом значении расчёт
+  // берёт AttendanceSettings.default_* (см. attendance/services.py::
+  // resolve_operator_config). Приходят в разных форматах: salary_uzs как
+  // строка Decimal, times как "HH:MM:SS", остальные — целые.
+  salary_uzs?: string | null;
+  shift_start?: string | null;
+  shift_end?: string | null;
+  grace_period_min?: number | null;
+  late_penalty_uzs?: string | null;
+  weekly_day_off?: number | null;
+  weekly_free_absences?: number | null;
 }
 
 /**
@@ -141,6 +152,16 @@ export default function Operators() {
     status: OperatorStatus;
     blocking_gate_enabled: boolean;
     require_checkin_enabled: boolean;
+    // 2026-08-31 payroll overrides — все опциональные (пусто → default'ы
+    // из AttendanceSettings). Храним как строки, чтобы «пустое поле» жило
+    // корректно и не превращалось в 0 при рендере NumericInput'ов.
+    salary_uzs: string;
+    shift_start: string;
+    shift_end: string;
+    grace_period_min: string;
+    late_penalty_uzs: string;
+    weekly_day_off: string; // "0".."6" or "" (пусто → default)
+    weekly_free_absences: string;
   } | null>(null);
   const [deleteError, setDeleteError] = useState("");
 
@@ -219,8 +240,26 @@ export default function Operators() {
       status: OperatorStatus;
       blocking_gate_enabled: boolean;
       require_checkin_enabled: boolean;
-    }) =>
-      api.patch(`/operators/${id}/`, {
+      salary_uzs: string;
+      shift_start: string;
+      shift_end: string;
+      grace_period_min: string;
+      late_penalty_uzs: string;
+      weekly_day_off: string;
+      weekly_free_absences: string;
+    }) => {
+      // Payroll overrides: пустая строка → null (backend возьмёт default
+      // из AttendanceSettings). Числовые поля парсим — если пришёл
+      // мусор (NaN), тоже null. Time-поля прокидываем как "HH:MM" —
+      // Django TimeField принимает и с секундами, и без.
+      const num = (v: string): number | null => {
+        const s = v.trim();
+        if (!s) return null;
+        const n = Number(s);
+        return Number.isFinite(n) ? n : null;
+      };
+      const str = (v: string): string | null => (v.trim() ? v.trim() : null);
+      return api.patch(`/operators/${id}/`, {
         full_name: body.full_name,
         phone: body.phone || null,
         hired_at: body.hired_at || null,
@@ -229,7 +268,15 @@ export default function Operators() {
         status: body.status,
         blocking_gate_enabled: body.blocking_gate_enabled,
         require_checkin_enabled: body.require_checkin_enabled,
-      }),
+        salary_uzs: num(body.salary_uzs),
+        shift_start: str(body.shift_start),
+        shift_end: str(body.shift_end),
+        grace_period_min: num(body.grace_period_min),
+        late_penalty_uzs: num(body.late_penalty_uzs),
+        weekly_day_off: num(body.weekly_day_off),
+        weekly_free_absences: num(body.weekly_free_absences),
+      });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["operators"] });
       qc.invalidateQueries({ queryKey: ["operators-list-all"] });
@@ -530,6 +577,38 @@ export default function Operators() {
                           status: selected.status,
                           blocking_gate_enabled: !!selected.blocking_gate_enabled,
                           require_checkin_enabled: !!selected.require_checkin_enabled,
+                          // Payroll overrides: null → "" (пустое поле в UI ⇔
+                          // «использовать default из настроек»). Time-поля
+                          // с backend'a приходят как "HH:MM:SS" — обрезаем
+                          // до "HH:MM" для <input type="time">.
+                          salary_uzs:
+                            selected.salary_uzs != null
+                              ? String(selected.salary_uzs)
+                              : "",
+                          shift_start:
+                            selected.shift_start
+                              ? selected.shift_start.slice(0, 5)
+                              : "",
+                          shift_end:
+                            selected.shift_end
+                              ? selected.shift_end.slice(0, 5)
+                              : "",
+                          grace_period_min:
+                            selected.grace_period_min != null
+                              ? String(selected.grace_period_min)
+                              : "",
+                          late_penalty_uzs:
+                            selected.late_penalty_uzs != null
+                              ? String(selected.late_penalty_uzs)
+                              : "",
+                          weekly_day_off:
+                            selected.weekly_day_off != null
+                              ? String(selected.weekly_day_off)
+                              : "",
+                          weekly_free_absences:
+                            selected.weekly_free_absences != null
+                              ? String(selected.weekly_free_absences)
+                              : "",
                         })
                       }
                     >
@@ -587,7 +666,7 @@ export default function Operators() {
       </section>
 
       {/* Edit operator modal */}
-      <Modal open={!!editModal} onClose={() => setEditModal(null)} width={480}>
+      <Modal open={!!editModal} onClose={() => setEditModal(null)} width={560}>
         {editModal && (
           <div className="p-7 space-y-4">
             <div className="text-[18px] font-semibold tracking-tight">
@@ -720,6 +799,154 @@ export default function Operators() {
                 </div>
               </div>
             </label>
+            {/* 2026-08-31 Payroll overrides: оклад / график / grace /
+                штраф / выходной / free-absences. Все поля опциональные —
+                пусто ⇒ backend возьмёт default из AttendanceSettings.
+                Секция вынесена под заголовок чтобы не смешивать с общими
+                полями редактирования оператора. */}
+            <div className="pt-2">
+              <div
+                className="text-[13px] font-semibold tracking-tight mb-2"
+                style={{
+                  color: "var(--text)",
+                  borderTop: "1px solid var(--border)",
+                  paddingTop: 14,
+                }}
+              >
+                {t("operator_form.section_salary")}
+              </div>
+              <div className="text-[11.5px] text-muted mb-3">
+                {t("operator_form.section_salary_hint")}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <div className="nf-col mb-1.5">
+                    {t("operator_form.salary_uzs")}
+                  </div>
+                  <input
+                    className="nf-input"
+                    inputMode="numeric"
+                    placeholder="1 500 000"
+                    value={editModal.salary_uzs}
+                    onChange={(e) =>
+                      setEditModal({
+                        ...editModal,
+                        salary_uzs: e.target.value.replace(/[^\d]/g, ""),
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <div className="nf-col mb-1.5">
+                    {t("operator_form.shift_start")}
+                  </div>
+                  <input
+                    className="nf-input"
+                    type="time"
+                    value={editModal.shift_start}
+                    onChange={(e) =>
+                      setEditModal({ ...editModal, shift_start: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <div className="nf-col mb-1.5">
+                    {t("operator_form.shift_end")}
+                  </div>
+                  <input
+                    className="nf-input"
+                    type="time"
+                    value={editModal.shift_end}
+                    onChange={(e) =>
+                      setEditModal({ ...editModal, shift_end: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <div className="nf-col mb-1.5">
+                    {t("operator_form.grace_period_min")}
+                  </div>
+                  <input
+                    className="nf-input"
+                    inputMode="numeric"
+                    placeholder="20"
+                    value={editModal.grace_period_min}
+                    onChange={(e) =>
+                      setEditModal({
+                        ...editModal,
+                        grace_period_min: e.target.value.replace(/[^\d]/g, ""),
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <div className="nf-col mb-1.5">
+                    {t("operator_form.late_penalty_uzs")}
+                  </div>
+                  <input
+                    className="nf-input"
+                    inputMode="numeric"
+                    placeholder="50 000"
+                    value={editModal.late_penalty_uzs}
+                    onChange={(e) =>
+                      setEditModal({
+                        ...editModal,
+                        late_penalty_uzs: e.target.value.replace(/[^\d]/g, ""),
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <div className="nf-col mb-1.5">
+                    {t("operator_form.weekly_day_off")}
+                  </div>
+                  {/* Native select с placeholder-опцией "" — это ОК, потому
+                      что backend принимает null; при выборе пустого числовое
+                      значение станет null в mutation. */}
+                  <select
+                    className="nf-input"
+                    value={editModal.weekly_day_off}
+                    onChange={(e) =>
+                      setEditModal({
+                        ...editModal,
+                        weekly_day_off: e.target.value,
+                      })
+                    }
+                  >
+                    <option value="">
+                      {t("operator_form.weekly_day_off_default")}
+                    </option>
+                    <option value="0">{t("weekday.mon")}</option>
+                    <option value="1">{t("weekday.tue")}</option>
+                    <option value="2">{t("weekday.wed")}</option>
+                    <option value="3">{t("weekday.thu")}</option>
+                    <option value="4">{t("weekday.fri")}</option>
+                    <option value="5">{t("weekday.sat")}</option>
+                    <option value="6">{t("weekday.sun")}</option>
+                  </select>
+                </div>
+                <div>
+                  <div className="nf-col mb-1.5">
+                    {t("operator_form.weekly_free_absences")}
+                  </div>
+                  <input
+                    className="nf-input"
+                    inputMode="numeric"
+                    placeholder="1"
+                    value={editModal.weekly_free_absences}
+                    onChange={(e) =>
+                      setEditModal({
+                        ...editModal,
+                        weekly_free_absences: e.target.value.replace(
+                          /[^\d]/g,
+                          "",
+                        ),
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="ghost" onClick={() => setEditModal(null)}>
                 {t("common.cancel")}

@@ -2300,6 +2300,60 @@ const STRINGS: Lookup = {
     "training.stats_wrong_ops": "Ошиблись",
     "training.error_pct": "{n}% ошибок",
     "training.stats": "Статистика",
+
+    // ------ payroll (attendance-based, 2026-08-31) ------
+    "payroll.subtitle": "Зарплата за месяц: оклад минус вычеты за пропуски и опоздания.",
+    "payroll.month": "Месяц",
+    "payroll.operator_col": "Оператор",
+    "payroll.salary_gross": "Оклад",
+    "payroll.days_col": "Дней",
+    "payroll.attendance_rate": "% посещ.",
+    "payroll.late_count": "Опозданий",
+    "payroll.absence_deduction": "Вычет за пропуски",
+    "payroll.late_penalty_total": "Штраф за опоздания",
+    "payroll.salary_earned": "К выплате",
+    "payroll.daily_rate": "Дневная ставка",
+    "payroll.gate_badge": "GATE {pct}%",
+    "payroll.gate_message":
+      "Посещаемость {rate}% ниже порога {gate}% — оператор получает 0 за месяц.",
+    "payroll.gate_message_operator":
+      "Ваша посещаемость {rate}% ниже порога {gate}% — зарплата за этот месяц не начисляется.",
+    "payroll.download_xlsx": "Excel",
+    "payroll.download_pdf": "PDF",
+    "payroll.days_breakdown": "По дням",
+    "payroll.shift_hint": "График: {from}–{to} · grace {grace} мин",
+    "payroll.of": "из",
+    "payroll.my_title": "Моя зарплата",
+    "payroll.my_subtitle": "Расчёт по посещаемости — оклад минус вычеты за пропуски и опоздания.",
+    "payroll.my_summary_label": "Сводка за период",
+    "payroll.day.on_time": "Вовремя",
+    "payroll.day.late": "Опоздание",
+    "payroll.day.absent": "Пропуск",
+    "payroll.day.weekend": "Выходной",
+    "payroll.day.free_absence": "Прощённый пропуск",
+
+    // ------ operator edit form — payroll section ------
+    "operator_form.section_salary": "Зарплата и график",
+    "operator_form.section_salary_hint":
+      "Все поля опциональные. Пусто — берётся значение по умолчанию из настроек.",
+    "operator_form.salary_uzs": "Оклад, UZS",
+    "operator_form.shift_start": "Начало смены",
+    "operator_form.shift_end": "Конец смены",
+    "operator_form.grace_period_min": "Grace (мин)",
+    "operator_form.late_penalty_uzs": "Штраф за опоздание, UZS",
+    "operator_form.weekly_day_off": "Выходной",
+    "operator_form.weekly_day_off_default": "По умолчанию",
+    "operator_form.weekly_free_absences": "Прощённых пропусков в неделю",
+
+    "weekday.mon": "Понедельник",
+    "weekday.tue": "Вторник",
+    "weekday.wed": "Среда",
+    "weekday.thu": "Четверг",
+    "weekday.fri": "Пятница",
+    "weekday.sat": "Суббота",
+    "weekday.sun": "Воскресенье",
+
+    "nav.my_payroll": "Моя зарплата",
   },
 
   uz: {
@@ -4540,6 +4594,60 @@ const STRINGS: Lookup = {
     "training.stats_wrong_ops": "Xato qildilar",
     "training.error_pct": "{n}% xato",
     "training.stats": "Statistika",
+
+    // ------ payroll (attendance-based, 2026-08-31) ------
+    "payroll.subtitle": "Oy uchun ish haqi: oklad minus kelmagan kunlar va kechikishlar ushlanmasi.",
+    "payroll.month": "Oy",
+    "payroll.operator_col": "Operator",
+    "payroll.salary_gross": "Oklad",
+    "payroll.days_col": "Kun",
+    "payroll.attendance_rate": "% davomat",
+    "payroll.late_count": "Kechikish",
+    "payroll.absence_deduction": "Kelmagan kun ushlanmasi",
+    "payroll.late_penalty_total": "Kechikish jarimasi",
+    "payroll.salary_earned": "To'lanadi",
+    "payroll.daily_rate": "Kunlik stavka",
+    "payroll.gate_badge": "GATE {pct}%",
+    "payroll.gate_message":
+      "Davomat {rate}% — {gate}% chegaradan past, shu sababli oy uchun ish haqi 0 hisoblanadi.",
+    "payroll.gate_message_operator":
+      "Sizning davomatingiz {rate}% — {gate}% chegaradan past, bu oy uchun ish haqi berilmaydi.",
+    "payroll.download_xlsx": "Excel",
+    "payroll.download_pdf": "PDF",
+    "payroll.days_breakdown": "Kunlar bo'yicha",
+    "payroll.shift_hint": "Grafik: {from}–{to} · grace {grace} daq",
+    "payroll.of": "dan",
+    "payroll.my_title": "Mening oylik ish haqim",
+    "payroll.my_subtitle": "Davomatga asoslangan hisob-kitob — oklad minus kelmagan kunlar va kechikishlar.",
+    "payroll.my_summary_label": "Davr bo'yicha xulosa",
+    "payroll.day.on_time": "O'z vaqtida",
+    "payroll.day.late": "Kechikdi",
+    "payroll.day.absent": "Kelmadi",
+    "payroll.day.weekend": "Dam olish",
+    "payroll.day.free_absence": "Kechirilgan kun",
+
+    // ------ operator edit form — payroll section ------
+    "operator_form.section_salary": "Ish haqi va jadval",
+    "operator_form.section_salary_hint":
+      "Barcha maydonlar ixtiyoriy. Bo'sh bo'lsa, sozlamalardagi standart qiymat ishlatiladi.",
+    "operator_form.salary_uzs": "Oklad, UZS",
+    "operator_form.shift_start": "Smena boshi",
+    "operator_form.shift_end": "Smena oxiri",
+    "operator_form.grace_period_min": "Grace (daq)",
+    "operator_form.late_penalty_uzs": "Kechikish jarimasi, UZS",
+    "operator_form.weekly_day_off": "Dam olish kuni",
+    "operator_form.weekly_day_off_default": "Standart",
+    "operator_form.weekly_free_absences": "Haftalik kechirilgan kunlar",
+
+    "weekday.mon": "Dushanba",
+    "weekday.tue": "Seshanba",
+    "weekday.wed": "Chorshanba",
+    "weekday.thu": "Payshanba",
+    "weekday.fri": "Juma",
+    "weekday.sat": "Shanba",
+    "weekday.sun": "Yakshanba",
+
+    "nav.my_payroll": "Mening ish haqim",
   },
 };
 
