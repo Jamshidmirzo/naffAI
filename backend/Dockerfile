@@ -10,6 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential libpq-dev curl \
         # MediaPipe / OpenCV runtime deps (attendance photo face-check).
         libgl1 libglib2.0-0 \
+        # DejaVu TTF — reportlab PDF (payroll) кириллице нужен настоящий
+        # unicode-шрифт, иначе Helvetica рендерит русский/узбекский как ■■■.
+        fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /usr/local/bin/uv
