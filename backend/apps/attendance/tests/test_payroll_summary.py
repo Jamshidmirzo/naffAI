@@ -148,7 +148,7 @@ def test_attendance_passes_sales_fails(operator, settings_obj):
     assert summary["attendance"]["block_earned"] == "1500000"
     assert summary["sales"]["gate_passed"] is False
     assert summary["sales"]["block_earned"] == "0"
-    assert summary["total_earned"] == "1500000"
+    assert summary["total_earned"] == "0"
     # Shortfall: (10M × 0.85) - 6M = 2.5M
     assert Decimal(summary["sales"]["shortfall"]["amount_more_needed"]) == Decimal("2500000")
 
@@ -174,7 +174,7 @@ def test_attendance_fails_sales_passes(operator, settings_obj):
     assert summary["attendance"]["block_earned"] == "0"
     assert summary["sales"]["gate_passed"] is True
     assert summary["sales"]["block_earned"] == "1500000"
-    assert summary["total_earned"] == "1500000"
+    assert summary["total_earned"] == "0"
     # Shortfall: ceil(85% × 26) - 21 = ceil(22.1) - 21 = 23 - 21 = 2
     assert summary["attendance"]["shortfall"]["days_more_needed"] == 2
 

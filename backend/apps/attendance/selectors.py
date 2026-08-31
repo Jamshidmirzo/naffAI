@@ -596,7 +596,14 @@ def attendance_payroll_summary(
             f"До гейта {sales_gate_pct}% не хватает {amount_more_needed} UZS."
         )
 
-    total_earned = attendance_block_earned + sales_block_earned
+    # 2026-08-31: жёсткий AND-гейт. Пока оба гейта не пройдены — total=0.
+    # Иначе оператор мог бы получать 1.5M только за продажи, игнорируя
+    # смены (или наоборот). Business rule: только «оба + оба».
+    both_gates_passed = attendance_gate_passed and sales_gate_passed
+    if both_gates_passed:
+        total_earned = attendance_block_earned + sales_block_earned
+    else:
+        total_earned = Decimal("0")
     max_possible = attendance_bonus + sales_bonus
 
     # Deprecated aliases: salary_gross = attendance_bonus, salary_earned =
@@ -660,6 +667,10 @@ def attendance_payroll_summary(
         # ---- Totals ----
         "total_earned": str(total_earned),
         "max_possible": str(max_possible),
+        # 2026-08-31: жёсткий AND-гейт. Оба должны пройти, иначе total=0.
+        # Frontend читает этот флаг чтобы объяснить оператору «даже если один
+        # блок пройден — пока не пройдёшь оба, получишь ноль».
+        "both_gates_passed": bool(attendance_gate_passed and sales_gate_passed),
         # ---- Legacy aliases (deprecated, оставлены для обратной совместимости) ----
         # Их читают: старый фронт до апгрейда UI, compute_monthly_payroll в
         # apps.payroll.services, тесты OperatorStats. Не удаляем в этой волне.

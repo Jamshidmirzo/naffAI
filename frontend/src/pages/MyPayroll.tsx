@@ -80,6 +80,7 @@ type MyPayrollResponse = {
   sales: SalesBlock;
   total_earned: string;
   max_possible: string;
+  both_gates_passed?: boolean;
 };
 
 function currentMonthValue(): string {
@@ -285,6 +286,18 @@ export default function MyPayroll() {
               </div>
             </div>
             <ProgressBar pct={totalPct} tone={totalPct >= 50 ? "green" : "amber"} />
+            {data.both_gates_passed === false && (
+              <div
+                className="mt-3 rounded-xl px-3 py-2 text-[13px]"
+                style={{
+                  background: "rgba(239,68,68,0.08)",
+                  color: "#dc2626",
+                  border: "1px solid rgba(239,68,68,0.25)",
+                }}
+              >
+                ⚠ {t("payroll.and_gate_warning")}
+              </div>
+            )}
           </section>
 
           {/* Two gate cards: attendance / sales */}

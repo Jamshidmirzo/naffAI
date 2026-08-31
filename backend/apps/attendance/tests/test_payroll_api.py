@@ -119,7 +119,9 @@ def test_operator_can_access_own_payroll(api_client, op_user, op, settings_obj):
     assert body["attendance"]["block_earned"] == "1500000"
     # No sales → sales-block = 0 (gate failed).
     assert body["sales"]["gate_passed"] is False
-    assert body["total_earned"] == "1500000"
+    # 2026-08-31: AND-гейт — оба должны пройти, иначе total=0.
+    assert body["total_earned"] == "0"
+    assert body["both_gates_passed"] is False
     assert "days" in body["attendance"]
 
 
