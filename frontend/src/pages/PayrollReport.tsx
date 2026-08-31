@@ -1,53 +1,21 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, FileText, FileType2 } from "lucide-react";
+import { CheckCircle2, FileText, FileType2, XCircle } from "lucide-react";
 import { api } from "../lib/api";
 import { formatUZS } from "../lib/format";
-import { Button, Modal, StatusBadge } from "../components/ui";
+import { Button, Modal } from "../components/ui";
 import { MultiSelectPopover } from "../components/MultiSelectPopover";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
 
 /**
- * Manager-only attendance-based payroll report.
+ * Manager-only two-gate payroll report.
  *
- * Читает `/attendance/payroll/?month=YYYY-MM` (список всех активных
- * операторов + агрегированные показатели), плюс детальный breakdown
- * по кликну на строку — `/attendance/payroll/{id}/?month=YYYY-MM`
- * (с массивом `days[]`). Скачивания per-operator (Excel/PDF) идут через
- * `?export=xlsx|pdf` на detail-endpoint'e (там формируется файл).
- *
- * NB: экспорт «на весь список» backend не поддерживает — только per-operator,
- * поэтому кнопки Excel/PDF доступны только внутри модалки drilldown'а.
+ * Читает `/attendance/payroll/?month=YYYY-MM` — на строку 2 бинарных
+ * флага (attendance / sales) + итоговая сумма. Клик по строке открывает
+ * модалку с полным breakdown обоих блоков + attendance days list +
+ * скачиванием per-operator (Excel/PDF).
  */
-
-type PayrollRow = {
-  operator_id: number;
-  operator_name: string;
-  year: number;
-  month: number;
-  salary_gross: string;
-  shift_start: string;
-  shift_end: string;
-  grace_period_min: number;
-  weekly_day_off: number;
-  weekly_free_absences: number;
-  working_days_planned: number;
-  days_attended: number;
-  days_absent: number;
-  days_late: number;
-  avg_late_minutes: number;
-  attendance_rate_pct: number;
-  gate_pct: number;
-  gate_triggered: boolean;
-  weekly_free_absences_used: number;
-  billable_absences: number;
-  daily_rate: string;
-  absence_deduction: string;
-  late_penalty_per_event: string;
-  late_penalty_total: string;
-  salary_earned: string;
-};
 
 type PayrollDay = {
   date: string;
@@ -55,18 +23,64 @@ type PayrollDay = {
   is_working_day: boolean;
   checked_in_at: string | null;
   checked_out_at: string | null;
-  status:
-    | "on_time"
-    | "late"
-    | "absent"
-    | "weekend"
-    | "free_absence";
+  status: "on_time" | "late" | "absent" | "weekend" | "free_absence";
   minutes_late: number;
   deduction_uzs: string;
   note: string;
 };
 
-type PayrollDetail = PayrollRow & { days: PayrollDay[] };
+type AttendanceBlock = {
+  working_days_planned: number;
+  days_attended: number;
+  days_absent: number;
+  days_late: number;
+  avg_late_minutes: number;
+  rate_pct: number;
+  gate_passed: boolean;
+  late_penalty_per_event: string;
+  late_penalty_total: string;
+  block_earned: string;
+  shortfall: {
+    days_more_needed: number;
+    explanation: string;
+  };
+  days?: PayrollDay[];
+};
+
+type SalesBlock = {
+  plan_amount_uzs: string;
+  plan_source: string;
+  actual_uzs: string;
+  rate_pct: number;
+  gate_passed: boolean;
+  block_earned: string;
+  shortfall: {
+    amount_more_needed: string;
+    explanation: string;
+  };
+};
+
+type PayrollRow = {
+  operator_id: number;
+  operator_name: string;
+  year: number;
+  month: number;
+  attendance_bonus_uzs: string;
+  sales_bonus_uzs: string;
+  attendance_gate_pct: number;
+  sales_gate_pct: number;
+  shift_start: string;
+  shift_end: string;
+  grace_period_min: number;
+  attendance: Omit<AttendanceBlock, "days">;
+  sales: SalesBlock;
+  total_earned: string;
+  max_possible: string;
+};
+
+type PayrollDetail = Omit<PayrollRow, "attendance"> & {
+  attendance: AttendanceBlock;
+};
 
 type PayrollListResponse = {
   period: { year: number; month: number };
@@ -95,12 +109,6 @@ function fmtDayRu(iso: string): string {
   });
 }
 
-/**
- * Скачивание blob'а — тот же приём, что и в AttendanceReport (см. строки
- * 101–105 оригинала): fetch через axios с responseType=blob, потом
- * URL.createObjectURL + click. Не открываем в новой вкладке, чтобы
- * файл всегда попал в «Загрузки», а не в PDF-viewer браузера.
- */
 async function downloadPayroll(
   operatorId: number,
   month: string,
@@ -143,8 +151,7 @@ export default function PayrollReport() {
   const rowsAll = listQuery.data?.rows ?? [];
 
   const popoverOptions = useMemo(
-    () =>
-      rowsAll.map((r) => ({ id: r.operator_id, name: r.operator_name })),
+    () => rowsAll.map((r) => ({ id: r.operator_id, name: r.operator_name })),
     [rowsAll],
   );
 
@@ -159,14 +166,12 @@ export default function PayrollReport() {
     enabled: drillOpId != null,
     queryFn: () =>
       api
-        .get<PayrollDetail>(
-          `/attendance/payroll/${drillOpId}/?month=${month}`,
-        )
+        .get<PayrollDetail>(`/attendance/payroll/${drillOpId}/?month=${month}`)
         .then((r) => r.data),
   });
 
-  const gridTpl =
-    "1.4fr .7fr .9fr .8fr .7fr 1fr 1fr 1fr";
+  // Оператор | План | Продано | Att. ✓/✗ | Sales ✓/✗ | К выплате
+  const gridTpl = "1.4fr 1fr 1fr .8fr .8fr 1.1fr";
 
   return (
     <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
@@ -197,12 +202,10 @@ export default function PayrollReport() {
           style={{ gridTemplateColumns: gridTpl }}
         >
           <div>{t("payroll.operator_col")}</div>
-          <div className="text-right">{t("payroll.salary_gross")}</div>
-          <div className="text-center">{t("payroll.days_col")}</div>
-          <div className="text-center">{t("payroll.attendance_rate")}</div>
-          <div className="text-center">{t("payroll.late_count")}</div>
-          <div className="text-right">{t("payroll.absence_deduction")}</div>
-          <div className="text-right">{t("payroll.late_penalty_total")}</div>
+          <div className="text-right">{t("payroll.plan_col")}</div>
+          <div className="text-right">{t("payroll.actual_col")}</div>
+          <div className="text-center">{t("payroll.gate_col_att")}</div>
+          <div className="text-center">{t("payroll.gate_col_sales")}</div>
           <div className="text-right">{t("payroll.salary_earned")}</div>
         </div>
         {listQuery.isLoading ? (
@@ -226,59 +229,30 @@ export default function PayrollReport() {
                 }}
               >
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 truncate">
-                    <span className="font-medium truncate">
-                      {r.operator_name}
-                    </span>
-                    {r.gate_triggered && (
-                      <StatusBadge tone="hot">
-                        {t("payroll.gate_badge", { pct: r.gate_pct })}
-                      </StatusBadge>
-                    )}
-                  </div>
+                  <div className="font-medium truncate">{r.operator_name}</div>
                 </div>
                 <div className="text-right tabular-nums text-[13px]">
-                  {formatUZS(r.salary_gross)}
+                  {formatUZS(r.sales.plan_amount_uzs)}
                 </div>
-                <div className="text-center tabular-nums text-[13px]">
-                  {r.days_attended} / {r.working_days_planned}
+                <div className="text-right tabular-nums text-[13px]">
+                  {formatUZS(r.sales.actual_uzs)}
+                </div>
+                <div className="text-center">
+                  <GateFlag passed={r.attendance.gate_passed} />
+                </div>
+                <div className="text-center">
+                  <GateFlag passed={r.sales.gate_passed} />
                 </div>
                 <div
-                  className="text-center tabular-nums font-semibold text-[13px]"
+                  className="text-right font-semibold tabular-nums"
                   style={{
-                    color: r.gate_triggered
-                      ? "var(--danger)"
-                      : r.attendance_rate_pct >= 95
-                      ? "var(--accent)"
-                      : undefined,
+                    color:
+                      Number(r.total_earned) === 0
+                        ? "var(--muted)"
+                        : undefined,
                   }}
                 >
-                  {r.attendance_rate_pct}%
-                </div>
-                <div className="text-center tabular-nums text-[13px]">
-                  {r.days_late > 0 ? (
-                    <span
-                      className="font-semibold"
-                      style={{ color: "var(--accent)" }}
-                    >
-                      {r.days_late}
-                    </span>
-                  ) : (
-                    <span className="text-muted">0</span>
-                  )}
-                </div>
-                <div className="text-right tabular-nums text-[13px] text-muted">
-                  {Number(r.absence_deduction) > 0
-                    ? "−" + formatUZS(r.absence_deduction)
-                    : "—"}
-                </div>
-                <div className="text-right tabular-nums text-[13px] text-muted">
-                  {Number(r.late_penalty_total) > 0
-                    ? "−" + formatUZS(r.late_penalty_total)
-                    : "—"}
-                </div>
-                <div className="text-right font-semibold tabular-nums">
-                  {formatUZS(r.salary_earned)}
+                  {formatUZS(r.total_earned)}
                 </div>
               </div>
             ))}
@@ -287,7 +261,7 @@ export default function PayrollReport() {
       </section>
 
       {/* Drilldown modal */}
-      <Modal open={drillOpId != null} onClose={() => setDrillOpId(null)} width={720}>
+      <Modal open={drillOpId != null} onClose={() => setDrillOpId(null)} width={780}>
         {drillOpId != null && (
           <PayrollDrilldown
             detail={drilldownQuery.data}
@@ -297,6 +271,27 @@ export default function PayrollReport() {
         )}
       </Modal>
     </div>
+  );
+}
+
+function GateFlag({ passed }: { passed: boolean }) {
+  if (passed) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[12px] font-semibold"
+        style={{ color: "#16a34a" }}
+      >
+        <CheckCircle2 className="w-4 h-4" />
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[12px] font-semibold"
+      style={{ color: "var(--danger)" }}
+    >
+      <XCircle className="w-4 h-4" />
+    </span>
   );
 }
 
@@ -320,7 +315,8 @@ function PayrollDrilldown({
     );
   }
 
-  const dailyRateNum = Number(detail.daily_rate);
+  const a = detail.attendance;
+  const s = detail.sales;
 
   return (
     <div className="p-7 space-y-5">
@@ -375,115 +371,180 @@ function PayrollDrilldown({
         </div>
       </div>
 
+      {/* Total */}
+      <div
+        className="rounded-2xl p-4 flex items-center justify-between"
+        style={{
+          background: "var(--faint)",
+          border: "1px solid var(--border)",
+        }}
+      >
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-muted">
+            {t("payroll.total_to_pay")}
+          </div>
+          <div className="text-[24px] font-black tabular-nums">
+            {formatUZS(detail.total_earned)}
+          </div>
+        </div>
+        <div className="text-right text-[12px] text-muted tabular-nums">
+          {t("payroll.of_max", { max: formatUZS(detail.max_possible) })}
+        </div>
+      </div>
+
+      {/* Two blocks */}
       <div
         className="grid gap-3"
-        style={{ gridTemplateColumns: "repeat(4, 1fr)" }}
+        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}
       >
-        <StatTile
-          label={t("payroll.salary_gross")}
-          value={formatUZS(detail.salary_gross)}
+        <GateBlockCard
+          title={t("payroll.gate_attendance_title")}
+          bonus={detail.attendance_bonus_uzs}
+          earned={a.block_earned}
+          gatePct={detail.attendance_gate_pct}
+          ratePct={a.rate_pct}
+          gatePassed={a.gate_passed}
+          shortfallText={a.shortfall.explanation}
+          extra={
+            <div className="text-[12px] text-muted tabular-nums">
+              {a.days_attended} / {a.working_days_planned} дн., опозданий:{" "}
+              {a.days_late}
+              {a.gate_passed && Number(a.late_penalty_total) > 0 && (
+                <>
+                  {" "}
+                  (−{formatUZS(a.late_penalty_total)})
+                </>
+              )}
+            </div>
+          }
         />
-        <StatTile
-          label={t("payroll.daily_rate")}
-          value={formatUZS(dailyRateNum)}
-        />
-        <StatTile
-          label={t("payroll.absence_deduction")}
-          value={"−" + formatUZS(detail.absence_deduction)}
-          muted={Number(detail.absence_deduction) === 0}
-        />
-        <StatTile
-          label={t("payroll.late_penalty_total")}
-          value={"−" + formatUZS(detail.late_penalty_total)}
-          muted={Number(detail.late_penalty_total) === 0}
-        />
-        <StatTile
-          label={t("payroll.days_col")}
-          value={`${detail.days_attended} / ${detail.working_days_planned}`}
-        />
-        <StatTile
-          label={t("payroll.attendance_rate")}
-          value={`${detail.attendance_rate_pct}%`}
-          accent={!detail.gate_triggered && detail.attendance_rate_pct >= 95}
-          danger={detail.gate_triggered}
-        />
-        <StatTile
-          label={t("payroll.late_count")}
-          value={String(detail.days_late)}
-          accent={detail.days_late > 0}
-        />
-        <StatTile
-          label={t("payroll.salary_earned")}
-          value={formatUZS(detail.salary_earned)}
-          big
+        <GateBlockCard
+          title={t("payroll.gate_sales_title")}
+          bonus={detail.sales_bonus_uzs}
+          earned={s.block_earned}
+          gatePct={detail.sales_gate_pct}
+          ratePct={s.rate_pct}
+          gatePassed={s.gate_passed}
+          shortfallText={s.shortfall.explanation}
+          extra={
+            <div className="text-[12px] text-muted tabular-nums">
+              {formatUZS(s.actual_uzs)} / {formatUZS(s.plan_amount_uzs)}
+            </div>
+          }
         />
       </div>
 
-      {detail.gate_triggered && (
+      {/* Days breakdown */}
+      {a.days && a.days.length > 0 && (
+        <div>
+          <div className="nf-col mb-2">{t("payroll.days_breakdown")}</div>
+          <div className="flex flex-col gap-1">
+            {a.days.map((d) => (
+              <DayRow key={d.date} day={d} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GateBlockCard({
+  title,
+  bonus,
+  earned,
+  gatePct,
+  ratePct,
+  gatePassed,
+  shortfallText,
+  extra,
+}: {
+  title: string;
+  bonus: string;
+  earned: string;
+  gatePct: number;
+  ratePct: number;
+  gatePassed: boolean;
+  shortfallText: string;
+  extra?: React.ReactNode;
+}) {
+  const barPct = Math.max(0, Math.min(100, ratePct));
+  return (
+    <div
+      className="rounded-2xl p-4 flex flex-col gap-2"
+      style={{
+        border: `1.5px solid ${
+          gatePassed ? "rgba(22,163,74,0.35)" : "rgba(220,60,40,0.35)"
+        }`,
+        background: gatePassed
+          ? "linear-gradient(180deg, rgba(22,163,74,0.05), rgba(22,163,74,0.01))"
+          : "linear-gradient(180deg, rgba(220,60,40,0.05), rgba(220,60,40,0.01))",
+      }}
+    >
+      <div className="flex items-center justify-between">
+        <div className="text-[13px] font-semibold">{title}</div>
+        {gatePassed ? (
+          <CheckCircle2 className="w-4 h-4" style={{ color: "#16a34a" }} />
+        ) : (
+          <XCircle className="w-4 h-4" style={{ color: "var(--danger)" }} />
+        )}
+      </div>
+      <div
+        className="text-[20px] font-black tabular-nums"
+        style={{
+          color: gatePassed ? "#16a34a" : "var(--muted)",
+        }}
+      >
+        {formatUZS(earned)}
+      </div>
+      <div className="text-[11px] text-muted">из {formatUZS(bonus)}</div>
+      <div>
+        <div className="flex items-baseline justify-between text-[11.5px] text-muted">
+          <span>
+            {ratePct}% / {gatePct}%
+          </span>
+        </div>
         <div
-          className="rounded-xl px-4 py-3 text-[13px]"
+          className="mt-1 relative rounded-full overflow-hidden"
+          style={{ height: 6, background: "var(--faint)" }}
+        >
+          <div
+            style={{
+              width: `${barPct}%`,
+              height: "100%",
+              background: gatePassed ? "#16a34a" : "var(--danger)",
+              transition: "width .35s ease",
+            }}
+          />
+          {gatePct > 0 && gatePct < 100 && (
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: -2,
+                bottom: -2,
+                left: `${gatePct}%`,
+                width: 2,
+                background: "var(--text)",
+                opacity: 0.35,
+              }}
+            />
+          )}
+        </div>
+      </div>
+      {extra}
+      {!gatePassed && shortfallText && (
+        <div
+          className="rounded-lg px-2.5 py-2 text-[12px]"
           style={{
             background: "rgba(220,60,40,.08)",
             color: "var(--danger)",
             border: "1px solid rgba(220,60,40,.2)",
           }}
         >
-          {t("payroll.gate_message", {
-            rate: detail.attendance_rate_pct,
-            gate: detail.gate_pct,
-          })}
+          {shortfallText}
         </div>
       )}
-
-      <div>
-        <div className="nf-col mb-2">{t("payroll.days_breakdown")}</div>
-        <div className="flex flex-col gap-1">
-          {detail.days.map((d) => (
-            <DayRow key={d.date} day={d} />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatTile({
-  label,
-  value,
-  accent,
-  danger,
-  muted,
-  big,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-  danger?: boolean;
-  muted?: boolean;
-  big?: boolean;
-}) {
-  return (
-    <div className="nf-tile" style={{ padding: "12px 14px" }}>
-      <div className="text-[10.5px] text-muted uppercase tracking-wide">
-        {label}
-      </div>
-      <div
-        className={
-          "tabular-nums mt-1 " +
-          (big ? "text-[18px] font-bold" : "text-[15px] font-semibold")
-        }
-        style={{
-          color: danger
-            ? "var(--danger)"
-            : accent
-            ? "var(--accent)"
-            : muted
-            ? "var(--muted)"
-            : undefined,
-        }}
-      >
-        {value}
-      </div>
     </div>
   );
 }
@@ -578,4 +639,3 @@ function statusConfig(
       };
   }
 }
-

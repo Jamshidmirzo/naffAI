@@ -826,6 +826,11 @@ class SettingsAttendanceApi(APIView):
             "default_weekly_day_off": settings_obj.default_weekly_day_off,
             "default_attendance_gate_pct": settings_obj.default_attendance_gate_pct,
             "default_weekly_free_absences": settings_obj.default_weekly_free_absences,
+            # 2026-08-31 two-gate payroll defaults.
+            "default_attendance_bonus_uzs": str(settings_obj.default_attendance_bonus_uzs),
+            "default_sales_bonus_uzs": str(settings_obj.default_sales_bonus_uzs),
+            "default_sales_gate_pct": settings_obj.default_sales_gate_pct,
+            "default_monthly_plan_uzs": str(settings_obj.default_monthly_plan_uzs),
         }
 
     def get(self, request):
@@ -897,6 +902,22 @@ class SettingsAttendanceApi(APIView):
             settings_obj.default_weekly_free_absences = max(
                 0, min(7, int(default_weekly_free_absences))
             )
+
+        # 2026-08-31 two-gate defaults.
+        default_attendance_bonus_uzs = request.data.get("default_attendance_bonus_uzs")
+        default_sales_bonus_uzs = request.data.get("default_sales_bonus_uzs")
+        default_sales_gate_pct = request.data.get("default_sales_gate_pct")
+        default_monthly_plan_uzs = request.data.get("default_monthly_plan_uzs")
+        if default_attendance_bonus_uzs is not None:
+            settings_obj.default_attendance_bonus_uzs = _D(str(default_attendance_bonus_uzs))
+        if default_sales_bonus_uzs is not None:
+            settings_obj.default_sales_bonus_uzs = _D(str(default_sales_bonus_uzs))
+        if default_sales_gate_pct is not None:
+            settings_obj.default_sales_gate_pct = max(
+                0, min(100, int(default_sales_gate_pct))
+            )
+        if default_monthly_plan_uzs is not None:
+            settings_obj.default_monthly_plan_uzs = _D(str(default_monthly_plan_uzs))
 
         settings_obj.updated_by = request.user
         settings_obj.save()
@@ -1067,51 +1088,87 @@ def _default_month() -> tuple[int, int]:
 
 def _payroll_summary_to_xlsx(summary: dict, filename: str):
     """
-    Excel: две вкладки — «Сводка» и «По дням». Форматирование денег /
-    заголовков — через shared helper'ы `apps.common.excel`.
+    Excel экспорт зарплатной сводки в новой 2-gate модели.
+
+    Три листа:
+      1. «Сводка» — итог + attendance / sales блоки в одной таблице.
+      2. «Attendance» — детали по дням месяца.
+      3. «Sales» — план / факт / гейт (компактная key/value таблица).
     """
     from apps.common.excel import new_workbook, workbook_response, write_sheet
 
     wb = new_workbook()
 
-    # Sheet 1: Сводка (2 колонки key/value).
+    attendance = summary.get("attendance") or {}
+    sales = summary.get("sales") or {}
+    att_shortfall = attendance.get("shortfall") or {}
+    sales_shortfall = sales.get("shortfall") or {}
+
+    # ---- Sheet 1: Сводка ----
     summary_headers = ["Показатель", "Значение"]
     summary_rows = [
         ["Оператор", summary.get("operator_name", "")],
         ["Период", f"{summary.get('year')}-{int(summary.get('month', 1)):02d}"],
-        ["Оклад (UZS)", int(summary.get("salary_gross", 0) or 0)],
-        ["Рабочих дней (план)", int(summary.get("working_days_planned", 0))],
-        ["Посещал", int(summary.get("days_attended", 0))],
-        ["Пропустил (всего)", int(summary.get("days_absent", 0))],
-        ["Прощённых пропусков", int(summary.get("weekly_free_absences_used", 0))],
-        ["Штрафуемых пропусков", int(summary.get("billable_absences", 0))],
-        ["Опозданий", int(summary.get("days_late", 0))],
-        ["Ср. опоздание (мин)", int(summary.get("avg_late_minutes", 0))],
-        ["Посещаемость (%)", float(summary.get("attendance_rate_pct", 0))],
-        ["Гейт (%)", int(summary.get("gate_pct", 0))],
+        ["Итого к выплате (UZS)", int(summary.get("total_earned", 0) or 0)],
+        ["Максимум возможно (UZS)", int(summary.get("max_possible", 0) or 0)],
+        # Attendance block
+        ["", ""],
+        ["Attendance", ""],
+        ["Бонус за attendance (UZS)", int(summary.get("attendance_bonus_uzs", 0) or 0)],
+        ["Порог attendance (%)", int(summary.get("attendance_gate_pct", 0))],
         [
-            "Гейт сработал",
-            "Да (оклад = 0)" if summary.get("gate_triggered") else "Нет",
+            "Гейт attendance пройден",
+            "Да" if attendance.get("gate_passed") else "Нет",
         ],
-        ["Дневная ставка (UZS)", int(summary.get("daily_rate", 0) or 0)],
+        ["Посещаемость (%)", float(attendance.get("rate_pct", 0))],
         [
-            "Вычет за отсутствия (UZS)",
-            int(summary.get("absence_deduction", 0) or 0),
+            "Рабочих дней",
+            f"{int(attendance.get('days_attended', 0))} из "
+            f"{int(attendance.get('working_days_planned', 0))}",
         ],
+        ["Опозданий", int(attendance.get("days_late", 0))],
+        ["Ср. опоздание (мин)", int(attendance.get("avg_late_minutes", 0))],
         [
             "Штраф за опоздание (UZS/шт)",
-            int(summary.get("late_penalty_per_event", 0) or 0),
+            int(attendance.get("late_penalty_per_event", 0) or 0),
         ],
         [
-            "Штраф за опоздания (UZS)",
-            int(summary.get("late_penalty_total", 0) or 0),
+            "Штрафы за опоздания всего (UZS)",
+            int(attendance.get("late_penalty_total", 0) or 0),
         ],
-        ["К выплате (UZS)", int(summary.get("salary_earned", 0) or 0)],
+        [
+            "Начислено за attendance (UZS)",
+            int(attendance.get("block_earned", 0) or 0),
+        ],
+        [
+            "Attendance объяснение",
+            att_shortfall.get("explanation", ""),
+        ],
+        # Sales block
+        ["", ""],
+        ["Sales", ""],
+        ["Бонус за продажи (UZS)", int(summary.get("sales_bonus_uzs", 0) or 0)],
+        ["Порог продаж (%)", int(summary.get("sales_gate_pct", 0))],
+        [
+            "Гейт продаж пройден",
+            "Да" if sales.get("gate_passed") else "Нет",
+        ],
+        ["План (UZS)", int(sales.get("plan_amount_uzs", 0) or 0)],
+        ["Факт (UZS)", int(sales.get("actual_uzs", 0) or 0)],
+        ["Выполнение плана (%)", float(sales.get("rate_pct", 0))],
+        [
+            "До гейта не хватает (UZS)",
+            int(sales_shortfall.get("amount_more_needed", 0) or 0),
+        ],
+        [
+            "Начислено за продажи (UZS)",
+            int(sales.get("block_earned", 0) or 0),
+        ],
+        [
+            "Sales объяснение",
+            sales_shortfall.get("explanation", ""),
+        ],
     ]
-    # Колонки «Значение» — money-fmt только на числовых Rows. Т.к.
-    # write_sheet применяет формат к целой колонке кроме заголовка, а у
-    # нас смешан текст/число — оставляем формат `INT_FMT` глобально, а
-    # текстовые cell'ы просто отобразятся как строки.
     write_sheet(
         wb,
         title="Сводка",
@@ -1120,7 +1177,7 @@ def _payroll_summary_to_xlsx(summary: dict, filename: str):
         int_columns=(1,),
     )
 
-    # Sheet 2: По дням.
+    # ---- Sheet 2: Attendance (per-day breakdown) ----
     day_headers = [
         "Дата",
         "День недели",
@@ -1129,44 +1186,42 @@ def _payroll_summary_to_xlsx(summary: dict, filename: str):
         "Приход",
         "Уход",
         "Опоздание (мин)",
-        "Вычет (UZS)",
+        "Штраф (UZS)",
         "Комментарий",
     ]
     weekday_ru = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
     status_ru = {
         "on_time": "В срок",
         "late": "Опоздал",
-        "absent": "Отсутствовал",
+        "absent": "Пропуск",
         "free_absence": "Прощён",
         "weekend": "Выходной",
     }
+
+    def _fmt_time(iso: str | None) -> str:
+        if not iso:
+            return ""
+        try:
+            parsed = dt.datetime.fromisoformat(iso)
+            if parsed.tzinfo is not None:
+                parsed = timezone.localtime(parsed)
+            return parsed.strftime("%H:%M")
+        except Exception:
+            return iso[-8:-3] if len(iso) >= 8 else iso
+
+    # Дни всегда лежат в attendance.days (новый контракт). Совместимость:
+    # если пришёл старый payload — фолбэк на summary.days.
+    days_source = attendance.get("days") or summary.get("days") or []
     day_rows = []
-    for d in summary.get("days", []):
-        ci = d.get("checked_in_at")
-        co = d.get("checked_out_at")
-
-        def _fmt_time(iso: str | None) -> str:
-            if not iso:
-                return ""
-            try:
-                parsed = dt.datetime.fromisoformat(iso)
-                # attendance_payroll_summary отдаёт aware ISO — приводим
-                # к локальному времени, чтобы Excel показал `10:15`, а
-                # не `05:15Z`.
-                if parsed.tzinfo is not None:
-                    parsed = timezone.localtime(parsed)
-                return parsed.strftime("%H:%M")
-            except Exception:
-                return iso[-8:-3] if len(iso) >= 8 else iso
-
+    for d in days_source:
         day_rows.append(
             [
                 d.get("date", ""),
                 weekday_ru[int(d.get("weekday", 0))],
                 "Да" if d.get("is_working_day") else "Нет",
                 status_ru.get(d.get("status", ""), d.get("status", "")),
-                _fmt_time(ci),
-                _fmt_time(co),
+                _fmt_time(d.get("checked_in_at")),
+                _fmt_time(d.get("checked_out_at")),
                 int(d.get("minutes_late", 0) or 0),
                 int(d.get("deduction_uzs", 0) or 0),
                 d.get("note", ""),
@@ -1174,10 +1229,37 @@ def _payroll_summary_to_xlsx(summary: dict, filename: str):
         )
     write_sheet(
         wb,
-        title="По дням",
+        title="Attendance",
         headers=day_headers,
         rows=day_rows,
         int_columns=(6, 7),
+    )
+
+    # ---- Sheet 3: Sales ----
+    sales_headers = ["Показатель", "Значение"]
+    sales_rows = [
+        ["План (UZS)", int(sales.get("plan_amount_uzs", 0) or 0)],
+        ["Факт (UZS)", int(sales.get("actual_uzs", 0) or 0)],
+        ["Выполнение (%)", float(sales.get("rate_pct", 0))],
+        ["Гейт (%)", int(summary.get("sales_gate_pct", 0))],
+        ["Гейт пройден", "Да" if sales.get("gate_passed") else "Нет"],
+        ["Бонус за продажи (UZS)", int(summary.get("sales_bonus_uzs", 0) or 0)],
+        [
+            "Начислено (UZS)",
+            int(sales.get("block_earned", 0) or 0),
+        ],
+        [
+            "До гейта не хватает (UZS)",
+            int(sales_shortfall.get("amount_more_needed", 0) or 0),
+        ],
+        ["Источник плана", sales.get("plan_source", "")],
+    ]
+    write_sheet(
+        wb,
+        title="Sales",
+        headers=sales_headers,
+        rows=sales_rows,
+        int_columns=(1,),
     )
 
     return workbook_response(wb, filename)

@@ -3,7 +3,7 @@ import qrcode
 import secrets
 import datetime as dt
 from collections import defaultdict
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 
 from django.db import transaction
 from django.utils import timezone
@@ -11,7 +11,7 @@ from django.db.models import QuerySet
 
 from apps.operators.models import Operator, OperatorStatus
 from .models import OperatorQr, AttendanceLog, AttendanceSettings
-from .utils import is_working_day, week_bucket, working_days_in_month
+from .utils import is_working_day, working_days_in_month  # noqa: F401
 
 
 def open_log_for_operator(operator: Operator) -> AttendanceLog | None:
@@ -359,65 +359,60 @@ def attendance_payroll_summary(
     operator: Operator, year: int, month: int
 ) -> dict:
     """
-    Полная attendance-based зарплатная сводка за календарный месяц.
+    Two-gate payroll сводка за календарный месяц (2026-08-31 rewrite).
 
-    Порядок расчёта:
-      1. `resolve_operator_config` — оклад, персональные часы, grace,
-         штраф, выходной, гейт, лимит free-absences.
-      2. Список рабочих дней месяца (без личного выходного).
-      3. Загружаем `AttendanceLog` за месяц одним запросом, группируем
-         по локальной дате первого check-in оператора.
-      4. Для каждого рабочего дня:
-         - если есть лог → сравниваем локальное время `checked_in_at`
-           с `shift_start + grace_period_min`. `minutes_late > 0` →
-           статус `late` + штраф. Иначе `on_time`.
-         - если нет лога → `absent`. Считаем, сколько уже было absent-ов
-           в ISO-неделе этого дня (по правилу «weekly_free_absences в
-           неделю прощаются»). Если ниже лимита → `free_absence` без
-           вычета. Иначе → `billable_absent` + −дневная ставка.
-      5. `daily_rate = salary_uzs / len(working_days_planned)` —
-         округляем HALF_UP до 1 сум (UZS не использует копейки).
-      6. `attendance_rate = days_attended / working_days_planned`.
-         Если ниже гейта → `gate_triggered=True, salary_earned=0`.
-         Иначе `salary_earned = salary_uzs − absence_deduction −
-         late_penalty_total`.
+    Модель: `total_earned = attendance.block_earned + sales.block_earned`,
+    где каждый блок — жёсткий бинарный гейт.
 
-    Возвращает JSON-friendly dict — прямо отдаётся API endpoint'ам и
-    Excel/PDF-экспортом. Не мутирует БД.
+    Attendance-блок:
+      - `rate_pct = days_attended / working_days_planned * 100`.
+      - `gate_passed = round(rate_pct, 2) >= attendance_gate_pct` (обычно 85).
+      - Если гейт пройден → `block_earned = max(0,
+        attendance_bonus_uzs - days_late × late_penalty_uzs)`.
+      - Если провален → 0. Штрафы за опоздания в этом случае не считаются.
+
+    Sales-блок:
+      - `target = OperatorMonthlyPlan.target_amount или default_monthly_plan_uzs`.
+      - `actual = SaleOperator.amount SUM (confirmed / non-returned)` — берём
+        готовый `operator_plan_progress` из operators.selectors, чтобы не
+        дублировать фильтры.
+      - `rate_pct = actual / target * 100` (0 если target=0).
+      - `gate_passed = round(rate_pct, 2) >= sales_gate_pct`.
+      - Если гейт пройден → `block_earned = sales_bonus_uzs`.
+      - Провален → 0. Никаких штрафов, только бинарно.
+
+    Возвращает JSON-friendly dict. Совместимо со старым API: поля
+    `attendance_rate_pct`, `gate_pct`, `gate_triggered`, `salary_gross`,
+    `salary_earned`, `late_penalty_total`, `absence_deduction`,
+    `daily_rate`, `weekly_free_absences_used`, `billable_absences` сохранены
+    как алиасы поверх attendance-блока — чтобы старые consumer'ы (тесты
+    edge-case'ов, PDF-legacy рендер, если что) не упали.
     """
+    from decimal import ROUND_HALF_UP as _RHU
+
+    from apps.operators.selectors import operator_plan_progress
+
     from .services import _time_to_time, resolve_operator_config
 
     cfg = resolve_operator_config(operator)
     weekly_day_off = cfg["weekly_day_off"]
-    salary_gross = Decimal(cfg["salary_uzs"]).quantize(Decimal("1"))
+    attendance_bonus = Decimal(cfg["attendance_bonus_uzs"]).quantize(Decimal("1"))
+    sales_bonus = Decimal(cfg["sales_bonus_uzs"]).quantize(Decimal("1"))
+    sales_gate_pct = int(cfg["sales_gate_pct"])
+    monthly_plan_fallback = Decimal(cfg["monthly_plan_uzs"]).quantize(Decimal("1"))
     grace = int(cfg["grace_period_min"])
     late_penalty = Decimal(cfg["late_penalty_uzs"]).quantize(Decimal("1"))
-    weekly_free = int(cfg["weekly_free_absences"])
-    gate_pct = int(cfg["attendance_gate_pct"])
+    attendance_gate_pct = int(cfg["attendance_gate_pct"])
     shift_start_t = _time_to_time(cfg["shift_start"])
     shift_end_t = _time_to_time(cfg["shift_end"])
 
     working_days = working_days_in_month(int(year), int(month), weekly_day_off)
     working_days_planned = len(working_days)
 
-    # Daily rate — округляем к 1 сум (UZS): менеджер не любит копейки.
-    if working_days_planned > 0:
-        daily_rate = (salary_gross / Decimal(working_days_planned)).quantize(
-            Decimal("1"), rounding=ROUND_HALF_UP
-        )
-    else:
-        # Странный месяц (все дни — выходные оператора). Не должен
-        # случиться на реальных weekly_day_off ∈ {0..6}, но на всякий
-        # случай не делим на ноль.
-        daily_rate = Decimal("0")
-
-    # Все логи оператора за месяц — одним запросом. Границы месяца
-    # переводим в UTC-диапазон через локальный timezone.
     tz = timezone.get_current_timezone()
     period_start = dt.datetime.combine(
         dt.date(int(year), int(month), 1), dt.time.min
     ).replace(tzinfo=tz)
-    # Первый день следующего месяца — граница исключительно.
     if int(month) == 12:
         next_period = dt.date(int(year) + 1, 1, 1)
     else:
@@ -430,16 +425,13 @@ def attendance_payroll_summary(
         checked_in_at__lt=period_end,
     ).order_by("checked_in_at")
 
-    # Группируем логи по локальной дате check-in. Если оператор в один
-    # день сделал несколько check-in/out (редко), берём самый ранний —
-    # он определяет late-статус, а суммарная длительность нам тут не
-    # важна для payroll'a (это attendance-selector отдельный).
+    # Группируем логи по локальной дате check-in.
     logs_by_date: dict[dt.date, list[AttendanceLog]] = defaultdict(list)
     for log in logs_qs:
         local_in = timezone.localtime(log.checked_in_at)
         logs_by_date[local_in.date()].append(log)
 
-    # Идём по всем дням месяца, чтобы включить и выходные (для frontend'a).
+    # Идём по всем дням месяца — включая выходные (для frontend'a).
     _, last_day = _month_last_day(int(year), int(month))
     all_days: list[dt.date] = [
         dt.date(int(year), int(month), d) for d in range(1, last_day + 1)
@@ -450,11 +442,6 @@ def attendance_payroll_summary(
     days_absent = 0
     days_late = 0
     late_minutes_sum = 0
-    weekly_free_used: dict[tuple[int, int], int] = defaultdict(int)
-    absence_deduction = Decimal("0")
-    late_penalty_total = Decimal("0")
-    weekly_free_absences_used_total = 0
-    billable_absences = 0
 
     for day in all_days:
         weekday = day.weekday()
@@ -481,8 +468,6 @@ def attendance_payroll_summary(
             days_attended += 1
             log = day_logs[0]  # earliest
             local_in = timezone.localtime(log.checked_in_at)
-            # Late detection в локальной таймзоне: диff между
-            # `checked_in_at` и `shift_start + grace`.
             shift_start_dt = local_in.replace(
                 hour=shift_start_t.hour,
                 minute=shift_start_t.minute,
@@ -492,14 +477,10 @@ def attendance_payroll_summary(
             late_cutoff = shift_start_dt + dt.timedelta(minutes=grace)
             if local_in > late_cutoff:
                 minutes_late = int((local_in - late_cutoff).total_seconds() / 60)
-                # Если оператор пришёл в grace-минуту ровно —
-                # `local_in > late_cutoff` False → on_time. Если хоть
-                # секунда сверх — late. Считаем ЦЕЛЫЕ минуты сверх grace.
                 if minutes_late == 0:
-                    minutes_late = 1  # человек опоздал <1мин над grace → 1мин штрафа
+                    minutes_late = 1
                 days_late += 1
                 late_minutes_sum += minutes_late
-                late_penalty_total += late_penalty
                 status = "late"
                 deduction = late_penalty
                 note = f"Опоздание на {minutes_late} мин (сверх grace {grace} мин)"
@@ -525,22 +506,6 @@ def attendance_payroll_summary(
             )
         else:
             days_absent += 1
-            wk = week_bucket(day)
-            used = weekly_free_used[wk]
-            if used < weekly_free:
-                weekly_free_used[wk] += 1
-                weekly_free_absences_used_total += 1
-                status = "free_absence"
-                deduction = Decimal("0")
-                note = (
-                    f"Прощённый пропуск ({used + 1}/{weekly_free} в неделе)"
-                )
-            else:
-                billable_absences += 1
-                absence_deduction += daily_rate
-                status = "absent"
-                deduction = daily_rate
-                note = "Вычет: дневная ставка"
             days_out.append(
                 {
                     "date": day.isoformat(),
@@ -548,55 +513,172 @@ def attendance_payroll_summary(
                     "is_working_day": True,
                     "checked_in_at": None,
                     "checked_out_at": None,
-                    "status": status,
+                    "status": "absent",
                     "minutes_late": 0,
-                    "deduction_uzs": str(deduction.quantize(Decimal("1"))),
-                    "note": note,
+                    "deduction_uzs": "0",
+                    "note": "Пропуск",
                 }
             )
 
-    attendance_rate_pct = (
-        (days_attended / working_days_planned * 100.0) if working_days_planned else 0.0
+    attendance_rate_pct_raw = (
+        (days_attended / working_days_planned * 100.0)
+        if working_days_planned
+        else 0.0
     )
-    gate_triggered = attendance_rate_pct < gate_pct
-    avg_late_minutes = (
-        int(late_minutes_sum / days_late) if days_late else 0
-    )
+    attendance_rate_pct = round(attendance_rate_pct_raw, 2)
+    # Гейт-сравнение делаем на округлённом до сотых значении — чтобы
+    # 84.999... не отсекалось из-за float-хвоста; ровно 85% проходит.
+    attendance_gate_passed = attendance_rate_pct >= attendance_gate_pct
 
-    if gate_triggered:
-        salary_earned = Decimal("0")
+    if attendance_gate_passed:
+        late_penalty_total = late_penalty * days_late
+        attendance_block_earned = attendance_bonus - late_penalty_total
+        if attendance_block_earned < 0:
+            attendance_block_earned = Decimal("0")
     else:
-        salary_earned = salary_gross - absence_deduction - late_penalty_total
-        if salary_earned < 0:
-            salary_earned = Decimal("0")
+        late_penalty_total = Decimal("0")
+        attendance_block_earned = Decimal("0")
 
-    # Финальные округления. Всё Decimal, никаких float.
+    avg_late_minutes = int(late_minutes_sum / days_late) if days_late else 0
+
+    # Attendance-shortfall: если гейт провален — сколько дней ещё нужно
+    # доработать до порога. `n = ceil(gate/100 * planned) - attended`.
+    if attendance_gate_passed:
+        days_more_needed = 0
+        attendance_explanation = "Гейт пройден"
+    elif working_days_planned == 0:
+        days_more_needed = 0
+        attendance_explanation = "В этом месяце нет рабочих дней"
+    else:
+        needed_days = -(
+            -(attendance_gate_pct * working_days_planned) // 100
+        )  # ceil
+        days_more_needed = max(0, int(needed_days) - days_attended)
+        attendance_explanation = (
+            f"Посещаемость {attendance_rate_pct}% < {attendance_gate_pct}%. "
+            f"Нужно посетить ещё {days_more_needed} дн."
+        )
+
+    # ---- Sales block ------------------------------------------------------
+    plan_progress = operator_plan_progress(
+        operator=operator, year=int(year), month=int(month)
+    )
+    if plan_progress["target"] is not None:
+        sales_target = Decimal(plan_progress["target"]).quantize(Decimal("1"))
+        plan_source = "operator_monthly_plan"
+    else:
+        sales_target = monthly_plan_fallback
+        plan_source = "default_monthly_plan_uzs"
+    sales_actual = Decimal(plan_progress["actual"]).quantize(Decimal("1"))
+
+    if sales_target > 0:
+        sales_rate_raw = float(sales_actual) / float(sales_target) * 100.0
+    else:
+        sales_rate_raw = 0.0
+    sales_rate_pct = round(sales_rate_raw, 2)
+    sales_gate_passed = sales_target > 0 and sales_rate_pct >= sales_gate_pct
+    sales_block_earned = sales_bonus if sales_gate_passed else Decimal("0")
+
+    if sales_gate_passed:
+        amount_more_needed = Decimal("0")
+        sales_explanation = "Гейт пройден"
+    elif sales_target <= 0:
+        amount_more_needed = Decimal("0")
+        sales_explanation = "План на месяц не задан"
+    else:
+        threshold_amount = (sales_target * Decimal(sales_gate_pct) / Decimal(100)).quantize(
+            Decimal("1"), rounding=_RHU
+        )
+        gap = threshold_amount - sales_actual
+        amount_more_needed = gap if gap > 0 else Decimal("0")
+        sales_explanation = (
+            f"Продано {sales_actual} UZS ({sales_rate_pct}%). "
+            f"До гейта {sales_gate_pct}% не хватает {amount_more_needed} UZS."
+        )
+
+    total_earned = attendance_block_earned + sales_block_earned
+    max_possible = attendance_bonus + sales_bonus
+
+    # Deprecated aliases: salary_gross = attendance_bonus, salary_earned =
+    # attendance_block_earned. Оставляем чтобы старый JSON-контракт
+    # (тесты legacy edge-case, статистика в operator_stats через
+    # compute_monthly_payroll) не падал до полного refactor'а.
+    if working_days_planned > 0:
+        daily_rate_legacy = (attendance_bonus / Decimal(working_days_planned)).quantize(
+            Decimal("1"), rounding=_RHU
+        )
+    else:
+        daily_rate_legacy = Decimal("0")
+
     return {
         "operator_id": operator.id,
         "operator_name": operator.full_name,
         "year": int(year),
         "month": int(month),
-        "salary_gross": str(salary_gross),
+        # ---- Bonuses & thresholds (new contract) ----
+        "attendance_bonus_uzs": str(attendance_bonus),
+        "sales_bonus_uzs": str(sales_bonus),
+        "attendance_gate_pct": attendance_gate_pct,
+        "sales_gate_pct": sales_gate_pct,
+        # ---- Shift metadata (info) ----
         "shift_start": shift_start_t.strftime("%H:%M"),
         "shift_end": shift_end_t.strftime("%H:%M"),
         "grace_period_min": grace,
         "weekly_day_off": weekly_day_off,
-        "weekly_free_absences": weekly_free,
+        "weekly_free_absences": int(cfg["weekly_free_absences"]),
+        # ---- Attendance block ----
+        "attendance": {
+            "working_days_planned": working_days_planned,
+            "days_attended": days_attended,
+            "days_absent": days_absent,
+            "days_late": days_late,
+            "avg_late_minutes": avg_late_minutes,
+            "rate_pct": attendance_rate_pct,
+            "gate_passed": attendance_gate_passed,
+            "late_penalty_per_event": str(late_penalty),
+            "late_penalty_total": str(late_penalty_total),
+            "block_earned": str(attendance_block_earned),
+            "shortfall": {
+                "days_more_needed": days_more_needed,
+                "explanation": attendance_explanation,
+            },
+            "days": days_out,
+        },
+        # ---- Sales block ----
+        "sales": {
+            "plan_amount_uzs": str(sales_target),
+            "plan_source": plan_source,
+            "actual_uzs": str(sales_actual),
+            "rate_pct": sales_rate_pct,
+            "gate_passed": sales_gate_passed,
+            "block_earned": str(sales_block_earned),
+            "shortfall": {
+                "amount_more_needed": str(amount_more_needed),
+                "explanation": sales_explanation,
+            },
+        },
+        # ---- Totals ----
+        "total_earned": str(total_earned),
+        "max_possible": str(max_possible),
+        # ---- Legacy aliases (deprecated, оставлены для обратной совместимости) ----
+        # Их читают: старый фронт до апгрейда UI, compute_monthly_payroll в
+        # apps.payroll.services, тесты OperatorStats. Не удаляем в этой волне.
+        "salary_gross": str(attendance_bonus),
+        "salary_earned": str(attendance_block_earned),
         "working_days_planned": working_days_planned,
         "days_attended": days_attended,
         "days_absent": days_absent,
         "days_late": days_late,
         "avg_late_minutes": avg_late_minutes,
-        "attendance_rate_pct": round(attendance_rate_pct, 1),
-        "gate_pct": gate_pct,
-        "gate_triggered": gate_triggered,
-        "weekly_free_absences_used": weekly_free_absences_used_total,
-        "billable_absences": billable_absences,
-        "daily_rate": str(daily_rate.quantize(Decimal("1"))),
-        "absence_deduction": str(absence_deduction.quantize(Decimal("1"))),
-        "late_penalty_per_event": str(late_penalty.quantize(Decimal("1"))),
-        "late_penalty_total": str(late_penalty_total.quantize(Decimal("1"))),
-        "salary_earned": str(salary_earned.quantize(Decimal("1"))),
+        "attendance_rate_pct": attendance_rate_pct,
+        "gate_pct": attendance_gate_pct,
+        "gate_triggered": not attendance_gate_passed,
+        "weekly_free_absences_used": 0,
+        "billable_absences": days_absent if not attendance_gate_passed else 0,
+        "daily_rate": str(daily_rate_legacy),
+        "absence_deduction": "0",
+        "late_penalty_per_event": str(late_penalty),
+        "late_penalty_total": str(late_penalty_total),
         "days": days_out,
     }
 

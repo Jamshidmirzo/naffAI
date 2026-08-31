@@ -300,6 +300,47 @@ class AttendanceSettings(models.Model):
         validators=[MinValueValidator(0), MaxValueValidator(7)],
         help_text="Сколько пропусков в неделю «прощаются» без штрафа (сверх личного выходного).",
     )
+    # 2026-08-31 two-gate payroll rewrite.
+    #
+    # Модель: total_earned = attendance.block_earned + sales.block_earned,
+    # где каждый блок — «прошёл гейт → полный бонус минус штрафы, не прошёл
+    # → 0». Никакой пропорциональной части и per-day daily_rate вычетов
+    # (это была старая модель до этой миграции — оставлена как
+    # deprecated alias через `default_salary_uzs` в
+    # resolve_operator_config для gladkogo переходного периода).
+    default_attendance_bonus_uzs = models.DecimalField(
+        max_digits=12,
+        decimal_places=0,
+        default=Decimal("1500000"),
+        help_text=(
+            "Бонус за attendance по умолчанию (UZS). Выдаётся полностью, "
+            "если посещаемость ≥ гейта; иначе 0. Штрафы за опоздания "
+            "вычитаются только когда гейт пройден."
+        ),
+    )
+    default_sales_bonus_uzs = models.DecimalField(
+        max_digits=12,
+        decimal_places=0,
+        default=Decimal("1500000"),
+        help_text=(
+            "Бонус за продажи по умолчанию (UZS). Выдаётся полностью, "
+            "если план выполнен на ≥ sales_gate; иначе 0."
+        ),
+    )
+    default_sales_gate_pct = models.PositiveSmallIntegerField(
+        default=85,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Порог выполнения плана продаж (%). Ниже — sales-бонус = 0.",
+    )
+    default_monthly_plan_uzs = models.DecimalField(
+        max_digits=14,
+        decimal_places=0,
+        default=Decimal("10000000"),
+        help_text=(
+            "План продаж по умолчанию (UZS/мес). Используется как fallback, "
+            "если у оператора нет OperatorMonthlyPlan за месяц."
+        ),
+    )
 
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(

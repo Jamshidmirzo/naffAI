@@ -39,6 +39,11 @@ def settings_obj(db):
     s.default_weekly_day_off = 6
     s.default_attendance_gate_pct = 85
     s.default_weekly_free_absences = 1
+    # 2-gate defaults (2026-08-31 rewrite).
+    s.default_attendance_bonus_uzs = Decimal("1500000")
+    s.default_sales_bonus_uzs = Decimal("1500000")
+    s.default_sales_gate_pct = 85
+    s.default_monthly_plan_uzs = Decimal("10000000")
     s.save()
     return s
 
@@ -108,8 +113,14 @@ def test_operator_can_access_own_payroll(api_client, op_user, op, settings_obj):
     body = r.json()
     assert body["operator_id"] == op.id
     assert body["year"] == 2026 and body["month"] == 3
-    assert "days" in body
-    assert body["salary_earned"] == "1500000"
+    # 2-gate payload (2026-08-31 rewrite).
+    assert "attendance" in body and "sales" in body
+    assert body["attendance"]["gate_passed"] is True
+    assert body["attendance"]["block_earned"] == "1500000"
+    # No sales → sales-block = 0 (gate failed).
+    assert body["sales"]["gate_passed"] is False
+    assert body["total_earned"] == "1500000"
+    assert "days" in body["attendance"]
 
 
 @pytest.mark.django_db
@@ -153,8 +164,8 @@ def test_manager_detail_returns_days_breakdown(api_client, manager, op, settings
     r = api_client.get(f"/api/attendance/payroll/{op.id}/?month=2026-03")
     assert r.status_code == 200
     body = r.json()
-    # 31 день в марте.
-    assert len(body["days"]) == 31
+    # 31 день в марте, days теперь в attendance-блоке.
+    assert len(body["attendance"]["days"]) == 31
 
 
 @pytest.mark.django_db

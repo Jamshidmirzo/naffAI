@@ -807,14 +807,27 @@ def resolve_operator_config(operator: Operator) -> dict:
     override'ы (если заданы) с глобальными дефолтами из `AttendanceSettings`.
 
     Ключи:
-      - `salary_uzs`         Decimal — оклад
-      - `shift_start`        datetime.time — начало смены (для late-детектора)
-      - `shift_end`          datetime.time — конец смены (пока информативно)
-      - `grace_period_min`   int — grace для опозданий
-      - `late_penalty_uzs`   Decimal — фикс штраф за каждое опоздание
-      - `weekly_day_off`     int (0=Пн … 6=Вс)
-      - `attendance_gate_pct` int — глобальный, per-operator override'ов нет
-      - `weekly_free_absences` int
+      - `attendance_bonus_uzs`  Decimal — размер attendance-блока
+      - `sales_bonus_uzs`       Decimal — размер sales-блока
+      - `sales_gate_pct`        int — гейт по плану продаж
+      - `monthly_plan_uzs`      Decimal — план продаж fallback (когда нет
+                                OperatorMonthlyPlan за месяц)
+      - `salary_uzs`            Decimal — deprecated alias, всегда равен
+                                `attendance_bonus_uzs` (совместимость)
+      - `shift_start` / `shift_end` — рабочая смена
+      - `grace_period_min`       int
+      - `late_penalty_uzs`       Decimal
+      - `weekly_day_off`         int (0=Пн … 6=Вс)
+      - `attendance_gate_pct`    int — глобальный из AttendanceSettings
+      - `weekly_free_absences`   int
+
+    Fallback attendance-бонуса:
+      Operator.attendance_bonus_uzs
+      → Operator.salary_uzs                 (deprecated alias, оставлен
+                                            чтобы не терять настроенных
+                                            менеджеров до апгрейда)
+      → AttendanceSettings.default_attendance_bonus_uzs
+      → AttendanceSettings.default_salary_uzs (deprecated alias)
     """
     s = attendance_settings_get()
 
@@ -823,8 +836,34 @@ def resolve_operator_config(operator: Operator) -> dict:
         # интерпретировано как «не задано».
         return op_val if op_val is not None else default
 
+    # Attendance-бонус — двойной fallback: сначала новое поле, потом
+    # старое salary_uzs (per-operator и global) для обратной совместимости.
+    op_attendance_bonus = _or_default(
+        operator.attendance_bonus_uzs, operator.salary_uzs
+    )
+    settings_attendance_bonus = _or_default(
+        s.default_attendance_bonus_uzs, s.default_salary_uzs
+    )
+    attendance_bonus = Decimal(
+        _or_default(op_attendance_bonus, settings_attendance_bonus)
+    )
+    sales_bonus = Decimal(
+        _or_default(operator.sales_bonus_uzs, s.default_sales_bonus_uzs)
+    )
+    sales_gate = int(
+        _or_default(operator.sales_gate_pct, s.default_sales_gate_pct)
+    )
+    monthly_plan = Decimal(s.default_monthly_plan_uzs)
+
     return {
-        "salary_uzs": Decimal(_or_default(operator.salary_uzs, s.default_salary_uzs)),
+        "attendance_bonus_uzs": attendance_bonus,
+        "sales_bonus_uzs": sales_bonus,
+        "sales_gate_pct": sales_gate,
+        "monthly_plan_uzs": monthly_plan,
+        # Deprecated alias — старый код (тесты, миграция) читает
+        # `salary_uzs`; отдаём тот же attendance-бонус, чтобы ничего не
+        # ломалось до полного refactor'а вызывающего кода.
+        "salary_uzs": attendance_bonus,
         "shift_start": _or_default(operator.shift_start, s.shift_start),
         "shift_end": _or_default(operator.shift_end, s.shift_end),
         "grace_period_min": int(
@@ -948,6 +987,11 @@ def payroll_pdf_bytes(
         except Exception:
             return str(v)
 
+    attendance = summary.get("attendance") or {}
+    sales = summary.get("sales") or {}
+    att_shortfall = attendance.get("shortfall") or {}
+    sales_shortfall = sales.get("shortfall") or {}
+
     story = []
     story.append(Paragraph(f"Расчёт зарплаты — {operator_name}", title_style))
     story.append(
@@ -955,75 +999,90 @@ def payroll_pdf_bytes(
     )
     story.append(Spacer(1, 0.4 * cm))
 
-    gate_line = (
-        f"<b>Гейт {summary.get('gate_pct', 85)}% не пройден — оклад не начислен</b>"
-        if summary.get("gate_triggered")
-        else ""
-    )
-    summary_rows = [
-        ["Оклад", fmt_uzs(summary.get("salary_gross", 0)) + " сум"],
+    # ---- Total block ----
+    total_rows = [
         [
-            "Рабочих дней",
-            f"{summary.get('working_days_planned', 0)}"
-            f" (посещал {summary.get('days_attended', 0)},"
-            f" пропущено {summary.get('days_absent', 0)})",
+            "Итого к выплате",
+            f"{fmt_uzs(summary.get('total_earned', 0))} сум "
+            f"из {fmt_uzs(summary.get('max_possible', 0))} сум",
+        ],
+    ]
+    total_tbl = Table(total_rows, colWidths=[6 * cm, 10 * cm])
+    total_tbl.setStyle(
+        TableStyle(
+            [
+                ("FONT", (0, 0), (-1, -1), bold_font, 12),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F3F4F6")),
+                ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor("#D1D5DB")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    story.append(total_tbl)
+    story.append(Spacer(1, 0.4 * cm))
+
+    # ---- Attendance block ----
+    att_gate_passed = attendance.get("gate_passed", False)
+    att_status_line = (
+        f"<b>Гейт {summary.get('attendance_gate_pct', 85)}% — "
+        + ("пройден" if att_gate_passed else "НЕ пройден")
+        + "</b>"
+    )
+    att_rows = [
+        ["Attendance-блок", ""],
+        ["Бонус", f"{fmt_uzs(summary.get('attendance_bonus_uzs', 0))} сум"],
+        [
+            "Посещаемость",
+            f"{attendance.get('rate_pct', 0)}% "
+            f"(порог {summary.get('attendance_gate_pct', 85)}%)",
+        ],
+        [
+            "Дней",
+            f"{attendance.get('days_attended', 0)} из "
+            f"{attendance.get('working_days_planned', 0)} "
+            f"(пропущено {attendance.get('days_absent', 0)})",
         ],
         [
             "Опозданий",
-            f"{summary.get('days_late', 0)}"
-            + (
-                f" (средн. {summary.get('avg_late_minutes', 0)} мин)"
-                if summary.get("days_late", 0)
-                else ""
-            ),
-        ],
-        [
-            "Посещаемость",
-            f"{summary.get('attendance_rate_pct', 0):.1f}%"
-            f" (гейт {summary.get('gate_pct', 85)}%)",
-        ],
-        [
-            "Дневная ставка",
-            fmt_uzs(summary.get("daily_rate", 0)) + " сум",
-        ],
-        [
-            "Вычет за отсутствия",
-            f"−{fmt_uzs(summary.get('absence_deduction', 0))} сум"
-            + (
-                f" ({summary.get('billable_absences', 0)} × ставка)"
-                if summary.get("billable_absences", 0)
-                else ""
+            (
+                f"{attendance.get('days_late', 0)}"
+                + (
+                    f" (средн. {attendance.get('avg_late_minutes', 0)} мин)"
+                    if attendance.get("days_late", 0)
+                    else ""
+                )
             ),
         ],
         [
             "Штраф за опоздания",
-            f"−{fmt_uzs(summary.get('late_penalty_total', 0))} сум"
+            f"−{fmt_uzs(attendance.get('late_penalty_total', 0))} сум"
             + (
-                f" ({summary.get('days_late', 0)} × "
-                f"{fmt_uzs(summary.get('late_penalty_per_event', 0))})"
-                if summary.get("days_late", 0)
+                f" ({attendance.get('days_late', 0)} × "
+                f"{fmt_uzs(attendance.get('late_penalty_per_event', 0))})"
+                if attendance.get("days_late", 0) and att_gate_passed
                 else ""
             ),
         ],
         [
-            "К выплате",
-            (
-                "0 сум (гейт)"
-                if summary.get("gate_triggered")
-                else fmt_uzs(summary.get("salary_earned", 0)) + " сум"
-            ),
+            "Начислено",
+            f"{fmt_uzs(attendance.get('block_earned', 0))} сум"
+            + (" (гейт провален)" if not att_gate_passed else ""),
         ],
     ]
-    tbl = Table(summary_rows, colWidths=[6 * cm, 10 * cm])
-    tbl.setStyle(
+    att_tbl = Table(att_rows, colWidths=[6 * cm, 10 * cm])
+    att_tbl.setStyle(
         TableStyle(
             [
                 ("FONT", (0, 0), (-1, -1), body_font, 10),
+                ("FONT", (0, 0), (-1, 0), bold_font, 11),
                 ("FONT", (0, -1), (-1, -1), bold_font, 11),
-                ("TEXTCOLOR", (0, -1), (-1, -1), colors.HexColor("#111827")),
-                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F3F4F6")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F3F4F6")),
+                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F9FAFB")),
                 ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor("#D1D5DB")),
-                ("INNERGRID", (0, 0), (-1, -1), 0.2, colors.HexColor("#E5E7EB")),
+                ("INNERGRID", (0, 1), (-1, -1), 0.2, colors.HexColor("#E5E7EB")),
                 ("LEFTPADDING", (0, 0), (-1, -1), 8),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 8),
                 ("TOPPADDING", (0, 0), (-1, -1), 4),
@@ -1031,13 +1090,63 @@ def payroll_pdf_bytes(
             ]
         )
     )
-    story.append(tbl)
-    if gate_line:
-        story.append(Spacer(1, 0.3 * cm))
-        story.append(Paragraph(gate_line, normal))
+    story.append(att_tbl)
+    story.append(Spacer(1, 0.15 * cm))
+    story.append(Paragraph(att_status_line, small))
+    if att_shortfall.get("explanation"):
+        story.append(Paragraph(att_shortfall["explanation"], small))
+    story.append(Spacer(1, 0.4 * cm))
 
+    # ---- Sales block ----
+    sales_gate_passed = sales.get("gate_passed", False)
+    sales_rows = [
+        ["Sales-блок", ""],
+        ["Бонус", f"{fmt_uzs(summary.get('sales_bonus_uzs', 0))} сум"],
+        [
+            "План продаж",
+            f"{fmt_uzs(sales.get('plan_amount_uzs', 0))} сум",
+        ],
+        [
+            "Факт продаж",
+            f"{fmt_uzs(sales.get('actual_uzs', 0))} сум "
+            f"({sales.get('rate_pct', 0)}%)",
+        ],
+        [
+            "Гейт",
+            f"{summary.get('sales_gate_pct', 85)}% — "
+            + ("пройден" if sales_gate_passed else "НЕ пройден"),
+        ],
+        [
+            "Начислено",
+            f"{fmt_uzs(sales.get('block_earned', 0))} сум"
+            + (" (гейт провален)" if not sales_gate_passed else ""),
+        ],
+    ]
+    sales_tbl = Table(sales_rows, colWidths=[6 * cm, 10 * cm])
+    sales_tbl.setStyle(
+        TableStyle(
+            [
+                ("FONT", (0, 0), (-1, -1), body_font, 10),
+                ("FONT", (0, 0), (-1, 0), bold_font, 11),
+                ("FONT", (0, -1), (-1, -1), bold_font, 11),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F3F4F6")),
+                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F9FAFB")),
+                ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor("#D1D5DB")),
+                ("INNERGRID", (0, 1), (-1, -1), 0.2, colors.HexColor("#E5E7EB")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    story.append(sales_tbl)
+    if sales_shortfall.get("explanation"):
+        story.append(Spacer(1, 0.15 * cm))
+        story.append(Paragraph(sales_shortfall["explanation"], small))
     story.append(Spacer(1, 0.6 * cm))
-    story.append(Paragraph("<b>По дням</b>", normal))
+
+    story.append(Paragraph("<b>Attendance по дням</b>", normal))
     story.append(Spacer(1, 0.2 * cm))
 
     day_header = [
@@ -1047,18 +1156,19 @@ def payroll_pdf_bytes(
         "Приход",
         "Уход",
         "Опозд., мин",
-        "Вычет, сум",
+        "Штраф, сум",
     ]
     weekday_ru = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
     status_ru = {
         "on_time": "В срок",
         "late": "Опоздал",
-        "absent": "Отсутствовал",
+        "absent": "Пропуск",
         "free_absence": "Прощён",
         "weekend": "Выходной",
     }
+    days_source = attendance.get("days") or summary.get("days") or []
     day_rows = [day_header]
-    for d in summary.get("days", []):
+    for d in days_source:
         day_rows.append(
             [
                 d.get("date", ""),

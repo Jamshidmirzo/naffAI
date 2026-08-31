@@ -135,6 +135,38 @@ class Operator(TimestampedModel):
         validators=[MinValueValidator(0), MaxValueValidator(7)],
         help_text="Персональный лимит «прощённых» пропусков в неделю. Пусто → default_weekly_free_absences.",
     )
+    # 2026-08-31 two-gate payroll rewrite.
+    # Персональные override'ы новых бонусных блоков. Все nullable —
+    # resolve_operator_config сливает с AttendanceSettings.default_*.
+    # `salary_uzs` (см. выше) остаётся deprecated alias'ом для
+    # `attendance_bonus_uzs`: если менеджер настроил его до апгрейда, он
+    # продолжит работать как бонус attendance-блока.
+    attendance_bonus_uzs = models.DecimalField(
+        max_digits=12,
+        decimal_places=0,
+        null=True,
+        blank=True,
+        help_text=(
+            "Персональный бонус за attendance (UZS). "
+            "Пусто → salary_uzs → default_attendance_bonus_uzs."
+        ),
+    )
+    sales_bonus_uzs = models.DecimalField(
+        max_digits=12,
+        decimal_places=0,
+        null=True,
+        blank=True,
+        help_text=(
+            "Персональный бонус за продажи (UZS). "
+            "Пусто → default_sales_bonus_uzs."
+        ),
+    )
+    sales_gate_pct = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Персональный порог продаж (%). Пусто → default_sales_gate_pct.",
+    )
 
     class Meta:
         ordering = ["full_name"]

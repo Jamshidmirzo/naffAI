@@ -53,6 +53,10 @@ interface OperatorRow {
   late_penalty_uzs?: string | null;
   weekly_day_off?: number | null;
   weekly_free_absences?: number | null;
+  // 2026-08-31 two-gate payroll overrides (миграция 0009).
+  attendance_bonus_uzs?: string | null;
+  sales_bonus_uzs?: string | null;
+  sales_gate_pct?: number | null;
 }
 
 /**
@@ -162,6 +166,10 @@ export default function Operators() {
     late_penalty_uzs: string;
     weekly_day_off: string; // "0".."6" or "" (пусто → default)
     weekly_free_absences: string;
+    // 2026-08-31 two-gate overrides.
+    attendance_bonus_uzs: string;
+    sales_bonus_uzs: string;
+    sales_gate_pct: string;
   } | null>(null);
   const [deleteError, setDeleteError] = useState("");
 
@@ -247,6 +255,9 @@ export default function Operators() {
       late_penalty_uzs: string;
       weekly_day_off: string;
       weekly_free_absences: string;
+      attendance_bonus_uzs: string;
+      sales_bonus_uzs: string;
+      sales_gate_pct: string;
     }) => {
       // Payroll overrides: пустая строка → null (backend возьмёт default
       // из AttendanceSettings). Числовые поля парсим — если пришёл
@@ -275,6 +286,9 @@ export default function Operators() {
         late_penalty_uzs: num(body.late_penalty_uzs),
         weekly_day_off: num(body.weekly_day_off),
         weekly_free_absences: num(body.weekly_free_absences),
+        attendance_bonus_uzs: num(body.attendance_bonus_uzs),
+        sales_bonus_uzs: num(body.sales_bonus_uzs),
+        sales_gate_pct: num(body.sales_gate_pct),
       });
     },
     onSuccess: () => {
@@ -609,6 +623,18 @@ export default function Operators() {
                             selected.weekly_free_absences != null
                               ? String(selected.weekly_free_absences)
                               : "",
+                          attendance_bonus_uzs:
+                            selected.attendance_bonus_uzs != null
+                              ? String(selected.attendance_bonus_uzs)
+                              : "",
+                          sales_bonus_uzs:
+                            selected.sales_bonus_uzs != null
+                              ? String(selected.sales_bonus_uzs)
+                              : "",
+                          sales_gate_pct:
+                            selected.sales_gate_pct != null
+                              ? String(selected.sales_gate_pct)
+                              : "",
                         })
                       }
                     >
@@ -819,21 +845,58 @@ export default function Operators() {
                 {t("operator_form.section_salary_hint")}
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
+                <div>
                   <div className="nf-col mb-1.5">
-                    {t("operator_form.salary_uzs")}
+                    {t("operator_form.attendance_bonus_uzs")}
                   </div>
                   <input
                     className="nf-input"
                     inputMode="numeric"
                     placeholder="1 500 000"
-                    value={editModal.salary_uzs}
+                    value={editModal.attendance_bonus_uzs || editModal.salary_uzs}
                     onChange={(e) =>
                       setEditModal({
                         ...editModal,
+                        attendance_bonus_uzs: e.target.value.replace(/[^\d]/g, ""),
+                        // Синхронизируем legacy alias'ом, чтобы старые
+                        // читатели тоже видели актуальное значение (см.
+                        // resolve_operator_config fallback).
                         salary_uzs: e.target.value.replace(/[^\d]/g, ""),
                       })
                     }
+                  />
+                </div>
+                <div>
+                  <div className="nf-col mb-1.5">
+                    {t("operator_form.sales_bonus_uzs")}
+                  </div>
+                  <input
+                    className="nf-input"
+                    inputMode="numeric"
+                    placeholder="1 500 000"
+                    value={editModal.sales_bonus_uzs}
+                    onChange={(e) =>
+                      setEditModal({
+                        ...editModal,
+                        sales_bonus_uzs: e.target.value.replace(/[^\d]/g, ""),
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <div className="nf-col mb-1.5">
+                    {t("operator_form.sales_gate_pct")}
+                  </div>
+                  <input
+                    className="nf-input"
+                    inputMode="numeric"
+                    placeholder="85"
+                    value={editModal.sales_gate_pct}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^\d]/g, "");
+                      const clamped = raw === "" ? "" : String(Math.min(100, Math.max(0, Number(raw))));
+                      setEditModal({ ...editModal, sales_gate_pct: clamped });
+                    }}
                   />
                 </div>
                 <div>

@@ -19,6 +19,11 @@ type Settings = {
   default_weekly_day_off: number;
   default_attendance_gate_pct: number;
   default_weekly_free_absences: number;
+  // 2026-08-31 two-gate defaults.
+  default_attendance_bonus_uzs: string;
+  default_sales_bonus_uzs: string;
+  default_sales_gate_pct: number;
+  default_monthly_plan_uzs: string;
 };
 
 const WEEKDAYS_RU = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
@@ -183,24 +188,78 @@ export default function AttendanceSettings() {
         </div>
       </section>
 
-      {/* Оклад default */}
+      {/* Бонус attendance по умолчанию */}
       <section
         className="rounded-[16px] border p-5 flex flex-col gap-3"
         style={{ borderColor: "var(--border)" }}
       >
         <h2 className="text-[15px] font-semibold">{t("att_settings.section_salary")}</h2>
         <Field
-          label={t("att_settings.default_salary_uzs")}
-          hint={t("att_settings.default_salary_uzs_hint")}
+          label={t("att_settings.default_attendance_bonus_uzs")}
+          hint={t("att_settings.default_attendance_bonus_uzs_hint")}
         >
           <input
             type="number"
             min={0}
             className="nf-input"
-            value={form.default_salary_uzs}
-            onChange={(e) => upd("default_salary_uzs", e.target.value)}
+            value={form.default_attendance_bonus_uzs || form.default_salary_uzs}
+            onChange={(e) => {
+              // Держим legacy salary в синхроне — resolve_operator_config
+              // читает default_salary_uzs как fallback.
+              upd("default_attendance_bonus_uzs", e.target.value);
+              upd("default_salary_uzs", e.target.value);
+            }}
           />
         </Field>
+      </section>
+
+      {/* Продажи и планы */}
+      <section
+        className="rounded-[16px] border p-5 flex flex-col gap-3"
+        style={{ borderColor: "var(--border)" }}
+      >
+        <h2 className="text-[15px] font-semibold">{t("att_settings.section_sales")}</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field
+            label={t("att_settings.default_sales_bonus_uzs")}
+            hint={t("att_settings.default_sales_bonus_uzs_hint")}
+          >
+            <input
+              type="number"
+              min={0}
+              className="nf-input"
+              value={form.default_sales_bonus_uzs}
+              onChange={(e) => upd("default_sales_bonus_uzs", e.target.value)}
+            />
+          </Field>
+          <Field
+            label={t("att_settings.default_sales_gate_pct")}
+            hint={t("att_settings.default_sales_gate_pct_hint")}
+          >
+            <input
+              type="number"
+              min={0}
+              max={100}
+              className="nf-input"
+              value={form.default_sales_gate_pct}
+              onChange={(e) =>
+                upd("default_sales_gate_pct", parseInt(e.target.value || "0", 10))
+              }
+            />
+          </Field>
+          <Field
+            label={t("att_settings.default_monthly_plan_uzs")}
+            hint={t("att_settings.default_monthly_plan_uzs_hint")}
+          >
+            <input
+              type="number"
+              min={0}
+              className="nf-input"
+              value={form.default_monthly_plan_uzs}
+              onChange={(e) => upd("default_monthly_plan_uzs", e.target.value)}
+            />
+          </Field>
+        </div>
       </section>
 
       {/* Сохранение */}

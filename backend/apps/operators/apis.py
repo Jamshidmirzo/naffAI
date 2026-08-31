@@ -71,6 +71,10 @@ class OperatorSerializer(serializers.ModelSerializer):
             "late_penalty_uzs",
             "weekly_day_off",
             "weekly_free_absences",
+            # 2026-08-31 two-gate payroll (миграция 0009).
+            "attendance_bonus_uzs",
+            "sales_bonus_uzs",
+            "sales_gate_pct",
         ]
         read_only_fields = [
             "id",
@@ -95,6 +99,9 @@ class OperatorSerializer(serializers.ModelSerializer):
             "late_penalty_uzs": {"required": False, "allow_null": True},
             "weekly_day_off": {"required": False, "allow_null": True},
             "weekly_free_absences": {"required": False, "allow_null": True},
+            "attendance_bonus_uzs": {"required": False, "allow_null": True},
+            "sales_bonus_uzs": {"required": False, "allow_null": True},
+            "sales_gate_pct": {"required": False, "allow_null": True},
         }
 
     def get_account(self, obj: Operator) -> dict:

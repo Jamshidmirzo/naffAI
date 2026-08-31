@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { FileText, FileType2 } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronRight, DollarSign, FileText, FileType2 } from "lucide-react";
 import { api } from "../lib/api";
 import { formatUZS } from "../lib/format";
 import { Button } from "../components/ui";
@@ -8,19 +8,17 @@ import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
 
 /**
- * Operator-only view of the attendance-based payroll for the current
- * month (or any past month via `<input type="month">`). Reads
- * `/attendance/my-payroll/?month=YYYY-MM` — PIN не требуется, только
- * оператору-владельцу.
+ * Operator-only view of the 2-gate payroll (attendance + sales).
  *
- * Компоновка:
- *   1. Gradient «summary» карточка сверху — оклад / дней посещал / % /
- *      к выплате. Стиль тот же, что у BirthdayCelebration banner'а,
- *      только тёплее (не режет глаза каждый день).
- *   2. Простой список дней (не accordion) — иконка + время in-out +
- *      вычет. Обозначения: ✓ on_time, ⏰ late (жёлтый), ✕ absent (красный),
- *      ○ weekend (серый), ◐ free_absence (синий).
- *   3. Кнопки Excel / PDF — идут через `/attendance/my-payroll/?export=…`.
+ * Layout:
+ *   1. Крупная summary-карточка «К выплате X UZS / max» — цветная,
+ *      с общим прогресс-баром total_earned / max_possible.
+ *   2. Ряд из 2 больших карточек: Attendance / Sales.
+ *      Каждая — заголовок + сумма (или 0 если гейт провален), rate + progress
+ *      bar до гейта, поясняющие метрики, при провале — shortfall
+ *      сообщение.
+ *   3. Кнопки Excel / PDF.
+ *   4. Collapsible «Детально по дням» (attendance days).
  */
 
 type PayrollDay = {
@@ -35,33 +33,53 @@ type PayrollDay = {
   note: string;
 };
 
-type MyPayrollResponse = {
-  operator_id: number;
-  operator_name: string;
-  year: number;
-  month: number;
-  salary_gross: string;
-  shift_start: string;
-  shift_end: string;
-  grace_period_min: number;
-  weekly_day_off: number;
-  weekly_free_absences: number;
+type AttendanceBlock = {
   working_days_planned: number;
   days_attended: number;
   days_absent: number;
   days_late: number;
   avg_late_minutes: number;
-  attendance_rate_pct: number;
-  gate_pct: number;
-  gate_triggered: boolean;
-  weekly_free_absences_used: number;
-  billable_absences: number;
-  daily_rate: string;
-  absence_deduction: string;
+  rate_pct: number;
+  gate_passed: boolean;
   late_penalty_per_event: string;
   late_penalty_total: string;
-  salary_earned: string;
+  block_earned: string;
+  shortfall: {
+    days_more_needed: number;
+    explanation: string;
+  };
   days: PayrollDay[];
+};
+
+type SalesBlock = {
+  plan_amount_uzs: string;
+  plan_source: string;
+  actual_uzs: string;
+  rate_pct: number;
+  gate_passed: boolean;
+  block_earned: string;
+  shortfall: {
+    amount_more_needed: string;
+    explanation: string;
+  };
+};
+
+type MyPayrollResponse = {
+  operator_id: number;
+  operator_name: string;
+  year: number;
+  month: number;
+  attendance_bonus_uzs: string;
+  sales_bonus_uzs: string;
+  attendance_gate_pct: number;
+  sales_gate_pct: number;
+  shift_start: string;
+  shift_end: string;
+  grace_period_min: number;
+  attendance: AttendanceBlock;
+  sales: SalesBlock;
+  total_earned: string;
+  max_possible: string;
 };
 
 function currentMonthValue(): string {
@@ -154,6 +172,7 @@ export default function MyPayroll() {
 
   const [month, setMonth] = useState<string>(currentMonthValue());
   const [downloading, setDownloading] = useState<"xlsx" | "pdf" | null>(null);
+  const [daysOpen, setDaysOpen] = useState(false);
 
   const q = useQuery<MyPayrollResponse>({
     queryKey: ["my-payroll", month],
@@ -164,9 +183,12 @@ export default function MyPayroll() {
   });
 
   const data = q.data;
+  const totalEarned = data ? Number(data.total_earned) : 0;
+  const maxPossible = data ? Number(data.max_possible) : 0;
+  const totalPct = maxPossible > 0 ? Math.round((totalEarned / maxPossible) * 100) : 0;
 
   return (
-    <div className="mx-auto max-w-[860px] flex flex-col gap-5">
+    <div className="mx-auto max-w-[900px] flex flex-col gap-5">
       <section className="flex flex-wrap items-center gap-3 animate-nfFadeUp">
         <div className="flex items-center gap-2">
           <span className="text-[13px] text-muted">{t("payroll.month")}</span>
@@ -226,7 +248,7 @@ export default function MyPayroll() {
         </div>
       ) : (
         <>
-          {/* Gradient summary card */}
+          {/* Total-earned summary card */}
           <section
             className="animate-nfFadeUp rounded-3xl p-6"
             style={{
@@ -238,7 +260,7 @@ export default function MyPayroll() {
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="min-w-0">
                 <div className="text-[12.5px] uppercase tracking-wide text-muted">
-                  {t("payroll.my_summary_label")}
+                  {t("payroll.total_to_pay")}
                 </div>
                 <div className="text-[22px] font-bold tracking-tight mt-1">
                   {new Date(data.year, data.month - 1, 1).toLocaleDateString(
@@ -246,141 +268,111 @@ export default function MyPayroll() {
                     { month: "long", year: "numeric" },
                   )}
                 </div>
-                <div className="text-[13px] text-muted mt-1">
-                  {t("payroll.shift_hint", {
-                    from: data.shift_start,
-                    to: data.shift_end,
-                    grace: data.grace_period_min,
-                  })}
-                </div>
               </div>
               <div className="text-right shrink-0">
-                <div className="text-[12px] uppercase tracking-wide text-muted">
-                  {t("payroll.salary_earned")}
-                </div>
                 <div
-                  className="text-[30px] font-black tabular-nums leading-tight mt-1"
-                  style={{ color: data.gate_triggered ? "var(--danger)" : "var(--accent)" }}
+                  className="text-[32px] font-black tabular-nums leading-tight"
+                  style={{
+                    color:
+                      totalEarned === 0 ? "var(--muted)" : "var(--accent)",
+                  }}
                 >
-                  {formatUZS(data.salary_earned)}
+                  {formatUZS(data.total_earned)}
                 </div>
                 <div className="text-[12px] text-muted tabular-nums">
-                  {t("payroll.of")} {formatUZS(data.salary_gross)}
+                  {t("payroll.of_max", { max: formatUZS(data.max_possible) })}
                 </div>
               </div>
             </div>
+            <ProgressBar pct={totalPct} tone={totalPct >= 50 ? "green" : "amber"} />
+          </section>
 
-            <div
-              className="grid gap-3 mt-5"
-              style={{ gridTemplateColumns: "repeat(3, 1fr)" }}
+          {/* Two gate cards: attendance / sales */}
+          <section
+            className="grid gap-4 animate-nfFadeUp"
+            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}
+          >
+            <AttendanceCard data={data} />
+            <SalesCard data={data} />
+          </section>
+
+          {/* Days breakdown (collapsible) */}
+          <section className="nf-card p-5">
+            <button
+              type="button"
+              onClick={() => setDaysOpen((s) => !s)}
+              className="flex items-center gap-2 w-full text-left"
             >
-              <MiniStat
-                label={t("payroll.days_col")}
-                value={`${data.days_attended} / ${data.working_days_planned}`}
-              />
-              <MiniStat
-                label={t("payroll.attendance_rate")}
-                value={`${data.attendance_rate_pct}%`}
-                accent={
-                  !data.gate_triggered && data.attendance_rate_pct >= 95
-                }
-                danger={data.gate_triggered}
-              />
-              <MiniStat
-                label={t("payroll.late_count")}
-                value={
-                  data.days_late === 0
-                    ? "0"
-                    : `${data.days_late} · Ø${data.avg_late_minutes} мин`
-                }
-                accent={data.days_late > 0}
-              />
-            </div>
-
-            {data.gate_triggered && (
-              <div
-                className="rounded-xl px-4 py-3 text-[13px] mt-4"
-                style={{
-                  background: "rgba(220,60,40,.1)",
-                  color: "var(--danger)",
-                  border: "1px solid rgba(220,60,40,.25)",
-                }}
-              >
-                {t("payroll.gate_message_operator", {
-                  rate: data.attendance_rate_pct,
-                  gate: data.gate_pct,
+              {daysOpen ? (
+                <ChevronDown className="w-4 h-4 text-muted" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-muted" />
+              )}
+              <span className="nf-col">{t("payroll.days_breakdown")}</span>
+            </button>
+            {daysOpen && (
+              <div className="flex flex-col gap-1.5 mt-3">
+                {data.attendance.days.map((d, i) => {
+                  const cfg = statusConfig(d.status, t);
+                  const deduction = Number(d.deduction_uzs);
+                  return (
+                    <div
+                      key={d.date}
+                      className="grid gap-3 items-center px-3 py-2.5 rounded-lg text-[13px] animate-nfFadeUp"
+                      style={{
+                        gridTemplateColumns: "24px 1fr auto auto",
+                        background: cfg.bg,
+                        border: "1px solid var(--border)",
+                        animationDelay: `${0.01 + i * 0.012}s`,
+                      }}
+                    >
+                      <span aria-hidden="true" style={{ color: cfg.color, fontSize: 16 }}>
+                        {cfg.icon}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">
+                          {fmtDayRu(d.date)}
+                          <span
+                            className="ml-2 text-[11.5px] font-normal"
+                            style={{ color: cfg.color }}
+                          >
+                            {cfg.label}
+                          </span>
+                        </div>
+                        {d.note && (
+                          <div className="text-[11.5px] text-muted truncate">
+                            {d.note}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-[12px] text-muted tabular-nums text-right">
+                        {d.checked_in_at || d.checked_out_at ? (
+                          <>
+                            {fmtHM(d.checked_in_at)}
+                            {d.checked_out_at && (
+                              <> → {fmtHM(d.checked_out_at)}</>
+                            )}
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </div>
+                      <div
+                        className="tabular-nums text-[12.5px] font-semibold text-right min-w-[92px]"
+                        style={{
+                          color:
+                            deduction > 0 ? "var(--danger)" : "var(--muted)",
+                        }}
+                      >
+                        {deduction > 0
+                          ? "−" + formatUZS(d.deduction_uzs)
+                          : "—"}
+                      </div>
+                    </div>
+                  );
                 })}
               </div>
             )}
-          </section>
-
-          {/* Days list */}
-          <section className="nf-card p-5">
-            <div className="nf-col mb-3">{t("payroll.days_breakdown")}</div>
-            <div className="flex flex-col gap-1.5">
-              {data.days.map((d, i) => {
-                const cfg = statusConfig(d.status, t);
-                const deduction = Number(d.deduction_uzs);
-                return (
-                  <div
-                    key={d.date}
-                    className="grid gap-3 items-center px-3 py-2.5 rounded-lg text-[13px] animate-nfFadeUp"
-                    style={{
-                      gridTemplateColumns: "24px 1fr auto auto",
-                      background: cfg.bg,
-                      border: "1px solid var(--border)",
-                      animationDelay: `${0.01 + i * 0.012}s`,
-                    }}
-                  >
-                    <span
-                      aria-hidden="true"
-                      style={{ color: cfg.color, fontSize: 16 }}
-                    >
-                      {cfg.icon}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="font-medium truncate">
-                        {fmtDayRu(d.date)}
-                        <span
-                          className="ml-2 text-[11.5px] font-normal"
-                          style={{ color: cfg.color }}
-                        >
-                          {cfg.label}
-                        </span>
-                      </div>
-                      {d.note && (
-                        <div className="text-[11.5px] text-muted truncate">
-                          {d.note}
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-[12px] text-muted tabular-nums text-right">
-                      {d.checked_in_at || d.checked_out_at ? (
-                        <>
-                          {fmtHM(d.checked_in_at)}
-                          {d.checked_out_at && (
-                            <> → {fmtHM(d.checked_out_at)}</>
-                          )}
-                        </>
-                      ) : (
-                        "—"
-                      )}
-                    </div>
-                    <div
-                      className="tabular-nums text-[12.5px] font-semibold text-right min-w-[92px]"
-                      style={{
-                        color:
-                          deduction > 0 ? "var(--danger)" : "var(--muted)",
-                      }}
-                    >
-                      {deduction > 0
-                        ? "−" + formatUZS(d.deduction_uzs)
-                        : "—"}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           </section>
         </>
       )}
@@ -388,42 +380,220 @@ export default function MyPayroll() {
   );
 }
 
-function MiniStat({
-  label,
-  value,
-  accent,
-  danger,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-  danger?: boolean;
-}) {
+/* ----------------------------- Cards ---------------------------------- */
+
+function AttendanceCard({ data }: { data: MyPayrollResponse }) {
+  const t = useT();
+  const a = data.attendance;
+  const passed = a.gate_passed;
+  const earned = Number(a.block_earned);
+  const rate = a.rate_pct;
+  const gate = data.attendance_gate_pct;
+  // Progress bar заполняем rate; при 100% гейт-риска (85%) визуально
+  // упирается в зону «безопасно»: rate/max(rate, gate*1.18) — плавнее.
+  const barPct = Math.max(0, Math.min(100, rate));
+
   return (
     <div
-      className="rounded-2xl px-4 py-3"
+      className="rounded-3xl p-5 flex flex-col gap-3"
       style={{
-        background: "rgba(255,255,255,0.45)",
-        border: "1px solid rgba(255,255,255,0.4)",
-        backdropFilter: "blur(8px)",
-        WebkitBackdropFilter: "blur(8px)",
+        border: `1.5px solid ${passed ? "rgba(22,163,74,0.35)" : "rgba(220,60,40,0.35)"}`,
+        background: passed
+          ? "linear-gradient(180deg, rgba(22,163,74,0.05), rgba(22,163,74,0.01))"
+          : "linear-gradient(180deg, rgba(220,60,40,0.05), rgba(220,60,40,0.01))",
       }}
     >
-      <div className="text-[11px] text-muted uppercase tracking-wide">
-        {label}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <CalendarDays className="w-4 h-4" style={{ color: passed ? "#16a34a" : "var(--danger)" }} />
+          <div className="text-[14px] font-semibold tracking-tight truncate">
+            {t("payroll.gate_attendance_title")}
+          </div>
+        </div>
+        <GateBadge passed={passed} t={t} />
       </div>
+      <div>
+        <div
+          className="text-[26px] font-black tabular-nums leading-none"
+          style={{ color: passed ? "#16a34a" : "var(--muted)" }}
+        >
+          {formatUZS(earned)}
+        </div>
+        <div className="text-[11.5px] text-muted mt-1">
+          {t("payroll.attendance_bonus_label")}: {formatUZS(data.attendance_bonus_uzs)}
+        </div>
+      </div>
+      <div>
+        <div className="flex items-baseline justify-between text-[12px] text-muted">
+          <span>
+            {rate}% / {gate}%
+          </span>
+          <span className="tabular-nums">
+            {t("payroll.attendance_summary_line", {
+              attended: a.days_attended,
+              planned: a.working_days_planned,
+            })}
+          </span>
+        </div>
+        <ProgressBar pct={barPct} tone={passed ? "green" : "red"} threshold={gate} />
+      </div>
+      {a.days_late > 0 && passed && (
+        <div className="text-[12px]" style={{ color: "#d97706" }}>
+          {t("payroll.late_deduction_line", {
+            n: a.days_late,
+            amount: formatUZS(a.late_penalty_total),
+          })}
+        </div>
+      )}
+      {!passed && (
+        <div
+          className="rounded-xl px-3 py-2 text-[12.5px]"
+          style={{
+            background: "rgba(220,60,40,.08)",
+            color: "var(--danger)",
+            border: "1px solid rgba(220,60,40,.2)",
+          }}
+        >
+          {t("payroll.shortfall_attendance_days", { n: a.shortfall.days_more_needed })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SalesCard({ data }: { data: MyPayrollResponse }) {
+  const t = useT();
+  const s = data.sales;
+  const passed = s.gate_passed;
+  const earned = Number(s.block_earned);
+  const rate = s.rate_pct;
+  const gate = data.sales_gate_pct;
+  const barPct = Math.max(0, Math.min(100, rate));
+
+  return (
+    <div
+      className="rounded-3xl p-5 flex flex-col gap-3"
+      style={{
+        border: `1.5px solid ${passed ? "rgba(22,163,74,0.35)" : "rgba(220,60,40,0.35)"}`,
+        background: passed
+          ? "linear-gradient(180deg, rgba(22,163,74,0.05), rgba(22,163,74,0.01))"
+          : "linear-gradient(180deg, rgba(220,60,40,0.05), rgba(220,60,40,0.01))",
+      }}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <DollarSign className="w-4 h-4" style={{ color: passed ? "#16a34a" : "var(--danger)" }} />
+          <div className="text-[14px] font-semibold tracking-tight truncate">
+            {t("payroll.gate_sales_title")}
+          </div>
+        </div>
+        <GateBadge passed={passed} t={t} />
+      </div>
+      <div>
+        <div
+          className="text-[26px] font-black tabular-nums leading-none"
+          style={{ color: passed ? "#16a34a" : "var(--muted)" }}
+        >
+          {formatUZS(earned)}
+        </div>
+        <div className="text-[11.5px] text-muted mt-1">
+          {t("payroll.sales_bonus_label")}: {formatUZS(data.sales_bonus_uzs)}
+        </div>
+      </div>
+      <div>
+        <div className="flex items-baseline justify-between text-[12px] text-muted">
+          <span>
+            {rate}% / {gate}%
+          </span>
+          <span className="tabular-nums">
+            {t("payroll.sales_summary_line", {
+              actual: formatUZS(s.actual_uzs),
+              plan: formatUZS(s.plan_amount_uzs),
+            })}
+          </span>
+        </div>
+        <ProgressBar pct={barPct} tone={passed ? "green" : "red"} threshold={gate} />
+      </div>
+      {!passed && Number(s.shortfall.amount_more_needed) > 0 && (
+        <div
+          className="rounded-xl px-3 py-2 text-[12.5px]"
+          style={{
+            background: "rgba(220,60,40,.08)",
+            color: "var(--danger)",
+            border: "1px solid rgba(220,60,40,.2)",
+          }}
+        >
+          {t("payroll.shortfall_sales_amount", {
+            amount: formatUZS(s.shortfall.amount_more_needed),
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GateBadge({
+  passed,
+  t,
+}: {
+  passed: boolean;
+  t: (k: string, p?: Record<string, string | number>) => string;
+}) {
+  return (
+    <span
+      className="text-[11px] uppercase tracking-wide font-semibold rounded-full px-2.5 py-1"
+      style={{
+        background: passed ? "rgba(22,163,74,0.15)" : "rgba(220,60,40,0.15)",
+        color: passed ? "#16a34a" : "var(--danger)",
+      }}
+    >
+      {passed ? t("payroll.gate_passed_badge") : t("payroll.gate_failed_badge")}
+    </span>
+  );
+}
+
+function ProgressBar({
+  pct,
+  tone,
+  threshold,
+}: {
+  pct: number;
+  tone: "green" | "amber" | "red";
+  threshold?: number;
+}) {
+  const color =
+    tone === "green" ? "#16a34a" : tone === "amber" ? "#d97706" : "var(--danger)";
+  return (
+    <div
+      className="mt-2 relative rounded-full overflow-hidden"
+      style={{
+        height: 8,
+        background: "var(--faint)",
+      }}
+    >
       <div
-        className="text-[17px] font-bold tabular-nums mt-1"
         style={{
-          color: danger
-            ? "var(--danger)"
-            : accent
-            ? "var(--accent)"
-            : undefined,
+          width: `${pct}%`,
+          height: "100%",
+          background: color,
+          transition: "width .35s ease",
         }}
-      >
-        {value}
-      </div>
+      />
+      {threshold != null && threshold > 0 && threshold < 100 && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: -2,
+            bottom: -2,
+            left: `${threshold}%`,
+            width: 2,
+            background: "var(--text)",
+            opacity: 0.35,
+          }}
+          title={`${threshold}%`}
+        />
+      )}
     </div>
   );
 }
