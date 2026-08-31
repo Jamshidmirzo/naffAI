@@ -10,6 +10,9 @@ from .apis import (
     MeQrAttendanceApi,
     MeQrTokenAttendanceApi,
     MeToggleAttendanceApi,
+    MyPayrollAttendanceApi,
+    PayrollListAttendanceApi,
+    PayrollDetailAttendanceApi,
     PhotosGalleryAttendanceApi,
     ReportAttendanceApi,
     OperatorLogsAttendanceApi,
@@ -70,6 +73,18 @@ urlpatterns = [
         "operators/<int:operator_id>/qr-token/",
         OperatorQrTokenAttendanceApi.as_view(),
         name="attendance-operator-qr-token",
+    ),
+    # 2026-08-31: attendance-based зарплата.
+    path("payroll/", PayrollListAttendanceApi.as_view(), name="attendance-payroll-list"),
+    path(
+        "payroll/<int:operator_id>/",
+        PayrollDetailAttendanceApi.as_view(),
+        name="attendance-payroll-detail",
+    ),
+    path(
+        "my-payroll/",
+        MyPayrollAttendanceApi.as_view(),
+        name="attendance-my-payroll",
     ),
     path("settings/", SettingsAttendanceApi.as_view(), name="attendance-settings"),
     path("logs/<int:log_id>/close/", ManualCloseAttendanceApi.as_view(), name="attendance-manual-close"),

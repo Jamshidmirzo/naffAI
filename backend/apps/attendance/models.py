@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.conf import settings
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
@@ -262,6 +264,43 @@ class AttendanceSettings(models.Model):
         related_name="+",
         help_text="Superadmin, задавший/сбросивший PIN.",
     )
+    # 2026-08-31: payroll-defaults (см. модуль `apps.attendance.selectors::
+    # attendance_payroll_summary`). Хранятся здесь, чтобы менеджер мог одним
+    # PATCH'ем переопределить сразу для всех операторов — а конкретный
+    # оператор оставался с полем-override'ом на своей карточке.
+    default_salary_uzs = models.DecimalField(
+        max_digits=12,
+        decimal_places=0,
+        default=Decimal("1500000"),
+        help_text="Оклад по умолчанию (UZS). Если у оператора `salary_uzs` пусто — берётся отсюда.",
+    )
+    default_grace_period_min = models.PositiveSmallIntegerField(
+        default=20,
+        validators=[MinValueValidator(0), MaxValueValidator(240)],
+        help_text="Grace-минуты после `shift_start` — приход в этом окне НЕ считается опозданием (payroll).",
+    )
+    default_late_penalty_uzs = models.DecimalField(
+        max_digits=10,
+        decimal_places=0,
+        default=Decimal("50000"),
+        help_text="Фиксированный штраф за каждое опоздание сверх grace (UZS).",
+    )
+    default_weekly_day_off = models.PositiveSmallIntegerField(
+        default=6,
+        validators=[MinValueValidator(0), MaxValueValidator(6)],
+        help_text="Личный выходной по умолчанию (0=Пн … 6=Вс).",
+    )
+    default_attendance_gate_pct = models.PositiveSmallIntegerField(
+        default=85,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Если посещаемость <N%% в месяце — оклад НЕ начисляется (только комиссия).",
+    )
+    default_weekly_free_absences = models.PositiveSmallIntegerField(
+        default=1,
+        validators=[MinValueValidator(0), MaxValueValidator(7)],
+        help_text="Сколько пропусков в неделю «прощаются» без штрафа (сверх личного выходного).",
+    )
+
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

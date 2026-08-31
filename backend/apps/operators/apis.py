@@ -63,6 +63,14 @@ class OperatorSerializer(serializers.ModelSerializer):
             "account",
             "sticker",
             "forgotten_checkouts_count",
+            # 2026-08-31: payroll overrides (см. миграцию 0008).
+            "salary_uzs",
+            "shift_start",
+            "shift_end",
+            "grace_period_min",
+            "late_penalty_uzs",
+            "weekly_day_off",
+            "weekly_free_absences",
         ]
         read_only_fields = [
             "id",
@@ -80,6 +88,13 @@ class OperatorSerializer(serializers.ModelSerializer):
             "blocking_gate_enabled": {"required": False},
             "require_checkin_enabled": {"required": False},
             "birth_date": {"required": False, "allow_null": True},
+            "salary_uzs": {"required": False, "allow_null": True},
+            "shift_start": {"required": False, "allow_null": True},
+            "shift_end": {"required": False, "allow_null": True},
+            "grace_period_min": {"required": False, "allow_null": True},
+            "late_penalty_uzs": {"required": False, "allow_null": True},
+            "weekly_day_off": {"required": False, "allow_null": True},
+            "weekly_free_absences": {"required": False, "allow_null": True},
         }
 
     def get_account(self, obj: Operator) -> dict:

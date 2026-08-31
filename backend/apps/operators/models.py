@@ -1,3 +1,4 @@
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from apps.common.models import TimestampedModel
@@ -86,6 +87,53 @@ class Operator(TimestampedModel):
             "менеджерам. Пустое → cron ещё не отправлял в этом году. "
             "Guards от дублей при рестарте / ручном повторном запуске."
         ),
+    )
+    # 2026-08-31: payroll overrides. Все поля nullable — при пустом
+    # значении расчёт зарплаты (`apps.attendance.selectors::
+    # attendance_payroll_summary`) берёт `AttendanceSettings.default_*`.
+    # Даёт менеджеру гибкость («у Ойбека студенческий график с 14:00,
+    # оклад 800к, вместо 10:00/1.5M») без правки общих настроек.
+    salary_uzs = models.DecimalField(
+        max_digits=12,
+        decimal_places=0,
+        null=True,
+        blank=True,
+        help_text="Оклад оператора в UZS. Пусто → default_salary_uzs из настроек.",
+    )
+    shift_start = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Персональное начало смены. Пусто → shift_start из настроек.",
+    )
+    shift_end = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Персональный конец смены. Пусто → shift_end из настроек.",
+    )
+    grace_period_min = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(240)],
+        help_text="Персональный grace для опозданий (мин). Пусто → default_grace_period_min.",
+    )
+    late_penalty_uzs = models.DecimalField(
+        max_digits=10,
+        decimal_places=0,
+        null=True,
+        blank=True,
+        help_text="Персональный фикс. штраф за опоздание (UZS). Пусто → default_late_penalty_uzs.",
+    )
+    weekly_day_off = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(6)],
+        help_text="Персональный выходной день (0=Пн … 6=Вс). Пусто → default_weekly_day_off.",
+    )
+    weekly_free_absences = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(7)],
+        help_text="Персональный лимит «прощённых» пропусков в неделю. Пусто → default_weekly_free_absences.",
     )
 
     class Meta:

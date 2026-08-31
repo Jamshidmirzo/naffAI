@@ -819,6 +819,13 @@ class SettingsAttendanceApi(APIView):
             "photo_max_size_mb": settings_obj.photo_max_size_mb,
             "checkout_reminder_after_hours": settings_obj.checkout_reminder_after_hours,
             "max_backfill_hours": settings_obj.max_backfill_hours,
+            # Payroll-defaults.
+            "default_salary_uzs": str(settings_obj.default_salary_uzs),
+            "default_grace_period_min": settings_obj.default_grace_period_min,
+            "default_late_penalty_uzs": str(settings_obj.default_late_penalty_uzs),
+            "default_weekly_day_off": settings_obj.default_weekly_day_off,
+            "default_attendance_gate_pct": settings_obj.default_attendance_gate_pct,
+            "default_weekly_free_absences": settings_obj.default_weekly_free_absences,
         }
 
     def get(self, request):
@@ -860,6 +867,36 @@ class SettingsAttendanceApi(APIView):
             )
         if max_backfill_hours is not None:
             settings_obj.max_backfill_hours = max(1, min(24, int(max_backfill_hours)))
+
+        # Payroll defaults.
+        from decimal import Decimal as _D
+
+        default_salary_uzs = request.data.get("default_salary_uzs")
+        default_grace_period_min = request.data.get("default_grace_period_min")
+        default_late_penalty_uzs = request.data.get("default_late_penalty_uzs")
+        default_weekly_day_off = request.data.get("default_weekly_day_off")
+        default_attendance_gate_pct = request.data.get("default_attendance_gate_pct")
+        default_weekly_free_absences = request.data.get("default_weekly_free_absences")
+        if default_salary_uzs is not None:
+            settings_obj.default_salary_uzs = _D(str(default_salary_uzs))
+        if default_grace_period_min is not None:
+            settings_obj.default_grace_period_min = max(
+                0, min(240, int(default_grace_period_min))
+            )
+        if default_late_penalty_uzs is not None:
+            settings_obj.default_late_penalty_uzs = _D(str(default_late_penalty_uzs))
+        if default_weekly_day_off is not None:
+            settings_obj.default_weekly_day_off = max(
+                0, min(6, int(default_weekly_day_off))
+            )
+        if default_attendance_gate_pct is not None:
+            settings_obj.default_attendance_gate_pct = max(
+                0, min(100, int(default_attendance_gate_pct))
+            )
+        if default_weekly_free_absences is not None:
+            settings_obj.default_weekly_free_absences = max(
+                0, min(7, int(default_weekly_free_absences))
+            )
 
         settings_obj.updated_by = request.user
         settings_obj.save()
@@ -1000,6 +1037,253 @@ class ManualCloseAttendanceApi(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+def _parse_month_param(month_str: str | None) -> tuple[int, int] | None:
+    """
+    Парсит `?month=YYYY-MM` в `(year, month)`. Возвращает None если
+    отсутствует / битый формат — вызывающий сам решает fallback
+    (обычно = текущий месяц Ташкента).
+    """
+    if not month_str:
+        return None
+    try:
+        parts = month_str.split("-")
+        if len(parts) != 2:
+            return None
+        year = int(parts[0])
+        month = int(parts[1])
+        if not (1 <= month <= 12) or year < 2000 or year > 3000:
+            return None
+        return year, month
+    except (ValueError, TypeError):
+        return None
+
+
+def _default_month() -> tuple[int, int]:
+    today = timezone.localdate()
+    return today.year, today.month
+
+
+def _payroll_summary_to_xlsx(summary: dict, filename: str):
+    """
+    Excel: две вкладки — «Сводка» и «По дням». Форматирование денег /
+    заголовков — через shared helper'ы `apps.common.excel`.
+    """
+    from apps.common.excel import new_workbook, workbook_response, write_sheet
+
+    wb = new_workbook()
+
+    # Sheet 1: Сводка (2 колонки key/value).
+    summary_headers = ["Показатель", "Значение"]
+    summary_rows = [
+        ["Оператор", summary.get("operator_name", "")],
+        ["Период", f"{summary.get('year')}-{int(summary.get('month', 1)):02d}"],
+        ["Оклад (UZS)", int(summary.get("salary_gross", 0) or 0)],
+        ["Рабочих дней (план)", int(summary.get("working_days_planned", 0))],
+        ["Посещал", int(summary.get("days_attended", 0))],
+        ["Пропустил (всего)", int(summary.get("days_absent", 0))],
+        ["Прощённых пропусков", int(summary.get("weekly_free_absences_used", 0))],
+        ["Штрафуемых пропусков", int(summary.get("billable_absences", 0))],
+        ["Опозданий", int(summary.get("days_late", 0))],
+        ["Ср. опоздание (мин)", int(summary.get("avg_late_minutes", 0))],
+        ["Посещаемость (%)", float(summary.get("attendance_rate_pct", 0))],
+        ["Гейт (%)", int(summary.get("gate_pct", 0))],
+        [
+            "Гейт сработал",
+            "Да (оклад = 0)" if summary.get("gate_triggered") else "Нет",
+        ],
+        ["Дневная ставка (UZS)", int(summary.get("daily_rate", 0) or 0)],
+        [
+            "Вычет за отсутствия (UZS)",
+            int(summary.get("absence_deduction", 0) or 0),
+        ],
+        [
+            "Штраф за опоздание (UZS/шт)",
+            int(summary.get("late_penalty_per_event", 0) or 0),
+        ],
+        [
+            "Штраф за опоздания (UZS)",
+            int(summary.get("late_penalty_total", 0) or 0),
+        ],
+        ["К выплате (UZS)", int(summary.get("salary_earned", 0) or 0)],
+    ]
+    # Колонки «Значение» — money-fmt только на числовых Rows. Т.к.
+    # write_sheet применяет формат к целой колонке кроме заголовка, а у
+    # нас смешан текст/число — оставляем формат `INT_FMT` глобально, а
+    # текстовые cell'ы просто отобразятся как строки.
+    write_sheet(
+        wb,
+        title="Сводка",
+        headers=summary_headers,
+        rows=summary_rows,
+        int_columns=(1,),
+    )
+
+    # Sheet 2: По дням.
+    day_headers = [
+        "Дата",
+        "День недели",
+        "Рабочий",
+        "Статус",
+        "Приход",
+        "Уход",
+        "Опоздание (мин)",
+        "Вычет (UZS)",
+        "Комментарий",
+    ]
+    weekday_ru = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    status_ru = {
+        "on_time": "В срок",
+        "late": "Опоздал",
+        "absent": "Отсутствовал",
+        "free_absence": "Прощён",
+        "weekend": "Выходной",
+    }
+    day_rows = []
+    for d in summary.get("days", []):
+        ci = d.get("checked_in_at")
+        co = d.get("checked_out_at")
+
+        def _fmt_time(iso: str | None) -> str:
+            if not iso:
+                return ""
+            try:
+                parsed = dt.datetime.fromisoformat(iso)
+                # attendance_payroll_summary отдаёт aware ISO — приводим
+                # к локальному времени, чтобы Excel показал `10:15`, а
+                # не `05:15Z`.
+                if parsed.tzinfo is not None:
+                    parsed = timezone.localtime(parsed)
+                return parsed.strftime("%H:%M")
+            except Exception:
+                return iso[-8:-3] if len(iso) >= 8 else iso
+
+        day_rows.append(
+            [
+                d.get("date", ""),
+                weekday_ru[int(d.get("weekday", 0))],
+                "Да" if d.get("is_working_day") else "Нет",
+                status_ru.get(d.get("status", ""), d.get("status", "")),
+                _fmt_time(ci),
+                _fmt_time(co),
+                int(d.get("minutes_late", 0) or 0),
+                int(d.get("deduction_uzs", 0) or 0),
+                d.get("note", ""),
+            ]
+        )
+    write_sheet(
+        wb,
+        title="По дням",
+        headers=day_headers,
+        rows=day_rows,
+        int_columns=(6, 7),
+    )
+
+    return workbook_response(wb, filename)
+
+
+class PayrollListAttendanceApi(APIView):
+    """
+    Manager: `GET /api/attendance/payroll/?month=YYYY-MM` → list per-operator
+    зарплатных сводок (те же поля, что и detail, только без `days[]`).
+    """
+
+    permission_classes = [IsAuthenticated, IsTeamLeadOrManager, IsAttendancePinVerified]
+
+    def get(self, request):
+        from apps.operators.models import OperatorStatus
+        from .selectors import attendance_payroll_summary
+
+        year, month = _parse_month_param(request.query_params.get("month")) or _default_month()
+        operators = Operator.objects.exclude(status=OperatorStatus.INACTIVE).order_by("full_name")
+
+        rows = []
+        for op in operators:
+            summary = attendance_payroll_summary(op, year, month)
+            # Тонкая версия без days[] — списочный view.
+            slim = {k: v for k, v in summary.items() if k != "days"}
+            rows.append(slim)
+
+        return Response(
+            {
+                "period": {"year": year, "month": month},
+                "rows": rows,
+            }
+        )
+
+
+class PayrollDetailAttendanceApi(APIView):
+    """
+    Manager: `GET /api/attendance/payroll/{operator_id}/?month=YYYY-MM
+    [&format=xlsx|pdf]` — детальная сводка с days-breakdown + downloads.
+    """
+
+    permission_classes = [IsAuthenticated, IsTeamLeadOrManager, IsAttendancePinVerified]
+
+    def get(self, request, operator_id: int):
+        from .selectors import attendance_payroll_summary
+        from .services import payroll_pdf_bytes, pdf_response
+
+        operator = get_object_or_404(Operator, id=operator_id)
+        year, month = _parse_month_param(request.query_params.get("month")) or _default_month()
+        summary = attendance_payroll_summary(operator, year, month)
+
+        fmt = (request.query_params.get("export") or "json").lower()
+        if fmt == "xlsx":
+            filename = (
+                f"payroll_{operator.id}_{year}-{month:02d}.xlsx"
+            )
+            return _payroll_summary_to_xlsx(summary, filename)
+        if fmt == "pdf":
+            pdf = payroll_pdf_bytes(
+                operator_name=operator.full_name,
+                year=year,
+                month=month,
+                summary=summary,
+            )
+            return pdf_response(pdf, f"payroll_{operator.id}_{year}-{month:02d}.pdf")
+
+        return Response(summary)
+
+
+class MyPayrollAttendanceApi(APIView):
+    """
+    Operator: `GET /api/attendance/my-payroll/?month=YYYY-MM
+    [&format=xlsx|pdf]` — свой зарплатный отчёт. PIN не требуется.
+    """
+
+    permission_classes = [IsAuthenticated, IsAuthenticatedAnyRole]
+
+    def get(self, request):
+        from .selectors import attendance_payroll_summary
+        from .services import payroll_pdf_bytes, pdf_response
+
+        profile = getattr(request.user, "profile", None)
+        if not profile or not profile.operator_id:
+            return Response(
+                {"error": "Пользователь не привязан к оператору"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        operator = profile.operator
+
+        year, month = _parse_month_param(request.query_params.get("month")) or _default_month()
+        summary = attendance_payroll_summary(operator, year, month)
+
+        fmt = (request.query_params.get("export") or "json").lower()
+        if fmt == "xlsx":
+            filename = f"my_payroll_{year}-{month:02d}.xlsx"
+            return _payroll_summary_to_xlsx(summary, filename)
+        if fmt == "pdf":
+            pdf = payroll_pdf_bytes(
+                operator_name=operator.full_name,
+                year=year,
+                month=month,
+                summary=summary,
+            )
+            return pdf_response(pdf, f"my_payroll_{year}-{month:02d}.pdf")
+
+        return Response(summary)
 
 
 class DashboardSnapshotAttendanceApi(APIView):

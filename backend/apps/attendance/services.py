@@ -3,6 +3,8 @@ import hashlib
 import secrets
 import ipaddress
 import datetime as dt
+from decimal import Decimal
+from io import BytesIO
 from django.conf import settings
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.core.exceptions import ImproperlyConfigured
@@ -797,6 +799,317 @@ def attendance_log_backfill_checkout(
 
     transaction.on_commit(_notify_managers_backfill)
     return log
+
+
+def resolve_operator_config(operator: Operator) -> dict:
+    """
+    Собирает единый payroll-конфиг для оператора: сливает per-operator
+    override'ы (если заданы) с глобальными дефолтами из `AttendanceSettings`.
+
+    Ключи:
+      - `salary_uzs`         Decimal — оклад
+      - `shift_start`        datetime.time — начало смены (для late-детектора)
+      - `shift_end`          datetime.time — конец смены (пока информативно)
+      - `grace_period_min`   int — grace для опозданий
+      - `late_penalty_uzs`   Decimal — фикс штраф за каждое опоздание
+      - `weekly_day_off`     int (0=Пн … 6=Вс)
+      - `attendance_gate_pct` int — глобальный, per-operator override'ов нет
+      - `weekly_free_absences` int
+    """
+    s = attendance_settings_get()
+
+    def _or_default(op_val, default):
+        # `is not None` для числовых/Decimal полей — 0 не должно быть
+        # интерпретировано как «не задано».
+        return op_val if op_val is not None else default
+
+    return {
+        "salary_uzs": Decimal(_or_default(operator.salary_uzs, s.default_salary_uzs)),
+        "shift_start": _or_default(operator.shift_start, s.shift_start),
+        "shift_end": _or_default(operator.shift_end, s.shift_end),
+        "grace_period_min": int(
+            _or_default(operator.grace_period_min, s.default_grace_period_min)
+        ),
+        "late_penalty_uzs": Decimal(
+            _or_default(operator.late_penalty_uzs, s.default_late_penalty_uzs)
+        ),
+        "weekly_day_off": int(
+            _or_default(operator.weekly_day_off, s.default_weekly_day_off)
+        ),
+        "attendance_gate_pct": int(s.default_attendance_gate_pct),
+        "weekly_free_absences": int(
+            _or_default(operator.weekly_free_absences, s.default_weekly_free_absences)
+        ),
+    }
+
+
+def _time_to_time(value) -> dt.time:
+    """Утилита: строка `"HH:MM"` или `datetime.time` → `datetime.time`."""
+    if isinstance(value, dt.time):
+        return value
+    if isinstance(value, str):
+        parts = value.split(":")
+        return dt.time(int(parts[0]), int(parts[1] if len(parts) > 1 else 0))
+    raise TypeError(f"Cannot coerce {type(value)!r} to datetime.time")
+
+
+def payroll_pdf_bytes(
+    *,
+    operator_name: str,
+    year: int,
+    month: int,
+    summary: dict,
+) -> bytes:
+    """
+    Простой одностраничный PDF отчёта: заголовок + summary + таблица дней.
+
+    Реализован через `reportlab.platypus.SimpleDocTemplate` — так layout
+    сам растягивается по вертикали, не требуя ручной верстки. Из
+    зависимостей: только reportlab (pure-python, без системных .so).
+    """
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.platypus import (
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
+
+    # Пытаемся зарегистрировать DejaVu (есть в reportlab-samples и обычно
+    # доступен в системе), иначе fallback на Helvetica — но кириллица
+    # в Helvetica кривая. Ставим DejaVu если найдём.
+    body_font = "Helvetica"
+    bold_font = "Helvetica-Bold"
+    for candidate in (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+        "/Library/Fonts/DejaVuSans.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    ):
+        try:
+            import os
+
+            if os.path.exists(candidate):
+                pdfmetrics.registerFont(TTFont("DejaVu", candidate))
+                bold_candidate = candidate.replace("DejaVuSans.ttf", "DejaVuSans-Bold.ttf")
+                if os.path.exists(bold_candidate):
+                    pdfmetrics.registerFont(TTFont("DejaVu-Bold", bold_candidate))
+                    bold_font = "DejaVu-Bold"
+                else:
+                    bold_font = "DejaVu"
+                body_font = "DejaVu"
+                break
+        except Exception:
+            continue
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=1.5 * cm,
+        rightMargin=1.5 * cm,
+        topMargin=1.5 * cm,
+        bottomMargin=1.5 * cm,
+        title=f"Payroll {operator_name} {year}-{month:02d}",
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "title",
+        parent=styles["Title"],
+        fontName=bold_font,
+        fontSize=16,
+        spaceAfter=6,
+    )
+    normal = ParagraphStyle(
+        "normal",
+        parent=styles["Normal"],
+        fontName=body_font,
+        fontSize=10,
+        leading=14,
+    )
+    small = ParagraphStyle(
+        "small",
+        parent=styles["Normal"],
+        fontName=body_font,
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor("#6B7280"),
+    )
+
+    def fmt_uzs(v) -> str:
+        try:
+            return f"{int(Decimal(str(v))):,}".replace(",", " ")
+        except Exception:
+            return str(v)
+
+    story = []
+    story.append(Paragraph(f"Расчёт зарплаты — {operator_name}", title_style))
+    story.append(
+        Paragraph(f"Период: {year}-{month:02d} · тайм-зона Asia/Tashkent", small)
+    )
+    story.append(Spacer(1, 0.4 * cm))
+
+    gate_line = (
+        f"<b>Гейт {summary.get('gate_pct', 85)}% не пройден — оклад не начислен</b>"
+        if summary.get("gate_triggered")
+        else ""
+    )
+    summary_rows = [
+        ["Оклад", fmt_uzs(summary.get("salary_gross", 0)) + " сум"],
+        [
+            "Рабочих дней",
+            f"{summary.get('working_days_planned', 0)}"
+            f" (посещал {summary.get('days_attended', 0)},"
+            f" пропущено {summary.get('days_absent', 0)})",
+        ],
+        [
+            "Опозданий",
+            f"{summary.get('days_late', 0)}"
+            + (
+                f" (средн. {summary.get('avg_late_minutes', 0)} мин)"
+                if summary.get("days_late", 0)
+                else ""
+            ),
+        ],
+        [
+            "Посещаемость",
+            f"{summary.get('attendance_rate_pct', 0):.1f}%"
+            f" (гейт {summary.get('gate_pct', 85)}%)",
+        ],
+        [
+            "Дневная ставка",
+            fmt_uzs(summary.get("daily_rate", 0)) + " сум",
+        ],
+        [
+            "Вычет за отсутствия",
+            f"−{fmt_uzs(summary.get('absence_deduction', 0))} сум"
+            + (
+                f" ({summary.get('billable_absences', 0)} × ставка)"
+                if summary.get("billable_absences", 0)
+                else ""
+            ),
+        ],
+        [
+            "Штраф за опоздания",
+            f"−{fmt_uzs(summary.get('late_penalty_total', 0))} сум"
+            + (
+                f" ({summary.get('days_late', 0)} × "
+                f"{fmt_uzs(summary.get('late_penalty_per_event', 0))})"
+                if summary.get("days_late", 0)
+                else ""
+            ),
+        ],
+        [
+            "К выплате",
+            (
+                "0 сум (гейт)"
+                if summary.get("gate_triggered")
+                else fmt_uzs(summary.get("salary_earned", 0)) + " сум"
+            ),
+        ],
+    ]
+    tbl = Table(summary_rows, colWidths=[6 * cm, 10 * cm])
+    tbl.setStyle(
+        TableStyle(
+            [
+                ("FONT", (0, 0), (-1, -1), body_font, 10),
+                ("FONT", (0, -1), (-1, -1), bold_font, 11),
+                ("TEXTCOLOR", (0, -1), (-1, -1), colors.HexColor("#111827")),
+                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F3F4F6")),
+                ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor("#D1D5DB")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.2, colors.HexColor("#E5E7EB")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    story.append(tbl)
+    if gate_line:
+        story.append(Spacer(1, 0.3 * cm))
+        story.append(Paragraph(gate_line, normal))
+
+    story.append(Spacer(1, 0.6 * cm))
+    story.append(Paragraph("<b>По дням</b>", normal))
+    story.append(Spacer(1, 0.2 * cm))
+
+    day_header = [
+        "Дата",
+        "День",
+        "Статус",
+        "Приход",
+        "Уход",
+        "Опозд., мин",
+        "Вычет, сум",
+    ]
+    weekday_ru = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    status_ru = {
+        "on_time": "В срок",
+        "late": "Опоздал",
+        "absent": "Отсутствовал",
+        "free_absence": "Прощён",
+        "weekend": "Выходной",
+    }
+    day_rows = [day_header]
+    for d in summary.get("days", []):
+        day_rows.append(
+            [
+                d.get("date", ""),
+                weekday_ru[int(d.get("weekday", 0))] if d.get("weekday") is not None else "",
+                status_ru.get(d.get("status", ""), d.get("status", "")),
+                (d.get("checked_in_at") or "—")[-8:-3]
+                if d.get("checked_in_at")
+                else "—",
+                (d.get("checked_out_at") or "—")[-8:-3]
+                if d.get("checked_out_at")
+                else "—",
+                str(d.get("minutes_late", 0) or 0),
+                fmt_uzs(d.get("deduction_uzs", 0) or 0),
+            ]
+        )
+    days_tbl = Table(
+        day_rows,
+        colWidths=[2.4 * cm, 1.4 * cm, 3.2 * cm, 2 * cm, 2 * cm, 2 * cm, 3 * cm],
+        repeatRows=1,
+    )
+    days_tbl.setStyle(
+        TableStyle(
+            [
+                ("FONT", (0, 0), (-1, 0), bold_font, 9),
+                ("FONT", (0, 1), (-1, -1), body_font, 8),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#111827")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("ALIGN", (2, 0), (2, -1), "LEFT"),
+                ("ALIGN", (3, 0), (-1, -1), "CENTER"),
+                ("BOX", (0, 0), (-1, -1), 0.3, colors.HexColor("#D1D5DB")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.2, colors.HexColor("#E5E7EB")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]
+        )
+    )
+    story.append(days_tbl)
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+def pdf_response(pdf_bytes: bytes, filename: str):
+    """HTTP-response обёртка для PDF."""
+    from django.http import HttpResponse
+
+    resp = HttpResponse(pdf_bytes, content_type="application/pdf")
+    resp["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return resp
 
 
 @transaction.atomic

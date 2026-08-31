@@ -37,6 +37,9 @@ dependencies = [
   # `django-redis` — тонкий backend поверх `redis-py`; LocMemCache остаётся
   # автоматическим fallback'ом когда REDIS_URL пуст (тесты, dev без docker).
   "django-redis>=5.4",
+  # 2026-08-31: attendance-based payroll — PDF export через reportlab
+  # (pure-python, без системных .so). Excel остаётся на openpyxl.
+  "reportlab>=4.2",
 ]
 
 [dependency-groups]
