@@ -46,6 +46,9 @@ import { GaugeScene } from "../components/three/GaugeScene";
 import AttendanceStatusWidget from "../components/AttendanceStatusWidget";
 
 type MyLeadsView = "active" | "postponed" | "all" | "closed";
+// «quota» — виртуальный таб «Блокирующие»: под капотом view=active +
+// quotaMode (бэк-параметр ?quota=1), отдельного API-view у него нет.
+type MyLeadsTab = MyLeadsView | "quota";
 // Chip filter key = LeadStatusLabel.code OR the sentinel "all".
 type StatusChipKey = string;
 
@@ -754,13 +757,28 @@ export default function MyLeads() {
 
   const backlogCount =
     (operator?.open_callbacks ?? 0) + (operator?.yesterday_backlog ?? 0);
-  const tabs: TabItem<MyLeadsView>[] = [
+  // Таб «Блокирующие» показываем только когда квота реально забита
+  // (working >= limit) — иначе оператору нечего там закрывать.
+  const quotaWorking = myStatus.data?.working_count ?? 0;
+  const quotaLimit = myStatus.data?.quota_limit ?? 5;
+  const showQuotaTab = quotaWorking >= quotaLimit;
+  const tabs: TabItem<MyLeadsTab>[] = [
     {
       value: "active",
       label: t("my.tab_active"),
       count: backlogCount > 0 ? backlogCount : counts.active,
       danger: backlogCount > 0,
     },
+    ...(showQuotaTab
+      ? [
+          {
+            value: "quota" as const,
+            label: t("my.tab_quota"),
+            count: quotaWorking,
+            danger: true,
+          },
+        ]
+      : []),
     { value: "postponed", label: t("my.tab_postponed"), count: counts.postponed },
     { value: "closed", label: t("my.tabs.closed") },
     { value: "all", label: t("my.tab_all") },
@@ -1029,7 +1047,21 @@ export default function MyLeads() {
 
       {/* --- Tabs + summary --- */}
       <section className="flex flex-wrap items-center justify-between gap-3 animate-nfFadeUp">
-        <TabPill value={view} onChange={(v) => { setView(v); setPage(1); setStatusChip("all"); if (quotaMode) exitQuotaMode(); }} items={tabs} />
+        <TabPill
+          value={quotaMode ? "quota" : view}
+          onChange={(v) => {
+            setPage(1);
+            setStatusChip("all");
+            if (v === "quota") {
+              setView("active");
+              setQuotaMode(true);
+              return;
+            }
+            setView(v);
+            if (quotaMode) exitQuotaMode();
+          }}
+          items={tabs}
+        />
         <div className="text-[13px] text-muted">
           {t("my.leads_count", { n: isChipView ? chipTotal : visibleLeads.length })}
           {overdueCount > 0 && (
