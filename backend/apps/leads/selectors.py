@@ -1436,14 +1436,38 @@ def diagnose_operator_assignment(operator: Operator) -> dict:
     }
 
 
+_CYR_TO_LAT = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo",
+    "ж": "j", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
+    "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+    "ф": "f", "х": "x", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "sh",
+    "ъ": "", "ы": "i", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+    "ғ": "g", "қ": "q", "ў": "o", "ҳ": "x",
+}
+
+
+def _canon_name(text: str) -> str:
+    """
+    Каноническая форма имени для кросс-алфавитного матча
+    («Мухлиса» == «Muxlisa» == «Muhlisa»). Обе стороны (запрос и
+    full_name из БД) прогоняются через одну и ту же нормализацию,
+    поэтому спорные пары x/h и q/k схлопываются в один символ.
+    """
+    out = "".join(_CYR_TO_LAT.get(ch, ch) for ch in text.lower())
+    for src, dst in (("h", "x"), ("q", "k"), ("'", ""), ("ʼ", ""), ("`", "")):
+        out = out.replace(src, dst)
+    return out
+
+
 def find_operators_by_freetext(query: str, *, limit: int = 5) -> list[Operator]:
     """
     Найти оператора(ов) по свободному тексту: имя, часть имени, id, phone.
 
     Используется ботом когда менеджер пишет «почему у Мухлисы нет
     автораздачи?» — парсер (в bot) выделяет слово, а этот селектор
-    возвращает кандидатов. Матч регистронезависимый, включает
-    инактивных (чтобы диагностика могла ответить «оператор уволен»).
+    возвращает кандидатов. Матч регистронезависимый, кросс-алфавитный
+    (кириллица ↔ узбекская латиница), включает инактивных (чтобы
+    диагностика могла ответить «оператор уволен»).
     """
     q = (query or "").strip()
     if not q:
@@ -1461,10 +1485,22 @@ def find_operators_by_freetext(query: str, *, limit: int = 5) -> list[Operator]:
         if by_phone.exists():
             return list(by_phone.order_by("id")[:limit])
     # текстовый матч: icontains по каждому слову
-    words = [w for w in q.split() if w]
+    words = [w for w in q.split() if len(w) >= 2]
+    if not words:
+        return []
     filtered = qs
     for w in words:
-        if len(w) < 2:
-            continue
         filtered = filtered.filter(full_name__icontains=w)
-    return list(filtered.order_by("status", "id")[:limit])
+    result = list(filtered.order_by("status", "id")[:limit])
+    if result:
+        return result
+    # fallback: канонический кросс-алфавитный матч в Python
+    # (операторов десятки, полный проход дешёвый)
+    canon_words = [_canon_name(w) for w in words]
+    matched = [
+        op
+        for op in qs.only("id", "full_name", "status", "phone")
+        if all(w in _canon_name(op.full_name) for w in canon_words)
+    ]
+    matched.sort(key=lambda o: (o.status, o.id))
+    return matched[:limit]

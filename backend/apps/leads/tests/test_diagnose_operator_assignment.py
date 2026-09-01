@@ -158,6 +158,25 @@ def test_find_operators_by_freetext_by_name():
 
 
 @pytest.mark.django_db
+def test_find_operators_by_freetext_cyrillic():
+    Operator.objects.create(full_name="Muxlisa", status=OperatorStatus.ACTIVE)
+    Operator.objects.create(full_name="Mushtariy", status=OperatorStatus.ACTIVE)
+
+    hits = find_operators_by_freetext("Мухлиса")
+    assert [h.full_name for h in hits] == ["Muxlisa"]
+
+    hits = find_operators_by_freetext("муштарий")
+    assert [h.full_name for h in hits] == ["Mushtariy"]
+
+
+@pytest.mark.django_db
+def test_find_operators_by_freetext_h_x_variants():
+    Operator.objects.create(full_name="Muxlisa", status=OperatorStatus.ACTIVE)
+    hits = find_operators_by_freetext("muhlisa")
+    assert [h.full_name for h in hits] == ["Muxlisa"]
+
+
+@pytest.mark.django_db
 def test_find_operators_by_freetext_id_wins():
     op = Operator.objects.create(full_name="Foo", status=OperatorStatus.ACTIVE)
     hits = find_operators_by_freetext(str(op.id))
