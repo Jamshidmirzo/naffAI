@@ -438,6 +438,56 @@ export default function MyLeads() {
     if (chip) setStatusChip(chip as StatusChipKey);
   }, [searchParams]);
 
+  // Deep-link ?highlight=id1,id2,id3 из HelperPanel-подсказки «У вас
+  // 5+ лидов, закройте несколько». Прокручиваем к первой карточке и
+  // подсвечиваем каждую (nf-flash-target pulse ~2s). Поскольку карточки
+  // ещё могут догружаться из react-query, поллим DOM небольшое окно (5с,
+  // раз в 200мс) — как только первый id появился, применяем. Ссылку
+  // после этого чистим, чтобы re-render не запускал повторную анимацию.
+  useEffect(() => {
+    const raw = searchParams.get("highlight");
+    if (!raw) return;
+    const ids = raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (ids.length === 0) return;
+
+    let cancelled = false;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 25; // ≈5s @ 200ms
+
+    const tick = () => {
+      if (cancelled) return;
+      attempts += 1;
+      const first = document.getElementById(`lead-${ids[0]}`);
+      if (!first) {
+        if (attempts < MAX_ATTEMPTS) {
+          window.setTimeout(tick, 200);
+        }
+        return;
+      }
+      first.scrollIntoView({ behavior: "smooth", block: "start" });
+      for (const id of ids) {
+        const el = document.getElementById(`lead-${id}`);
+        if (!el) continue;
+        el.classList.add("nf-flash-target");
+        window.setTimeout(() => el.classList.remove("nf-flash-target"), 2200);
+      }
+      // Убираем highlight из URL, но сохраняем остальные query-параметры
+      // (view/chip). Через history.replaceState, чтобы не пушить historyEntry.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("highlight");
+      window.history.replaceState({}, "", url.toString());
+    };
+    // Небольшой начальный delay, чтобы список успел смонтироваться после
+    // смены view=active.
+    window.setTimeout(tick, 60);
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams]);
+
   const t = useT();
   usePageHeader({ title: t("my.title"), subtitle: t("my.subtitle") }, [t("my.title")]);
 

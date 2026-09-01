@@ -13,9 +13,8 @@ Rule-engine — набор проверок (operator, state) → Suggestion | N
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Optional
-
 
 # ---------------------------------------------------------------------------
 # Suggestion — read-model, который улетает во фронт.
@@ -41,7 +40,7 @@ class Suggestion:
     meta: dict = field(default_factory=dict)
 
 
-RuleFn = Callable[[object, dict], Optional[Suggestion]]
+RuleFn = Callable[[object, dict], Suggestion | None]
 
 
 # ---------------------------------------------------------------------------
@@ -49,17 +48,28 @@ RuleFn = Callable[[object, dict], Optional[Suggestion]]
 # ---------------------------------------------------------------------------
 
 
-def check_full_working_queue(op, state) -> Optional[Suggestion]:
+def check_full_working_queue(op, state) -> Suggestion | None:
     """
     #1 (WARNING) — тот самый вчерашний кейс с Мухлисой.
 
     `working_count` считает только non-carry сегодняшние лиды — если их
     >= RR_BATCH_SIZE (5), distribute-watcher не даёт новых. Оператору
     надо закрыть/обработать хотя бы один, чтобы получить свежий.
+
+    Meta payload `lead_ids` (top-10 старейших) едет во фронт: при клике
+    на action фронт скроллит к первому лиду и подсвечивает все
+    (см. `SuggestionCard` + `MyLeads` highlight parser). Это заменяет
+    старое «Показать очередь» — оператор сразу видит, ЧТО закрывать.
     """
     working = int(state.get("working_count") or 0)
     if working < 5:
         return None
+    lead_ids = list(state.get("blocking_quota_lead_ids") or [])
+    # Deep-link: `/my?view=active&highlight=1,2,3` — MyLeads парсит
+    # query-param, скроллит к первому id и подсвечивает pulsating border'ом.
+    href = "/my?view=active"
+    if lead_ids:
+        href = f"/my?view=active&highlight={','.join(str(i) for i in lead_ids)}"
     return Suggestion(
         id="full_working_queue",
         severity="warning",
@@ -74,24 +84,29 @@ def check_full_working_queue(op, state) -> Optional[Suggestion]:
             "Bir nechta eskisini yoping (no_answer / lost / won ga o'tkazing) — "
             "tizim yangilarini beradi."
         ),
-        action_label_ru="Показать очередь",
-        action_label_uz="Navbatni ochish",
-        action_href="/my?view=active",
+        action_label_ru="Показать какие закрыть",
+        action_label_uz="Qaysilarni yopish kerakligini ko'rsat",
+        action_href=href,
         count=working,
-        meta={"working_count": working},
+        meta={"working_count": working, "lead_ids": lead_ids},
     )
 
 
-def check_old_assigned_leads(op, state) -> Optional[Suggestion]:
+def check_old_assigned_leads(op, state) -> Suggestion | None:
     """
     #2 (WARNING) — 3+ лида в `assigned`, updated_at > 24ч.
 
     Значит оператор давно не открывал карточку — либо забыл, либо
     новый батч разлит утром и он не заметил. Свежие лиды «стынут».
+    Deep-link `highlight` — MyLeads подсветит именно эти карточки.
     """
     stale = int(state.get("stale_assigned") or 0)
     if stale < 3:
         return None
+    lead_ids = list(state.get("stale_assigned_lead_ids") or [])
+    href = "/my?view=active"
+    if lead_ids:
+        href = f"/my?view=active&highlight={','.join(str(i) for i in lead_ids)}"
     return Suggestion(
         id="old_assigned",
         severity="warning",
@@ -107,15 +122,15 @@ def check_old_assigned_leads(op, state) -> Optional[Suggestion]:
             "Ochib, hech bo'lmasa no_answer / phone_on qo'ying — aks holda "
             "tim-lider hisobotda kechikish ko'radi."
         ),
-        action_label_ru="Открыть активные",
-        action_label_uz="Faollarni ochish",
-        action_href="/my?view=active",
+        action_label_ru="Открыть и подсветить",
+        action_label_uz="Ochish va belgilash",
+        action_href=href,
         count=stale,
-        meta={"stale_assigned": stale},
+        meta={"stale_assigned": stale, "lead_ids": lead_ids},
     )
 
 
-def check_stale_no_answer(op, state) -> Optional[Suggestion]:
+def check_stale_no_answer(op, state) -> Suggestion | None:
     """
     #3 (INFO) — 3+ лида в `no_answer`, updated_at > 12ч.
 
@@ -140,7 +155,7 @@ def check_stale_no_answer(op, state) -> Optional[Suggestion]:
     )
 
 
-def check_overdue_callbacks(op, state) -> Optional[Suggestion]:
+def check_overdue_callbacks(op, state) -> Suggestion | None:
     """
     #4 (URGENT) — просроченные callback'и.
 
@@ -166,7 +181,7 @@ def check_overdue_callbacks(op, state) -> Optional[Suggestion]:
     )
 
 
-def check_not_checked_in_today(op, state) -> Optional[Suggestion]:
+def check_not_checked_in_today(op, state) -> Suggestion | None:
     """
     #5 (URGENT) — оператор ещё не отметился на смене, а уже > 10:00 Ташкент.
 
@@ -198,7 +213,7 @@ def check_not_checked_in_today(op, state) -> Optional[Suggestion]:
     )
 
 
-def check_postponed_stale(op, state) -> Optional[Suggestion]:
+def check_postponed_stale(op, state) -> Suggestion | None:
     """
     #6 (INFO) — postponed-хвост > 3 дней.
 
@@ -223,7 +238,7 @@ def check_postponed_stale(op, state) -> Optional[Suggestion]:
     )
 
 
-def check_pending_sales(op, state) -> Optional[Suggestion]:
+def check_pending_sales(op, state) -> Suggestion | None:
     """
     #7 (INFO) — pending-продажи ждут approve менеджера.
 

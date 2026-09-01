@@ -17,7 +17,9 @@ from apps.attendance.models import AttendanceLog, AttendanceSettings
 from apps.calls.models import CallbackReminder, CallbackReminderStatus
 from apps.leads.models import Lead
 from apps.leads.selectors import (
+    _active_today_filter,
     active_lead_status_codes,
+    carry_over_status_codes,
     operator_working_lead_count,
     terminal_lead_status_codes,
 )
@@ -25,7 +27,6 @@ from apps.operators.models import Operator
 from apps.sales.models import Sale
 
 from .rules import RULES, Suggestion
-
 
 # ---------------------------------------------------------------------------
 # State builder
@@ -122,6 +123,40 @@ def build_operator_state(operator: Operator) -> dict:
         postponed_at__lt=now - dt.timedelta(days=3),
     ).count()
 
+    # ID-шники топ-N лидов, которые сейчас забивают квоту оператора —
+    # ровно тех, что попадают в operator_working_lead_count(). Отдаём их
+    # правилу check_full_working_queue, чтобы фронт мог подсветить
+    # конкретные карточки в /my вместо абстрактного «закройте несколько».
+    # Sort by updated_at ASC — оператор увидит «самое старое сверху».
+    terminal_set = set(terminal_lead_status_codes())
+    carry_set = set(carry_over_status_codes())
+    all_active = set(active_lead_status_codes())
+    workable_codes = list(all_active - terminal_set - carry_set)
+    blocking_quota_lead_ids: list[int] = []
+    if workable_codes:
+        blocking_quota_lead_ids = list(
+            Lead.objects.filter(
+                operator=operator,
+                status__in=workable_codes,
+                postponed_at__isnull=True,
+            )
+            .filter(_active_today_filter())
+            .order_by("updated_at")
+            .values_list("id", flat=True)[:10]
+        )
+
+    # ID-шники stale-assigned — те же 24h+ и status=assigned. Правило #2
+    # передаёт их фронту для подсветки.
+    stale_assigned_ids = list(
+        Lead.objects.filter(
+            operator=operator,
+            status="assigned",
+            updated_at__lt=now - dt.timedelta(hours=24),
+        )
+        .order_by("updated_at")
+        .values_list("id", flat=True)[:10]
+    )
+
     # Pending sales — оператор создал, менеджер не подтвердил.
     # Через FK created_by (User), не Operator — так связаны продажи
     # в текущей модели. Если у профиля нет user_id — считаем 0.
@@ -152,6 +187,10 @@ def build_operator_state(operator: Operator) -> dict:
         "stale_postponed": stale_postponed,
         "pending_sales": pending_sales,
         "shift_started_now": _shift_start_now(now),
+        # ID-шники для deep-link'ов из подсказок в MyLeads
+        # (rule → meta.lead_ids → frontend highlight + scroll).
+        "blocking_quota_lead_ids": blocking_quota_lead_ids,
+        "stale_assigned_lead_ids": stale_assigned_ids,
     }
 
 
@@ -162,7 +201,7 @@ def build_operator_suggestions(operator: Operator) -> list[Suggestion]:
     for rule in RULES:
         try:
             s = rule(operator, state)
-        except Exception:  # noqa: BLE001 — правила должны быть best-effort
+        except Exception:
             # Один плохой rule не должен ломать весь helper.
             continue
         if s is not None:

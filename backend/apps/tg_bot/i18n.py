@@ -246,6 +246,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "cmd_sales": {"ru": "💰 Быстрая сводка продаж", "uz": "💰 Sotuv qisqacha"},
     "cmd_leads": {"ru": "📊 Воронка лидов", "uz": "📊 Lidlar voronkasi"},
     "cmd_find": {"ru": "🔍 Поиск клиента", "uz": "🔍 Mijoz qidirish"},
+    "cmd_whyauto": {
+        "ru": "🩺 Почему нет автораздачи (менеджер)",
+        "uz": "🩺 Nima uchun avto-taqsimlash yo'q (menejer)",
+    },
 
     # --- daily report ---
     "rep_header": {"ru": "📊 *Отчёт за {date}*", "uz": "📊 *{date} hisoboti*"},

@@ -1101,3 +1101,370 @@ def telegram_link_for_phone(phone: str) -> TelegramLink | None:
     if not phone:
         return None
     return TelegramLink.objects.filter(phone=phone).first()
+
+
+# ---- Auto-assignment diagnostics -----------------------------------------
+#
+# Ниже — публичная поверхность «почему у оператора X сейчас нет автораздачи».
+# Логика — приоритетный чек-лист, вплоть до момента, когда конкретное
+# правило блокирует refill (или, наоборот, всё зелёное и вопрос в чём-то
+# другом). Отдаёт машинно-читаемый dict, чтобы:
+#   1. Bot-хендлер /whyauto собрал из него человеческий текст.
+#   2. API мог рендерить менеджерскую таблицу без дополнительного parsing'а.
+#
+# Порядок проверки соответствует реальному code path'у в
+# `operators_eligible_for_new_leads()` + `refill_operator_leads()`, чтобы
+# «первая красная лампочка» всегда была той же, которую увидит raise-fail
+# в runtime.
+
+
+AUTO_DIAG_REASON_ORDER = (
+    # High-level global switches — если выключено, ничего не поедет никому.
+    "auto_distribution_disabled",
+    "empty_pool",
+    # Per-operator: сначала статус, потом квота, потом gate.
+    "operator_not_active",
+    "quota_full",
+    "morning_gate_backlog",
+    "morning_gate_callback",
+    # Всё зелёное — но за N минут refill не работал.
+    "healthy_but_idle",
+    "healthy",
+)
+
+
+def _lookup_leads_recent_source_counts(operator: Operator, hours: int = 24) -> dict:
+    """
+    За последние `hours` часов: сколько лидов пришло оператору каждым
+    из источников (`morning_split` / `auto_refill` / `auto_round_robin` /
+    `admin_reassign` / `qimmatlik_retry`). Пустой dict → оператор ничего
+    не получал за окно.
+    """
+    from apps.leads.models import LeadAssignment
+
+    cutoff = timezone.now() - dt.timedelta(hours=hours)
+    rows = (
+        LeadAssignment.objects.filter(operator=operator, created_at__gte=cutoff)
+        .values("source")
+        .annotate(n=Count("id"))
+    )
+    return {r["source"]: r["n"] for r in rows}
+
+
+def _orphan_pool_size() -> int:
+    """
+    Текущий размер общего пула сирот, из которого refill/morning_distribute
+    достают лидов. 0 → доливать нечего, никаких претензий к
+    per-operator логике нет.
+    """
+    active = active_lead_status_codes()
+    terminal = set(terminal_lead_status_codes())
+    workable = [c for c in active if c not in terminal]
+    if not workable:
+        return 0
+    return Lead.objects.filter(
+        operator__isnull=True,
+        status__in=workable,
+        phone_invalid=False,
+        needs_review=False,
+    ).count()
+
+
+def diagnose_operator_assignment(operator: Operator) -> dict:
+    """
+    «Почему у оператора нет / есть автораздача прямо сейчас?»
+
+    Возвращает приоритетный вердикт + диагностические цифры. Порядок
+    проверок соответствует boiled-down code path:
+      1. Глобальный killswitch `auto_distribution_enabled`.
+      2. Пустой пул сирот — доливать нечего никому.
+      3. Оператор не ACTIVE (уволен / стажёр в инактиве).
+      4. Квота: `working_count >= RR_BATCH_SIZE`.
+      5. Morning gate — просроченный callback (если effective для op).
+      6. Morning gate — блокирующие статусы (если effective для op).
+      7. healthy_but_idle: всё ок, но за последние 24ч авто-раздача (source
+         in {auto_refill, auto_round_robin, morning_split, qimmatlik_retry})
+         не давала ничего → диагностика подсказывает менеджеру: скорее всего
+         утренняя раздача уже прошла и пул пуст сейчас.
+      8. healthy: всё зелёное, недавно приходили лиды — жалоба, вероятно,
+         про восприятие («сегодня меньше чем вчера»), а не про поломку.
+
+    Возвращаемый dict:
+        {
+            "operator": {"id", "full_name", "status", "blocking_gate_enabled"},
+            "verdict": одна из строк AUTO_DIAG_REASON_ORDER,
+            "verdict_title_ru": короткий заголовок для UI/бота,
+            "verdict_body_ru": подробное объяснение с цифрами,
+            "next_action_ru": что рекомендуем менеджеру / оператору,
+            "counters": {...},        # working, quota, pool, backlog и т.д.
+            "recent_assignments": {...},  # по source за 24ч
+            "blocking_leads": [...],      # top-5 лидов, которые «держат» квоту
+        }
+    """
+    from apps.system_settings.selectors import auto_distribution_enabled
+
+    quota = _rr_batch_size()
+    working = operator_working_lead_count(operator)
+    op_gate_flag = bool(getattr(operator, "blocking_gate_enabled", False))
+    global_gate = _morning_gate_enabled()
+    gate_active = _gate_active_for_operator(operator)
+    pool_size = _orphan_pool_size()
+    recent_assignments = _lookup_leads_recent_source_counts(operator, hours=24)
+    now = timezone.now()
+
+    # Топ-5 «старейших» лидов, которые сейчас забивают квоту — чтобы бот
+    # мог показать «вот эти нужно закрыть». Тот же фильтр, что использует
+    # `operator_working_lead_count()`, чтобы список 1-в-1 совпадал.
+    terminal = set(terminal_lead_status_codes())
+    carry = set(carry_over_status_codes())
+    all_active = set(active_lead_status_codes())
+    workable_codes = list(all_active - terminal - carry)
+    blocking_leads: list[dict] = []
+    if workable_codes:
+        blk = (
+            Lead.objects.filter(
+                operator=operator,
+                status__in=workable_codes,
+                postponed_at__isnull=True,
+            )
+            .filter(_active_today_filter())
+            .order_by("updated_at")
+            .values("id", "full_name", "phone", "status", "updated_at")[:5]
+        )
+        blocking_leads = [
+            {
+                "id": r["id"],
+                "full_name": r["full_name"],
+                "phone": r["phone"],
+                "status": r["status"],
+                "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+            }
+            for r in blk
+        ]
+
+    counters = {
+        "working": working,
+        "quota": quota,
+        "pool_size": pool_size,
+        "backlog_blocking_leads": operator_yesterday_backlog_count(operator),
+        "open_callbacks": operator_open_callbacks_count(operator),
+        "global_gate_on": global_gate,
+        "operator_gate_flag": op_gate_flag,
+        "gate_active": gate_active,
+    }
+    op_payload = {
+        "id": operator.id,
+        "full_name": operator.full_name,
+        "status": operator.status,
+        "blocking_gate_enabled": op_gate_flag,
+    }
+
+    # -------------- 1. Global killswitch ----------------------------------
+    if not auto_distribution_enabled():
+        return {
+            "operator": op_payload,
+            "verdict": "auto_distribution_disabled",
+            "verdict_title_ru": "Автораздача выключена глобально",
+            "verdict_body_ru": (
+                "Менеджер выключил тумблер «Автораздача» в /settings/distribution/. "
+                "Пока он включён обратно, ни morning-split, ни refill не работают "
+                "ни для кого — это не индивидуально."
+            ),
+            "next_action_ru": "Включи автораздачу в /settings/distribution/.",
+            "counters": counters,
+            "recent_assignments": recent_assignments,
+            "blocking_leads": blocking_leads,
+        }
+
+    # -------------- 2. Empty pool ----------------------------------------
+    # Пустой пул — не «баг», а «нечего раздавать». Ставим второй проверкой,
+    # т.к. это самая частая причина «утром раздали, днём ничего нет».
+    if pool_size == 0 and working < quota:
+        return {
+            "operator": op_payload,
+            "verdict": "empty_pool",
+            "verdict_title_ru": "Пул свободных лидов пуст",
+            "verdict_body_ru": (
+                f"У оператора свободно {quota - working} слот(ов) из {quota}, "
+                "но в общем пуле нет ни одного unassigned-лида. "
+                "Как только sheet-sync подъедет новые (обычно ~5 минут) — "
+                "watcher доложит по 5 штук каждому."
+            ),
+            "next_action_ru": (
+                "Дождись следующего sheet-sync или проверь Google Sheets — "
+                "возможно, новых заявок сегодня физически меньше."
+            ),
+            "counters": counters,
+            "recent_assignments": recent_assignments,
+            "blocking_leads": blocking_leads,
+        }
+
+    # -------------- 3. Operator not ACTIVE -------------------------------
+    if operator.status != OperatorStatus.ACTIVE:
+        return {
+            "operator": op_payload,
+            "verdict": "operator_not_active",
+            "verdict_title_ru": "Оператор не активен",
+            "verdict_body_ru": (
+                f"Статус оператора: {operator.status}. Автораздача работает "
+                "только для операторов со статусом «active»."
+            ),
+            "next_action_ru": (
+                "Переведи оператора в active в /operators/, если он снова "
+                "на смене."
+            ),
+            "counters": counters,
+            "recent_assignments": recent_assignments,
+            "blocking_leads": blocking_leads,
+        }
+
+    # -------------- 4. Quota full ----------------------------------------
+    if working >= quota:
+        stale_hours = 0
+        if blocking_leads and blocking_leads[0]["updated_at"]:
+            try:
+                oldest = dt.datetime.fromisoformat(blocking_leads[0]["updated_at"])
+                stale_hours = int((now - oldest).total_seconds() // 3600)
+            except Exception:
+                pass
+        return {
+            "operator": op_payload,
+            "verdict": "quota_full",
+            "verdict_title_ru": (
+                f"Квота {working}/{quota} — оператор не разгребает старые лиды"
+            ),
+            "verdict_body_ru": (
+                f"У оператора на плечах {working} активных сегодняшних лидов "
+                f"(лимит {quota}). Пока working_count не упадёт ниже {quota}, "
+                "watcher и round-robin его пропускают. "
+                f"Самый старый лид в очереди висит уже ≈ {stale_hours}ч."
+            ),
+            "next_action_ru": (
+                "Оператору нужно закрыть N лидов (WON / LOST / нужный статус). "
+                "Как только квота освободится — watcher добьёт до "
+                f"{quota} автоматически."
+            ),
+            "counters": counters,
+            "recent_assignments": recent_assignments,
+            "blocking_leads": blocking_leads,
+        }
+
+    # -------------- 5-6. Morning gate ------------------------------------
+    # Callback приоритетнее backlog (совпадает с логикой RR-фильтра).
+    if gate_active and operator_has_open_callbacks(operator):
+        return {
+            "operator": op_payload,
+            "verdict": "morning_gate_callback",
+            "verdict_title_ru": "Morning-gate: просроченный callback",
+            "verdict_body_ru": (
+                f"У оператора {counters['open_callbacks']} callback'ов с "
+                "истёкшим или близким сроком. Гейт включён для этого "
+                "оператора (per-op flag ON) — пока callback не закрыт, "
+                "новых лидов ему не дают."
+            ),
+            "next_action_ru": (
+                "Пусть оператор позвонит / перенесёт callback. Как только "
+                "статус закрыт — watcher подхватит."
+            ),
+            "counters": counters,
+            "recent_assignments": recent_assignments,
+            "blocking_leads": blocking_leads,
+        }
+    if gate_active and counters["backlog_blocking_leads"] > 0:
+        return {
+            "operator": op_payload,
+            "verdict": "morning_gate_backlog",
+            "verdict_title_ru": "Morning-gate: спец-лид на плечах",
+            "verdict_body_ru": (
+                f"У оператора {counters['backlog_blocking_leads']} лид(ов) "
+                "в блокирующих статусах (has_debt / no_answer / phone_on / "
+                "dokonga_keladi / …). Гейт включён (per-op flag ON) — "
+                "новых лидов не пускает."
+            ),
+            "next_action_ru": (
+                "Пусть оператор переведёт спец-лиды в терминальный статус, "
+                "либо выключи `blocking_gate_enabled` в UI оператора."
+            ),
+            "counters": counters,
+            "recent_assignments": recent_assignments,
+            "blocking_leads": blocking_leads,
+        }
+
+    # -------------- 7. Healthy but idle ----------------------------------
+    auto_sources = {"auto_refill", "auto_round_robin", "morning_split", "qimmatlik_retry"}
+    auto_recent = sum(v for k, v in recent_assignments.items() if k in auto_sources)
+    if auto_recent == 0:
+        return {
+            "operator": op_payload,
+            "verdict": "healthy_but_idle",
+            "verdict_title_ru": "Всё зелёное, но за 24ч авто-лидов не было",
+            "verdict_body_ru": (
+                "Гейт не блокирует, квота свободна, автораздача включена. "
+                "Но за последние 24ч ни один лид не пришёл этому оператору "
+                "автоматически. Скорее всего пул подсыхал или sheet-sync не "
+                "приносил новых заявок. Проверь размер пула — сейчас "
+                f"{pool_size} свободных лидов."
+            ),
+            "next_action_ru": (
+                "Если пул > 0 — жди 1-2 минуты, distribute-watcher разложит. "
+                "Если пул = 0 — проблема на входе (Google Sheets), не в раздаче."
+            ),
+            "counters": counters,
+            "recent_assignments": recent_assignments,
+            "blocking_leads": blocking_leads,
+        }
+
+    # -------------- 8. Healthy -------------------------------------------
+    return {
+        "operator": op_payload,
+        "verdict": "healthy",
+        "verdict_title_ru": "Автораздача работает нормально",
+        "verdict_body_ru": (
+            f"За последние 24ч оператору автоматически пришло "
+            f"{auto_recent} лид(ов) (по источникам: "
+            + ", ".join(f"{k}={v}" for k, v in recent_assignments.items() if k in auto_sources)
+            + f"). Квота {working}/{quota}, пул {pool_size}, гейт неактивен для этого оператора. "
+            "Жалоба, вероятно, про количество: сегодня заявок физически меньше."
+        ),
+        "next_action_ru": (
+            "Если кажется, что «мало» — сравни с прошлыми днями в "
+            "/analytics или проверь, не отключился ли один из sheet-source'ов."
+        ),
+        "counters": counters,
+        "recent_assignments": recent_assignments,
+        "blocking_leads": blocking_leads,
+    }
+
+
+def find_operators_by_freetext(query: str, *, limit: int = 5) -> list[Operator]:
+    """
+    Найти оператора(ов) по свободному тексту: имя, часть имени, id, phone.
+
+    Используется ботом когда менеджер пишет «почему у Мухлисы нет
+    автораздачи?» — парсер (в bot) выделяет слово, а этот селектор
+    возвращает кандидатов. Матч регистронезависимый, включает
+    инактивных (чтобы диагностика могла ответить «оператор уволен»).
+    """
+    q = (query or "").strip()
+    if not q:
+        return []
+    qs = Operator.objects.all()
+    # numeric id — точный матч побеждает
+    if q.isdigit():
+        by_id = qs.filter(pk=int(q))
+        if by_id.exists():
+            return list(by_id[:limit])
+    # phone-like (цифры + плюс) → нормализуем и ищем по хвосту
+    phone_digits = "".join(ch for ch in q if ch.isdigit())
+    if len(phone_digits) >= 7:
+        by_phone = qs.filter(phone__icontains=phone_digits[-9:])
+        if by_phone.exists():
+            return list(by_phone.order_by("id")[:limit])
+    # текстовый матч: icontains по каждому слову
+    words = [w for w in q.split() if w]
+    filtered = qs
+    for w in words:
+        if len(w) < 2:
+            continue
+        filtered = filtered.filter(full_name__icontains=w)
+    return list(filtered.order_by("status", "id")[:limit])

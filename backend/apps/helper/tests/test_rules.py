@@ -44,7 +44,19 @@ def test_full_working_queue_fires_at_5():
     assert s.id == "full_working_queue"
     assert s.severity == "warning"
     assert s.count == 5
+    # Без lead_ids fallback на /my?view=active (нет highlight'а).
     assert s.action_href == "/my?view=active"
+
+
+def test_full_working_queue_deep_link_when_ids_present():
+    """State даёт список lead_ids → action_href содержит &highlight=."""
+    s = check_full_working_queue(
+        object(),
+        {"working_count": 7, "blocking_quota_lead_ids": [101, 202, 303]},
+    )
+    assert s is not None
+    assert "highlight=101,202,303" in (s.action_href or "")
+    assert s.meta.get("lead_ids") == [101, 202, 303]
 
 
 def test_full_working_queue_silent_below_5():
@@ -60,6 +72,16 @@ def test_old_assigned_fires_at_3():
     assert s.severity == "warning"
     assert s.count == 3
     assert check_old_assigned_leads(object(), {"stale_assigned": 2}) is None
+
+
+def test_old_assigned_deep_link_when_ids_present():
+    s = check_old_assigned_leads(
+        object(),
+        {"stale_assigned": 4, "stale_assigned_lead_ids": [11, 22]},
+    )
+    assert s is not None
+    assert "highlight=11,22" in (s.action_href or "")
+    assert s.meta.get("lead_ids") == [11, 22]
 
 
 def test_stale_no_answer_info():
@@ -207,7 +229,12 @@ def test_muxlisa_case_full_working_queue_fires():
     fwq = next(s for s in out if s.id == "full_working_queue")
     assert fwq.count == 6
     assert "5" in fwq.body_ru  # объяснение упоминает лимит
-    assert fwq.action_href == "/my?view=active"
+    # State builder теперь передаёт lead_ids → action_href содержит
+    # &highlight= для scroll+подсветки в MyLeads (2026-09-01).
+    assert (fwq.action_href or "").startswith("/my?view=active")
+    assert "highlight=" in (fwq.action_href or "")
+    assert isinstance(fwq.meta.get("lead_ids"), list)
+    assert len(fwq.meta["lead_ids"]) == 6
 
 
 @pytest.mark.django_db

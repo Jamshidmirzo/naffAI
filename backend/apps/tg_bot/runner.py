@@ -1168,6 +1168,7 @@ async def main() -> None:
         ("sales", "cmd_sales"),
         ("leads", "cmd_leads"),
         ("find", "cmd_find"),
+        ("whyauto", "cmd_whyauto"),
         ("subscribe", "cmd_subscribe"),
         ("unsubscribe", "cmd_unsubscribe"),
         ("language", "cmd_language"),
@@ -1240,6 +1241,25 @@ async def main() -> None:
         tg_user_id = msg.from_user.id
         result = await asyncio.to_thread(_bot_attendance_status, tg_user_id)
         await msg.answer(result, parse_mode="HTML")
+
+    # ---------- Auto-assignment diagnostic agent -------------------------
+    #
+    # /whyauto <имя оператора|id|телефон>
+    #
+    # Позволяет менеджеру / владельцу спросить у бота «почему у Мухлисы
+    # нет автораздачи?» без лазанья в БД. Логика в selectors — здесь
+    # только парсинг + role-check + рендер. Оператору команда не отвечает
+    # (см. `_bot_whyauto_permission`).
+
+    @dp.message(Command("whyauto"))
+    async def cmd_whyauto(msg: Message) -> None:
+        raw = (msg.text or "").split(maxsplit=1)
+        query = raw[1].strip() if len(raw) > 1 else ""
+        tg_user_id = msg.from_user.id
+        result = await asyncio.to_thread(
+            _bot_diagnose_auto_assignment, tg_user_id, query
+        )
+        await msg.answer(result, parse_mode="HTML", disable_web_page_preview=True)
 
     async def _handle_attendance_photo(
         msg: Message, state: FSMContext, action: str
@@ -1934,6 +1954,88 @@ def _ondemand_find(query: str) -> str:
             amount = f"{int(sale.amount):,}".replace(",", " ")
             lines.append(f"  • #{sale.id} · {sale.phone_model[:24]} · {amount} · {op} · {date}")
     return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------
+# /whyauto — auto-assignment diagnostic agent
+# --------------------------------------------------------------------------
+
+
+def _whyauto_permission(tg_user_id: int) -> tuple[bool, str]:
+    """
+    Diagnostic command открыт менеджеру / супер-админу / тимлиду.
+    Оператору отвечаем «нельзя» — это по бизнес-правилу «только те, кто
+    видит менеджерский dashboard». Возвращаем (allowed, reason).
+    """
+    from apps.users.models import Profile, Role
+
+    profile = Profile.objects.filter(telegram_user_id=tg_user_id).first()
+    if profile is None:
+        return (
+            False,
+            "❌ Ваш Telegram не привязан. Сначала /link — код в /profile веб-интерфейса.",
+        )
+    if profile.role in (Role.MANAGER, Role.SUPERADMIN, Role.TEAM_LEAD):
+        return (True, "")
+    return (
+        False,
+        "❌ Команда доступна только менеджеру или владельцу.",
+    )
+
+
+def _bot_diagnose_auto_assignment(tg_user_id: int, query: str) -> str:
+    """
+    Ветка /whyauto:
+      1. Проверяем роль отправителя.
+      2. Парсим запрос → ищем оператора(ов).
+      3. Если 0 совпадений — подсказываем формат.
+      4. Если >1 — просим уточнить, показываем список.
+      5. Если 1 — считаем `diagnose_operator_assignment` и рендерим отчёт.
+
+    Сама логика диагностики лежит в `apps.leads.selectors` — здесь только
+    orchestration + текст ошибок.
+    """
+    from apps.leads.selectors import (
+        diagnose_operator_assignment,
+        find_operators_by_freetext,
+    )
+    from apps.tg_bot.selectors import render_diagnose_report
+
+    allowed, reason = _whyauto_permission(tg_user_id)
+    if not allowed:
+        return reason
+
+    if not query:
+        return (
+            "🩺 <b>Диагностика автораздачи</b>\n\n"
+            "Формат:\n"
+            "<code>/whyauto имя_оператора</code>\n"
+            "<code>/whyauto 33</code>          (по id)\n"
+            "<code>/whyauto 998900000099</code> (по телефону)\n\n"
+            "Бот скажет, почему у оператора сейчас нет автораспределения "
+            "(квота, гейт, пустой пул и т.д.) и что делать."
+        )
+
+    candidates = find_operators_by_freetext(query, limit=5)
+    if not candidates:
+        return (
+            f"❌ Оператор по запросу «<b>{query}</b>» не найден.\n\n"
+            "Попробуй по имени (часть достаточно), по id или по телефону "
+            "(последние 9 цифр)."
+        )
+    if len(candidates) > 1:
+        lines = [
+            f"🔎 Найдено несколько операторов по запросу «<b>{query}</b>» — уточни:"
+        ]
+        for op in candidates:
+            lines.append(
+                f"  • <code>/whyauto {op.id}</code> — {op.full_name} ({op.status})"
+            )
+        return "\n".join(lines)
+
+    op = candidates[0]
+    diag = diagnose_operator_assignment(op)
+    return render_diagnose_report(diag)
 
 
 if __name__ == "__main__":
