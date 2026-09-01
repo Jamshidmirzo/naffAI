@@ -1451,7 +1451,10 @@ function ClosedLeadCard({
         padding: "14px 18px",
         background: "var(--bg-card)",
         border: "1.5px solid var(--border-main)",
-        animationDelay: `${0.04 + index * 0.04}s`,
+        // Stagger только первых 8 карточек: nfFadeUp с fill-mode both
+        // держит карточку невидимой до старта анимации, и на длинных
+        // списках хвост «пропадал» на секунды при быстром скролле.
+        animationDelay: `${0.04 + Math.min(index, 8) * 0.04}s`,
       }}
     >
       <div
@@ -1657,7 +1660,11 @@ function LeadCard({
         background: "var(--bg-card)",
         border: "1.5px solid var(--border-main)",
         transition: "border-color .16s cubic-bezier(.16,1,.3,1), transform .16s cubic-bezier(.16,1,.3,1), box-shadow .16s cubic-bezier(.16,1,.3,1)",
-        animationDelay: `${0.04 + index * 0.055}s`,
+        // Stagger капим первыми 8 карточками. Раньше delay рос линейно
+        // (42-я карточка ждала ≈2.3s невидимой из-за fill-mode both) —
+        // deep-link ?highlight= скроллил вниз мгновенно, и при скролле
+        // назад лиды «пропадали», пока их анимация не стартовала.
+        animationDelay: `${0.04 + Math.min(index, 8) * 0.055}s`,
       }}
     >
       {/* Feedback ring — remounts on flashKey change so the CSS animation
