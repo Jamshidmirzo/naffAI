@@ -1367,6 +1367,10 @@ const STRINGS: Lookup = {
       "Свободно {free} из {limit} слотов. Новые придут автоматически.",
     "my.status.banner.progress": "В работе · {working}/{limit}",
     "my.status.banner.carry_tail": "хвост {carry}",
+    "my.quota.banner_title": "Эти {n} лидов блокируют выдачу новых",
+    "my.quota.banner_body":
+      "Лимит — {limit} в работе. Закройте минимум {need} из списка ниже (переведите в подходящий итоговый статус) — и система сразу выдаст свежие лиды. Старейшие сверху: начните с них.",
+    "my.quota.show_all": "Показать все лиды",
     "my.section.carry": "🔴 Спец-лиды со вчера · {n}",
     "my.section.recall": "🟠 После обеда — перезвонить · {n}",
     "my.section.today": "🟢 Сегодняшние · {n}",
@@ -3762,6 +3766,10 @@ const STRINGS: Lookup = {
       "{limit} slotdan {free} bo'sh. Yangi lidlar avtomatik keladi.",
     "my.status.banner.progress": "Ish jarayonida · {working}/{limit}",
     "my.status.banner.carry_tail": "quyruq {carry}",
+    "my.quota.banner_title": "Shu {n} ta lid yangilarini bloklayapti",
+    "my.quota.banner_body":
+      "Limit — ish jarayonida {limit} ta. Quyidagi ro'yxatdan kamida {need} tasini yoping (mos yakuniy statusga o'tkazing) — tizim darhol yangi lidlarni beradi. Eng eskilari tepada: ulardan boshlang.",
+    "my.quota.show_all": "Barcha lidlarni ko'rsatish",
     "my.section.carry": "🔴 Kechagi maxsus lidlar · {n}",
     "my.section.recall": "🟠 Tushdan keyin — qayta qo'ng'iroq · {n}",
     "my.section.today": "🟢 Bugungilar · {n}",

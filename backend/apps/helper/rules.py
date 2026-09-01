@@ -65,30 +65,32 @@ def check_full_working_queue(op, state) -> Suggestion | None:
     if working < 5:
         return None
     lead_ids = list(state.get("blocking_quota_lead_ids") or [])
-    # Deep-link: `/my?view=active&highlight=1,2,3` — MyLeads парсит
-    # query-param, скроллит к первому id и подсвечивает pulsating border'ом.
-    href = "/my?view=active"
-    if lead_ids:
-        href = f"/my?view=active&highlight={','.join(str(i) for i in lead_ids)}"
+    need_close = max(working - 5 + 1, 1)
+    # Deep-link `/my?view=active&quota=1` — MyLeads переключается в
+    # quota-режим: показывает ТОЛЬКО лиды, занимающие квоту (без
+    # carry-хвоста), с баннером «закройте минимум N». Одно число везде:
+    # подсказка, баннер, список.
+    href = "/my?view=active&quota=1"
     return Suggestion(
         id="full_working_queue",
         severity="warning",
-        title_ru=f"У вас {working} лидов в работе — очередь заполнена",
-        title_uz=f"Sizda {working} ta lid ish jarayonida — navbat to'la",
+        title_ru=f"Новые лиды не приходят: {working} лидов занимают квоту (лимит 5)",
+        title_uz=f"Yangi lidlar kelmayapti: {working} ta lid kvotani band qilgan (limit 5)",
         body_ru=(
-            "Новые лиды не приходят пока в работе больше 5. Закройте несколько "
-            "старых (перевод в no_answer / lost / won), чтобы система выдала свежие."
+            f"Закройте минимум {need_close} из них (WON / LOST / нужный статус) — "
+            "и система сразу выдаст свежие. Нажмите кнопку: покажем только те "
+            "лиды, которые надо закрыть."
         ),
         body_uz=(
-            "Ish jarayonida 5 tadan ko'p lid bo'lsa, yangilari kelmaydi. "
-            "Bir nechta eskisini yoping (no_answer / lost / won ga o'tkazing) — "
-            "tizim yangilarini beradi."
+            f"Ulardan kamida {need_close} tasini yoping (WON / LOST / kerakli "
+            "status) — tizim darhol yangilarini beradi. Tugmani bosing: faqat "
+            "yopish kerak bo'lgan lidlarni ko'rsatamiz."
         ),
-        action_label_ru="Показать какие закрыть",
-        action_label_uz="Qaysilarni yopish kerakligini ko'rsat",
+        action_label_ru=f"Показать эти {working} лидов",
+        action_label_uz=f"Shu {working} ta lidni ko'rsatish",
         action_href=href,
         count=working,
-        meta={"working_count": working, "lead_ids": lead_ids},
+        meta={"working_count": working, "need_close": need_close, "lead_ids": lead_ids},
     )
 
 

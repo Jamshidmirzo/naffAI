@@ -44,6 +44,7 @@ from .selectors import (
     operator_has_open_backlog,
     operator_is_blocked_by_overdue_callbacks,
     operator_open_callbacks_count,
+    operator_quota_blocking_leads,
     operator_yesterday_backlog_count,
     operators_distribution_status,
     orphan_leads,
@@ -413,9 +414,17 @@ class LeadMyListApi(APIView):
                 status=400,
             )
 
-        qs = leads_for_operator(
-            operator, include_archived=include_archived, view=view
-        )
+        # `?quota=1` — «Показать какие закрыть»: только лиды, занимающие
+        # квоту RR (working_count). Carry-хвост и recall сюда не входят —
+        # их закрытие НЕ открывает выдачу новых, показывать их рядом
+        # значит путать оператора.
+        quota_only = request.query_params.get("quota") in ("1", "true")
+        if quota_only:
+            qs = operator_quota_blocking_leads(operator)
+        else:
+            qs = leads_for_operator(
+                operator, include_archived=include_archived, view=view
+            )
         active_count = leads_for_operator(
             operator, include_archived=include_archived, view="active"
         ).count()

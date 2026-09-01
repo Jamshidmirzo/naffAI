@@ -600,20 +600,31 @@ def operator_working_lead_count(operator: Operator) -> int:
 
     Powers the batch=N gate: while this count >= N, RR skips the operator.
     """
+    return operator_quota_blocking_leads(operator).count()
+
+
+def operator_quota_blocking_leads(operator: Operator) -> QuerySet[Lead]:
+    """
+    QuerySet лидов, которые прямо сейчас занимают квоту оператора —
+    ровно те, что считает `operator_working_lead_count`. Старейшие
+    первыми (их закрытие даёт максимальный эффект). Используется
+    endpoint'ом `/leads/my/?quota=1`: оператор по подсказке «Показать
+    какие закрыть» видит ТОЛЬКО этот список, без carry-хвоста.
+    """
     terminal = set(terminal_lead_status_codes())
     carry = set(carry_over_status_codes())
-    all_active = set(active_lead_status_codes())
-    workable = list(all_active - terminal - carry)
+    workable = list(set(active_lead_status_codes()) - terminal - carry)
     if not workable:
-        return 0
+        return Lead.objects.none()
     return (
-        Lead.objects.filter(
+        Lead.objects.select_related("operator", "sheet_source")
+        .filter(
             operator=operator,
             status__in=workable,
             postponed_at__isnull=True,
         )
         .filter(_active_today_filter())
-        .count()
+        .order_by("updated_at")
     )
 
 

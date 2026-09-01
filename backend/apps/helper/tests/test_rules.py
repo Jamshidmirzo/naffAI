@@ -44,19 +44,22 @@ def test_full_working_queue_fires_at_5():
     assert s.id == "full_working_queue"
     assert s.severity == "warning"
     assert s.count == 5
-    # Без lead_ids fallback на /my?view=active (нет highlight'а).
-    assert s.action_href == "/my?view=active"
+    assert s.action_href == "/my?view=active&quota=1"
+    # working=5, лимит 5 → достаточно закрыть 1
+    assert s.meta.get("need_close") == 1
 
 
-def test_full_working_queue_deep_link_when_ids_present():
-    """State даёт список lead_ids → action_href содержит &highlight=."""
+def test_full_working_queue_quota_deep_link():
+    """action_href ведёт в quota-режим, need_close = working - 5 + 1."""
     s = check_full_working_queue(
         object(),
         {"working_count": 7, "blocking_quota_lead_ids": [101, 202, 303]},
     )
     assert s is not None
-    assert "highlight=101,202,303" in (s.action_href or "")
+    assert s.action_href == "/my?view=active&quota=1"
+    assert s.meta.get("need_close") == 3
     assert s.meta.get("lead_ids") == [101, 202, 303]
+    assert "3" in s.body_ru
 
 
 def test_full_working_queue_silent_below_5():
@@ -228,11 +231,11 @@ def test_muxlisa_case_full_working_queue_fires():
     assert "full_working_queue" in ids
     fwq = next(s for s in out if s.id == "full_working_queue")
     assert fwq.count == 6
-    assert "5" in fwq.body_ru  # объяснение упоминает лимит
-    # State builder теперь передаёт lead_ids → action_href содержит
-    # &highlight= для scroll+подсветки в MyLeads (2026-09-01).
-    assert (fwq.action_href or "").startswith("/my?view=active")
-    assert "highlight=" in (fwq.action_href or "")
+    assert "5" in fwq.title_ru  # заголовок упоминает лимит
+    # Кнопка ведёт в quota-режим MyLeads: только квотные лиды + баннер
+    # «закройте минимум N» (2026-09-01).
+    assert fwq.action_href == "/my?view=active&quota=1"
+    assert fwq.meta.get("need_close") == 2  # 6 - 5 + 1
     assert isinstance(fwq.meta.get("lead_ids"), list)
     assert len(fwq.meta["lead_ids"]) == 6
 

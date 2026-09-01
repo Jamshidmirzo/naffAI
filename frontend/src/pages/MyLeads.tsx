@@ -427,6 +427,10 @@ export default function MyLeads() {
   const [postponeFor, setPostponeFor] = useState<Lead | null>(null);
   const [scheduleFor, setScheduleFor] = useState<Lead | null>(null);
   const [statusChip, setStatusChip] = useState<StatusChipKey>(initialChip);
+  // Quota-режим (`/my?view=active&quota=1` из подсказки «Показать эти N
+  // лидов»): бэк возвращает ТОЛЬКО лиды, занимающие квоту RR — без
+  // carry-хвоста и recall. Сверху баннер «закройте минимум N».
+  const [quotaMode, setQuotaMode] = useState(searchParams.get("quota") === "1");
 
   // Keep state in sync when URL query changes on the fly (helper panel
   // navigate to the same pathname with different query = React Router
@@ -436,7 +440,20 @@ export default function MyLeads() {
     if (v === "postponed" || v === "active") setView(v);
     const chip = searchParams.get("chip");
     if (chip) setStatusChip(chip as StatusChipKey);
+    if (searchParams.get("quota") === "1") {
+      setQuotaMode(true);
+      setStatusChip("all");
+      setPage(1);
+    }
   }, [searchParams]);
+
+  const exitQuotaMode = () => {
+    setQuotaMode(false);
+    setPage(1);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("quota");
+    window.history.replaceState({}, "", url.toString());
+  };
 
   // Deep-link ?highlight=id1,id2,id3 из HelperPanel-подсказки «У вас
   // 5+ лидов, закройте несколько». Прокручиваем к первой карточке и
@@ -492,9 +509,13 @@ export default function MyLeads() {
   usePageHeader({ title: t("my.title"), subtitle: t("my.subtitle") }, [t("my.title")]);
 
   const my = useQuery({
-    queryKey: ["leads-my", page, view],
+    queryKey: ["leads-my", page, view, quotaMode],
     queryFn: () =>
-      api.get<MyResponse>(`/leads/my/?page=${page}&view=${view}`).then((r) => r.data),
+      api
+        .get<MyResponse>(
+          `/leads/my/?page=${page}&view=${view}${quotaMode ? "&quota=1" : ""}`,
+        )
+        .then((r) => r.data),
     refetchInterval: 60_000,
   });
 
@@ -504,7 +525,7 @@ export default function MyLeads() {
   // active_lead_status_codes и потому нет в my.data.results). Без этого
   // клик по chip показывает пустоту — оператор растерян: «Я ж поставил,
   // куда пропал?!». Envelope тот же (operator + counts + results + count).
-  const isChipView = view === "active" && statusChip !== "all";
+  const isChipView = view === "active" && statusChip !== "all" && !quotaMode;
   const PAGE_SIZE_CHIP = 50;
   const myByStatus = useQuery({
     queryKey: ["leads-my-by-status", statusChip, page],
@@ -590,7 +611,7 @@ export default function MyLeads() {
   // trip. On error we roll back; on settle we invalidate so any server-side
   // side effects (e.g. NO_ANSWER → NO_ANSWER_2 escalation) get picked up.
   const applyOptimisticStatus = (leadId: number, status: string) => {
-    const key = ["leads-my", page, view];
+    const key = ["leads-my", page, view, quotaMode];
     const prev = qc.getQueryData<MyResponse>(key);
     if (prev) {
       qc.setQueryData<MyResponse>(key, {
@@ -855,6 +876,11 @@ export default function MyLeads() {
     if (isChipView) {
       return { carry: [] as Lead[], recall: [] as Lead[], today: visibleLeads };
     }
+    // Quota-режим: бэк уже вернул только квотные лиды (старейшие сверху),
+    // группировка лишь размазала бы их по секциям.
+    if (quotaMode) {
+      return { carry: [] as Lead[], recall: [] as Lead[], today: visibleLeads };
+    }
     const carry: Lead[] = [];
     const recall: Lead[] = [];
     const todayList: Lead[] = [];
@@ -1003,7 +1029,7 @@ export default function MyLeads() {
 
       {/* --- Tabs + summary --- */}
       <section className="flex flex-wrap items-center justify-between gap-3 animate-nfFadeUp">
-        <TabPill value={view} onChange={(v) => { setView(v); setPage(1); setStatusChip("all"); }} items={tabs} />
+        <TabPill value={view} onChange={(v) => { setView(v); setPage(1); setStatusChip("all"); if (quotaMode) exitQuotaMode(); }} items={tabs} />
         <div className="text-[13px] text-muted">
           {t("my.leads_count", { n: isChipView ? chipTotal : visibleLeads.length })}
           {overdueCount > 0 && (
@@ -1018,7 +1044,7 @@ export default function MyLeads() {
       </section>
 
       {/* --- Status chips (only in "active" view) --- */}
-      {view === "active" && (
+      {view === "active" && !quotaMode && (
         <section className="flex flex-wrap gap-2 animate-nfFadeUp">
           {statusChips.map((chip) => {
             const isActive = statusChip === chip.key;
@@ -1323,6 +1349,45 @@ export default function MyLeads() {
             <section className="flex flex-col gap-[9px]">
               {visibleLeads.map(renderCard)}
             </section>
+          );
+        }
+
+        // Quota-режим: баннер «закройте минимум N» + плоский список
+        // квотных лидов (старейшие сверху). Одна цифра с подсказкой.
+        if (quotaMode) {
+          const total = my.data?.count ?? visibleLeads.length;
+          const limit = myStatus.data?.quota_limit ?? 5;
+          const need = Math.max(total - limit + 1, 1);
+          return (
+            <>
+              <section
+                className="animate-nfFadeUp"
+                style={{
+                  borderRadius: 18,
+                  padding: "14px 18px",
+                  border: "1.5px solid var(--accent)",
+                  background:
+                    "color-mix(in srgb, var(--accent) 8%, var(--bg-card))",
+                }}
+              >
+                <div className="text-[14.5px] font-semibold">
+                  {t("my.quota.banner_title", { n: total })}
+                </div>
+                <div className="mt-1 text-[13px] text-muted">
+                  {t("my.quota.banner_body", { limit, need })}
+                </div>
+                <button
+                  className="mt-2 text-[13px] font-semibold underline underline-offset-2"
+                  style={{ color: "var(--accent)" }}
+                  onClick={exitQuotaMode}
+                >
+                  {t("my.quota.show_all")}
+                </button>
+              </section>
+              <section className="flex flex-col gap-[9px]">
+                {visibleLeads.map(renderCard)}
+              </section>
+            </>
           );
         }
 

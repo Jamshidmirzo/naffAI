@@ -20,6 +20,8 @@ from apps.leads.models import Lead, LeadAssignment, LeadAssignmentSource, LeadSt
 from apps.leads.selectors import (
     diagnose_operator_assignment,
     find_operators_by_freetext,
+    operator_quota_blocking_leads,
+    operator_working_lead_count,
 )
 from apps.operators.models import Operator, OperatorStatus
 
@@ -155,6 +157,31 @@ def test_find_operators_by_freetext_by_name():
     hits = find_operators_by_freetext("muxli")
     assert len(hits) == 1
     assert hits[0].full_name == "Muxlisa"
+
+
+@pytest.mark.django_db
+def test_quota_blocking_leads_matches_working_count():
+    """
+    `/leads/my/?quota=1` должен показывать ровно те лиды, что считает
+    квота — carry-статусы в список не попадают, старейшие первыми.
+    """
+    op = _mk_op()
+    quota_leads = [_mk_working_lead(op, i) for i in range(3)]
+    # carry-лид (no_answer) — в квоту не входит
+    carry = Lead.objects.create(
+        full_name="carry", phone="+998911111111",
+        status=LeadStatus.NO_ANSWER, operator=op,
+    )
+    Lead.objects.filter(pk=carry.pk).update(
+        updated_at=timezone.now() - dt.timedelta(days=1)
+    )
+
+    qs = operator_quota_blocking_leads(op)
+    assert set(qs.values_list("id", flat=True)) == {l.id for l in quota_leads}
+    assert qs.count() == operator_working_lead_count(op)
+    # старейший (по updated_at) первым
+    updated = list(qs.values_list("updated_at", flat=True))
+    assert updated == sorted(updated)
 
 
 @pytest.mark.django_db
