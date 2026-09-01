@@ -1340,9 +1340,9 @@ def diagnose_operator_assignment(operator: Operator) -> dict:
                 f"Самый старый лид в очереди висит уже ≈ {stale_hours}ч."
             ),
             "next_action_ru": (
-                "Оператору нужно закрыть N лидов (WON / LOST / нужный статус). "
-                "Как только квота освободится — watcher добьёт до "
-                f"{quota} автоматически."
+                f"Оператору нужно закрыть минимум {max(working - quota + 1, 1)} "
+                "лидов (WON / LOST / нужный статус). Как только квота "
+                f"освободится — watcher добьёт до {quota} автоматически."
             ),
             "counters": counters,
             "recent_assignments": recent_assignments,
