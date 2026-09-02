@@ -41,6 +41,7 @@ from .selectors import (
     leads_by_phone_search,
     leads_for_operator,
     my_status_for_operator,
+    needs_review_leads,
     operator_has_open_backlog,
     operator_is_blocked_by_overdue_callbacks,
     operator_open_callbacks_count,
@@ -48,6 +49,7 @@ from .selectors import (
     operator_yesterday_backlog_count,
     operators_distribution_status,
     orphan_leads,
+    stranded_on_inactive_operators,
     telegram_link_for_phone,
 )
 from .services import (
@@ -59,6 +61,7 @@ from .services import (
     lead_postpone,
     lead_reassign,
     lead_unpostpone,
+    lead_update_phone,
     lead_update_status,
     leads_bulk_reassign,
     morning_distribute_leads,
@@ -335,6 +338,38 @@ class LeadDetailApi(RetrieveAPIView):
 
     def get_queryset(self):
         return Lead.objects.select_related("operator", "sheet_source")
+
+
+class LeadPhoneUpdateInputSerializer(serializers.Serializer):
+    phone_raw = serializers.CharField(max_length=64, allow_blank=False)
+
+
+class LeadPhoneUpdateApi(APIView):
+    """
+    PATCH /api/leads/{id}/phone/ — менеджерская inline-правка телефона
+    сироты (кейс: needs_review из-за битой sheet-строки типа "9").
+    Сервис `lead_update_phone` перезапустит normalize_uz_phone,
+    выставит `phone_invalid` и — если лид без оператора и телефон стал
+    валидным — снимет needs_review, чтобы автораздача подхватила.
+    """
+
+    permission_classes = [IsManager]
+
+    def patch(self, request, pk: int):
+        lead = lead_get(pk)
+        if not lead:
+            return Response({"detail": "Not found"}, status=404)
+        ser = LeadPhoneUpdateInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            updated = lead_update_phone(
+                lead=lead,
+                phone_raw=ser.validated_data["phone_raw"],
+                user=request.user,
+            )
+        except ApplicationError as exc:
+            return Response({"detail": exc.message, **exc.extra}, status=400)
+        return Response(LeadSerializer(updated).data)
 
 
 class LeadMyListApi(APIView):
@@ -673,34 +708,65 @@ class LeadConvertToSaleApi(APIView):
 class OrphanLeadsApi(APIView):
     """
     GET /api/leads/orphans/ — пул свободных лидов для менеджера.
-    Фильтры: sheet_source, status, created_from, created_to.
-    Ответ: results + count + counts_by_source + counts_by_status.
+
+    `?kind=free` (default) — свободный пул (без оператора, валидный
+       телефон, не needs_review). Раздаётся автоматически.
+    `?kind=needs_review` — сироты с needs_review=True (обычно битые
+       телефоны из sheet-строк). Требуют ручного триажа.
+    `?kind=stranded` — non-terminal лиды на inactive-операторах. Их
+       фикс — либо rescue-команда, либо ручной bulk-reassign менеджером.
+
+    Фильтры для kind=free: sheet_source, status, created_from, created_to.
+    Для kind=needs_review / kind=stranded — только пагинация (набор маленький).
+
+    Ответ: results + count + counts_by_source + counts_by_status +
+    counts_by_kind (общая сводка по всем трём kind'ам для чипов и
+    sidebar-бейджа).
     """
 
     permission_classes = [IsManager]
 
     def get(self, request):
         qp = request.query_params
-        sheet_source_id = int(qp["sheet_source"]) if qp.get("sheet_source") else None
+        kind = qp.get("kind", "free").strip() or "free"
+        if kind not in ("free", "needs_review", "stranded"):
+            return Response(
+                {"detail": "kind must be one of: free, needs_review, stranded"},
+                status=400,
+            )
 
-        raw_statuses = qp.get("status")
-        statuses = None
-        if raw_statuses:
-            statuses = [s.strip() for s in raw_statuses.split(",") if s.strip()]
-
-        created_from = _parse_dt(qp.get("created_from"))
-        created_to = _parse_dt(qp.get("created_to"))
-
-        qs = orphan_leads(
-            sheet_source_id=sheet_source_id,
-            statuses=statuses,
-            created_from=created_from,
-            created_to=created_to,
-        )
-
-        # Aggregates for the top bar. Cheap — same base queryset, one groupby each.
+        # Всегда считаем общую сводку — нужна фронту для чипов и бейджа
+        # в сайдбаре. Три count() дешёвые.
         from django.db.models import Count
 
+        counts_by_kind = {
+            "free": orphan_leads().count(),
+            "needs_review": needs_review_leads().count(),
+            "stranded": stranded_on_inactive_operators().count(),
+        }
+
+        if kind == "needs_review":
+            qs = needs_review_leads()
+        elif kind == "stranded":
+            qs = stranded_on_inactive_operators()
+        else:
+            sheet_source_id = (
+                int(qp["sheet_source"]) if qp.get("sheet_source") else None
+            )
+            raw_statuses = qp.get("status")
+            statuses = None
+            if raw_statuses:
+                statuses = [s.strip() for s in raw_statuses.split(",") if s.strip()]
+            created_from = _parse_dt(qp.get("created_from"))
+            created_to = _parse_dt(qp.get("created_to"))
+            qs = orphan_leads(
+                sheet_source_id=sheet_source_id,
+                statuses=statuses,
+                created_from=created_from,
+                created_to=created_to,
+            )
+
+        # Aggregates for the top bar. Cheap — same base queryset, one groupby each.
         by_source_rows = (
             qs.values("sheet_source_id", "sheet_source__name")
             .annotate(n=Count("id"))
@@ -717,11 +783,12 @@ class OrphanLeadsApi(APIView):
         page = paginator.paginate_queryset(qs, request)
         data = LeadSerializer(page, many=True).data
         resp = paginator.get_paginated_response(data)
-        # Расширяем стандартный envelope дополнительными полями,
-        # чтобы фронт мог отрисовать заголовок «N сирот, по источникам ...»
-        # одним запросом.
+        resp.data["kind"] = kind
         resp.data["counts_by_source"] = counts_by_source
         resp.data["counts_by_status"] = counts_by_status
+        # Общая сводка (все три kind'а разом) — фронту для чипов и
+        # sidebar-бейджа «Сироты: 74 + 482 + free».
+        resp.data["counts_by_kind"] = counts_by_kind
         return resp
 
 

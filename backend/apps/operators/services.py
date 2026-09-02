@@ -41,24 +41,34 @@ def operator_update(*, operator: Operator, user=None, **fields) -> Operator:
 
 
 @transaction.atomic
-def operator_deactivate(*, operator: Operator, user=None) -> Operator:
+def operator_deactivate(
+    *, operator: Operator, user=None, rescue_touched: bool = True
+) -> Operator:
     """
     Soft delete + auto-rebalance:
     1. Set the operator's status to INACTIVE (round-robin will skip them
        for any new leads).
     2. Take back their **untouched** leads (status in {new, assigned},
        not postponed) and hand them out round-robin across the remaining
-       eligible operators. Leads where the operator already made contact
-       (in_progress / callback / no_answer / phone_on / has_debt) stay
-       put so the context isn't lost.
-    3. For every re-assigned lead, live callback reminders (pending /
+       eligible operators.
+    3. If `rescue_touched=True` (default) — non-terminal touched лиды
+       (in_progress / no_answer / phone_on / has_debt / callback_scheduled
+       / …) отвязываются от оператора и уходят в `needs_review=True`,
+       чтобы менеджер вручную разобрал контекст через новый чип
+       /leads/orphans?kind=needs_review. Раньше они оставались висеть на
+       уволенном и никогда никому не выдавались (см. rescue-command
+       `rescue_stranded_leads`).
+       При `rescue_touched=False` — legacy-поведение: touched-лиды
+       остаются на уволенном (для обратной совместимости, если
+       вызывающий явно попросил).
+    4. For every re-assigned lead, live callback reminders (pending /
        snoozed / overdue) that belong to the leaving operator are moved
        to the new owner with `dm_sent_at` cleared, so the next cron tick
        DMs the new operator instead of the ex-owner.
 
-    Returns the operator with the extra `.rebalanced_count` /
-    `.callbacks_moved` attributes attached (not persisted) — the view
-    surfaces them in the API response.
+    Returns the operator with the extra `.rebalanced_count`,
+    `.callbacks_moved`, `.touched_needs_review_count` attributes attached
+    (not persisted) — the view surfaces them in the API response.
     """
     from collections import defaultdict
 
@@ -87,13 +97,25 @@ def operator_deactivate(*, operator: Operator, user=None) -> Operator:
     )
     operator.rebalanced_count = 0
     operator.callbacks_moved = 0
+    operator.touched_needs_review_count = 0
 
+    # Если оператор был последний activate — некому раздавать
+    # untouched. Но rescue_touched может всё равно сработать: touched
+    # уходят в needs_review, не требуя другого оператора.
     if not candidate_ids:
+        _apply_rescue_touched_if_needed(
+            operator=operator, user=user, rescue_touched=rescue_touched
+        )
         return operator
 
     ops = list(operators_eligible_for_new_leads().exclude(pk=operator.id))
     if not ops:
-        # Nobody to receive — leave them on the deactivated operator.
+        # Nobody to receive untouched leads — оставляем их на
+        # деактивированном. Но rescue_touched всё равно может отработать
+        # (touched → needs_review не требует свободных операторов).
+        _apply_rescue_touched_if_needed(
+            operator=operator, user=user, rescue_touched=rescue_touched
+        )
         return operator
 
     # Snapshot current load per candidate operator, then run round-robin
@@ -184,7 +206,47 @@ def operator_deactivate(*, operator: Operator, user=None) -> Operator:
         },
         comment=f"Auto-rebalanced {total_reassigned} untouched leads on deactivate",
     )
+
+    _apply_rescue_touched_if_needed(
+        operator=operator, user=user, rescue_touched=rescue_touched
+    )
     return operator
+
+
+def _apply_rescue_touched_if_needed(
+    *, operator: Operator, user, rescue_touched: bool
+) -> None:
+    """
+    После основного untouched-rebalance: touched non-terminal лиды
+    (`in_progress` / `no_answer*` / `phone_on` / `has_debt` /
+    `callback_scheduled` / …) отвязываем от оператора в `needs_review`.
+    Менеджер сам решит через новый чип /leads/orphans?kind=needs_review,
+    что с ними делать: продолжить разговор, отдать другому, закрыть как
+    LOST и т.п. Автоматически распихивать их по операторам нельзя —
+    новый оператор позвонит клиенту «с начала», потеряется контекст.
+
+    Реализация делегирована в `apps.leads.services.rescue_stranded_leads_for_operator`,
+    чтобы rescue-логика жила рядом с самими селекторами лидов и была
+    доступна для отдельной management-команды.
+
+    Кладём `operator.touched_needs_review_count = N` — API-слой
+    сурфейсит цифру в toast «N лидов ушло в needs_review».
+    """
+    if not rescue_touched:
+        return
+    from apps.leads.services import rescue_stranded_leads_for_operator
+
+    result = rescue_stranded_leads_for_operator(operator=operator, user=user)
+    operator.touched_needs_review_count = int(
+        result.get("touched_moved_to_needs_review", 0)
+    )
+    # untouched_moved_to_pool в этот момент = 0 (мы их уже развезли выше),
+    # но если по какой-то причине остались — они тоже уйдут в пул через rescue.
+    if result.get("untouched_moved_to_pool"):
+        operator.rebalanced_count = (
+            int(getattr(operator, "rebalanced_count", 0) or 0)
+            + int(result["untouched_moved_to_pool"])
+        )
 
 
 @transaction.atomic

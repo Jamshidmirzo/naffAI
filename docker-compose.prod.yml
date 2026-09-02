@@ -168,6 +168,8 @@ services:
           sleep "$$sleep_sec"
           echo "[$$(date +%FT%T%z)] release_stale_leads --days 10"
           python manage.py release_stale_leads --days 10 || echo "release_stale_leads rc=$$?"
+          echo "[$$(date +%FT%T%z)] check_stranded_leads"
+          python manage.py check_stranded_leads || echo "check_stranded_leads rc=$$?"
           echo "[$$(date +%FT%T%z)] send_daily_manager_report"
           python manage.py send_daily_manager_report || echo "daily_report rc=$$?"
         done

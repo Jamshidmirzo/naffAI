@@ -1726,6 +1726,172 @@ def lead_unpostpone(*, lead: Lead, operator: Operator, user=None) -> Lead:
     return lead
 
 
+# ---- Lead phone update (менеджерская inline-правка сирот) ---------------
+
+
+@transaction.atomic
+def lead_update_phone(*, lead: Lead, phone_raw: str, user=None) -> Lead:
+    """
+    Менеджерская правка телефона на карточке лида. Используется в
+    /leads/orphans?kind=needs_review — чинит «битые» sheet-строки:
+    вводим корректный `+998...`, `normalize_uz_phone` его валидирует,
+    ставим `phone`, `phone_raw`, `phone_invalid`. Если после норм-и
+    телефон стал валидным — снимаем `needs_review`, чтобы автораздача
+    подхватила лид из пула.
+
+    Не назначает оператора и не меняет статус — это делает следующий
+    цикл refill / morning-split, если после починки лид попал в пул.
+    """
+    phone_raw_clean = (phone_raw or "").strip()[:64]
+    normalized, valid = normalize_uz_phone(phone_raw_clean)
+    old = {
+        "phone": lead.phone,
+        "phone_raw": lead.phone_raw,
+        "phone_invalid": lead.phone_invalid,
+        "needs_review": lead.needs_review,
+    }
+    lead.phone_raw = phone_raw_clean
+    lead.phone = normalized if valid else ""
+    lead.phone_invalid = not valid
+    # Автосброс needs_review — только если лид сейчас без оператора
+    # (сирота) и телефон стал валидным. Иначе — оставляем как есть,
+    # чтобы не «отменять» решение менеджера, если у лида уже есть владелец.
+    if valid and lead.operator_id is None and lead.needs_review:
+        lead.needs_review = False
+    lead.save(
+        update_fields=[
+            "phone",
+            "phone_raw",
+            "phone_invalid",
+            "needs_review",
+            "updated_at",
+        ]
+    )
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="leads.Lead",
+        entity_id=lead.id,
+        changes={
+            "phone_manual_edit": {
+                "old": old,
+                "new": {
+                    "phone": lead.phone,
+                    "phone_raw": lead.phone_raw,
+                    "phone_invalid": lead.phone_invalid,
+                    "needs_review": lead.needs_review,
+                },
+            }
+        },
+        comment="Manager corrected phone on lead card",
+    )
+    return lead
+
+
+# ---- Rescue: «пропавшие лиды» на inactive-операторах ---------------------
+
+
+@transaction.atomic
+def rescue_stranded_leads_for_operator(
+    *,
+    operator: Operator,
+    user=None,
+) -> dict:
+    """
+    Возврат «пропавших» лидов с одного уволенного оператора обратно в поток.
+
+    Правило (см. `rescue_stranded_leads` management-команду):
+      A) untouched (`new` / `assigned`) → operator=NULL, старый
+         LeadAssignment.active=False, новый LeadAssignment(operator=NULL,
+         source=sheet_manual, active=True, reason=...).
+         Автораздача сама разберёт (morning-split / refill).
+      B) touched non-terminal → operator=NULL, needs_review=True,
+         сохраняем status (контекст «где был в разговоре»), тот же
+         assignment-audit-паттерн.
+
+    Terminal (won / lost / archived / needs_review-на-активе) не трогаем.
+
+    Идемпотентно: повторный вызов на том же операторе ничего не найдёт —
+    у оператора уже не будет non-terminal лидов.
+
+    Возвращает счётчики для API/CLI-отчёта.
+    """
+    from .selectors import (
+        stranded_touched_non_terminal_leads,
+        stranded_untouched_leads,
+    )
+
+    reason_untouched = (
+        f"rescued from deactivated operator {operator.full_name} (id={operator.id})"
+    )
+    reason_touched = (
+        f"rescued from deactivated operator {operator.full_name} (id={operator.id}) "
+        f"— touched, needs manager review"
+    )
+
+    untouched_ids = list(stranded_untouched_leads(operator_id=operator.id).values_list("id", flat=True))
+    touched_ids = list(
+        stranded_touched_non_terminal_leads(operator_id=operator.id).values_list("id", flat=True)
+    )
+
+    def _move_batch(lead_ids: list[int], *, mark_needs_review: bool, reason: str) -> None:
+        if not lead_ids:
+            return
+        # 1. Деактивируем текущие active-assignment'ы на этих лидах.
+        LeadAssignment.objects.filter(
+            lead_id__in=lead_ids, active=True
+        ).update(active=False)
+        # 2. Одним UPDATE'ом отвязываем operator (и, если нужно, ставим needs_review).
+        upd = {"operator_id": None}
+        if mark_needs_review:
+            upd["needs_review"] = True
+        Lead.objects.filter(id__in=lead_ids).update(**upd)
+        # 3. Одним bulk_create'ом создаём новые assignment'ы (operator=NULL,
+        #    active=True). Автораздача при следующем refill возьмёт лид из
+        #    пула, туда создастся новый active row — история сохраняется.
+        LeadAssignment.objects.bulk_create(
+            [
+                LeadAssignment(
+                    lead_id=lid,
+                    operator=None,
+                    source=LeadAssignmentSource.SHEET_MANUAL,
+                    active=True,
+                    reason=reason[:256],
+                )
+                for lid in lead_ids
+            ],
+            batch_size=200,
+        )
+
+    _move_batch(untouched_ids, mark_needs_review=False, reason=reason_untouched)
+    _move_batch(touched_ids, mark_needs_review=True, reason=reason_touched)
+
+    if untouched_ids or touched_ids:
+        audit_log_create(
+            user=user,
+            action=AuditAction.UPDATE,
+            entity="operators.Operator",
+            entity_id=operator.id,
+            changes={
+                "rescue_stranded_leads": {
+                    "untouched_moved_to_pool": len(untouched_ids),
+                    "touched_moved_to_needs_review": len(touched_ids),
+                    "untouched_lead_ids": untouched_ids[:200],
+                    "touched_lead_ids": touched_ids[:200],
+                },
+            },
+            comment=(
+                f"Rescue: вернули {len(untouched_ids)} untouched в пул, "
+                f"{len(touched_ids)} touched — в needs_review"
+            ),
+        )
+
+    return {
+        "untouched_moved_to_pool": len(untouched_ids),
+        "touched_moved_to_needs_review": len(touched_ids),
+    }
+
+
 # ---- Retry-export to Google Sheets ---------------------------------------
 
 

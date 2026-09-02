@@ -158,6 +158,104 @@ def orphan_leads(
     return qs.order_by("created_at", "id")
 
 
+# ---- Rescue: «пропавшие лиды» --------------------------------------------
+#
+# 3 отдельных селектора для менеджерских виджетов + rescue-команды:
+#
+#   * needs_review_leads() — 74 сироты с needs_review=True (обычно битые
+#     телефоны из sheet_source=4). orphan_leads() их скрывает, потому что
+#     туда попадают только «раздаваемые». Здесь — «требуют ручного триажа».
+#
+#   * stranded_untouched_leads() — untouched (`new`/`assigned`) на inactive-
+#     операторе. Быстрый путь возврата в пул: автораздача сама разберёт.
+#
+#   * stranded_touched_non_terminal_leads() — non-terminal, не untouched, на
+#     inactive-операторе. Требует ручного триажа (потому что если ткнуть
+#     `in_progress` в общий пул, следующий оператор позвонит клиенту «с
+#     начала», потеряется контекст).
+#
+# Все три исключают terminal-статусы (won / lost / archived / needs_review-
+# на-активе).
+
+
+def needs_review_leads() -> QuerySet[Lead]:
+    """
+    Сироты в needs_review — нужен ручной триаж менеджером (обычно битый
+    телефон из sheet-строки). Отличие от `orphan_leads()`: тот фильтрует
+    `needs_review=False`, а здесь — наоборот.
+    """
+    return (
+        Lead.objects.select_related("sheet_source", "operator")
+        .filter(needs_review=True, operator__isnull=True)
+        .order_by("created_at", "id")
+    )
+
+
+def stranded_untouched_leads(*, operator_id: int | None = None) -> QuerySet[Lead]:
+    """
+    Untouched-лиды (`new` / `assigned`), застрявшие на inactive-операторах.
+    Быстрый путь: rescue → operator=NULL, автораздача разберёт.
+
+    `operator_id` — сузить до одного оператора (для per-op транзакций
+    в rescue-команде).
+    """
+    qs = Lead.objects.select_related("operator", "sheet_source").filter(
+        operator__status=OperatorStatus.INACTIVE,
+        status__in=list(UNTOUCHED_LEAD_STATUSES),
+    )
+    if operator_id is not None:
+        qs = qs.filter(operator_id=operator_id)
+    return qs.order_by("id")
+
+
+def stranded_touched_non_terminal_leads(
+    *, operator_id: int | None = None
+) -> QuerySet[Lead]:
+    """
+    Non-terminal touched лиды на inactive-операторах (in_progress /
+    no_answer* / phone_on / has_debt / callback_scheduled / …).
+
+    «Terminal» тянем из LeadStatusLabel (`is_terminal=True`) + hard-coded
+    fallback `TERMINAL_LEAD_STATUSES` — чтобы селектор работал даже до
+    того, как загружен catalog LeadStatusLabel'ей.
+
+    «Untouched» (new / assigned) исключаем — для них более быстрый путь
+    в `stranded_untouched_leads()` (сразу в пул без needs_review).
+    """
+    terminal_codes = set(TERMINAL_LEAD_STATUSES)
+    try:
+        terminal_codes |= set(terminal_lead_status_codes())
+    except Exception:
+        # LeadStatusLabel ещё не мигрирован — оставим только hard-coded.
+        pass
+    excluded = terminal_codes | set(UNTOUCHED_LEAD_STATUSES)
+    qs = Lead.objects.select_related("operator", "sheet_source").filter(
+        operator__status=OperatorStatus.INACTIVE,
+    ).exclude(status__in=excluded)
+    if operator_id is not None:
+        qs = qs.filter(operator_id=operator_id)
+    return qs.order_by("id")
+
+
+def stranded_on_inactive_operators() -> QuerySet[Lead]:
+    """
+    Union: все non-terminal лиды на inactive-операторах (untouched + touched).
+    Используется для менеджерского счётчика «Зависли на уволенных: N» +
+    новый чип в /leads/orphans?kind=stranded.
+    """
+    terminal_codes = set(TERMINAL_LEAD_STATUSES)
+    try:
+        terminal_codes |= set(terminal_lead_status_codes())
+    except Exception:
+        pass
+    return (
+        Lead.objects.select_related("operator", "sheet_source")
+        .filter(operator__status=OperatorStatus.INACTIVE)
+        .exclude(status__in=terminal_codes)
+        .order_by("id")
+    )
+
+
 def _today_start_local() -> dt.datetime:
     """
     Полночь текущего локального дня (Asia/Tashkent) в виде aware datetime.

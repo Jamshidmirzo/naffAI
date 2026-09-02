@@ -11,11 +11,15 @@ import { Select } from "../components/Select";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
 
+type OrphanKind = "free" | "needs_review" | "stranded";
+
 interface OrphanResponse {
   results: Lead[];
   count: number;
+  kind?: OrphanKind;
   counts_by_source: Record<string, number>;
   counts_by_status: Record<string, number>;
+  counts_by_kind?: Record<OrphanKind, number>;
   next: string | null;
   previous: string | null;
 }
@@ -81,6 +85,12 @@ export default function OrphanLeads() {
     : null;
   const statusFilter = searchParams.get("status") || "";
   const page = Number(searchParams.get("page")) || 1;
+  const kindParam = (searchParams.get("kind") as OrphanKind | null) || "free";
+  const kind: OrphanKind = ["free", "needs_review", "stranded"].includes(
+    kindParam,
+  )
+    ? kindParam
+    : "free";
 
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [assignOpen, setAssignOpen] = useState(false);
@@ -114,11 +124,15 @@ export default function OrphanLeads() {
   });
 
   const orphansQ = useQuery({
-    queryKey: ["orphan-leads", sheetSourceId, statusFilter, page],
+    queryKey: ["orphan-leads", kind, sheetSourceId, statusFilter, page],
     queryFn: async (): Promise<OrphanResponse> => {
       const qp = new URLSearchParams();
-      if (sheetSourceId) qp.set("sheet_source", String(sheetSourceId));
-      if (statusFilter) qp.set("status", statusFilter);
+      qp.set("kind", kind);
+      // sheet_source / status фильтры имеют смысл только для kind=free
+      if (kind === "free") {
+        if (sheetSourceId) qp.set("sheet_source", String(sheetSourceId));
+        if (statusFilter) qp.set("status", statusFilter);
+      }
       qp.set("limit", String(PAGE_SIZE));
       qp.set("offset", String((page - 1) * PAGE_SIZE));
       const { data } = await api.get<OrphanResponse>(`/leads/orphans/?${qp.toString()}`);
@@ -161,10 +175,30 @@ export default function OrphanLeads() {
   const rows = orphansQ.data?.results || [];
   const totalCount = orphansQ.data?.count || 0;
   const countsBySource = orphansQ.data?.counts_by_source || {};
+  const countsByKind = orphansQ.data?.counts_by_kind || {
+    free: 0,
+    needs_review: 0,
+    stranded: 0,
+  };
+
+  // Мутация для inline-правки телефона в needs_review — сервис
+  // lead_update_phone re-normalize'ит и снимает needs_review если получилось.
+  const phoneMut = useMutation({
+    mutationFn: (payload: { id: number; phone_raw: string }) =>
+      api.patch<Lead>(`/leads/${payload.id}/phone/`, {
+        phone_raw: payload.phone_raw,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["orphan-leads"] });
+      qc.invalidateQueries({ queryKey: ["orphan-leads-count"] });
+      toast.success("Телефон обновлён");
+    },
+    onError: (err: unknown) => toast.error(apiErrorMessage(err)),
+  });
 
   useEffect(() => {
     setPicked(new Set());
-  }, [page, sheetSourceId, statusFilter]);
+  }, [kind, page, sheetSourceId, statusFilter]);
 
   const togglePick = (id: number) => {
     setPicked((prev) => {
@@ -224,6 +258,37 @@ export default function OrphanLeads() {
         distributing={distributeNowMut.isPending}
       />
 
+      {/* Kind-чипы: свободные / нужно ревью / зависли на уволенных */}
+      <section className="flex flex-wrap gap-2 animate-nfFadeUp">
+        <Chip
+          active={kind === "free"}
+          onClick={() => setFilter("kind", null)}
+        >
+          Свободные{" "}
+          <span className="tabular-nums opacity-70">
+            {countsByKind.free ?? 0}
+          </span>
+        </Chip>
+        <Chip
+          active={kind === "needs_review"}
+          onClick={() => setFilter("kind", "needs_review")}
+        >
+          Требуют пересмотра{" "}
+          <span className="tabular-nums opacity-70">
+            {countsByKind.needs_review ?? 0}
+          </span>
+        </Chip>
+        <Chip
+          active={kind === "stranded"}
+          onClick={() => setFilter("kind", "stranded")}
+        >
+          Зависли на уволенных{" "}
+          <span className="tabular-nums opacity-70">
+            {countsByKind.stranded ?? 0}
+          </span>
+        </Chip>
+      </section>
+
       {/* Топ-бар: метрики */}
       <section className="nf-card p-5 animate-nfFadeUp">
         <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
@@ -253,8 +318,8 @@ export default function OrphanLeads() {
         </div>
       </section>
 
-      {/* Фильтры + toolbar */}
-      {sourceChips.length > 0 && (
+      {/* Фильтры + toolbar (только для kind=free — иначе они бессмыслены) */}
+      {kind === "free" && sourceChips.length > 0 && (
         <section className="flex flex-wrap gap-2 animate-nfFadeUp">
           <Chip
             active={sheetSourceId === null}
@@ -364,13 +429,23 @@ export default function OrphanLeads() {
                     <div className="font-medium truncate">
                       {lead.full_name || <span className="text-muted">—</span>}
                     </div>
-                    <div className="text-[12px] text-muted truncate">
-                      {lead.phone || (
-                        <span style={{ color: "var(--danger)" }}>
-                          {lead.phone_raw || t("orphans.table.no_phone")}
-                        </span>
-                      )}
-                    </div>
+                    {kind === "needs_review" ? (
+                      <PhoneInlineEdit
+                        lead={lead}
+                        saving={phoneMut.isPending}
+                        onSave={(phone_raw) =>
+                          phoneMut.mutate({ id: lead.id, phone_raw })
+                        }
+                      />
+                    ) : (
+                      <div className="text-[12px] text-muted truncate">
+                        {lead.phone || (
+                          <span style={{ color: "var(--danger)" }}>
+                            {lead.phone_raw || t("orphans.table.no_phone")}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="text-muted truncate">
                     {lead.sheet_source_name || "—"}
@@ -647,5 +722,95 @@ function AssignModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+
+/**
+ * Inline-редактор телефона на строке сироты с needs_review=True.
+ * Мини-паттерн «показать текущее значение → клик → input с save/cancel».
+ * PATCH /leads/{id}/phone/ — backend re-normalize'ит и снимает needs_review
+ * если получилось.
+ */
+function PhoneInlineEdit({
+  lead,
+  saving,
+  onSave,
+}: {
+  lead: Lead;
+  saving: boolean;
+  onSave: (phone_raw: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(lead.phone_raw || lead.phone || "");
+
+  useEffect(() => {
+    setValue(lead.phone_raw || lead.phone || "");
+  }, [lead.id, lead.phone_raw, lead.phone]);
+
+  if (!editing) {
+    return (
+      <div
+        className="text-[12px] truncate cursor-pointer"
+        onClick={(e) => {
+          e.stopPropagation();
+          setEditing(true);
+        }}
+        title="Клик — исправить телефон"
+      >
+        {lead.phone ? (
+          <span className="text-muted">{lead.phone}</span>
+        ) : (
+          <span style={{ color: "var(--danger)" }}>
+            {lead.phone_raw || "нет телефона"} · клик для правки
+          </span>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div
+      className="flex items-center gap-1.5 mt-0.5"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <input
+        className="nf-input"
+        style={{ padding: "4px 8px", fontSize: 12, width: 160 }}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="+998..."
+        autoFocus
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            onSave(value);
+            setEditing(false);
+          } else if (e.key === "Escape") {
+            setEditing(false);
+            setValue(lead.phone_raw || lead.phone || "");
+          }
+        }}
+      />
+      <button
+        className="nf-btn"
+        style={{ padding: "4px 8px", fontSize: 11 }}
+        disabled={saving || !value.trim()}
+        onClick={() => {
+          onSave(value);
+          setEditing(false);
+        }}
+      >
+        OK
+      </button>
+      <button
+        className="nf-btn nf-btn--ghost"
+        style={{ padding: "4px 8px", fontSize: 11 }}
+        onClick={() => {
+          setEditing(false);
+          setValue(lead.phone_raw || lead.phone || "");
+        }}
+      >
+        ×
+      </button>
+    </div>
   );
 }

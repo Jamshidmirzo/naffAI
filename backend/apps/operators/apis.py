@@ -196,12 +196,24 @@ class OperatorDeactivateApi(APIView):
         op = operator_get(pk)
         if not op:
             return Response({"detail": "Not found"}, status=404)
-        operator_deactivate(operator=op, user=request.user)
+        # Флаг `rescue_touched` — «переназначить активные лиды в needs_review».
+        # Default True, потому что без него touched non-terminal лиды
+        # оставались на уволенном и никогда никому не выдавались
+        # (см. rescue_stranded_leads management-команду).
+        rescue_touched = request.data.get("rescue_touched", True)
+        if isinstance(rescue_touched, str):
+            rescue_touched = rescue_touched.lower() not in ("0", "false", "no")
+        operator_deactivate(
+            operator=op, user=request.user, rescue_touched=bool(rescue_touched)
+        )
         payload = OperatorSerializer(op).data
         # Surface the counters the service attached on `op` so the UI
-        # can toast "Deactivated, N leads reassigned".
+        # can toast "Deactivated, N leads reassigned + M → needs_review".
         payload["rebalanced_count"] = getattr(op, "rebalanced_count", 0)
         payload["callbacks_moved"] = getattr(op, "callbacks_moved", 0)
+        payload["touched_needs_review_count"] = getattr(
+            op, "touched_needs_review_count", 0
+        )
         return Response(payload)
 
 

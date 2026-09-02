@@ -63,10 +63,19 @@ function useBadges(role: "manager" | "operator") {
   const orphansCount = useQuery({
     queryKey: ["orphan-leads-count"],
     queryFn: async () => {
-      const { data } = await api.get<{ count?: number }>(
-        "/leads/orphans/?limit=1",
+      // Просим бэк вернуть counts_by_kind — суммируем free + needs_review +
+      // stranded для бейджа в сайдбаре, чтобы менеджер видел ВСЕ три
+      // «пропавших» пула одной цифрой.
+      const { data } = await api.get<{
+        count?: number;
+        counts_by_kind?: Record<string, number>;
+      }>("/leads/orphans/?limit=1");
+      const cbk = data.counts_by_kind || {};
+      return (
+        (cbk.free ?? 0) +
+        (cbk.needs_review ?? 0) +
+        (cbk.stranded ?? 0)
       );
-      return data.count || 0;
     },
     enabled: role === "manager",
     refetchInterval: 60000,

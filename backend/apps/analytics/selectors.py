@@ -1578,8 +1578,11 @@ def dashboard_summary(period: str = "week") -> dict:
         )
         cursor += dt.timedelta(days=1)
 
-    # -------- attention: 4 counters --------
+    # -------- attention: 5 counters --------
+    from apps.leads.selectors import stranded_on_inactive_operators
+
     orphans_cnt = orphan_leads().count()
+    stranded_cnt = stranded_on_inactive_operators().count()
     to_review = pending_today  # alias — Sale.status='pending' == «требует проверки»
     late_today = int(shift.get("late_today") or 0)
 
@@ -1633,6 +1636,7 @@ def dashboard_summary(period: str = "week") -> dict:
         "attention": {
             "to_review": to_review,
             "orphans": orphans_cnt,
+            "stranded_on_inactive": stranded_cnt,
             "on_review": pending_today,
             "late_today": late_today,
         },
