@@ -23,6 +23,7 @@ from apps.users.permissions import (
     IsAuthenticatedAnyRole,
     IsManager,
     IsOperator,
+    IsSuperadmin,
     IsTeamLead,
     IsTeamLeadOrManagerReadOnly,
 )
@@ -36,6 +37,7 @@ from .models import (
     SheetSource,
 )
 from .selectors import (
+    KNOWN_LOST_REASONS,
     lead_get,
     lead_list,
     leads_by_phone_search,
@@ -50,6 +52,8 @@ from .selectors import (
     operators_distribution_status,
     orphan_leads,
     stranded_on_inactive_operators,
+    system_lost_leads_qs,
+    system_lost_summary,
     telegram_link_for_phone,
 )
 from .services import (
@@ -60,6 +64,7 @@ from .services import (
     lead_create,
     lead_postpone,
     lead_reassign,
+    lead_recover_from_system_lost,
     lead_unpostpone,
     lead_update_phone,
     lead_update_status,
@@ -709,19 +714,19 @@ class OrphanLeadsApi(APIView):
     """
     GET /api/leads/orphans/ — пул свободных лидов для менеджера.
 
-    `?kind=free` (default) — свободный пул (без оператора, валидный
-       телефон, не needs_review). Раздаётся автоматически.
-    `?kind=needs_review` — сироты с needs_review=True (обычно битые
-       телефоны из sheet-строк). Требуют ручного триажа.
-    `?kind=stranded` — non-terminal лиды на inactive-операторах. Их
-       фикс — либо rescue-команда, либо ручной bulk-reassign менеджером.
+    Начиная с 2026-09-02 остался только `kind=free` — старые
+    `needs_review` / `stranded` пулы массово ушли в system-lost (см.
+    команду `mark_stranded_as_system_lost`), а `operator_deactivate`
+    сразу помечает touched-лиды как system-lost. Значит смысла
+    отдельного чипа больше нет.
 
-    Фильтры для kind=free: sheet_source, status, created_from, created_to.
-    Для kind=needs_review / kind=stranded — только пагинация (набор маленький).
+    Обратная совместимость: параметр `?kind=needs_review|stranded`
+    принимаем, но возвращаем пустой результат + флаг `deprecated=true`
+    в ответе, чтобы старый фронт (если он ещё есть где-то в кэше) не
+    крашился. `counts_by_kind` — только `free` (нули по deprecated
+    ключам оставили ради sidebar-бейджа старой версии).
 
-    Ответ: results + count + counts_by_source + counts_by_status +
-    counts_by_kind (общая сводка по всем трём kind'ам для чипов и
-    sidebar-бейджа).
+    Фильтры: sheet_source, status, created_from, created_to.
     """
 
     permission_classes = [IsManager]
@@ -729,27 +734,15 @@ class OrphanLeadsApi(APIView):
     def get(self, request):
         qp = request.query_params
         kind = qp.get("kind", "free").strip() or "free"
-        if kind not in ("free", "needs_review", "stranded"):
-            return Response(
-                {"detail": "kind must be one of: free, needs_review, stranded"},
-                status=400,
-            )
 
-        # Всегда считаем общую сводку — нужна фронту для чипов и бейджа
-        # в сайдбаре. Три count() дешёвые.
-        from django.db.models import Count
+        # Legacy-совместимость: needs_review / stranded теперь пусты —
+        # эти пулы переехали в system-lost. Не 400-им, чтобы старые
+        # клиенты работали, просто отдаём пустой ответ.
+        deprecated_kind = kind in ("needs_review", "stranded")
 
-        counts_by_kind = {
-            "free": orphan_leads().count(),
-            "needs_review": needs_review_leads().count(),
-            "stranded": stranded_on_inactive_operators().count(),
-        }
-
-        if kind == "needs_review":
-            qs = needs_review_leads()
-        elif kind == "stranded":
-            qs = stranded_on_inactive_operators()
-        else:
+        if deprecated_kind:
+            qs = Lead.objects.none()
+        elif kind == "free":
             sheet_source_id = (
                 int(qp["sheet_source"]) if qp.get("sheet_source") else None
             )
@@ -765,8 +758,24 @@ class OrphanLeadsApi(APIView):
                 created_from=created_from,
                 created_to=created_to,
             )
+        else:
+            return Response(
+                {"detail": "kind must be one of: free (needs_review/stranded — deprecated)"},
+                status=400,
+            )
+
+        # Единственный «живой» kind = free. counts_by_kind оставляем
+        # с нулями по устаревшим ключам для sidebar-бейджа старой
+        # версии SPA (react-query кэши в браузерах менеджеров).
+        counts_by_kind = {
+            "free": orphan_leads().count(),
+            "needs_review": 0,
+            "stranded": 0,
+        }
 
         # Aggregates for the top bar. Cheap — same base queryset, one groupby each.
+        from django.db.models import Count
+
         by_source_rows = (
             qs.values("sheet_source_id", "sheet_source__name")
             .annotate(n=Count("id"))
@@ -786,10 +795,162 @@ class OrphanLeadsApi(APIView):
         resp.data["kind"] = kind
         resp.data["counts_by_source"] = counts_by_source
         resp.data["counts_by_status"] = counts_by_status
-        # Общая сводка (все три kind'а разом) — фронту для чипов и
-        # sidebar-бейджа «Сироты: 74 + 482 + free».
         resp.data["counts_by_kind"] = counts_by_kind
+        if deprecated_kind:
+            resp.data["deprecated"] = True
+            resp.data["deprecated_reason"] = (
+                "kind=needs_review/stranded удалены — эти пулы переехали "
+                "в /leads/system-lost (superadmin)."
+            )
         return resp
+
+
+# ---- System-lost leads (superadmin) -------------------------------------
+
+
+class SystemLostLeadSerializer(serializers.ModelSerializer):
+    """
+    Раскрываем metadata['lost_*'] в отдельные плоские поля —
+    frontend'у удобнее.
+    """
+    operator_name = serializers.SerializerMethodField()
+    sheet_source_name = serializers.CharField(
+        source="sheet_source.name", read_only=True, default=None
+    )
+    lost_reason = serializers.SerializerMethodField()
+    lost_comment = serializers.SerializerMethodField()
+    lost_original_operator_name = serializers.SerializerMethodField()
+    lost_original_status = serializers.SerializerMethodField()
+    lost_at = serializers.SerializerMethodField()
+    lost_by = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Lead
+        fields = [
+            "id",
+            "full_name",
+            "phone",
+            "phone_raw",
+            "status",
+            "operator",
+            "operator_name",
+            "sheet_source",
+            "sheet_source_name",
+            "sheet_row_index",
+            "product_hint",
+            "lost_reason",
+            "lost_comment",
+            "lost_original_operator_name",
+            "lost_original_status",
+            "lost_at",
+            "lost_by",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_operator_name(self, lead: Lead) -> str:
+        return lead.operator.full_name if lead.operator else ""
+
+    def _md(self, lead: Lead, key: str) -> str:
+        return str((lead.metadata or {}).get(key) or "")
+
+    def get_lost_reason(self, lead: Lead) -> str:
+        return self._md(lead, "lost_reason")
+
+    def get_lost_comment(self, lead: Lead) -> str:
+        return self._md(lead, "lost_comment")
+
+    def get_lost_original_operator_name(self, lead: Lead) -> str:
+        return self._md(lead, "lost_original_operator_name")
+
+    def get_lost_original_status(self, lead: Lead) -> str:
+        return self._md(lead, "lost_original_status")
+
+    def get_lost_at(self, lead: Lead) -> str:
+        return self._md(lead, "lost_at")
+
+    def get_lost_by(self, lead: Lead) -> str:
+        return self._md(lead, "lost_by")
+
+
+class SystemLostLeadsApi(APIView):
+    """
+    GET /api/leads/system-lost/ — таблица «системно потерянных» лидов
+    (только superadmin — обычному менеджеру эта категория не показывается).
+
+    Фильтры:
+      * `?reason=stranded_on_inactive_operator|invalid_phone_from_sheet`
+      * `?op=<original_operator_name>` — точное совпадение имени
+      * `?days=30` — как давно (по `metadata.lost_at`).
+
+    Ответ содержит сводку `summary` (total / by_reason /
+    top_original_operators) — фронт показывает её сверху таблицы
+    без второго запроса.
+    """
+
+    permission_classes = [IsSuperadmin]
+
+    def get(self, request):
+        qp = request.query_params
+        reason = (qp.get("reason") or "").strip() or None
+        if reason and reason not in KNOWN_LOST_REASONS:
+            return Response(
+                {
+                    "detail": (
+                        f"reason must be one of: {', '.join(KNOWN_LOST_REASONS)}"
+                    )
+                },
+                status=400,
+            )
+        op_name = (qp.get("op") or "").strip() or None
+
+        days_raw = qp.get("days")
+        date_from = None
+        if days_raw:
+            try:
+                days = max(1, int(days_raw))
+            except ValueError:
+                return Response({"detail": "days must be integer >= 1"}, status=400)
+            import datetime as _dt
+
+            from django.utils import timezone as _tz
+
+            date_from = _tz.now() - _dt.timedelta(days=days)
+
+        qs = system_lost_leads_qs(
+            reason=reason,
+            original_operator_name=op_name,
+            date_from=date_from,
+        )
+
+        summary = system_lost_summary()
+
+        paginator = DefaultPagination()
+        page = paginator.paginate_queryset(qs, request)
+        data = SystemLostLeadSerializer(page, many=True).data
+        resp = paginator.get_paginated_response(data)
+        resp.data["summary"] = summary
+        resp.data["known_reasons"] = list(KNOWN_LOST_REASONS)
+        return resp
+
+
+class LeadRecoverFromSystemLostApi(APIView):
+    """
+    POST /api/leads/{id}/recover-from-system-lost/ — вернуть лид из
+    system-lost обратно в orphan-пул с восстановленным статусом.
+
+    Разрешено только superadmin: массовый recovery случайно menedger'ом
+    вернёт мёртвые контакты 3-месячной давности в раздачу.
+    """
+
+    permission_classes = [IsSuperadmin]
+
+    def post(self, request, pk: int):
+        lead = lead_get(pk)
+        if not lead:
+            return Response({"detail": "Не найден"}, status=404)
+        recovered = lead_recover_from_system_lost(lead=lead, user=request.user)
+        return Response(SystemLostLeadSerializer(recovered).data)
 
 
 class LeadsBulkReassignInputSerializer(serializers.Serializer):

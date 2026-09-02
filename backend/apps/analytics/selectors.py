@@ -497,6 +497,7 @@ def lead_stats_snapshot(
 
     from apps.calls.models import CallAttempt
     from apps.leads.models import Lead, LeadStatusLabel
+    from apps.leads.selectors import exclude_system_lost
 
     qs = Lead.objects.all()
     if date_from:
@@ -507,12 +508,18 @@ def lead_stats_snapshot(
     total = qs.count()
 
     # ---- by_status: current status of each lead in the period.
+    #
+    # `exclude_system_lost` убирает лиды, автоматически помеченные как
+    # `lost` из-за системной причины (уволен оператор / битый sheet-
+    # телефон). Это НЕ реальные отказы клиентов — их нельзя считать
+    # частью «by_status.lost», иначе 556 разовых миграций 2026-09-02
+    # съезжают воронку. См. apps/leads/selectors.py::exclude_system_lost.
     labels_map = {
         row.code: row
         for row in LeadStatusLabel.objects.filter(is_active=True)
     }
     raw_status = (
-        qs.values("status")
+        exclude_system_lost(qs).values("status")
         .annotate(count=Count("id"))
         .order_by("-count")
     )
@@ -562,9 +569,14 @@ def lead_stats_snapshot(
         all_touched.update(lead_ids)
 
     # One-shot fetch of current status для всех тронутых лидов.
+    # System-lost исключаем: они автозакрыты по системной причине
+    # (уволен оператор / битый sheet-телефон), не по вине оператора.
+    # Считать их в `by_operator.lost` — исказить метрики конкретного человека.
     lead_status: dict[int, str] = {
         int(pk): (st or "")
-        for pk, st in Lead.objects.filter(id__in=all_touched).values_list("id", "status")
+        for pk, st in exclude_system_lost(
+            Lead.objects.filter(id__in=all_touched)
+        ).values_list("id", "status")
     }
 
     # calls_total + unique_leads_touched per operator — те же aggregate'ы
@@ -610,8 +622,12 @@ def lead_stats_snapshot(
     )
     for op_id, lead_ids in by_op_leads.items():
         seen_op_ids.add(op_id)
-        statuses = Counter(lead_status.get(lid, "") for lid in lead_ids)
-        t = len(lead_ids)
+        # Отбрасываем system-lost лиды: их нет в lead_status (см. фильтр
+        # `exclude_system_lost` выше), значит и в total считать нельзя.
+        # `lead_status[lid]` вернёт None → пропускаем.
+        kept_leads = [lid for lid in lead_ids if lid in lead_status]
+        statuses = Counter(lead_status[lid] for lid in kept_leads)
+        t = len(kept_leads)
         w = int(statuses.get("won", 0))
         lst = int(statuses.get("lost", 0))
         arch = int(statuses.get("archived", 0))
@@ -688,8 +704,11 @@ def lead_stats_snapshot(
             .annotate(n=Count("id"))
             .values_list("d", "n")
         )
+        # System-lost исключаем: дневной график lost-ов должен показывать
+        # реальные отказы клиентов, а не разовые массовые автозакрытия
+        # (типа 556 → lost 2026-09-02 когда мы гасили stranded-пропавших).
         lost_by_day = dict(
-            qs.filter(status="lost")
+            exclude_system_lost(qs).filter(status="lost")
             .annotate(d=TruncDate("updated_at"))
             .values_list("d")
             .annotate(n=Count("id"))
@@ -995,11 +1014,16 @@ def funnel_by_source(*, date_from: dt.datetime, date_to: dt.datetime) -> list[di
     """
     Per-source funnel: current-status distribution over the enum stages
     + inter-stage pass-through percentages.
+
+    System-lost исключаем: их «lost» — не отказ клиента, а автозакрытие
+    (уволен оператор / битый sheet-телефон). Если оставить, воронка
+    показывает «в источнике X все ушли в lost» из-за разовой миграции.
     """
     from apps.leads.models import Lead
+    from apps.leads.selectors import exclude_system_lost
 
     lead_rows = list(
-        _source_leads_qs(date_from=date_from, date_to=date_to)
+        exclude_system_lost(_source_leads_qs(date_from=date_from, date_to=date_to))
         .values("source", "sheet_source_id", "sheet_source__name", "status")
     )
 
@@ -1116,11 +1140,17 @@ def rejection_reasons_by_source(
     Returns [{source_name, total_lost, reasons: [{text, count, pct}]}].
     """
     from apps.leads.models import Lead
+    from apps.leads.selectors import exclude_system_lost
     from apps.sales.models import Sale
 
     # 1) Lost leads (status='lost' OR 'archived') in period.
+    # System-lost исключаем — у них metadata['lost_comment'] это не
+    # клиентский reason, а автогенерированный «Оператор X уволен».
+    # См. apps/leads/selectors.py::exclude_system_lost.
     lost_leads = list(
-        _source_leads_qs(date_from=date_from, date_to=date_to)
+        exclude_system_lost(
+            _source_leads_qs(date_from=date_from, date_to=date_to)
+        )
         .filter(status__in=("lost", "archived"))
         .values("id", "source", "sheet_source_id", "sheet_source__name",
                 "postpone_reason", "metadata")

@@ -182,3 +182,41 @@ class TestPriorityOrdering:
         # Если явно логи упомянуты — приоритет за LOGS, а не HEALTH.
         r = parse_intent("покажи логи с ошибками bot")
         assert r.kind == IntentKind.LOGS
+
+
+class TestLeadersIntent:
+    """
+    «Дай отчёт по операторам сейчас» — тот же 3-часовой лидерборд, но
+    по запросу. Триггеры: «отчёт», «hisobot», «рейтинг», «сводка»,
+    «топ операторов», «3 часа/soat».
+    """
+
+    def test_ru_otchet(self):
+        r = parse_intent("отчёт по операторам")
+        assert r.kind == IntentKind.LEADERS
+
+    def test_ru_svodka(self):
+        r = parse_intent("дай сводку сейчас")
+        assert r.kind == IntentKind.LEADERS
+
+    def test_ru_top_operators(self):
+        r = parse_intent("покажи топ операторов")
+        assert r.kind == IntentKind.LEADERS
+
+    def test_ru_rating(self):
+        r = parse_intent("рейтинг операторов")
+        assert r.kind == IntentKind.LEADERS
+
+    def test_uz_hisobot(self):
+        r = parse_intent("hisobot bering")
+        assert r.kind == IntentKind.LEADERS
+
+    def test_ru_3_hours(self):
+        r = parse_intent("дай отчёт за 3 часа")
+        assert r.kind == IntentKind.LEADERS
+
+    def test_leaders_beats_who_got_on_ambiguous(self):
+        # «сколько поговорил» триггерит и WHO_GOT (сколько получил), и
+        # LEADERS. Лидерборд полнее — приоритет за ним.
+        r = parse_intent("сколько поговорил каждый оператор")
+        assert r.kind == IntentKind.LEADERS

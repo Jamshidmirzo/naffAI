@@ -44,6 +44,7 @@ import TgQueue from "./pages/TgQueue";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
 import OrphanLeads from "./pages/OrphanLeads";
+import SystemLostLeads from "./pages/SystemLostLeads";
 import OperatorSaleCreate from "./pages/OperatorSaleCreate";
 import SalesPending from "./pages/SalesPending";
 import BotConfig from "./pages/BotConfig";
@@ -54,7 +55,7 @@ import Calculator from "./pages/Calculator";
 import MarketingSettingsPage from "./pages/MarketingSettingsPage";
 import InstallmentTiersPage from "./pages/InstallmentTiersPage";
 import { useAuth } from "./store/auth";
-import { RoleGate, normaliseRole } from "./components/RoleGate";
+import { RoleGate, SuperadminGate, normaliseRole } from "./components/RoleGate";
 import PinGate from "./components/PinGate";
 import { ToastHost } from "./components/ui";
 
@@ -116,6 +117,7 @@ export default function App() {
           />
           <Route path="/leads" element={<RoleGate allow={["manager"]}><Leads /></RoleGate>} />
           <Route path="/leads/orphans" element={<RoleGate allow={["manager"]}><OrphanLeads /></RoleGate>} />
+          <Route path="/leads/system-lost" element={<SuperadminGate><SystemLostLeads /></SuperadminGate>} />
           <Route path="/settings" element={<RoleGate allow={["manager"]}><Settings /></RoleGate>} />
           <Route path="/calls" element={<RoleGate allow={["manager"]}><Placeholder title="Звонки" /></RoleGate>} />
           <Route path="/reports" element={<RoleGate allow={["manager"]}><Reports /></RoleGate>} />

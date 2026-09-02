@@ -219,34 +219,110 @@ def _apply_rescue_touched_if_needed(
     """
     После основного untouched-rebalance: touched non-terminal лиды
     (`in_progress` / `no_answer*` / `phone_on` / `has_debt` /
-    `callback_scheduled` / …) отвязываем от оператора в `needs_review`.
-    Менеджер сам решит через новый чип /leads/orphans?kind=needs_review,
-    что с ними делать: продолжить разговор, отдать другому, закрыть как
-    LOST и т.п. Автоматически распихивать их по операторам нельзя —
-    новый оператор позвонит клиенту «с начала», потеряется контекст.
+    `callback_scheduled` / …) СРАЗУ помечаем как `status='lost'` с
+    `metadata['lost_reason']='stranded_on_inactive_operator'`.
 
-    Реализация делегирована в `apps.leads.services.rescue_stranded_leads_for_operator`,
-    чтобы rescue-логика жила рядом с самими селекторами лидов и была
-    доступна для отдельной management-команды.
+    Раньше эти лиды уходили в `needs_review=True` — менеджер должен был
+    их разобрать вручную. Практика (2026-09-02): за 3 месяца скопилось
+    482 таких «зависших», никто не разбирал, они лишь портили аналитику.
+    Теперь: сразу закрываем как system-lost с сохранением контекста
+    (original_operator_name / original_status в metadata) — при желании
+    менеджер восстановит через страницу /leads/system-lost.
 
-    Кладём `operator.touched_needs_review_count = N` — API-слой
-    сурфейсит цифру в toast «N лидов ушло в needs_review».
+    Untouched (new/assigned) — по-прежнему уходят по round-robin в
+    outer `operator_deactivate` (мы вызываемся после). Здесь
+    `rescue_stranded_leads_for_operator` доотвяжет то, что осталось
+    (обычно 0 после rebalance).
+
+    Кладём `operator.touched_needs_review_count = N` — атрибут оставлен
+    из обратной совместимости (frontend читает его в toast), но
+    семантика теперь «сколько ушло в system-lost, а не в needs_review».
     """
     if not rescue_touched:
         return
-    from apps.leads.services import rescue_stranded_leads_for_operator
 
-    result = rescue_stranded_leads_for_operator(operator=operator, user=user)
-    operator.touched_needs_review_count = int(
-        result.get("touched_moved_to_needs_review", 0)
+    from apps.leads.selectors import (
+        stranded_touched_non_terminal_leads,
+        stranded_untouched_leads,
     )
-    # untouched_moved_to_pool в этот момент = 0 (мы их уже развезли выше),
-    # но если по какой-то причине остались — они тоже уйдут в пул через rescue.
-    if result.get("untouched_moved_to_pool"):
-        operator.rebalanced_count = (
-            int(getattr(operator, "rebalanced_count", 0) or 0)
-            + int(result["untouched_moved_to_pool"])
+    from apps.leads.services import (
+        LOST_REASON_STRANDED_ON_INACTIVE,
+        lead_mark_system_lost,
+        rescue_stranded_leads_for_operator,
+    )
+
+    # Untouched — стандартный путь через rescue_stranded_leads_for_operator.
+    # Мы его вызываем ТОЛЬКО ради untouched: touched ветка внутри уходит
+    # в needs_review (старое поведение), которое нам больше не нужно,
+    # поэтому обходим её. Более корректно — вручную вытащить оба списка
+    # и вызвать нужные операции.
+    untouched_ids = list(
+        stranded_untouched_leads(operator_id=operator.id).values_list("id", flat=True)
+    )
+    if untouched_ids:
+        # Отдельный path: закрываем active-assignments + отвязываем
+        # operator=NULL. То же самое делает rescue_stranded_leads_for_operator,
+        # но мы разделяем на untouched/touched вручную чтобы touched шёл в
+        # system-lost, а не в needs_review.
+        from apps.leads.models import (
+            Lead as LeadModel,
+            LeadAssignment,
+            LeadAssignmentSource,
         )
+        LeadAssignment.objects.filter(
+            lead_id__in=untouched_ids, active=True
+        ).update(active=False)
+        LeadModel.objects.filter(id__in=untouched_ids).update(operator_id=None)
+        LeadAssignment.objects.bulk_create(
+            [
+                LeadAssignment(
+                    lead_id=lid,
+                    operator=None,
+                    source=LeadAssignmentSource.SHEET_MANUAL,
+                    active=True,
+                    reason=(
+                        f"rescued from deactivated operator {operator.full_name} "
+                        f"(id={operator.id})"
+                    )[:256],
+                )
+                for lid in untouched_ids
+            ],
+            batch_size=200,
+        )
+        operator.rebalanced_count = (
+            int(getattr(operator, "rebalanced_count", 0) or 0) + len(untouched_ids)
+        )
+
+    # Touched non-terminal → system-lost с полной причиной.
+    touched_qs = stranded_touched_non_terminal_leads(operator_id=operator.id)
+    touched_marked = 0
+    for lead in touched_qs:
+        lead_mark_system_lost(
+            lead=lead,
+            reason=LOST_REASON_STRANDED_ON_INACTIVE,
+            comment=(
+                f"Оператор {operator.full_name} (id={operator.id}) деактивирован, "
+                f"лид был в статусе '{lead.status}' — закрыт как system-lost."
+            ),
+            original_operator_name=operator.full_name,
+            original_status=lead.status,
+            lost_by="system:operator_deactivate",
+            user=user,
+        )
+        touched_marked += 1
+
+    # Атрибут читает frontend — переименовать бы, но SPA собран уже давно,
+    # оставим ключ. Семантически «сколько ушло в system-lost». Toast
+    # текст обновляем на фронте отдельно.
+    operator.touched_needs_review_count = touched_marked
+    # Совместимость с прошлой сигнатурой: alias под новым именем.
+    operator.touched_system_lost_count = touched_marked
+
+    # rescue_stranded_leads_for_operator оставляем импорт (аудит-путь на
+    # inactive-операторе всё ещё интересен). Не вызываем — работу его
+    # untouched-ветки мы уже сделали выше руками, чтобы избежать двойного
+    # прохода. Import сохранён на случай ручного восстановления в тестах.
+    _ = rescue_stranded_leads_for_operator  # noqa: F841
 
 
 @transaction.atomic

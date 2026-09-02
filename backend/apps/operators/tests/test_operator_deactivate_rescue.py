@@ -1,9 +1,11 @@
 """
-`operator_deactivate(rescue_touched=True)` — новое поведение:
+`operator_deactivate(rescue_touched=True)` — новое поведение (2026-09-02):
 untouched → пул через round-robin (как раньше), touched non-terminal —
-`operator=NULL + needs_review=True` (было: остаются на уволенном).
+`status='lost'` + `metadata['lost_reason']='stranded_on_inactive_operator'`
++ полная причина. Раньше уходили в `needs_review=True` — теперь сразу
+system-lost, потому что needs_review-очередь никто не разбирал.
 
-Также `rescue_touched=False` — legacy path для обратной совместимости.
+`rescue_touched=False` — legacy path для обратной совместимости.
 """
 
 from __future__ import annotations
@@ -34,7 +36,7 @@ def _mk_lead(operator: Operator | None, *, idx: int, status: str) -> Lead:
 
 
 @pytest.mark.django_db
-def test_deactivate_default_rescues_touched_to_needs_review():
+def test_deactivate_default_marks_touched_as_system_lost():
     leaving = _mk_op("Leaving")
     survivor = _mk_op("Survivor")
 
@@ -51,21 +53,32 @@ def test_deactivate_default_rescues_touched_to_needs_review():
     untouched.refresh_from_db()
     assert untouched.operator_id == survivor.id
     assert untouched.needs_review is False
-    # Touched non-terminal — operator=NULL, needs_review=True, статус СОХРАНЁН.
+    assert (untouched.metadata or {}).get("lost_reason") is None
+    # Touched non-terminal — status=LOST, operator=NULL, metadata заполнен.
     for lead in (touched, no_answer, phone_on):
         lead.refresh_from_db()
         assert lead.operator_id is None
-        assert lead.needs_review is True
-    assert touched.status == LeadStatus.IN_PROGRESS
-    assert no_answer.status == LeadStatus.NO_ANSWER
-    assert phone_on.status == LeadStatus.PHONE_ON
+        assert lead.status == LeadStatus.LOST
+        md = lead.metadata or {}
+        assert md["lost_reason"] == "stranded_on_inactive_operator"
+        assert md["lost_original_operator_name"] == "Leaving"
+        assert md["lost_by"].startswith("system:")
+        assert md.get("lost_at")
+        assert md.get("lost_comment")
+    # Оригинальный статус сохранён в metadata (для recovery).
+    touched.refresh_from_db()
+    assert touched.metadata["lost_original_status"] == LeadStatus.IN_PROGRESS
     # Terminal — не тронут.
     won.refresh_from_db()
     assert won.operator_id == leaving.id
 
     # Счётчики на возвращённом объекте.
     assert op.rebalanced_count == 1
+    # Обратная совместимость поля frontend'а: touched_needs_review_count
+    # переиспользуем как «сколько ушло в system-lost».
     assert op.touched_needs_review_count == 3
+    # Новый явный alias.
+    assert getattr(op, "touched_system_lost_count", None) == 3
 
 
 @pytest.mark.django_db
@@ -85,17 +98,17 @@ def test_deactivate_rescue_false_keeps_touched_on_inactive_operator():
     assert untouched.operator_id != leaving.id
     # Touched — остался на уволенном (legacy path).
     assert touched.operator_id == leaving.id
-    assert touched.needs_review is False
+    assert touched.status == LeadStatus.IN_PROGRESS
+    assert (touched.metadata or {}).get("lost_reason") is None
     assert op.touched_needs_review_count == 0
 
 
 @pytest.mark.django_db
-def test_deactivate_with_no_survivors_still_rescues():
+def test_deactivate_with_no_survivors_still_marks_touched():
     """
     Нет других активных операторов → round-robin untouched некому
-    передать. Но rescue-fallback (rescue_touched=True, default) всё равно
-    отвяжет untouched в пул (operator=NULL) и touched в needs_review —
-    им не нужен другой оператор. Это лучше, чем legacy-поведение,
+    передать. Untouched отвязываем в пул (operator=NULL) руками, touched
+    сразу помечаем как system-lost. Это лучше, чем legacy-поведение,
     когда всё оставалось висеть на уволенном.
     """
     leaving = _mk_op("OnlyOne")
@@ -107,13 +120,14 @@ def test_deactivate_with_no_survivors_still_rescues():
 
     touched.refresh_from_db()
     untouched.refresh_from_db()
-    # Round-robin не сработал (некому раздать), но rescue-fallback
-    # отвязал untouched в пул.
+    # Round-robin не сработал (некому раздать), но fallback отвязал
+    # untouched в пул.
     assert untouched.operator_id is None
-    assert untouched.needs_review is False
-    # Touched — в needs_review.
+    assert untouched.status == LeadStatus.NEW
+    # Touched — в system-lost.
     assert touched.operator_id is None
-    assert touched.needs_review is True
+    assert touched.status == LeadStatus.LOST
+    assert (touched.metadata or {})["lost_reason"] == "stranded_on_inactive_operator"
     assert op.touched_needs_review_count == 1
 
 

@@ -1892,6 +1892,205 @@ def rescue_stranded_leads_for_operator(
     }
 
 
+# ---- System-lost marking + recovery -------------------------------------
+#
+# `lead_mark_system_lost` — единичное «мягкое» закрытие лида с
+# автогенерированной причиной. Пишет `metadata['lost_reason']` (тот же
+# ключ, который использует `exclude_system_lost` в аналитике).
+# `lead_recover_from_system_lost` — обратная операция для UI-кнопки
+# «Восстановить» на странице `/leads/system-lost`.
+
+
+LOST_REASON_STRANDED_ON_INACTIVE = "stranded_on_inactive_operator"
+LOST_REASON_INVALID_PHONE_FROM_SHEET = "invalid_phone_from_sheet"
+
+# Единственный whitelist — валидируем перед записью metadata, чтобы
+# опечатки в вызывающем коде не создавали «фантомные» reason'ы, которые
+# потом никто не увидит в /api/leads/system-lost/?reason=...
+_KNOWN_LOST_REASONS = frozenset({
+    LOST_REASON_STRANDED_ON_INACTIVE,
+    LOST_REASON_INVALID_PHONE_FROM_SHEET,
+})
+
+
+def _lost_by_source_label() -> str:
+    """Единый префикс `lost_by` для system-lost. Позволит отличать в
+    audit-логе автогенерированные закрытия от ручных."""
+    return "system:mark_stranded_as_system_lost"
+
+
+@transaction.atomic
+def lead_mark_system_lost(
+    *,
+    lead: Lead,
+    reason: str,
+    comment: str = "",
+    original_operator_name: str | None = None,
+    original_status: str | None = None,
+    lost_by: str = "",
+    user=None,
+) -> Lead:
+    """
+    Помечает лид как «системно потерян»: `status='lost'` + сохраняет
+    контекст в `metadata`.
+
+    Идемпотентно: если у лида уже есть `metadata['lost_reason']` — просто
+    возвращаем его без изменений (второй прогон массовой миграции
+    ничего не портит).
+
+    Что записываем в metadata:
+      * `lost_reason` — источник правды для `exclude_system_lost()`.
+      * `lost_comment` — читаемое пояснение для UI/аудита.
+      * `lost_original_operator_name` — имя оператора, у которого лид
+        был до перевода (для stranded). Не FK, потому что оператор мог
+        быть переименован после увольнения.
+      * `lost_original_status` — статус ДО перевода (обычно `in_progress`,
+        `no_answer` и т.п.). Нужен для «Восстановить» (мы вернём его).
+      * `lost_at` — ISO local timestamp.
+      * `lost_by` — источник маркировки (`system:...` / `manager:...`).
+
+    Дополнительно снимает `operator` (переводит в orphan-пул) и
+    закрывает active LeadAssignment, создаёт новый audit-row
+    (operator=NULL, source=admin_reassign, reason=comment).
+    """
+    if reason not in _KNOWN_LOST_REASONS:
+        raise ApplicationError(
+            f"unknown lost_reason: {reason!r}",
+            extra={"known": sorted(_KNOWN_LOST_REASONS)},
+        )
+
+    md = dict(lead.metadata or {})
+    if md.get("lost_reason"):
+        # Уже помечен — считаем идемпотентным no-op. Не логируем в audit,
+        # не перезаписываем контекст (первое значение остаётся канонiчным).
+        return lead
+
+    prev_status = original_status if original_status is not None else lead.status
+    prev_operator_id = lead.operator_id
+    if original_operator_name is None and lead.operator_id is not None:
+        # Автоподхват — берём имя FK-оператора, чтобы вызывающий не был
+        # обязан читать связанную таблицу.
+        original_operator_name = lead.operator.full_name if lead.operator else None
+
+    now_iso = timezone.localtime(timezone.now()).isoformat(timespec="seconds")
+
+    md.update({
+        "lost_reason": reason,
+        "lost_comment": (comment or "")[:1000],
+        "lost_original_operator_name": original_operator_name or "",
+        "lost_original_status": prev_status or "",
+        "lost_at": now_iso,
+        "lost_by": (lost_by or _lost_by_source_label())[:120],
+    })
+
+    # 1. Закрываем текущий active-assignment (если был).
+    LeadAssignment.objects.filter(lead=lead, active=True).update(active=False)
+
+    # 2. UPDATE'им сам лид: status='lost', operator=NULL, metadata.
+    lead.status = LeadStatus.LOST
+    lead.operator = None
+    lead.metadata = md
+    # needs_review сбрасываем на всякий случай — system-lost исключает
+    # ручной триаж (клиент 3 месяца ждал — уже не бизнес).
+    if lead.needs_review:
+        lead.needs_review = False
+    lead.save(update_fields=["status", "operator", "metadata", "needs_review", "updated_at"])
+
+    # 3. Пишем аудит-строку в LeadAssignment: operator=NULL, source=admin_reassign.
+    #    Это же место, куда rescue_stranded_leads пишет свой audit-паттерн —
+    #    оператор, читающий историю лида, увидит цепочку `active_op → NULL`.
+    LeadAssignment.objects.create(
+        lead=lead,
+        operator=None,
+        source=LeadAssignmentSource.ADMIN_REASSIGN,
+        active=True,
+        reason=(f"marked as system-lost: {reason}"
+                + (f" (from {original_operator_name})" if original_operator_name else ""))[:256],
+    )
+
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="leads.Lead",
+        entity_id=lead.id,
+        changes={
+            "system_lost": True,
+            "lost_reason": reason,
+            "lost_original_status": prev_status,
+            "lost_original_operator_id": prev_operator_id,
+            "lost_original_operator_name": original_operator_name or "",
+        },
+        comment=(comment or f"System-lost: {reason}")[:500],
+    )
+    return lead
+
+
+@transaction.atomic
+def lead_recover_from_system_lost(*, lead: Lead, user=None) -> Lead:
+    """
+    Обратная операция для UI-кнопки «Восстановить» на `/leads/system-lost`.
+
+    Что делаем:
+      * Чистим все `metadata['lost_*']` ключи.
+      * Возвращаем `status = metadata['lost_original_status']` (обычно
+        touched: in_progress / no_answer / phone_on) — чтобы автораздача
+        (или менеджер вручную через bulk-reassign) увидели лид с корректным
+        контекстом «где мы были в разговоре».
+      * `operator = NULL` — уходит в orphan-пул. Именно так задумано:
+        менеджер / автораздача сами решат кого назначить.
+      * Пишем audit-строку с action=UPDATE и содержимым «recovered from
+        system-lost, was {reason}».
+
+    Если лид не в system-lost (нет `metadata['lost_reason']`) — no-op,
+    возвращаем как есть.
+    """
+    md = dict(lead.metadata or {})
+    reason = md.get("lost_reason")
+    if not reason:
+        return lead
+
+    prev_status = md.get("lost_original_status") or LeadStatus.NEW
+    original_operator_name = md.get("lost_original_operator_name") or ""
+
+    # Убираем все lost_*-ключи — они конфиденциальны для «сгоревших»
+    # лидов, восстановленный лид не должен нести историю.
+    for key in list(md.keys()):
+        if key.startswith("lost_"):
+            md.pop(key, None)
+
+    # Закрываем текущий active-assignment (после mark он operator=NULL,
+    # но всё равно active=True).
+    LeadAssignment.objects.filter(lead=lead, active=True).update(active=False)
+
+    lead.status = prev_status
+    lead.operator = None
+    lead.metadata = md
+    lead.save(update_fields=["status", "operator", "metadata", "updated_at"])
+
+    LeadAssignment.objects.create(
+        lead=lead,
+        operator=None,
+        source=LeadAssignmentSource.ADMIN_REASSIGN,
+        active=True,
+        reason=(f"recovered from system-lost ({reason})")[:256],
+    )
+
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="leads.Lead",
+        entity_id=lead.id,
+        changes={
+            "recovered_from_system_lost": True,
+            "was_reason": reason,
+            "restored_status": prev_status,
+            "original_operator_name": original_operator_name,
+        },
+        comment=f"Recovered from system-lost ({reason})",
+    )
+    return lead
+
+
 # ---- Retry-export to Google Sheets ---------------------------------------
 
 

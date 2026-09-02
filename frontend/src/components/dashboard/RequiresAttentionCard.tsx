@@ -15,6 +15,11 @@ import { formatNumber } from "../../lib/format";
 export interface AttentionCounters {
   to_review: number;
   orphans: number;
+  /**
+   * Оставлен как optional-hint для обратной совместимости API. Раньше
+   * отдельная строка «Зависли на уволенных» — теперь эти лиды
+   * автоматически уходят в system-lost, для менеджера строки нет.
+   */
   stranded_on_inactive?: number;
   on_review: number;
   late_today: number;
@@ -35,12 +40,6 @@ interface Row {
 const ROWS: Row[] = [
   { key: "to_review", label: "Требуют проверки", path: "/sales/pending", tone: "urgent" },
   { key: "orphans", label: "Сироты не назначены", path: "/leads/orphans", tone: "urgent" },
-  {
-    key: "stranded_on_inactive",
-    label: "Зависли на уволенных",
-    path: "/leads/orphans?kind=stranded",
-    tone: "urgent",
-  },
   { key: "on_review", label: "Продажи на проверке", path: "/sales/pending", tone: "info" },
   { key: "late_today", label: "Опоздали сегодня", path: "/attendance/today", tone: "info" },
 ];

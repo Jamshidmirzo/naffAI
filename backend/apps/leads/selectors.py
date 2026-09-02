@@ -256,6 +256,123 @@ def stranded_on_inactive_operators() -> QuerySet[Lead]:
     )
 
 
+# ---- System-lost leads --------------------------------------------------
+#
+# «Системно потерянные» — лиды, которые мы закрыли автоматически, не потому
+# что клиент отказался, а потому что они «зависли» по системной причине:
+#   * `stranded_on_inactive_operator` — оператор уволен, а лид уже
+#     «трогали» (in_progress / no_answer / phone_on / has_debt / …).
+#     Мы не можем прозрачно передать их новому оператору, поэтому
+#     помечаем как lost с сохранением original_operator_name.
+#   * `invalid_phone_from_sheet` — needs_review-сироты с битой sheet-
+#     строкой (телефон не прошёл normalize_uz_phone). Клиенту не
+#     позвонить, значит бизнес-возможности нет.
+#
+# Хранение: обычный status='lost' + `metadata['lost_reason']`. Ключ
+# `lost_reason` — источник правды: он же используется в `exclude_system_lost()`
+# чтобы отфильтровать эти записи из аналитики (иначе они смещают статистику
+# real lost'ов, которых до сих пор порядка 7к).
+
+
+LOST_REASON_STRANDED = "stranded_on_inactive_operator"
+LOST_REASON_INVALID_PHONE = "invalid_phone_from_sheet"
+
+# Все известные reason'ы — используется в API-фильтре ?reason=... для
+# валидации входного значения.
+KNOWN_LOST_REASONS = (LOST_REASON_STRANDED, LOST_REASON_INVALID_PHONE)
+
+
+def exclude_system_lost(qs: QuerySet[Lead]) -> QuerySet[Lead]:
+    """
+    Убираем из выборки лиды, которые мы автоматически пометили как lost
+    из-за системной причины (не реальный отказ клиента).
+
+    Используется в аналитических селекторах (`lead_stats_snapshot`,
+    `funnel_by_source`, `rejection_reasons_by_source`, `lost_by_day`) —
+    везде, где мы отдельно считаем «lost'ы за период» и не хотим,
+    чтобы 556 разовых системных закрытий 2026-09-02 портили распределение.
+
+    Реализация: `metadata->lost_reason IS NOT NULL`. PostgreSQL JSONB
+    `__isnull=False` работает как ожидается — ключ отсутствует / null
+    → фильтр не сработает, наши system-lost всегда имеют строковое значение.
+    """
+    return qs.exclude(metadata__lost_reason__isnull=False)
+
+
+def system_lost_leads_qs(
+    *,
+    reason: str | None = None,
+    date_from: dt.datetime | None = None,
+    date_to: dt.datetime | None = None,
+    original_operator_name: str | None = None,
+) -> QuerySet[Lead]:
+    """
+    Обратный фильтр `exclude_system_lost` — только system-lost лиды.
+
+    Используется страницей `/leads/system-lost` (superadmin-only):
+    таблица + фильтры + кнопка «Восстановить».
+
+    `date_from` / `date_to` матчатся по `metadata__lost_at` (ISO-строка,
+    сортируется лексикографически поскольку always same TZ offset).
+    Если менеджер прислал только один из двух — второй open-ended.
+    """
+    qs = (
+        Lead.objects.select_related("sheet_source", "operator")
+        .filter(metadata__lost_reason__isnull=False)
+    )
+    if reason:
+        qs = qs.filter(metadata__lost_reason=reason)
+    if original_operator_name:
+        qs = qs.filter(
+            metadata__lost_original_operator_name=original_operator_name
+        )
+    # ISO-строка `2026-09-02T14:30:00+05:00` — упорядоченная лексикографически
+    # (пока TZ offset одинаковый; у нас всё в Asia/Tashkent — стабильно).
+    if date_from is not None:
+        qs = qs.filter(metadata__lost_at__gte=date_from.isoformat())
+    if date_to is not None:
+        qs = qs.filter(metadata__lost_at__lte=date_to.isoformat())
+    return qs.order_by("-updated_at", "-id")
+
+
+def system_lost_summary() -> dict:
+    """
+    Сводка для sidebar / чипов на странице `/leads/system-lost`:
+    сколько всего, сколько по каждому reason'у, топ-5 original_operator'ов.
+    Дёшево: несколько aggregate-запросов.
+    """
+    from collections import Counter
+
+    total = Lead.objects.filter(metadata__lost_reason__isnull=False).count()
+    by_reason: dict[str, int] = {}
+    for reason in KNOWN_LOST_REASONS:
+        by_reason[reason] = Lead.objects.filter(
+            metadata__lost_reason=reason
+        ).count()
+
+    # Топ-5 оригинальных операторов (только для stranded — invalid_phone
+    # никогда не имел оператора). Читаем metadata json-полем в Python:
+    # JSONB group-by поддерживается, но накладно писать миграцию под индекс.
+    orig_ops_qs = (
+        Lead.objects.filter(metadata__lost_reason=LOST_REASON_STRANDED)
+        .values_list("metadata", flat=True)
+    )
+    counter: Counter[str] = Counter()
+    for meta in orig_ops_qs:
+        name = (meta or {}).get("lost_original_operator_name")
+        if name:
+            counter[str(name)] += 1
+    top_original_operators = [
+        {"name": name, "count": cnt} for name, cnt in counter.most_common(5)
+    ]
+
+    return {
+        "total": total,
+        "by_reason": by_reason,
+        "top_original_operators": top_original_operators,
+    }
+
+
 def _today_start_local() -> dt.datetime:
     """
     Полночь текущего локального дня (Asia/Tashkent) в виде aware datetime.

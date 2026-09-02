@@ -63,19 +63,14 @@ function useBadges(role: "manager" | "operator") {
   const orphansCount = useQuery({
     queryKey: ["orphan-leads-count"],
     queryFn: async () => {
-      // Просим бэк вернуть counts_by_kind — суммируем free + needs_review +
-      // stranded для бейджа в сайдбаре, чтобы менеджер видел ВСЕ три
-      // «пропавших» пула одной цифрой.
+      // Бейдж — только `free` пул. С 2026-09-02 needs_review / stranded
+      // ушли в system-lost, отдельного счётчика для менеджера нет.
       const { data } = await api.get<{
         count?: number;
         counts_by_kind?: Record<string, number>;
       }>("/leads/orphans/?limit=1");
       const cbk = data.counts_by_kind || {};
-      return (
-        (cbk.free ?? 0) +
-        (cbk.needs_review ?? 0) +
-        (cbk.stranded ?? 0)
-      );
+      return cbk.free ?? data.count ?? 0;
     },
     enabled: role === "manager",
     refetchInterval: 60000,

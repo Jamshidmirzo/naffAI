@@ -36,3 +36,16 @@ export function RoleGate({ allow, children }: Props) {
   if (!allow.includes(role)) return <Navigate to="/my" replace />;
   return <>{children}</>;
 }
+
+/**
+ * Жёсткий гейт только для superadmin (не manager!). Используется для
+ * страниц типа /leads/system-lost, где massovая случайная кнопка
+ * «восстановить» неопытным менеджером может вернуть в раздачу
+ * 3-месячные мёртвые контакты. RoleGate свернул бы superadmin в
+ * manager — нам нужен именно raw check.
+ */
+export function SuperadminGate({ children }: { children: ReactNode }) {
+  const rawRole = useAuth((s) => s.role);
+  if (!isSuperadmin(rawRole)) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}

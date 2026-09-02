@@ -32,6 +32,7 @@ from enum import StrEnum
 class IntentKind(StrEnum):
     WHY_NO_LEADS = "why_no_leads"
     WHO_GOT = "who_got"
+    LEADERS = "leaders"
     HEALTH = "health"
     LOGS = "logs"
     HELP = "help"
@@ -166,6 +167,34 @@ _LOGS_PHRASES = (
     "stderr",
     "stdout",
     "хвост",
+)
+
+# Триггеры «дай тот 3-часовой отчёт прямо сейчас» — тот же лидерборд,
+# что рассылается автоматически каждые 3 часа. Триггерят LEADERS.
+_LEADERS_PHRASES = (
+    "отчёт",
+    "отчет",
+    "отчёты",
+    "отчеты",
+    "лидерб",     # лидерборд
+    "leaderboard",
+    "рейтинг",
+    "reyting",
+    "топ операт",
+    "топ-операт",
+    "top operator",
+    "hisobot",     # UZ «отчёт»
+    "sotuvchi reyting",
+    "faol operator",
+    "3 часа",
+    "3 soat",
+    "3 соат",
+    "сводк",       # «сводка», «сводку»
+    "прогресс",
+    "kim ishla",   # UZ «кто работает»
+    "сколько поговорил",
+    "поговорили",
+    "necha ta gaplashd",  # UZ «сколько поговорил»
 )
 
 _YESTERDAY_WORDS = ("вчера", "kecha")
@@ -352,6 +381,12 @@ def parse_intent(text: str) -> Intent:
     if _contains_any(n, _HEALTH_PHRASES):
         return Intent(kind=IntentKind.HEALTH, raw=raw)
 
+    # ---------- 2b. LEADERS (тот же 3-часовой отчёт по запросу) -------
+    # Ставим ПЕРЕД WHO_GOT — «сколько поговорил» триггерит и то, и то,
+    # но лидерборд полнее (unique_leads_touched + sold + статусы).
+    if _contains_any(n, _LEADERS_PHRASES):
+        return Intent(kind=IntentKind.LEADERS, target_date=target_date, raw=raw)
+
     # ---------- 3. WHY_NO_LEADS --------------------------------------
     why_hit = _contains_any(n, _WHY_ROOTS) or _contains_any(n, _NO_LEADS_ROOTS)
     if why_hit:
@@ -408,7 +443,8 @@ def help_text_ru() -> str:
         "Спрашивайте по-русски или по-узбекски. Примеры:\n\n"
         "• «Почему у Мухлисы нет лидов?»\n"
         "• «Кто сколько получил сегодня?» / «kim necha ta oldi bugun?»\n"
+        "• «Отчёт по операторам» / «hisobot» — тот же 3-часовой лидерборд по запросу\n"
         "• «Что с сервером?» / «server ishlayaptimi?»\n"
         "• «Логи distribute-watcher 100» <i>(только владельцу)</i>\n\n"
-        "Или прямые команды: /whyauto, /whogot, /health, /logs."
+        "Или прямые команды: /whyauto, /whogot, /leaders, /health, /logs."
     )

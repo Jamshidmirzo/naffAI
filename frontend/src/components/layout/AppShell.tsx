@@ -18,7 +18,11 @@ import { useMe } from "../../hooks/useMe";
  * always-visible top-level entries. Section headers are purely visual;
  * clicking any leaf still routes normally.
  */
-function useManagerGroups(t: (k: string) => string, showPhotos: boolean): SidebarGroup[] {
+function useManagerGroups(
+  t: (k: string) => string,
+  showPhotos: boolean,
+  showSystemLost: boolean,
+): SidebarGroup[] {
   return [
     {
       items: [
@@ -96,6 +100,13 @@ function useManagerGroups(t: (k: string) => string, showPhotos: boolean): Sideba
     {
       items: [
         { to: "/audit", label: t("nav.audit") },
+        // Superadmin-only: страница «Системно потерянные» (то, что
+        // раньше жило под чипами needs_review / stranded на /leads/orphans).
+        // Обычный менеджер туда не пойдёт — recovery-кнопка при
+        // неаккуратном клике вернёт в раздачу 3-месячные мёртвые контакты.
+        ...(showSystemLost
+          ? [{ to: "/leads/system-lost", label: t("system_lost.title") }]
+          : []),
         { to: "/settings", label: t("nav.settings") },
       ],
     },
@@ -128,7 +139,8 @@ export default function AppShell() {
   const rawRole = useAuth((s) => s.role);
   const role = normaliseRole(rawRole) ?? "manager";
   const showPhotos = isSuperadmin(rawRole);
-  const managerGroups = useManagerGroups(t, showPhotos);
+  const showSystemLost = isSuperadmin(rawRole);
+  const managerGroups = useManagerGroups(t, showPhotos, showSystemLost);
   const operatorGroups = useOperatorGroups(t);
   const groups = role === "operator" ? operatorGroups : managerGroups;
 

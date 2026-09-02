@@ -12,6 +12,7 @@ from .apis import (
     LeadPhoneUpdateApi,
     LeadPostponeApi,
     LeadReassignApi,
+    LeadRecoverFromSystemLostApi,
     LeadsBulkReassignApi,
     LeadStatusApi,
     LeadStatusLabelDetailApi,
@@ -23,6 +24,7 @@ from .apis import (
     RetryExportApi,
     SheetSourceDetailApi,
     SheetSourceListCreateApi,
+    SystemLostLeadsApi,
     TelegramLookupApi,
 )
 
@@ -36,6 +38,7 @@ urlpatterns = [
     # Static paths ставим ПЕРЕД <int:pk>/, чтобы `orphans` / `bulk-reassign` /
     # `distribution-status` / `distribute-now` не матчились как ID.
     path("orphans/", OrphanLeadsApi.as_view()),
+    path("system-lost/", SystemLostLeadsApi.as_view()),
     path("phone-search/", LeadPhoneSearchApi.as_view()),
     path("bulk-reassign/", LeadsBulkReassignApi.as_view()),
     path("distribution-status/", DistributionStatusApi.as_view()),
@@ -48,6 +51,10 @@ urlpatterns = [
     path("<int:pk>/postpone/", LeadPostponeApi.as_view()),
     path("<int:pk>/unpostpone/", LeadUnpostponeApi.as_view()),
     path("<int:pk>/convert-to-sale/", LeadConvertToSaleApi.as_view()),
+    path(
+        "<int:pk>/recover-from-system-lost/",
+        LeadRecoverFromSystemLostApi.as_view(),
+    ),
 ]
 
 

@@ -2417,6 +2417,30 @@ const STRINGS: Lookup = {
     "weekday.sun": "Воскресенье",
 
     "nav.my_payroll": "Моя зарплата",
+
+    // ------ system-lost leads (superadmin) ------
+    "system_lost.title": "Системно потерянные",
+    "system_lost.subtitle": "Лиды, автоматически закрытые из-за увольнений и битых телефонов",
+    "system_lost.summary.total": "Всего",
+    "system_lost.summary.by_reason": "По причинам",
+    "system_lost.summary.top_operators": "Топ операторов (до увольнения)",
+    "system_lost.reason.stranded_on_inactive_operator": "Оператор уволен",
+    "system_lost.reason.invalid_phone_from_sheet": "Битый телефон из таблицы",
+    "system_lost.filter.all_reasons": "Все причины",
+    "system_lost.filter.days_placeholder": "За последние N дней",
+    "system_lost.table.col.lead": "Лид",
+    "system_lost.table.col.original_operator": "Оператор до",
+    "system_lost.table.col.status_before": "Статус до",
+    "system_lost.table.col.reason": "Причина",
+    "system_lost.table.col.lost_at": "Закрыт",
+    "system_lost.table.col.comment": "Комментарий",
+    "system_lost.table.col.action": "",
+    "system_lost.action.recover": "Восстановить",
+    "system_lost.action.recovering": "Восстанавливаем…",
+    "system_lost.confirm.recover": "Вернуть лид в orphan-пул? Метаданные закрытия будут удалены.",
+    "system_lost.toast.recovered": "Лид восстановлен",
+    "system_lost.empty": "Системно потерянных лидов нет.",
+    "system_lost.loading": "Загрузка…",
   },
 
   uz: {
@@ -4774,6 +4798,30 @@ const STRINGS: Lookup = {
     "weekday.sun": "Yakshanba",
 
     "nav.my_payroll": "Mening ish haqim",
+
+    // ------ system-lost leads (superadmin) ------
+    "system_lost.title": "Tizim tomonidan yopilgan lidlar",
+    "system_lost.subtitle": "Ishdan bo'shatilgan operator va noto'g'ri telefon sabab avtomatik yopilgan lidlar",
+    "system_lost.summary.total": "Jami",
+    "system_lost.summary.by_reason": "Sabab bo'yicha",
+    "system_lost.summary.top_operators": "Top operatorlar (ishdan bo'shatilgunga qadar)",
+    "system_lost.reason.stranded_on_inactive_operator": "Operator ishdan bo'shatilgan",
+    "system_lost.reason.invalid_phone_from_sheet": "Jadvaldan noto'g'ri telefon",
+    "system_lost.filter.all_reasons": "Barcha sabablar",
+    "system_lost.filter.days_placeholder": "Oxirgi N kun",
+    "system_lost.table.col.lead": "Lid",
+    "system_lost.table.col.original_operator": "Oldingi operator",
+    "system_lost.table.col.status_before": "Oldingi status",
+    "system_lost.table.col.reason": "Sabab",
+    "system_lost.table.col.lost_at": "Yopilgan",
+    "system_lost.table.col.comment": "Izoh",
+    "system_lost.table.col.action": "",
+    "system_lost.action.recover": "Tiklash",
+    "system_lost.action.recovering": "Tiklanmoqda…",
+    "system_lost.confirm.recover": "Lidni orphan-poolga qaytarasizmi? Yopilish metadatasi o'chiriladi.",
+    "system_lost.toast.recovered": "Lid tiklandi",
+    "system_lost.empty": "Tizim tomonidan yopilgan lidlar yo'q.",
+    "system_lost.loading": "Yuklanmoqda…",
   },
 };
 

@@ -1,19 +1,23 @@
 """
-Проактивная гигиена: раз в сутки считаем «пропавших лидов» и алертим
-superadmin'ам в Telegram, если счётчики выше порога.
+Проактивная гигиена: раз в сутки считаем, сколько лидов система
+пометила как `system-lost` за прошедшие 24 часа. Если счётчик выше
+порога — шлём superadmin'ам алерт в Telegram.
 
-Считаем два потенциально проблемных пула:
-  * stranded — non-terminal лиды на inactive-операторах (тот же селектор,
-    что использует rescue_stranded_leads).
-  * needs_review-older-than-7-days — сироты в needs_review, зависшие
-    в очереди на ручной триаж больше недели. Обычно битые sheet-строки,
-    которые никто не разобрал.
+История: раньше эта команда считала два пула — `stranded` (non-terminal
+на inactive-операторах) и `needs_review > 7 дней`. После введения
+system-lost:
+  * stranded не копится (`operator_deactivate` сразу помечает touched
+    как system-lost);
+  * needs_review-сироты тоже помечаются командой
+    `mark_stranded_as_system_lost` (одноразово + ловля новых через
+    `check_stranded_leads`).
 
-Оба порога управляются одной env-переменной `STRANDED_ALERT_THRESHOLD`
-(default 20). Ниже порога — silent (не шумим лишний раз).
+Значит новая метрика — «сколько лидов за сутки ушло в system-lost».
+Если после массовой миграции 556 → 0 счётчик снова полез вверх, значит
+что-то системное сломалось (например, sheet-строки массово идут с
+битым phone, или уволили целый пул). Алерт зовёт superadmin разобраться.
 
-Флаг `--dry-run` — печатаем цифры в stdout, но НЕ шлём Telegram. Нужен
-для тестирования и для регистрации в scheduler'е без риска спама.
+Флаг `--dry-run` — печатает цифры в stdout, но не шлёт Telegram.
 
 Регистрируем в docker-compose как отдельный шаг ops-nightly (23:30
 Tashkent) — после `release_stale_leads` и до `send_daily_manager_report`.
@@ -29,7 +33,9 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from apps.leads.models import Lead
 from apps.leads.selectors import (
+    KNOWN_LOST_REASONS,
     needs_review_leads,
     stranded_on_inactive_operators,
 )
@@ -38,7 +44,8 @@ from apps.leads.selectors import (
 class Command(BaseCommand):
     help = (
         "Проактивная гигиена «пропавших лидов»: алерт superadmin'ам, если "
-        "stranded или needs_review-old превышают порог."
+        "за сутки system-lost превышает порог, а также контроль остаточных "
+        "stranded / needs_review-old."
     )
 
     def add_arguments(self, parser):
@@ -53,6 +60,12 @@ class Command(BaseCommand):
             default=None,
             help="Порог. Иначе — env STRANDED_ALERT_THRESHOLD (default 20).",
         )
+        parser.add_argument(
+            "--window-hours",
+            type=int,
+            default=24,
+            help="Окно, за которое считаем свежие system-lost (default 24 часа).",
+        )
 
     def handle(self, *args, **opts):
         dry_run = bool(opts.get("dry_run"))
@@ -62,29 +75,69 @@ class Command(BaseCommand):
                 threshold = int(os.environ.get("STRANDED_ALERT_THRESHOLD", "20"))
             except ValueError:
                 threshold = 20
+        window_hours = int(opts.get("window_hours") or 24)
 
-        stranded_count = stranded_on_inactive_operators().count()
+        cutoff_iso = (
+            timezone.localtime(timezone.now() - dt.timedelta(hours=window_hours))
+            .isoformat(timespec="seconds")
+        )
 
-        # needs_review старше 7 дней. `created_at` — когда сирота попала в БД.
-        cutoff = timezone.now() - dt.timedelta(days=7)
+        # Свежие system-lost — метрика #1. Читаем лексикографически по
+        # `metadata->lost_at` (ISO-строка), что работает пока TZ offset
+        # одинаковый (у нас Asia/Tashkent).
+        recent_lost = Lead.objects.filter(
+            metadata__lost_reason__isnull=False,
+            metadata__lost_at__gte=cutoff_iso,
+        ).count()
+
+        # По reason'у — какая именно причина растёт (invalid_phone
+        # vs stranded_on_inactive_operator).
+        recent_by_reason: dict[str, int] = {}
+        for reason in KNOWN_LOST_REASONS:
+            recent_by_reason[reason] = Lead.objects.filter(
+                metadata__lost_reason=reason,
+                metadata__lost_at__gte=cutoff_iso,
+            ).count()
+
+        # Метрики #2/#3 — остаточные пулы. Идеал = 0 (mark_stranded_as_system_lost
+        # уже прошёл на проде). Если рост — значит новые случаи, которые
+        # `operator_deactivate` не поймал.
+        stranded_leftover = stranded_on_inactive_operators().count()
+        cutoff_days = timezone.now() - dt.timedelta(days=7)
         needs_review_old_count = (
-            needs_review_leads().filter(created_at__lt=cutoff).count()
+            needs_review_leads().filter(created_at__lt=cutoff_days).count()
         )
 
         self.stdout.write(
-            f"[check-stranded] stranded={stranded_count} "
+            f"[check-stranded] recent_system_lost({window_hours}h)={recent_lost} "
+            f"stranded_leftover={stranded_leftover} "
             f"needs_review>7d={needs_review_old_count} threshold={threshold}"
         )
+        if recent_by_reason:
+            for reason, n in sorted(recent_by_reason.items()):
+                self.stdout.write(f"[check-stranded]   {reason}: {n}")
 
-        # Silent path — оба ниже порога.
-        if stranded_count < threshold and needs_review_old_count < threshold:
+        # Silent path — все ниже порога.
+        if (
+            recent_lost < threshold
+            and stranded_leftover < threshold
+            and needs_review_old_count < threshold
+        ):
             self.stdout.write(self.style.SUCCESS("[check-stranded] всё в порядке"))
             return
 
         body_lines = ["⚠️ <b>Пропавшие лиды копятся</b>"]
-        if stranded_count >= threshold:
+        if recent_lost >= threshold:
             body_lines.append(
-                f"• зависли на уволенных: <b>{stranded_count}</b>"
+                f"• за {window_hours}h ушли в system-lost: <b>{recent_lost}</b>"
+            )
+            for reason, n in sorted(recent_by_reason.items()):
+                if n:
+                    body_lines.append(f"    — {reason}: {n}")
+        if stranded_leftover >= threshold:
+            body_lines.append(
+                f"• остаточные stranded (non-terminal на inactive): "
+                f"<b>{stranded_leftover}</b>"
             )
         if needs_review_old_count >= threshold:
             body_lines.append(
@@ -92,8 +145,9 @@ class Command(BaseCommand):
             )
         body_lines.append("")
         body_lines.append(
-            "Запусти <code>rescue_stranded_leads --dry-run</code> и посмотри "
-            "предпросмотр, потом без флага для применения."
+            "Проверь /leads/system-lost (superadmin) — таблица со всеми "
+            "автозакрытиями. Если рост системный, запусти "
+            "<code>mark_stranded_as_system_lost --dry-run</code>."
         )
         body = "\n".join(body_lines)
 

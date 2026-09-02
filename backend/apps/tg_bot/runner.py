@@ -1170,6 +1170,7 @@ async def main() -> None:
         ("find", "cmd_find"),
         ("whyauto", "cmd_whyauto"),
         ("whogot", "cmd_whogot"),
+        ("leaders", "cmd_leaders"),
         ("health", "cmd_health"),
         ("subscribe", "cmd_subscribe"),
         ("unsubscribe", "cmd_unsubscribe"),
@@ -1277,6 +1278,13 @@ async def main() -> None:
         arg = raw[1].strip() if len(raw) > 1 else ""
         tg_user_id = msg.from_user.id
         text = await asyncio.to_thread(_bot_whogot, tg_user_id, arg)
+        await _send_html_chunks(msg, text)
+
+    @dp.message(Command("leaders"))
+    async def cmd_leaders(msg: Message) -> None:
+        tg_user_id = msg.from_user.id
+        chat_id = msg.chat.id
+        text = await asyncio.to_thread(_bot_leaders_snapshot, tg_user_id, chat_id)
         await _send_html_chunks(msg, text)
 
     @dp.message(Command("health"))
@@ -1542,6 +1550,13 @@ async def main() -> None:
 
             if intent.kind == IntentKind.HEALTH:
                 out = await _bot_health_report()
+                await _send_html_chunks(msg, out)
+                return
+
+            if intent.kind == IntentKind.LEADERS:
+                out = await asyncio.to_thread(
+                    _bot_leaders_snapshot, tg_user_id, msg.chat.id
+                )
                 await _send_html_chunks(msg, out)
                 return
 
@@ -2372,6 +2387,37 @@ def _pool_size() -> int:
     from apps.leads.selectors import _orphan_pool_size
 
     return _orphan_pool_size()
+
+
+def _bot_leaders_snapshot(tg_user_id: int, chat_id: int) -> str:
+    """
+    /leaders — сборка того же лидерборда, что рассылается каждые 3 часа
+    (send_3h_leaderboard). Только по запросу, без учёта min/max_hour и
+    без рассылки — отвечаем в тот же чат. Роли: manager/superadmin/team_lead.
+
+    Переиспользуем `_build_report` из management-команды, чтобы формат
+    один-в-один совпадал с автоматическим 3-часовым отчётом.
+    """
+    import datetime as _dt
+
+    from django.utils import timezone as _tz
+
+    from apps.analytics.selectors import lead_stats_snapshot
+    from apps.tg_bot.management.commands.send_3h_leaderboard import _build_report
+
+    allowed, reason = _whyauto_permission(tg_user_id)
+    if not allowed:
+        return reason
+
+    now = _tz.localtime()
+    tz = _tz.get_current_timezone()
+    today = now.date()
+    date_from = _dt.datetime.combine(today, _dt.time.min, tzinfo=tz)
+    date_to = _dt.datetime.combine(today, _dt.time.max, tzinfo=tz)
+
+    snapshot = lead_stats_snapshot(date_from=date_from, date_to=date_to)
+    lang = _get_lang_sync(chat_id)
+    return _build_report(snapshot, now=now, lang=lang)
 
 
 def _bot_whogot(tg_user_id: int, arg: str) -> str:

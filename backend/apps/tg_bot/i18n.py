@@ -254,6 +254,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "📊 Кто сколько получил (менеджер)",
         "uz": "📊 Kim necha ta oldi (menejer)",
     },
+    "cmd_leaders": {
+        "ru": "📊 Отчёт по операторам сейчас (менеджер)",
+        "uz": "📊 Operatorlar bo'yicha hisobot (menejer)",
+    },
     "cmd_health": {
         "ru": "🩺 Здоровье системы (менеджер)",
         "uz": "🩺 Tizim salomatligi (menejer)",
