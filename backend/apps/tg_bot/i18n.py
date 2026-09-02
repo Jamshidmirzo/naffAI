@@ -250,6 +250,36 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "🩺 Почему нет автораздачи (менеджер)",
         "uz": "🩺 Nima uchun avto-taqsimlash yo'q (menejer)",
     },
+    "cmd_whogot": {
+        "ru": "📊 Кто сколько получил (менеджер)",
+        "uz": "📊 Kim necha ta oldi (menejer)",
+    },
+    "cmd_health": {
+        "ru": "🩺 Здоровье системы (менеджер)",
+        "uz": "🩺 Tizim salomatligi (menejer)",
+    },
+    "cmd_logs": {
+        "ru": "📜 Логи контейнера (владелец)",
+        "uz": "📜 Konteyner loglari (egasi)",
+    },
+
+    # --- ops-agent / free-text denials ---
+    "ops_denied_operator": {
+        "ru": "Я — сервисный ops-агент. Свободный текст доступен менеджеру. "
+              "Вам — команды /new, /report, /sales, /checkin, /checkout, /status.",
+        "uz": "Men — servis ops-agentiman. Erkin matn menejerga ochiq. "
+              "Sizga — /new, /report, /sales, /checkin, /checkout, /status buyruqlari.",
+    },
+    "ops_denied_unknown": {
+        "ru": "Ваш Telegram не привязан к аккаунту. Пришлите /link 123456 "
+              "(код в веб-профиле).",
+        "uz": "Sizning Telegram akkauntingiz bogʻlanmagan. /link 123456 yuboring "
+              "(kod veb-profildan).",
+    },
+    "logs_manager_degrade": {
+        "ru": "Сырые логи доступны только владельцу. Показываю сводку /health вместо этого.",
+        "uz": "Xom loglar faqat egaga ochiq. Buning oʻrniga /health koʻrsataman.",
+    },
 
     # --- daily report ---
     "rep_header": {"ru": "📊 *Отчёт за {date}*", "uz": "📊 *{date} hisoboti*"},

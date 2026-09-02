@@ -1470,6 +1470,185 @@ def _canon_name(text: str) -> str:
     return out
 
 
+def assignment_summary(target_date: dt.date | None = None) -> list[dict]:
+    """
+    Сводка «кто сколько получил лидов за день» для ops-агента бота.
+
+    За указанный день (по умолчанию — сегодня в Asia/Tashkent) собираем
+    количество новых `LeadAssignment` по каждому оператору с разбивкой
+    по source (`auto_refill` / `auto_round_robin` / `morning_split` /
+    `admin_reassign` / `qimmatlik_retry` / `sheet_manual`), плюс текущий
+    working_count/квоту из `operators_distribution_status()`.
+
+    Возвращает список dict, отсортированный по total DESC:
+      [
+        {
+          "operator_id": 33,
+          "full_name": "Muxlisa",
+          "status": "active",
+          "total": 15,
+          "by_source": {"morning_split": 10, "auto_refill": 5},
+          "working_count": 5,   # None если оператор не ACTIVE
+          "quota": 5,           # RR_BATCH_SIZE
+          "eligible": False,    # None если не ACTIVE
+        },
+        ...
+      ]
+
+    Операторов, у которых 0 назначений за день И которые не ACTIVE,
+    отдаём в конце — иначе бот будет засорять экран уволенными.
+    """
+    from apps.leads.models import LeadAssignment
+
+    tz = timezone.get_current_timezone()
+    day = target_date or timezone.localdate()
+    start_local = dt.datetime.combine(day, dt.time.min, tzinfo=tz)
+    end_local = start_local + dt.timedelta(days=1)
+
+    rows = (
+        LeadAssignment.objects.filter(
+            created_at__gte=start_local,
+            created_at__lt=end_local,
+            operator__isnull=False,
+        )
+        .values("operator_id", "source")
+        .annotate(n=Count("id"))
+    )
+
+    per_op: dict[int, dict] = {}
+    for r in rows:
+        entry = per_op.setdefault(
+            r["operator_id"],
+            {"total": 0, "by_source": {}},
+        )
+        entry["total"] += r["n"]
+        entry["by_source"][r["source"]] = r["n"]
+
+    # Тянем базовую инфу для всех операторов, которые фигурировали в раздачах
+    # (могут быть INACTIVE — тогда working_count/eligible не считаем).
+    op_ids = list(per_op.keys())
+    op_map: dict[int, Operator] = {}
+    if op_ids:
+        op_map = {
+            op.id: op
+            for op in Operator.objects.filter(id__in=op_ids).only(
+                "id", "full_name", "status"
+            )
+        }
+
+    # Плюс — активные операторы БЕЗ назначений за день (чтобы менеджер
+    # увидел «у Мухлисы 0 сегодня, а квота 5/5 забита»).
+    status_rows = operators_distribution_status()
+    status_by_id: dict[int, dict] = {r["id"]: r for r in status_rows}
+    quota = _rr_batch_size()
+
+    result: list[dict] = []
+    seen: set[int] = set()
+
+    for op_id, entry in per_op.items():
+        op = op_map.get(op_id)
+        st = status_by_id.get(op_id)
+        result.append(
+            {
+                "operator_id": op_id,
+                "full_name": op.full_name if op else f"?({op_id})",
+                "status": op.status if op else "unknown",
+                "total": entry["total"],
+                "by_source": entry["by_source"],
+                "working_count": st["working_count"] if st else None,
+                "quota": quota,
+                "eligible": st["eligible"] if st else None,
+                "reason": st["reason"] if st else "",
+            }
+        )
+        seen.add(op_id)
+
+    # Активные операторы без назначений — добавляем с total=0, чтобы бот
+    # мог показать «эти сегодня вообще ничего не получили».
+    for st in status_rows:
+        if st["id"] in seen:
+            continue
+        result.append(
+            {
+                "operator_id": st["id"],
+                "full_name": st["full_name"],
+                "status": st["status"],
+                "total": 0,
+                "by_source": {},
+                "working_count": st["working_count"],
+                "quota": quota,
+                "eligible": st["eligible"],
+                "reason": st["reason"],
+            }
+        )
+
+    # Сортировка: total DESC, потом working_count ASC (свободные выше),
+    # потом id ASC для стабильности.
+    result.sort(
+        key=lambda r: (
+            -r["total"],
+            r["working_count"] if r["working_count"] is not None else 999,
+            r["operator_id"],
+        )
+    )
+    return result
+
+
+def operator_assignments_for_day(
+    operator: Operator, target_date: dt.date | None = None
+) -> list[dict]:
+    """
+    История выдач конкретному оператору за день — «почему ему дало 15».
+
+    Возвращает список dict в хронологическом порядке (старейшие сверху):
+      [
+        {
+          "assignment_id": 1234,
+          "created_at": "2026-09-02T08:30:12+05:00",
+          "source": "morning_split",
+          "lead_id": 42,
+          "lead_name": "Ali Valiyev",
+          "lead_phone": "+998901234567",
+          "lead_status": "assigned",
+          "reason": "",
+        },
+        ...
+      ]
+    """
+    from apps.leads.models import LeadAssignment
+
+    tz = timezone.get_current_timezone()
+    day = target_date or timezone.localdate()
+    start_local = dt.datetime.combine(day, dt.time.min, tzinfo=tz)
+    end_local = start_local + dt.timedelta(days=1)
+
+    rows = (
+        LeadAssignment.objects.filter(
+            operator=operator,
+            created_at__gte=start_local,
+            created_at__lt=end_local,
+        )
+        .select_related("lead")
+        .order_by("created_at")
+    )
+    result: list[dict] = []
+    for row in rows:
+        lead = row.lead
+        result.append(
+            {
+                "assignment_id": row.id,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+                "source": row.source,
+                "lead_id": lead.id if lead else None,
+                "lead_name": (lead.full_name if lead else "") or "",
+                "lead_phone": (lead.phone if lead else "") or "",
+                "lead_status": (lead.status if lead else "") or "",
+                "reason": row.reason or "",
+            }
+        )
+    return result
+
+
 def find_operators_by_freetext(query: str, *, limit: int = 5) -> list[Operator]:
     """
     Найти оператора(ов) по свободному тексту: имя, часть имени, id, phone.

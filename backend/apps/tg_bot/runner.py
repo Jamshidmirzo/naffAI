@@ -1169,6 +1169,8 @@ async def main() -> None:
         ("leads", "cmd_leads"),
         ("find", "cmd_find"),
         ("whyauto", "cmd_whyauto"),
+        ("whogot", "cmd_whogot"),
+        ("health", "cmd_health"),
         ("subscribe", "cmd_subscribe"),
         ("unsubscribe", "cmd_unsubscribe"),
         ("language", "cmd_language"),
@@ -1260,6 +1262,62 @@ async def main() -> None:
             _bot_diagnose_auto_assignment, tg_user_id, query
         )
         await msg.answer(result, parse_mode="HTML", disable_web_page_preview=True)
+
+    # ----------------------------------------------------------------
+    # /whogot [вчера] [имя_оператора]
+    # /health
+    # /logs <service> [N]
+    # + свободный текст на манерe LLM (без LLM), маршрутизируется через
+    # apps.tg_bot.agent.parse_intent → тот же набор действий.
+    # ----------------------------------------------------------------
+
+    @dp.message(Command("whogot"))
+    async def cmd_whogot(msg: Message) -> None:
+        raw = (msg.text or "").split(maxsplit=1)
+        arg = raw[1].strip() if len(raw) > 1 else ""
+        tg_user_id = msg.from_user.id
+        text = await asyncio.to_thread(_bot_whogot, tg_user_id, arg)
+        await _send_html_chunks(msg, text)
+
+    @dp.message(Command("health"))
+    async def cmd_health(msg: Message) -> None:
+        tg_user_id = msg.from_user.id
+        allowed, reason = await asyncio.to_thread(_whyauto_permission, tg_user_id)
+        if not allowed:
+            await msg.answer(reason, parse_mode="HTML")
+            return
+        text = await _bot_health_report()
+        await _send_html_chunks(msg, text)
+
+    @dp.message(Command("logs"))
+    async def cmd_logs(msg: Message) -> None:
+        parts = (msg.text or "").split()
+        service = parts[1].strip() if len(parts) >= 2 else ""
+        try:
+            n = int(parts[2]) if len(parts) >= 3 else 50
+        except ValueError:
+            n = 50
+        tg_user_id = msg.from_user.id
+        # /logs — только superadmin (в логах могут быть телефоны клиентов).
+        role_ok = await asyncio.to_thread(_is_superadmin, tg_user_id)
+        if not role_ok:
+            await msg.answer(
+                "❌ Сырые логи доступны только владельцу (superadmin). "
+                "Используй /health для сводки статуса.",
+                parse_mode="HTML",
+            )
+            return
+        if not service:
+            await msg.answer(
+                "Использование: <code>/logs &lt;service&gt; [N]</code>\n\n"
+                "Доступные сервисы: distribute-watcher, sheet-sync, "
+                "morning-splitter, scheduler, reports-scheduler, "
+                "userclient, bot, web, lesson-generator, ops-nightly.",
+                parse_mode="HTML",
+            )
+            return
+        text = await _bot_logs_tail(service, n)
+        await _send_html_chunks(msg, text)
 
     async def _handle_attendance_photo(
         msg: Message, state: FSMContext, action: str
@@ -1438,6 +1496,105 @@ async def main() -> None:
             except Exception:
                 pass
 
+    # ------------------------------------------------------------------
+    # Free-text catch-all для менеджера / superadmin.
+    #
+    # ВАЖНО: этот хендлер регистрируется ПОСЛЕДНИМ и обязательно с
+    # StateFilter(None) — иначе он перехватит шаги FSM (/new — модель,
+    # IMEI, сумма и т.д.), которые тоже принимают F.text. Только private
+    # чаты — в группах бот молчит, чтобы не устраивать шум.
+    #
+    # Пайплайн:
+    #   1. Роль отправителя: manager/superadmin → маршрутизируем;
+    #      оператор → вежливо посылаем к командам;
+    #      unknown → просим /link.
+    #   2. `parse_intent(text)` → Intent (без LLM).
+    #   3. Ветви по kind: WHY_NO_LEADS / WHO_GOT / HEALTH / LOGS / HELP.
+    #      Для LOGS с ролью manager (не superadmin) — деградируем в HEALTH.
+    from aiogram.filters import StateFilter
+
+    @dp.message(StateFilter(None), F.text, F.chat.type == "private")
+    async def ops_free_text(msg: Message) -> None:
+        text_in = (msg.text or "").strip()
+        if not text_in or text_in.startswith("/"):
+            # Не наш случай: пустая строка или прошёл под команду, которую
+            # aiogram не подхватил — тогда fall-through не имеет смысла.
+            return
+        tg_user_id = msg.from_user.id
+        gate = await asyncio.to_thread(_ops_gate, tg_user_id)
+        # gate = ("allowed"|"operator"|"unknown", role_name, lang)
+        role_gate, _role_name, lang = gate
+        if role_gate == "operator":
+            await msg.answer(t("ops_denied_operator", lang))
+            return
+        if role_gate == "unknown":
+            await msg.answer(t("ops_denied_unknown", lang))
+            return
+
+        # allowed → parse + dispatch
+        from apps.tg_bot.agent import IntentKind, help_text_ru, parse_intent
+
+        intent = parse_intent(text_in)
+        try:
+            if intent.kind == IntentKind.HELP:
+                await msg.answer(help_text_ru(), parse_mode="HTML")
+                return
+
+            if intent.kind == IntentKind.HEALTH:
+                out = await _bot_health_report()
+                await _send_html_chunks(msg, out)
+                return
+
+            if intent.kind == IntentKind.LOGS:
+                # Manager without superadmin — деградируем в /health,
+                # предупредив об этом.
+                is_super = await asyncio.to_thread(_is_superadmin, tg_user_id)
+                if not is_super:
+                    await msg.answer(t("logs_manager_degrade", lang))
+                    out = await _bot_health_report()
+                    await _send_html_chunks(msg, out)
+                    return
+                svc = intent.log_service or ""
+                if not svc:
+                    await msg.answer(
+                        "Не понял, какой сервис. Пример: <i>«логи "
+                        "distribute-watcher 30»</i>. Доступно: bot, web, "
+                        "distribute-watcher, sheet-sync, morning-splitter, "
+                        "scheduler, reports-scheduler, userclient, "
+                        "lesson-generator, ops-nightly.",
+                        parse_mode="HTML",
+                    )
+                    return
+                out = await _bot_logs_tail(svc, intent.log_lines)
+                await _send_html_chunks(msg, out)
+                return
+
+            if intent.kind == IntentKind.WHY_NO_LEADS:
+                # Тот же путь, что /whyauto — используем существующий helper.
+                out = await asyncio.to_thread(
+                    _bot_diagnose_auto_assignment,
+                    tg_user_id,
+                    intent.operator_query,
+                )
+                await _send_html_chunks(msg, out)
+                return
+
+            if intent.kind == IntentKind.WHO_GOT:
+                arg = intent.operator_query
+                if intent.target_date is not None:
+                    arg = f"вчера {arg}".strip()
+                out = await asyncio.to_thread(
+                    _bot_whogot, tg_user_id, arg
+                )
+                await _send_html_chunks(msg, out)
+                return
+
+            # Не должно быть — но безопасный дефолт.
+            await msg.answer(help_text_ru(), parse_mode="HTML")
+        except Exception:
+            logger.exception("ops_free_text failed")
+            await msg.answer("❌ Внутренняя ошибка при обработке запроса.")
+
     # v2: react to bot being added / removed from a chat so BotChat stays
     # in sync. Aiogram receives `my_chat_member` on chat-membership changes.
     @dp.my_chat_member()
@@ -1475,9 +1632,114 @@ async def main() -> None:
         except Exception:
             logger.exception("my_chat_member handling failed chat_id=%s", chat.id)
 
+    # ---- ops-agent async helpers (closures over `bot`) -------------
+
+    async def _send_html_chunks(msg: Message, html_text: str) -> None:
+        """Split >4096-char HTML into safe chunks and send sequentially."""
+        from apps.tg_bot.selectors import chunk_html_for_telegram
+
+        for chunk in chunk_html_for_telegram(html_text):
+            try:
+                await msg.answer(
+                    chunk, parse_mode="HTML", disable_web_page_preview=True
+                )
+            except Exception:
+                logger.exception("send chunk failed (len=%s)", len(chunk))
+
+    async def _bot_health_report() -> str:
+        """Собрать /health-ответ: контейнеры + heartbeat + пул."""
+        from apps.tg_bot.docker_client import crash_snapshot
+        from apps.tg_bot.selectors import render_health
+
+        containers = await crash_snapshot()
+        heartbeat = await asyncio.to_thread(_last_assignment_at)
+        pool = await asyncio.to_thread(_pool_size)
+        return render_health(
+            containers, last_assignment_at=heartbeat, pool_size=pool
+        )
+
+    async def _bot_logs_tail(service: str, n: int) -> str:
+        from apps.tg_bot.docker_client import tail_logs
+        from apps.tg_bot.selectors import render_logs_tail
+
+        lines_out, err = await tail_logs(service, n)
+        return render_logs_tail(service, lines_out, err)
+
+    # ---- crash_watch: раз в 5 мин, алерт superadmin'ам ---------------
+    async def crash_watch_loop() -> None:
+        """
+        Опрашиваем docker-proxy каждые 5 минут. Если контейнер:
+          - не Up (state != running); ИЛИ
+          - RestartCount вырос со времени последнего тика; ИЛИ
+          - OOMKilled = True (и предыдущим тиком было False)
+        → шлём алерт всем chat_id, привязанным к SUPERADMIN'ам.
+        Антиспам: не чаще 1 алерта на контейнер за 30 мин.
+        """
+        from apps.tg_bot.docker_client import crash_snapshot
+
+        state: dict[str, dict] = {}
+        last_alert: dict[str, dt.datetime] = {}
+        ANTISPAM = dt.timedelta(minutes=30)
+        logger.info("crash_watch loop started (interval=300s)")
+        while True:
+            try:
+                await asyncio.sleep(300)
+            except asyncio.CancelledError:
+                return
+            try:
+                snapshot = await crash_snapshot()
+            except Exception:
+                logger.exception("crash_watch snapshot failed")
+                continue
+            alerts: list[str] = []
+            now = dt.datetime.now()
+            for c in snapshot:
+                name = c["name"]
+                prev = state.get(name) or {"state": c["state"], "restart_count": c["restart_count"], "oom_killed": False}
+                reasons: list[str] = []
+                if c["state"] != "running":
+                    reasons.append(f"state={c['state']} ({c.get('status')})")
+                if c["restart_count"] > prev.get("restart_count", 0):
+                    reasons.append(
+                        f"restart_count {prev.get('restart_count', 0)}→{c['restart_count']}"
+                    )
+                if c["oom_killed"] and not prev.get("oom_killed"):
+                    reasons.append("OOMKilled")
+                if reasons:
+                    ts = last_alert.get(name)
+                    if ts is None or now - ts >= ANTISPAM:
+                        alerts.append(
+                            f"⚠️ <b>{name}</b>: " + "; ".join(reasons)
+                        )
+                        last_alert[name] = now
+                state[name] = {
+                    "state": c["state"],
+                    "restart_count": c["restart_count"],
+                    "oom_killed": c["oom_killed"],
+                }
+            if not alerts:
+                continue
+            body = "🚨 <b>Docker alert</b>\n\n" + "\n".join(alerts)
+            try:
+                superadmin_chats = await asyncio.to_thread(_superadmin_chat_ids)
+            except Exception:
+                logger.exception("crash_watch: superadmin chats lookup failed")
+                superadmin_chats = []
+            for chat_id in superadmin_chats:
+                try:
+                    await bot.send_message(chat_id, body, parse_mode="HTML")
+                except Exception:
+                    logger.exception("crash_watch: send to %s failed", chat_id)
+
     logger.info("Bot started — polling…")
-    asyncio.create_task(daily_report_scheduler())
-    await dp.start_polling(bot)
+    # Save refs so python GC doesn't cancel background tasks (RUF006).
+    _bg_daily_task = asyncio.create_task(daily_report_scheduler())
+    _bg_crash_task = asyncio.create_task(crash_watch_loop())
+    try:
+        await dp.start_polling(bot)
+    finally:
+        _bg_daily_task.cancel()
+        _bg_crash_task.cancel()
 
 
 def _create_sale(data: dict):
@@ -2036,6 +2298,142 @@ def _bot_diagnose_auto_assignment(tg_user_id: int, query: str) -> str:
     op = candidates[0]
     diag = diagnose_operator_assignment(op)
     return render_diagnose_report(diag)
+
+
+# --------------------------------------------------------------------------
+# Ops-agent sync helpers (используются из asyncio.to_thread)
+# --------------------------------------------------------------------------
+
+
+def _ops_gate(tg_user_id: int) -> tuple[str, str, str]:
+    """
+    Ролевой гейт для свободного текста и /whogot.
+
+    Возвращает кортеж (gate, role_name, lang):
+      - gate ∈ {"allowed", "operator", "unknown"}
+      - role_name — как в БД ("manager" / "operator" / "superadmin" / …)
+      - lang — язык чата ("ru" / "uz")
+    """
+    from apps.tg_bot.models import BotSubscription
+    from apps.users.models import Profile, Role
+
+    profile = Profile.objects.filter(telegram_user_id=tg_user_id).first()
+    lang = "ru"
+    row = BotSubscription.objects.filter(chat_id=tg_user_id).values("language").first()
+    if row and row.get("language") in ("ru", "uz"):
+        lang = row["language"]
+
+    if profile is None:
+        return ("unknown", "", lang)
+    role = profile.role or ""
+    if role in (Role.MANAGER, Role.SUPERADMIN, Role.TEAM_LEAD):
+        return ("allowed", role, lang)
+    return ("operator", role, lang)
+
+
+def _is_superadmin(tg_user_id: int) -> bool:
+    from apps.users.models import Profile, Role
+
+    return Profile.objects.filter(
+        telegram_user_id=tg_user_id, role=Role.SUPERADMIN
+    ).exists()
+
+
+def _superadmin_chat_ids() -> list[int]:
+    """
+    Все telegram_user_id, привязанные к SUPERADMIN'ам. Используется
+    crash_watch для рассылки алертов о крашах. Дубли и None отфильтровываем.
+    """
+    from apps.users.models import Profile, Role
+
+    ids = list(
+        Profile.objects.filter(role=Role.SUPERADMIN, telegram_user_id__isnull=False)
+        .values_list("telegram_user_id", flat=True)
+    )
+    return [int(i) for i in dict.fromkeys(ids) if i]
+
+
+def _last_assignment_at():
+    """
+    Время последнего LeadAssignment. Используется в /health как heartbeat
+    авто-раздачи: если давно ничего не назначалось — что-то не так.
+    """
+    from apps.leads.models import LeadAssignment
+
+    row = (
+        LeadAssignment.objects.order_by("-created_at")
+        .values("created_at")
+        .first()
+    )
+    return row["created_at"] if row else None
+
+
+def _pool_size() -> int:
+    from apps.leads.selectors import _orphan_pool_size
+
+    return _orphan_pool_size()
+
+
+def _bot_whogot(tg_user_id: int, arg: str) -> str:
+    """
+    /whogot [вчера] [оператор].
+    Разбирает аргументы, парсит дату, если внутри — имя, отдаёт
+    per-operator историю; иначе — общую сводку.
+    """
+    import datetime as _dt
+
+    from django.utils import timezone as _tz
+
+    from apps.leads.selectors import (
+        assignment_summary,
+        find_operators_by_freetext,
+        operator_assignments_for_day,
+    )
+    from apps.tg_bot.selectors import (
+        render_assignment_summary,
+        render_operator_assignments,
+    )
+
+    allowed, reason = _whyauto_permission(tg_user_id)
+    if not allowed:
+        return reason
+
+    arg = (arg or "").strip()
+    yesterday = False
+    if arg:
+        low = arg.lower()
+        if low.startswith("вчера") or low.startswith("kecha"):
+            yesterday = True
+            arg = arg[len("вчера") :].strip() if low.startswith("вчера") else arg[len("kecha") :].strip()
+        elif " вчера" in low or " kecha" in low:
+            yesterday = True
+            arg = arg.replace("вчера", "").replace("kecha", "").strip()
+
+    target = _tz.localdate() - _dt.timedelta(days=1) if yesterday else _tz.localdate()
+
+    if arg:
+        cand = find_operators_by_freetext(arg, limit=5)
+        if not cand:
+            # Не оператор — рендерим общую сводку с пометкой.
+            rows = assignment_summary(target)
+            return render_assignment_summary(rows, target) + (
+                f"\n\n<i>Оператор «{arg}» не найден.</i>"
+            )
+        if len(cand) > 1:
+            lines = [
+                f"🔎 Уточни оператора по запросу «<b>{arg}</b>»:"
+            ]
+            for op in cand:
+                lines.append(
+                    f"  • <code>/whogot {op.id}</code> — {op.full_name} ({op.status})"
+                )
+            return "\n".join(lines)
+        op = cand[0]
+        rows = operator_assignments_for_day(op, target)
+        return render_operator_assignments(op.full_name, rows, target)
+
+    rows = assignment_summary(target)
+    return render_assignment_summary(rows, target)
 
 
 if __name__ == "__main__":
