@@ -220,3 +220,32 @@ class TestLeadersIntent:
         # LEADERS. Лидерборд полнее — приоритет за ним.
         r = parse_intent("сколько поговорил каждый оператор")
         assert r.kind == IntentKind.LEADERS
+
+    def test_calls_ru(self):
+        r = parse_intent("сколько звонков сделали сегодня")
+        assert r.kind == IntentKind.LEADERS
+        assert r.operator_query == ""  # период не указан → сегодня
+
+    def test_calls_uz(self):
+        r = parse_intent("bugun operatorlar necha ta qo'ng'iroq qildi")
+        assert r.kind == IntentKind.LEADERS
+
+    def test_leaders_period_yesterday(self):
+        r = parse_intent("отчёт вчера")
+        assert r.kind == IntentKind.LEADERS
+        assert r.operator_query == "вчера"
+
+    def test_leaders_period_week(self):
+        r = parse_intent("сводка за неделю")
+        assert r.kind == IntentKind.LEADERS
+        assert r.operator_query == "неделя"
+
+    def test_leaders_period_month(self):
+        r = parse_intent("рейтинг за месяц")
+        assert r.kind == IntentKind.LEADERS
+        assert r.operator_query == "месяц"
+
+    def test_calls_period_yesterday(self):
+        r = parse_intent("звонки вчера")
+        assert r.kind == IntentKind.LEADERS
+        assert r.operator_query == "вчера"

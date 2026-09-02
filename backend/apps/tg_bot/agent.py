@@ -195,7 +195,51 @@ _LEADERS_PHRASES = (
     "сколько поговорил",
     "поговорили",
     "necha ta gaplashd",  # UZ «сколько поговорил»
+    "звонк",       # «звонки», «звонков», «звонки сегодня»
+    "звонил",      # «сколько звонил»
+    "calls",
+    "call ",
+    "qong'iroq",   # UZ «звонок»
+    "qongiroq",
+    "qo'ng'iroq",
+    "кто работал",
+    "сегодня операторы",
+    "операторы сегодня",
+    "operator lar bugun",
+    "как поработали",
+    "показатели",
+    "kpi",
 )
+
+# Период для LEADERS ищется в тексте отдельно от _LEADERS_PHRASES —
+# «отчёт вчера», «сводка за неделю», «лидерборд hafta».
+_PERIOD_PATTERNS = (
+    ("вчера", "вчера"),
+    ("kecha", "вчера"),
+    ("yesterday", "вчера"),
+    ("неделя", "неделя"),
+    ("неделю", "неделя"),
+    ("hafta", "неделя"),
+    ("week", "неделя"),
+    ("7 дней", "неделя"),
+    ("7 дня", "неделя"),
+    ("месяц", "месяц"),
+    ("month", "месяц"),
+    ("oy", "месяц"),
+    ("30 дней", "месяц"),
+    ("30 дня", "месяц"),
+)
+
+
+def _extract_leaders_period(n: str) -> str:
+    """
+    Извлечь строку-период из нормализованного текста → передаётся в
+    `_bot_leaders_snapshot(arg)`. Пусто → сегодня.
+    """
+    for needle, out in _PERIOD_PATTERNS:
+        if needle in n:
+            return out
+    return ""
 
 _YESTERDAY_WORDS = ("вчера", "kecha")
 
@@ -385,7 +429,13 @@ def parse_intent(text: str) -> Intent:
     # Ставим ПЕРЕД WHO_GOT — «сколько поговорил» триггерит и то, и то,
     # но лидерборд полнее (unique_leads_touched + sold + статусы).
     if _contains_any(n, _LEADERS_PHRASES):
-        return Intent(kind=IntentKind.LEADERS, target_date=target_date, raw=raw)
+        period = _extract_leaders_period(n)
+        return Intent(
+            kind=IntentKind.LEADERS,
+            target_date=target_date,
+            operator_query=period,  # для LEADERS переиспользуем поле как «period arg»
+            raw=raw,
+        )
 
     # ---------- 3. WHY_NO_LEADS --------------------------------------
     why_hit = _contains_any(n, _WHY_ROOTS) or _contains_any(n, _NO_LEADS_ROOTS)

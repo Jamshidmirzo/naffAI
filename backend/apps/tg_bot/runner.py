@@ -1282,9 +1282,13 @@ async def main() -> None:
 
     @dp.message(Command("leaders"))
     async def cmd_leaders(msg: Message) -> None:
+        raw = (msg.text or "").split(maxsplit=1)
+        arg = raw[1].strip() if len(raw) > 1 else ""
         tg_user_id = msg.from_user.id
         chat_id = msg.chat.id
-        text = await asyncio.to_thread(_bot_leaders_snapshot, tg_user_id, chat_id)
+        text = await asyncio.to_thread(
+            _bot_leaders_snapshot, tg_user_id, chat_id, arg
+        )
         await _send_html_chunks(msg, text)
 
     @dp.message(Command("health"))
@@ -1554,8 +1558,13 @@ async def main() -> None:
                 return
 
             if intent.kind == IntentKind.LEADERS:
+                # operator_query для LEADERS-intent содержит parsed period
+                # («вчера» / «неделя» / «месяц» / ""=сегодня).
                 out = await asyncio.to_thread(
-                    _bot_leaders_snapshot, tg_user_id, msg.chat.id
+                    _bot_leaders_snapshot,
+                    tg_user_id,
+                    msg.chat.id,
+                    intent.operator_query,
                 )
                 await _send_html_chunks(msg, out)
                 return
@@ -2389,14 +2398,61 @@ def _pool_size() -> int:
     return _orphan_pool_size()
 
 
-def _bot_leaders_snapshot(tg_user_id: int, chat_id: int) -> str:
+def _parse_leaders_period(arg: str) -> tuple[dt.date, dt.date, str]:
     """
-    /leaders — сборка того же лидерборда, что рассылается каждые 3 часа
-    (send_3h_leaderboard). Только по запросу, без учёта min/max_hour и
-    без рассылки — отвечаем в тот же чат. Роли: manager/superadmin/team_lead.
+    Разобрать аргумент `/leaders` в (date_from, date_to, human_label):
 
-    Переиспользуем `_build_report` из management-команды, чтобы формат
-    один-в-один совпадал с автоматическим 3-часовым отчётом.
+      ""              → сегодня
+      "вчера"/"kecha" → вчера
+      "неделя"/"week"/"7"/"7д" → 7 дней (сегодня-6 … сегодня)
+      "месяц"/"month"/"30" → 30 дней
+      "YYYY-MM-DD"    → конкретный день
+
+    Всё остальное → default (сегодня).
+    """
+    import datetime as _dt
+
+    from django.utils import timezone as _tz
+
+    today = _tz.localdate()
+    a = (arg or "").strip().lower()
+
+    if not a:
+        return today, today, "сегодня"
+
+    if a in ("вчера", "kecha", "yesterday"):
+        y = today - _dt.timedelta(days=1)
+        return y, y, "вчера"
+
+    if a in ("неделя", "week", "7", "7д", "неделю", "hafta"):
+        return today - _dt.timedelta(days=6), today, "за 7 дней"
+
+    if a in ("месяц", "month", "30", "30д", "oy"):
+        return today - _dt.timedelta(days=29), today, "за 30 дней"
+
+    # YYYY-MM-DD
+    try:
+        d = _dt.date.fromisoformat(a)
+        return d, d, str(d)
+    except ValueError:
+        pass
+
+    # число «N дней»
+    if a.isdigit():
+        n = max(1, min(int(a), 90))
+        return today - _dt.timedelta(days=n - 1), today, f"за {n} дн."
+
+    return today, today, "сегодня"
+
+
+def _bot_leaders_snapshot(tg_user_id: int, chat_id: int, arg: str = "") -> str:
+    """
+    /leaders [период] — тот же формат, что 3-часовой лидерборд, но по
+    запросу и с произвольным периодом (сегодня / вчера / неделя / месяц /
+    YYYY-MM-DD / N).
+
+    Роли: manager/superadmin/team_lead. Переиспользуем `_build_report`
+    из management-команды, формат совпадает с автоматической рассылкой.
     """
     import datetime as _dt
 
@@ -2409,15 +2465,26 @@ def _bot_leaders_snapshot(tg_user_id: int, chat_id: int) -> str:
     if not allowed:
         return reason
 
-    now = _tz.localtime()
+    df, dt_, label = _parse_leaders_period(arg)
     tz = _tz.get_current_timezone()
-    today = now.date()
-    date_from = _dt.datetime.combine(today, _dt.time.min, tzinfo=tz)
-    date_to = _dt.datetime.combine(today, _dt.time.max, tzinfo=tz)
+    date_from = _dt.datetime.combine(df, _dt.time.min, tzinfo=tz)
+    date_to = _dt.datetime.combine(dt_, _dt.time.max, tzinfo=tz)
 
     snapshot = lead_stats_snapshot(date_from=date_from, date_to=date_to)
     lang = _get_lang_sync(chat_id)
-    return _build_report(snapshot, now=now, lang=lang)
+    # anchor времени в шапке отчёта = конец периода (позволяет отчёту
+    # сказать «за N дней, по состоянию на 14:00 сегодня»).
+    now = _tz.localtime()
+    body = _build_report(snapshot, now=now, lang=lang)
+    if label != "сегодня":
+        # префиксом добавляем период — _build_report сам всегда пишет
+        # «за сегодня», поэтому явно указываем период первой строкой.
+        prefix = (
+            f"📅 <b>Период:</b> {label} "
+            f"({df:%d.%m}—{dt_:%d.%m})\n\n"
+        )
+        body = prefix + body
+    return body
 
 
 def _bot_whogot(tg_user_id: int, arg: str) -> str:
