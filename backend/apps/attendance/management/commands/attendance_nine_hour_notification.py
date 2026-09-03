@@ -60,10 +60,20 @@ class Command(BaseCommand):
 
         now = timezone.now()
         threshold = now - dt.timedelta(hours=n_hours)
+        # Нижняя граница — начало вчерашнего дня по локали. Иначе на
+        # первом запуске уведомим всех, кто забыл /checkout за N недель
+        # (например Dostonbek с 16 августа). Сегодняшняя+вчерашняя
+        # незакрытая смена — достаточно для рабочего кейса.
+        tz = timezone.get_current_timezone()
+        yesterday_local = timezone.localdate() - dt.timedelta(days=1)
+        yesterday_start = dt.datetime.combine(
+            yesterday_local, dt.time.min, tzinfo=tz
+        )
 
         qs = AttendanceLog.objects.filter(
             checked_out_at__isnull=True,
             nine_hour_notified_at__isnull=True,
+            checked_in_at__gte=yesterday_start,
             checked_in_at__lte=threshold,
         ).select_related("operator")
 

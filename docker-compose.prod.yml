@@ -344,5 +344,46 @@ services:
           sleep 300
         done
 
+  # In-app уведомление оператору «ты опоздал» — 1 раз за смену
+  # (idempotent через AttendanceLog.late_notified_at). Тик каждые 5 мин.
+  attendance-late-watch:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          python manage.py attendance_late_notification || echo "att_late rc=$$?"
+          sleep 300
+        done
+
+  # In-app уведомление «пора закрыть смену» через N часов после /checkin
+  # (default 9). Игнорирует смены старше вчерашнего дня — иначе на первом
+  # старте разошлёт всем недоделанным логам за месяц. Тик каждые 15 мин.
+  attendance-nine-hour-watch:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          python manage.py attendance_nine_hour_notification || echo "att_9h rc=$$?"
+          sleep 900
+        done
+
 volumes:
   postgres-data:
