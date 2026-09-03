@@ -113,12 +113,22 @@ def test_scan_with_photo_check_in_then_out_ok(op_with_tg):
 
 
 @pytest.mark.django_db
-def test_scan_with_photo_rejects_duplicate(op_with_tg):
+def test_scan_with_photo_rejects_duplicate(op_with_tg, settings):
+    """Дубль-check по phash выключен глобально по умолчанию с 2026-09-03.
+    Тест требует явного включения флага ATTENDANCE_PHASH_CHECK_ENABLED, чтобы
+    воспроизвести старое поведение."""
+    settings.ATTENDANCE_PHASH_CHECK_ENABLED = True
+
+    import datetime as _dt
     from django.utils import timezone
     known_phash = "0000000000000001"
+    # >30 сек назад, чтобы обойти idempotency-replay (process_attendance_event
+    # возвращает cached-success для дублей в пределах 30-сек окна).
+    # Лог оставляем ОТКРЫТЫМ (без checked_out_at) — иначе на action=check_out
+    # runner короткоцирклирует до «смена уже закрыта» ещё до phash-check'a.
     AttendanceLog.objects.create(
         operator=op_with_tg,
-        checked_in_at=timezone.now(),
+        checked_in_at=timezone.now() - _dt.timedelta(minutes=2),
         checkin_photo_phash=known_phash,
     )
     # Force hash to always match the seeded one.
