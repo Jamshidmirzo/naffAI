@@ -1300,26 +1300,41 @@ def alias_lookup(alias_name: str) -> OperatorSheetAlias | None:
 
 
 # ---- Retry-export candidates ---------------------------------------------
+#
+# Список статусов для retry-export'а раньше был захардкожен здесь.
+# Начиная с 2026-09-03 он живёт в SystemSetting.retry_export_statuses и
+# редактируется менеджером через /leads-stats → «Retry статусы».
+#
+# `RETRY_EXPORT_STATUSES` оставлен как **алиас на дефолт** —
+# исторический шум в тестах и импорты (`from apps.leads.selectors import
+# RETRY_EXPORT_STATUSES`) продолжают работать: константа означает
+# «дефолтный fallback», а не «текущий выбор менеджера».
 
-RETRY_EXPORT_STATUSES = (
-    "sms_jonatildi",
-    "contacted_telegram",
-    "no_answer",
-    "no_answer_2",
+from apps.system_settings.selectors import (  # noqa: E402
+    DEFAULT_RETRY_EXPORT_STATUSES as _DEFAULT_RETRY_EXPORT_STATUSES,
+    get_retry_export_statuses as _get_retry_export_statuses,
 )
+
+# Backwards-compat alias: старые импорты (внешние скрипты, тесты)
+# продолжают ссылаться на этот tuple. Значение = дефолтный набор
+# ретрай-статусов (SMS+TG+2×no_answer).
+RETRY_EXPORT_STATUSES: tuple[str, ...] = _DEFAULT_RETRY_EXPORT_STATUSES
 
 
 def retry_export_candidates() -> QuerySet[Lead]:
     """
-    Все лиды в статусах `sms_jonatildi` + `contacted_telegram` —
-    целевой пул для ручного retry-export'а в Google Sheets.
+    Все лиды в статусах, выбранных менеджером в SystemSetting.retry_export_statuses.
+
+    Если менеджер ещё не сохранил свой набор — используется дефолт
+    (sms_jonatildi, contacted_telegram, no_answer, no_answer_2).
 
     Порядок — `-updated_at`, чтобы менеджер в свежесозданном tab'е
     видел последние по времени смены статуса сверху.
     """
+    codes = _get_retry_export_statuses()
     return (
         Lead.objects
-        .filter(status__in=RETRY_EXPORT_STATUSES)
+        .filter(status__in=codes)
         .select_related("operator", "sheet_source")
         .order_by("-updated_at")
     )

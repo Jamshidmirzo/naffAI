@@ -2157,14 +2157,19 @@ def _retry_export_build_values(candidates) -> list[list[str]]:
     """Serialize the queryset into a 2-D array suitable for Sheets update."""
     from django.conf import settings
 
+    from apps.system_settings.selectors import get_retry_export_statuses
+
     from .models import LeadStatusLabel
 
-    from .selectors import RETRY_EXPORT_STATUSES
+    # Раньше здесь читался захардкоженный `RETRY_EXPORT_STATUSES`;
+    # теперь — актуальный выбор менеджера (SystemSetting), с fallback
+    # на дефолт (см. system_settings.selectors).
+    codes = get_retry_export_statuses()
 
     label_map = {
         code: label
         for code, label in LeadStatusLabel.objects.filter(
-            code__in=RETRY_EXPORT_STATUSES
+            code__in=codes
         ).values_list("code", "label_ru")
     }
 

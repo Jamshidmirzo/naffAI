@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { Calendar, FileSpreadsheet } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Calendar, Check, FileSpreadsheet, Settings2 } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -109,12 +109,29 @@ function presetRange(preset: Preset): { from: string; to: string } | null {
   return null; // custom
 }
 
+// Retry-export: описания структур ответа /api/settings/retry-export/.
+type RetryLabel = {
+  code: string;
+  label_ru: string;
+  label_uz: string;
+  tone: string;
+  emoji: string;
+};
+type RetryStatusesResp = { statuses: string[]; available: RetryLabel[] };
+
 export default function LeadsStats() {
   const t = useT();
+  const qc = useQueryClient();
   const [preset, setPreset] = useState<Preset>("today");
   const initial = presetRange("today")!;
   const [dateFrom, setDateFrom] = useState(initial.from);
   const [dateTo, setDateTo] = useState(initial.to);
+  // Раскрытие блока «Retry статусы» — по умолчанию свёрнут, чтобы не
+  // отвлекать; менеджер разворачивает, когда надо поменять выбор.
+  const [statusesOpen, setStatusesOpen] = useState(false);
+  const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(
+    new Set(),
+  );
 
   const applyPreset = (p: Preset) => {
     setPreset(p);
@@ -169,6 +186,53 @@ export default function LeadsStats() {
       }
     },
   });
+
+  // Retry-статусы: подгружаем текущий выбор + список доступных
+  // LeadStatusLabel только когда блок раскрыт (иначе — лишний запрос
+  // при каждой навигации на /leads-stats).
+  const statusesQuery = useQuery<RetryStatusesResp>({
+    queryKey: ["retry-export-statuses"],
+    queryFn: () =>
+      api
+        .get<RetryStatusesResp>("/settings/retry-export/")
+        .then((r) => r.data),
+    enabled: statusesOpen,
+    staleTime: 30_000,
+  });
+
+  // Инициализируем локальный state выбранных статусов из сервера при
+  // первой загрузке (или при повторном раскрытии) — чтобы отменённые
+  // изменения не сохранялись.
+  useEffect(() => {
+    if (statusesQuery.data) {
+      setSelectedStatuses(new Set(statusesQuery.data.statuses));
+    }
+  }, [statusesQuery.data]);
+
+  const statusesMut = useMutation({
+    mutationFn: (statuses: string[]) =>
+      api
+        .patch<RetryStatusesResp>("/settings/retry-export/", { statuses })
+        .then((r) => r.data),
+    onSuccess: (d) => {
+      toast.success(t("leads_stats.retry_statuses.saved"));
+      qc.setQueryData<RetryStatusesResp>(
+        ["retry-export-statuses"],
+        (old) =>
+          old ? { ...old, statuses: d.statuses } : { statuses: d.statuses, available: [] },
+      );
+    },
+    onError: (err: unknown) => toast.error(apiErrorMessage(err)),
+  });
+
+  const toggleStatus = (code: string) => {
+    setSelectedStatuses((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  };
 
   const data = q.data;
 
@@ -239,7 +303,23 @@ export default function LeadsStats() {
               />
             </div>
           )}
-          {/* Retry-export: снимок SMS+TG лидов в отдельный tab Sheets */}
+          {/* Retry-статусы: выбор статусов для retry-export'a (шестерёнка).
+              Кнопка-toggle сворачивает/раскрывает панель ниже. */}
+          <button
+            type="button"
+            onClick={() => setStatusesOpen((v) => !v)}
+            title={t("leads_stats.retry_statuses.hint")}
+            className="ml-1 px-3 py-1.5 rounded-full text-[12.5px] font-medium border transition flex items-center gap-1.5"
+            style={{
+              borderColor: statusesOpen ? "var(--accent)" : "var(--border)",
+              background: statusesOpen ? "var(--accent)" : "var(--surface)",
+              color: statusesOpen ? "#fff" : "var(--fg)",
+            }}
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+            {t("leads_stats.retry_statuses.button")}
+          </button>
+          {/* Retry-export: снимок выбранных статусов в отдельный tab Sheets */}
           <button
             type="button"
             onClick={() => retryExportMut.mutate()}
@@ -259,6 +339,75 @@ export default function LeadsStats() {
           </button>
         </div>
       </div>
+
+      {/* Retry-статусы: панель выбора. Разворачивается по кнопке-шестерёнке
+          в шапке. Каждый LeadStatusLabel = чип-toggle. Кнопка «Сохранить»
+          пишет в SystemSetting.retry_export_statuses через сервис. */}
+      {statusesOpen && (
+        <section
+          className="rounded-[16px] border p-4"
+          style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+        >
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-[14px] font-semibold">
+                {t("leads_stats.retry_statuses.title")}
+              </div>
+              <div className="text-[12px] text-muted mt-0.5 max-w-[560px]">
+                {t("leads_stats.retry_statuses.subtitle")}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] text-muted">
+                {t("leads_stats.retry_statuses.count", {
+                  n: selectedStatuses.size,
+                })}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  statusesMut.mutate(Array.from(selectedStatuses))
+                }
+                disabled={statusesMut.isPending || statusesQuery.isLoading}
+                className="px-3 py-1.5 rounded-full text-[12.5px] font-medium transition disabled:opacity-60 disabled:cursor-wait"
+                style={{ background: "var(--accent)", color: "#fff" }}
+              >
+                {statusesMut.isPending
+                  ? t("leads_stats.retry_statuses.saving")
+                  : t("leads_stats.retry_statuses.save")}
+              </button>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {statusesQuery.isLoading && (
+              <div className="text-[13px] text-muted">
+                {t("common.loading")}
+              </div>
+            )}
+            {(statusesQuery.data?.available || []).map((s) => {
+              const on = selectedStatuses.has(s.code);
+              const accent = TONE_ACCENT[s.tone] || TONE_ACCENT.neutral;
+              return (
+                <button
+                  key={s.code}
+                  type="button"
+                  onClick={() => toggleStatus(s.code)}
+                  className="px-2.5 py-1.5 rounded-full text-[12px] font-medium border transition flex items-center gap-1.5"
+                  style={{
+                    borderColor: on ? accent : "var(--border)",
+                    background: on ? accent : "transparent",
+                    color: on ? "#fff" : "var(--fg)",
+                  }}
+                >
+                  {on && <Check className="w-3 h-3" />}
+                  {s.emoji && <span>{s.emoji}</span>}
+                  <span>{s.label_ru || s.code}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Total card */}
       <div

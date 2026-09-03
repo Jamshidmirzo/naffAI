@@ -103,6 +103,16 @@ const STRINGS: Lookup = {
     "leads_stats.retry_export.open": "Открыть",
     "leads_stats.retry_export.busy":
       "Экспорт уже формируется, подождите ~30 секунд.",
+    "leads_stats.retry_statuses.button": "Retry статусы",
+    "leads_stats.retry_statuses.hint":
+      "Выбрать, какие статусы лидов попадают в retry-export.",
+    "leads_stats.retry_statuses.title": "Статусы для retry-export'a",
+    "leads_stats.retry_statuses.subtitle":
+      "Отметьте, какие статусы попадают в Google Sheets по кнопке «Сформировать retry-лист». Пустой выбор — вернётся дефолт (SMS + TG + no_answer + no_answer_2).",
+    "leads_stats.retry_statuses.save": "Сохранить выбор",
+    "leads_stats.retry_statuses.saving": "Сохраняем…",
+    "leads_stats.retry_statuses.saved": "Настройка сохранена",
+    "leads_stats.retry_statuses.count": "Выбрано: {n}",
     "nav.reports": "Отчёты",
     "nav.leaderboard": "Табло",
     "nav.screen": "TV-экран",
@@ -2530,6 +2540,16 @@ const STRINGS: Lookup = {
     "leads_stats.retry_export.open": "Ochish",
     "leads_stats.retry_export.busy":
       "Eksport allaqachon bajarilmoqda, ~30 soniya kuting.",
+    "leads_stats.retry_statuses.button": "Retry statuslari",
+    "leads_stats.retry_statuses.hint":
+      "Qaysi lid statuslari retry-eksportga tushishini tanlash.",
+    "leads_stats.retry_statuses.title": "Retry-eksport statuslari",
+    "leads_stats.retry_statuses.subtitle":
+      "«Retry ro'yxatini yaratish» tugmasi orqali Google Sheets'ga qaysi statuslar tushishini belgilang. Bo'sh tanlov — sukut bo'yicha (SMS + TG + no_answer + no_answer_2).",
+    "leads_stats.retry_statuses.save": "Tanlovni saqlash",
+    "leads_stats.retry_statuses.saving": "Saqlanmoqda…",
+    "leads_stats.retry_statuses.saved": "Sozlama saqlandi",
+    "leads_stats.retry_statuses.count": "Tanlangan: {n}",
     "nav.reports": "Hisobotlar",
     "nav.leaderboard": "Tablo",
     "nav.screen": "TV-ekran",

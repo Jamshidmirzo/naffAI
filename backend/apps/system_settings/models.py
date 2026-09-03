@@ -51,6 +51,20 @@ class SystemSetting(models.Model):
             "содержимое tab'а полностью перезаписывается."
         ),
     )
+    # Список кодов LeadStatusLabel, которые попадают в retry-export.
+    # Раньше был захардкожен в apps.leads.selectors:1304 (RETRY_EXPORT_STATUSES).
+    # Пустой список → селектор возьмёт DEFAULT_RETRY_EXPORT_STATUSES —
+    # backwards-compat для сред, где менеджер ещё не открыл UI и не
+    # сохранил свой набор.
+    retry_export_statuses = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Список code'ов LeadStatusLabel для retry-export'а. Пустой "
+            "список → используется дефолт (sms_jonatildi, contacted_telegram, "
+            "no_answer, no_answer_2). Меняется через /api/settings/retry-export/."
+        ),
+    )
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
