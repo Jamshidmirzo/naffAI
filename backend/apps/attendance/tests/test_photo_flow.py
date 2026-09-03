@@ -140,14 +140,72 @@ def test_scan_with_photo_happy_path_check_in(api_client, operator, qr_payload):
 
 
 @pytest.mark.django_db
-def test_scan_with_photo_rejects_duplicate_within_1h(api_client, operator, qr_payload):
+def test_scan_with_photo_allows_duplicate_by_default(
+    api_client, operator, qr_payload, settings
+):
+    """
+    Phash rejection выключен по дефолту (2026-09-03 — false-positive:
+    оператор сидит на месте в одной одежде).
+
+    Contract: старая дубль-фотка ПРОХОДИТ, phash всё равно сохраняется
+    на log (для будущего восстановления проверки).
+    """
     import datetime as dt
     from django.utils import timezone
     from django.core.files.uploadedfile import SimpleUploadedFile
 
-    # Seed a log with the known phash but well OUTSIDE the 30-second
-    # idempotency window (~10 min ago) — this must still be flagged as
-    # a duplicate under the 1-hour dup window.
+    settings.ATTENDANCE_PHASH_CHECK_ENABLED = False
+
+    known_phash = "aaaaaaaaaaaaaaaa"
+    AttendanceLog.objects.create(
+        operator=operator,
+        checked_in_at=timezone.now() - dt.timedelta(minutes=10),
+        checked_out_at=timezone.now() - dt.timedelta(minutes=9),
+        checkin_photo_phash=known_phash,
+    )
+
+    s = AttendanceSettings.objects.get_or_create(pk=1)[0]
+    s.require_face = False
+    s.save()
+
+    from apps.attendance import face as face_mod
+    orig = face_mod.perceptual_hash
+    face_mod.perceptual_hash = lambda b: known_phash
+    try:
+        photo = SimpleUploadedFile(
+            "selfie.jpg", _tiny_jpeg_bytes(), content_type="image/jpeg"
+        )
+        r = api_client.post(
+            "/api/attendance/me/scan-with-photo/",
+            data={"qr_payload": qr_payload, "photo": photo},
+            format="multipart",
+        )
+        # 200 — фото принято, дубль-check выключен.
+        assert r.status_code == 200, r.content
+        # phash всё равно сохранён на лог (для аудита / будущего восстановления).
+        new_log = (
+            AttendanceLog.objects.filter(operator=operator)
+            .order_by("-checked_in_at")
+            .first()
+        )
+        assert new_log.checkin_photo_phash == known_phash
+    finally:
+        face_mod.perceptual_hash = orig
+
+
+@pytest.mark.django_db
+def test_scan_with_photo_rejects_duplicate_when_check_enabled(
+    api_client, operator, qr_payload, settings
+):
+    """Если менеджер выставил ATTENDANCE_PHASH_CHECK_ENABLED=1 в env —
+    старое поведение восстанавливается: старая дубль-фотка вне 30-сек
+    idempotency-окна получает 400 «уже использовалась»."""
+    import datetime as dt
+    from django.utils import timezone
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    settings.ATTENDANCE_PHASH_CHECK_ENABLED = True
+
     known_phash = "aaaaaaaaaaaaaaaa"
     AttendanceLog.objects.create(
         operator=operator,

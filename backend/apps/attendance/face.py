@@ -344,6 +344,17 @@ def validate_and_hash_photo(
     `precomputed_phash` — reuse a hash the caller already computed (for
     example, the idempotency check computes it too). Saves ~30-100ms on
     each photo submit.
+
+    Phash rejection kill-switch (2026-09-03):
+        env `ATTENDANCE_PHASH_CHECK_ENABLED` (default False).
+    Причина: оператор сидит на месте в одной одежде → пhash получается
+    одинаковый → false-positive «эта фотка уже была». Мы всё равно
+    ВЫЧИСЛЯЕМ phash и сохраняем на лог (для аудита и возможного
+    восстановления проверки с другим окном), но НЕ бросаем ошибку.
+
+    Существующий 30-секундный idempotency-guard в `process_attendance_event`
+    продолжает работать независимо (там `find_recent_matching_log`,
+    без rejection).
     """
     if not image_bytes:
         raise PhotoValidationError("photo_missing", "Фото не приложено")
@@ -361,8 +372,18 @@ def validate_and_hash_photo(
         )
 
     phash = precomputed_phash if precomputed_phash is not None else perceptual_hash(image_bytes)
+
+    # Phash rejection выключен по решению 2026-09-03. Включить обратно
+    # можно через env `ATTENDANCE_PHASH_CHECK_ENABLED=1` без деплоя кода.
+    from django.conf import settings as _dj_settings
+
+    phash_check_enabled = bool(
+        getattr(_dj_settings, "ATTENDANCE_PHASH_CHECK_ENABLED", False)
+    )
+
     if (
-        not skip_duplicate_check
+        phash_check_enabled
+        and not skip_duplicate_check
         and phash
         and is_photo_recent_duplicate(operator=operator, phash=phash)
     ):

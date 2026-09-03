@@ -437,6 +437,16 @@ ATTENDANCE_ALLOWED_NETWORKS = config(
     cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
 )
 ATTENDANCE_SCAN_COOLDOWN_SECONDS = config("ATTENDANCE_SCAN_COOLDOWN_SECONDS", default=30, cast=int)
+# 2026-09-03: kill-switch для phash-anti-dup проверки при отметке фото.
+# Раньше фото с Hamming ≤ 5 к любому последнему часу отклонялось как
+# «эта фотка уже была». Оператор сидит на месте в одной одежде → пhash
+# одинаковый → false-positive. Вычисление phash не отключается (нужен
+# для 30-секундной idempotency-защиты в process_attendance_event и для
+# аудита), отключается только rejection в `validate_and_hash_photo`.
+# Включить обратно: `ATTENDANCE_PHASH_CHECK_ENABLED=1`.
+ATTENDANCE_PHASH_CHECK_ENABLED = config(
+    "ATTENDANCE_PHASH_CHECK_ENABLED", default=False, cast=bool
+)
 
 REST_FRAMEWORK.setdefault("DEFAULT_THROTTLE_RATES", {})
 REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["attendance_scan_ip"] = "20/min"
