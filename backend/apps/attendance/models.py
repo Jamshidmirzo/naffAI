@@ -139,6 +139,29 @@ class AttendanceLog(TimestampedModel):
         blank=True,
         help_text="Момент, когда оператор ввёл фактическое время ухода задним числом.",
     )
+    # 2026-09-03: late/9h notification idempotency guards.
+    # Cron `attendance_late_notification` крутится каждые 5 минут и
+    # шлёт in-app notification оператору, пришедшему позже
+    # shift_start + late_threshold_min. Флаг = «уже отправили за эту
+    # смену», защита от повторных уведомлений.
+    late_notified_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Момент отправки уведомления об опоздании оператору. "
+            "Установлен → не слать повторно."
+        ),
+    )
+    # Аналогично: cron проверяет `checked_in_at + nine_hour_reminder_hours`;
+    # если прошло — один раз шлём «пора закрыть смену».
+    nine_hour_notified_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Момент отправки 9-часового уведомления «пора закрыть смену». "
+            "Один DM за смену — защита от повторов."
+        ),
+    )
 
     class Meta:
         constraints = [
@@ -216,6 +239,39 @@ class AttendanceSettings(models.Model):
     checkout_reminder_after_hours = models.PositiveSmallIntegerField(
         default=8,
         help_text="После скольких часов от check-in слать reminder об уходе (0 = выкл).",
+    )
+    # 2026-09-03 daily-checkin enforcement wave.
+    # Глобальный override для UI-гейта «Отметьтесь чтобы работать».
+    # По умолчанию **True** — все операторы должны сделать check-in
+    # перед началом работы. Индивидуальный `Operator.require_checkin_enabled`
+    # остаётся как per-operator opt-in для тонкой обкатки (или отключения
+    # для конкретного бэйдж-оператора), но глобальный флаг делает
+    # правило дефолтным для команды.
+    #
+    # Effective правило (в /attendance/me/current/):
+    #   needs_gate = enforce_daily_checkin OR operator.require_checkin_enabled
+    #
+    # Т.е. глобальный flag = «включить для всех», per-operator = «включить
+    # даже когда глобально off» (обкатка). Killswitch для менеджера:
+    # выключить глобально можно PATCH /api/attendance/settings/.
+    enforce_daily_checkin = models.BooleanField(
+        default=True,
+        help_text=(
+            "Глобальный UI-гейт: если True — оператору без открытого "
+            "AttendanceLog показывается блокирующий модал «Сначала "
+            "отметьтесь». Backend endpoints остаются открытыми (гейт "
+            "только на UI). Выключить можно, если ломается."
+        ),
+    )
+    # 9-часовое напоминание об уходе — независимая от checkout_reminder
+    # ветка. Отправляется одним разом на смену через флаг
+    # `AttendanceLog.nine_hour_notified`.
+    nine_hour_reminder_hours = models.PositiveSmallIntegerField(
+        default=9,
+        help_text=(
+            "После скольких часов от check-in слать оператору «пора "
+            "закрыть смену» in-app уведомление (одно за смену)."
+        ),
     )
     # Верхняя граница «во сколько вы вчера ушли?» — backfill-endpoint
     # отклоняет значения `> checked_in_at + N часов`. Держим отдельно

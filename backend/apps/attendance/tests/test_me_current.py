@@ -13,7 +13,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.attendance.models import AttendanceLog
+from apps.attendance.models import AttendanceLog, AttendanceSettings
 from apps.operators.models import Operator
 from apps.users.models import Profile, Role
 
@@ -37,20 +37,51 @@ def op_user(db, op):
     return u
 
 
+def _disable_global_enforce():
+    """Отключаем глобальный `enforce_daily_checkin` (default=True) — нужно
+    для тестов, где мы явно хотим проверить per-operator ветку."""
+    s, _ = AttendanceSettings.objects.get_or_create(pk=1)
+    s.enforce_daily_checkin = False
+    s.save(update_fields=["enforce_daily_checkin"])
+
+
 @pytest.mark.django_db
-def test_me_current_default_flags_off(client, op, op_user):
-    """По умолчанию require_checkin_enabled=False, никаких напоминаний."""
+def test_me_current_defaults_have_global_enforce_on(client, op, op_user):
+    """
+    По умолчанию (2026-09-03) `enforce_daily_checkin=True` в глобальных
+    настройках → фронт видит `require_checkin_enabled=True` для любого
+    оператора, независимо от per-op флага.
+    """
     client.force_authenticate(op_user)
     r = client.get("/api/attendance/me/current/")
     assert r.status_code == 200
     body = r.json()
+    assert body["enforce_daily_checkin"] is True
+    assert body["require_checkin_enabled"] is True
+    # open_log нет → needs_checkin=True (гейт активен)
+    assert body["needs_checkin"] is True
+    assert body["checkout_reminder_active"] is False
+
+
+@pytest.mark.django_db
+def test_me_current_default_flags_off_when_global_disabled(client, op, op_user):
+    """Если менеджер выключил глобальный флаг → возвращаемся к per-op semantics."""
+    _disable_global_enforce()
+    client.force_authenticate(op_user)
+    r = client.get("/api/attendance/me/current/")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["enforce_daily_checkin"] is False
     assert body["require_checkin_enabled"] is False
+    assert body["needs_checkin"] is False
     assert body["checkout_reminder_active"] is False
     assert body["pending_backfill_log"] is None
 
 
 @pytest.mark.django_db
 def test_me_current_require_checkin_flag_reflects_operator(client, op, op_user):
+    # Отключим глобальный override, чтобы протестировать именно per-op ветку.
+    _disable_global_enforce()
     op.require_checkin_enabled = True
     op.save(update_fields=["require_checkin_enabled"])
     client.force_authenticate(op_user)
@@ -105,9 +136,10 @@ def test_me_current_pending_backfill_returns_yesterday_log(client, op, op_user):
 
 @pytest.mark.django_db
 def test_me_current_pending_backfill_skips_when_flag_off(client, op, op_user):
-    """Prod-safety: без require_checkin_enabled — pending_backfill_log=None,
-    даже если auto_closed лог существует. Иначе prod-операторы утром словят
-    блокирующий модал по историческим логам."""
+    """Prod-safety: без require_checkin_enabled (per-op И global off) —
+    pending_backfill_log=None, даже если auto_closed лог существует.
+    Иначе prod-операторы утром словят блокирующий модал по историческим логам."""
+    _disable_global_enforce()
     now = timezone.now()
     AttendanceLog.objects.create(
         operator=op,

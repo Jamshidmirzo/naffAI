@@ -295,11 +295,19 @@ class MeCurrentAttendanceApi(APIView):
                 ),
             }
 
-        # Enforcement wave 2026-08-26.
+        # Enforcement wave 2026-08-26 → 2026-09-03 global switch.
         # `require_checkin_enabled` — фронт использует, чтобы решить, показывать
         # ли fullscreen-gate. Backend НИ ОДИН endpoint не блокирует по этому
         # флагу — enforcement только на UI.
-        require_checkin = bool(operator.require_checkin_enabled)
+        #
+        # Effective правило (2026-09-03):
+        #   needs_gate = AttendanceSettings.enforce_daily_checkin
+        #                OR Operator.require_checkin_enabled
+        # т.е. глобальный тумблер «включить для всех» + per-operator opt-in
+        # для «включить точечно даже когда глобально off».
+        settings_obj = attendance_settings_get()
+        global_enforce = bool(getattr(settings_obj, "enforce_daily_checkin", False))
+        require_checkin = bool(operator.require_checkin_enabled) or global_enforce
 
         # Reminder активен, если cron уже пометил open_log — фронт покажет
         # оранжевый баннер, локально приглушает через localStorage-dismiss.
@@ -329,12 +337,22 @@ class MeCurrentAttendanceApi(APIView):
                     ),
                 }
 
+        # `needs_checkin` — сюда фронт может смотреть напрямую, но пока
+        # `CheckinGate` использует комбинацию `require_checkin_enabled +
+        # open_log`. Оставляем оба поля, чтобы будущий фронт мог перейти
+        # на прямое чтение `needs_checkin` без хождения по логам за сегодня.
+        needs_checkin = require_checkin and open_log is None
+        # `enforce_daily_checkin` — глобальный тумблер, отдельно для
+        # менеджерской панели (чтобы фронт знал, включено ли правило
+        # для всей команды или только для этого конкретного оператора).
         return Response(
             {
                 "open_log": open_log_data,
                 "today_events": today_events,
                 "operator_id": profile.operator_id,
                 "require_checkin_enabled": require_checkin,
+                "enforce_daily_checkin": global_enforce,
+                "needs_checkin": needs_checkin,
                 "checkout_reminder_active": checkout_reminder_active,
                 "pending_backfill_log": pending_backfill_data,
             },
@@ -819,6 +837,13 @@ class SettingsAttendanceApi(APIView):
             "photo_max_size_mb": settings_obj.photo_max_size_mb,
             "checkout_reminder_after_hours": settings_obj.checkout_reminder_after_hours,
             "max_backfill_hours": settings_obj.max_backfill_hours,
+            # 2026-09-03 daily-checkin enforcement wave.
+            "enforce_daily_checkin": bool(
+                getattr(settings_obj, "enforce_daily_checkin", False)
+            ),
+            "nine_hour_reminder_hours": int(
+                getattr(settings_obj, "nine_hour_reminder_hours", 9)
+            ),
             # Payroll-defaults.
             "default_salary_uzs": str(settings_obj.default_salary_uzs),
             "default_grace_period_min": settings_obj.default_grace_period_min,
@@ -872,6 +897,16 @@ class SettingsAttendanceApi(APIView):
             )
         if max_backfill_hours is not None:
             settings_obj.max_backfill_hours = max(1, min(24, int(max_backfill_hours)))
+
+        # 2026-09-03 daily-checkin enforcement + 9h reminder tunables.
+        enforce_daily_checkin = request.data.get("enforce_daily_checkin")
+        nine_hour_reminder_hours = request.data.get("nine_hour_reminder_hours")
+        if enforce_daily_checkin is not None:
+            settings_obj.enforce_daily_checkin = bool(enforce_daily_checkin)
+        if nine_hour_reminder_hours is not None:
+            settings_obj.nine_hour_reminder_hours = max(
+                0, min(24, int(nine_hour_reminder_hours))
+            )
 
         # Payroll defaults.
         from decimal import Decimal as _D

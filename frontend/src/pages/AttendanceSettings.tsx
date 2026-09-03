@@ -24,6 +24,9 @@ type Settings = {
   default_sales_bonus_uzs: string;
   default_sales_gate_pct: number;
   default_monthly_plan_uzs: string;
+  // 2026-09-03 daily-checkin enforcement wave.
+  enforce_daily_checkin: boolean;
+  nine_hour_reminder_hours: number;
 };
 
 const WEEKDAYS_RU = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
@@ -260,6 +263,47 @@ export default function AttendanceSettings() {
             />
           </Field>
         </div>
+      </section>
+
+      {/* Обязательная отметка + напоминания */}
+      <section
+        className="rounded-[16px] border p-5 flex flex-col gap-3"
+        style={{ borderColor: "var(--border)" }}
+      >
+        <h2 className="text-[15px] font-semibold">
+          {t("att_settings.section_enforcement")}
+        </h2>
+        <label className="flex items-start gap-3 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={!!form.enforce_daily_checkin}
+            onChange={(e) => upd("enforce_daily_checkin", e.target.checked)}
+          />
+          <div>
+            <div className="text-[13.5px] font-medium">
+              {t("att_settings.enforce_daily_checkin")}
+            </div>
+            <div className="text-[12px] text-muted mt-0.5">
+              {t("att_settings.enforce_daily_checkin_hint")}
+            </div>
+          </div>
+        </label>
+        <Field
+          label={t("att_settings.nine_hour_reminder_hours")}
+          hint={t("att_settings.nine_hour_reminder_hours_hint")}
+        >
+          <input
+            type="number"
+            min={0}
+            max={24}
+            className="nf-input"
+            value={form.nine_hour_reminder_hours ?? 9}
+            onChange={(e) =>
+              upd("nine_hour_reminder_hours", parseInt(e.target.value || "0", 10))
+            }
+          />
+        </Field>
       </section>
 
       {/* Сохранение */}

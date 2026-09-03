@@ -152,6 +152,13 @@ const STRINGS: Lookup = {
     "att_settings.default_sales_gate_pct_hint": "Ниже этого % плана — бонус за продажи не начисляется.",
     "att_settings.default_monthly_plan_uzs": "План продаж по умолчанию (UZS/мес)",
     "att_settings.default_monthly_plan_uzs_hint": "Fallback, если у оператора нет персонального плана на месяц.",
+    "att_settings.section_enforcement": "Обязательная отметка",
+    "att_settings.enforce_daily_checkin": "Обязательная отметка при входе",
+    "att_settings.enforce_daily_checkin_hint":
+      "Если включено — оператор без открытой смены видит блокирующий модал «Сначала отметьтесь» при входе на сайт. Backend endpoints остаются открытыми (гейт только на UI). Выключите, если нужно временно снять правило со всей команды.",
+    "att_settings.nine_hour_reminder_hours": "Порог «пора закрыть смену» (часов)",
+    "att_settings.nine_hour_reminder_hours_hint":
+      "После скольких часов от check-in оператор получает in-app напоминание закрыть смену. 0 — выкл.",
     "att_settings.save": "Сохранить",
     "att_settings.saving": "Сохраняем…",
     "att_settings.saved": "Настройки сохранены",
@@ -2589,6 +2596,13 @@ const STRINGS: Lookup = {
     "att_settings.default_sales_gate_pct_hint": "Shu foizdan past — sotuv bonusi 0.",
     "att_settings.default_monthly_plan_uzs": "Standart oylik reja (UZS/oy)",
     "att_settings.default_monthly_plan_uzs_hint": "Operator uchun shaxsiy reja belgilanmagan bo'lsa fallback.",
+    "att_settings.section_enforcement": "Majburiy belgilanish",
+    "att_settings.enforce_daily_checkin": "Kirishda majburiy belgilanish",
+    "att_settings.enforce_daily_checkin_hint":
+      "Yoqilsa — ochiq smenasiz operator saytga kirganda bloklovchi modalni ko'radi. Backend endpoint'lar ochiq qoladi (geyt faqat UI'da). Barcha jamoa uchun qoidani vaqtincha o'chirish uchun uzing.",
+    "att_settings.nine_hour_reminder_hours": "«Smenani yakunlash» chegarasi (soat)",
+    "att_settings.nine_hour_reminder_hours_hint":
+      "Check-in dan necha soat o'tgach operatorga «smenani yakunlash» eslatmasi yuboriladi. 0 — o'chirilgan.",
     "att_settings.save": "Saqlash",
     "att_settings.saving": "Saqlanmoqda…",
     "att_settings.saved": "Sozlamalar saqlandi",
