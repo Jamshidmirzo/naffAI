@@ -1301,7 +1301,12 @@ def alias_lookup(alias_name: str) -> OperatorSheetAlias | None:
 
 # ---- Retry-export candidates ---------------------------------------------
 
-RETRY_EXPORT_STATUSES = ("sms_jonatildi", "contacted_telegram")
+RETRY_EXPORT_STATUSES = (
+    "sms_jonatildi",
+    "contacted_telegram",
+    "no_answer",
+    "no_answer_2",
+)
 
 
 def retry_export_candidates() -> QuerySet[Lead]:

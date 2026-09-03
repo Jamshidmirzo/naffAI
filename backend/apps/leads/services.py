@@ -2159,10 +2159,12 @@ def _retry_export_build_values(candidates) -> list[list[str]]:
 
     from .models import LeadStatusLabel
 
+    from .selectors import RETRY_EXPORT_STATUSES
+
     label_map = {
         code: label
         for code, label in LeadStatusLabel.objects.filter(
-            code__in=("sms_jonatildi", "contacted_telegram")
+            code__in=RETRY_EXPORT_STATUSES
         ).values_list("code", "label_ru")
     }
 

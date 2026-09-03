@@ -59,8 +59,9 @@ def op(db) -> Operator:
 @pytest.fixture
 def leads_mix(db, op):
     """
-    3 лида в целевых статусах + 2 «шумовых» (won, lost) чтобы селектор
-    имел что фильтровать.
+    5 лидов в целевых статусах (sms_jonatildi, contacted_telegram x2,
+    no_answer, no_answer_2) + 2 «шумовых» (won, lost) — селектор должен
+    вернуть только целевые.
     """
     l_sms = Lead.objects.create(
         full_name="SMS Client",
@@ -80,6 +81,18 @@ def leads_mix(db, op):
         status=LeadStatus.CONTACTED_TELEGRAM,
         operator=op,
     )
+    l_na = Lead.objects.create(
+        full_name="No answer 1",
+        phone="+998900000006",
+        status=LeadStatus.NO_ANSWER,
+        operator=op,
+    )
+    l_na2 = Lead.objects.create(
+        full_name="No answer 2",
+        phone="+998900000007",
+        status=LeadStatus.NO_ANSWER_2,
+        operator=op,
+    )
     Lead.objects.create(
         full_name="Won Client",
         phone="+998900000004",
@@ -92,7 +105,7 @@ def leads_mix(db, op):
         status=LeadStatus.LOST,
         operator=op,
     )
-    return {"sms": l_sms, "tg": l_tg, "tg2": l_tg2}
+    return {"sms": l_sms, "tg": l_tg, "tg2": l_tg2, "na": l_na, "na2": l_na2}
 
 
 def _mgr(username: str = "mgr") -> User:
@@ -114,8 +127,13 @@ def _op_user(operator: Operator, username: str = "op") -> User:
 def test_selector_returns_only_target_statuses(leads_mix):
     qs = retry_export_candidates()
     codes = list(qs.values_list("status", flat=True))
-    assert set(codes) == {"sms_jonatildi", "contacted_telegram"}
-    assert qs.count() == 3
+    assert set(codes) == {
+        "sms_jonatildi",
+        "contacted_telegram",
+        "no_answer",
+        "no_answer_2",
+    }
+    assert qs.count() == 5
 
 
 @pytest.mark.django_db
@@ -185,8 +203,8 @@ def test_build_values_shape_header_and_rows(leads_mix, settings):
     candidates = list(retry_export_candidates())
     values = _retry_export_build_values(candidates)
 
-    # Header + 3 lead rows
-    assert len(values) == 4
+    # Header + 5 lead rows
+    assert len(values) == 6
     header = values[0]
     assert header == [
         "Дата статуса",
@@ -247,9 +265,9 @@ def test_retry_export_service_calls_client_correctly(leads_mix):
         assert args[1] == "Retry SMS+TG"
         values = args[2]
         assert isinstance(values, list) and isinstance(values[0], list)
-        assert len(values) == 4  # header + 3 leads
+        assert len(values) == 6  # header + 5 leads
 
-    assert result["count"] == 3
+    assert result["count"] == 5
     assert result["spreadsheet_id"] == "SS_MAIN"
     assert result["tab_name"] == "Retry SMS+TG"
     assert result["gid"] == fake_gid
@@ -324,7 +342,7 @@ def test_retry_export_concurrency_lock_blocks_second_call(leads_mix):
         instance.ensure_tab.return_value = 1
         instance.overwrite_tab.return_value = None
         result = retry_export_to_sheet()
-    assert result["count"] == 3
+    assert result["count"] == 5
 
 
 # ---- API endpoint --------------------------------------------------------
@@ -349,7 +367,7 @@ def test_api_manager_gets_200(leads_mix):
         r = c.post("/api/leads/retry-export/", {}, format="json")
 
     assert r.status_code == 200, r.content
-    assert r.data["count"] == 3
+    assert r.data["count"] == 5
     assert r.data["tab_name"] == "Retry SMS+TG"
     assert "gid=42" in r.data["url"]
 
