@@ -1373,13 +1373,57 @@ def lead_update_status(
             op_id = lead.operator_id
             transaction.on_commit(lambda: _run_refill_to_target(op_id))
 
-    # Qimmatlik → auto-reassign to a fresh operator (once). skip_retry
-    # is the recursion-guard used by lead_qimmatlik_retry itself when it
-    # decides to close as LOST.
+    # Qimmatlik → DELAYED auto-reassign. Раньше мгновенно перекидывали
+    # свежему оператору через `transaction.on_commit(_run_qimmatlik_retry)`;
+    # получалось, что клиенту в тот же день могли позвонить двое: сначала
+    # первый оператор, следом второй, которому лид упал сразу после
+    # смены статуса. Новое правило — «клиенту максимум один звонок в день»:
+    #
+    #   * статус выставлен ДО 13:00 (Asia/Tashkent) → ретрай сегодня в 16:00
+    #     (клиент мог передумать к вечеру, но всё же не через 5 минут);
+    #   * статус выставлен В или ПОСЛЕ 13:00 → ретрай завтра в 09:30 (утренняя
+    #     смена свежего оператора).
+    #
+    # Реальную передачу выполняет management-команда `qimmatlik_retry_due`
+    # (docker service `qimmatlik-retry-watch`, тик 600с): она находит лидов
+    # с наступившим `metadata.qimmatlik_retry_at` и делегирует
+    # `lead_qimmatlik_retry` — которая уже сама выберет свежего оператора,
+    # исключая ранее пробовавших, а если пробовавших не осталось — закроет
+    # как LOST через рекурсивный `lead_update_status(skip_retry=True)`.
+    #
+    # skip_retry гасит два случая:
+    #   1. когда сам `lead_qimmatlik_retry` рекурсивно ставит LOST, мы не
+    #      хотим планировать retry на LOST;
+    #   2. когда команда вручную «переоткрывает» лид (theoretical) — она
+    #      явно попросит skip_retry.
     if status == "qimmatlik_qildi" and not skip_retry:
-        lead_id = lead.id
-        transaction.on_commit(lambda: _run_qimmatlik_retry(lead_id))
+        retry_at = _next_qimmatlik_retry_at()
+        meta = dict(lead.metadata or {})
+        meta["qimmatlik_retry_at"] = retry_at.isoformat()
+        lead.metadata = meta
+        lead.save(update_fields=["metadata", "updated_at"])
     return lead
+
+
+def _next_qimmatlik_retry_at(now_local: dt.datetime | None = None) -> dt.datetime:
+    """
+    Рассчитать локальное время следующего qimmatlik-retry:
+
+      * до 13:00 → сегодня 16:00
+      * с 13:00 включительно → завтра 09:30
+
+    Возвращаем aware datetime в текущем local TZ (`timezone.localtime()`),
+    чтобы .isoformat() сохранил offset — так watcher-команда сможет
+    надёжно сравнить с `timezone.localtime()` без ловушек naive.
+    """
+    if now_local is None:
+        now_local = timezone.localtime()
+    if now_local.hour < 13:
+        return now_local.replace(hour=16, minute=0, second=0, microsecond=0)
+    tomorrow = (now_local + dt.timedelta(days=1)).replace(
+        hour=9, minute=30, second=0, microsecond=0
+    )
+    return tomorrow
 
 
 def _run_refill_to_target(operator_id: int) -> None:
@@ -1419,6 +1463,11 @@ def _run_qimmatlik_retry(lead_id: int) -> None:
     Thin wrapper: refetch the lead in a fresh transaction so we don't
     reuse a stale in-memory instance from the outer atomic block, then
     delegate to lead_qimmatlik_retry.
+
+    Раньше вызывался из `transaction.on_commit` внутри `lead_update_status`
+    (мгновенный retry). После перехода на отложенный retry (см. правило в
+    `_next_qimmatlik_retry_at`) вызывается ТОЛЬКО из management-команды
+    `qimmatlik_retry_due` — когда `metadata.qimmatlik_retry_at` наступил.
     """
     try:
         fresh = Lead.objects.select_related("operator").filter(pk=lead_id).first()
@@ -1458,6 +1507,11 @@ def lead_qimmatlik_retry(lead: Lead) -> Operator | None:
         .first()
     )
     if candidate is None:
+        # Все операторы уже пробовали → закрываем как LOST. Ключ
+        # metadata.qimmatlik_retry_at чистим ДО рекурсивного вызова
+        # lead_update_status, чтобы watcher-команда точно не подхватила
+        # тот же лид повторно (даже теоретически, между транзакциями).
+        _clear_qimmatlik_retry_metadata(lead)
         lead_update_status(
             lead=lead,
             status=LeadStatus.LOST,
@@ -1479,6 +1533,10 @@ def lead_qimmatlik_retry(lead: Lead) -> Operator | None:
     lead.postponed_at = None
     lead.postponed_by = None
     lead.postpone_reason = ""
+    # Убираем маркер отложенного retry — он «отработан».
+    meta = dict(lead.metadata or {})
+    meta.pop("qimmatlik_retry_at", None)
+    lead.metadata = meta
     lead.save(
         update_fields=[
             "operator",
@@ -1486,6 +1544,7 @@ def lead_qimmatlik_retry(lead: Lead) -> Operator | None:
             "postponed_at",
             "postponed_by",
             "postpone_reason",
+            "metadata",
             "updated_at",
         ]
     )
@@ -1494,6 +1553,21 @@ def lead_qimmatlik_retry(lead: Lead) -> Operator | None:
         comment=f"qimmatlik retry → {candidate.full_name}",
     )
     return candidate
+
+
+def _clear_qimmatlik_retry_metadata(lead: Lead) -> None:
+    """
+    Snapshot-free helper: удалить `qimmatlik_retry_at` из lead.metadata и
+    сохранить (только это поле). Используется в LOST-ветке
+    `lead_qimmatlik_retry`, а также командой `qimmatlik_retry_due` в
+    защитных путях (например, битый ISO-строка в metadata).
+    """
+    if not lead.metadata or "qimmatlik_retry_at" not in lead.metadata:
+        return
+    meta = dict(lead.metadata)
+    meta.pop("qimmatlik_retry_at", None)
+    lead.metadata = meta
+    lead.save(update_fields=["metadata", "updated_at"])
 
 
 def leads_auto_close_stale(*, dry_run: bool = False) -> dict[int, int]:

@@ -385,5 +385,28 @@ services:
           sleep 900
         done
 
+  # Отложенный retry лидов qimmatlik_qildi — клиенту не должны звонить
+  # два оператора в один день. Правило (см. _next_qimmatlik_retry_at):
+  # до 13:00 — retry сегодня в 16:00; после 13:00 — завтра в 09:30.
+  # Метка лежит в Lead.metadata["qimmatlik_retry_at"]; watcher тикает
+  # каждые 10 минут.
+  qimmatlik-retry-watch:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          python manage.py qimmatlik_retry_due || echo "qimmatlik_retry rc=$$?"
+          sleep 600
+        done
+
 volumes:
   postgres-data:
