@@ -604,7 +604,7 @@ async def main() -> None:
         result = await asyncio.to_thread(_ondemand_render_by_preset, arg, msg.chat.id)
         if not result:
             text = await asyncio.to_thread(_ondemand_list_templates, lang)
-            await msg.answer("Пресет не найден.\n\n" + text, parse_mode="HTML")
+            await msg.answer(t("report_preset_not_found", lang) + text, parse_mode="HTML")
             return
 
         # result = (html, reply_markup_or_None)
@@ -756,10 +756,8 @@ async def main() -> None:
             )
 
         n = await asyncio.to_thread(_unlink)
-        if n:
-            await msg.answer("✓ Telegram отвязан. Уведомления больше не будут приходить.")
-        else:
-            await msg.answer("Здесь нечего отвязывать — этот Telegram не был привязан.")
+        lang = await lang_for(msg)
+        await msg.answer(t("unlink_ok" if n else "unlink_none", lang))
 
     @dp.message(NewSale.model)
     async def step_model(msg: Message, state: FSMContext) -> None:
@@ -1172,6 +1170,7 @@ async def main() -> None:
         ("whogot", "cmd_whogot"),
         ("leaders", "cmd_leaders"),
         ("health", "cmd_health"),
+        ("whoami", "cmd_whoami"),
         ("subscribe", "cmd_subscribe"),
         ("unsubscribe", "cmd_unsubscribe"),
         ("language", "cmd_language"),
@@ -1195,7 +1194,8 @@ async def main() -> None:
 
     @dp.message(Command("link_operator"))
     async def cmd_link_operator(msg: Message, state: FSMContext) -> None:
-        await msg.answer("Пришли номер, привязанный к твоему оператору (в формате +998...):")
+        lang = await lang_for(msg)
+        await msg.answer(t("link_operator_ask_phone", lang))
         await state.set_state(LinkOperator.phone)
 
     @dp.message(LinkOperator.phone)
@@ -1219,11 +1219,8 @@ async def main() -> None:
             await msg.answer(pre["text"], parse_mode="HTML")
             return
         await state.set_state(AttendancePhoto.awaiting_checkin_photo)
-        await msg.answer(
-            "📸 <b>Пришлите фото для подтверждения прихода.</b>\n\n"
-            "Сделайте селфи прямо сейчас — на нём должно быть видно лицо.",
-            parse_mode="HTML",
-        )
+        lang = await lang_for(msg)
+        await msg.answer(t("checkin_ask_photo", lang), parse_mode="HTML")
 
     @dp.message(Command("checkout"))
     async def cmd_checkout(msg: Message, state: FSMContext) -> None:
@@ -1233,11 +1230,8 @@ async def main() -> None:
             await msg.answer(pre["text"], parse_mode="HTML")
             return
         await state.set_state(AttendancePhoto.awaiting_checkout_photo)
-        await msg.answer(
-            "📸 <b>Пришлите фото для подтверждения ухода.</b>\n\n"
-            "Сделайте селфи прямо сейчас — на нём должно быть видно лицо.",
-            parse_mode="HTML",
-        )
+        lang = await lang_for(msg)
+        await msg.answer(t("checkout_ask_photo", lang), parse_mode="HTML")
 
     @dp.message(Command("status"))
     async def cmd_status(msg: Message) -> None:
@@ -1336,7 +1330,8 @@ async def main() -> None:
     ) -> None:
         """Common branch for /checkin+photo and /checkout+photo."""
         if not msg.photo:
-            await msg.answer("Ожидаю именно фото (не документ). Попробуйте ещё раз.")
+            lang = await lang_for(msg)
+            await msg.answer(t("attendance_need_photo_not_doc", lang))
             return
         # Grab the largest thumbnail Telegram sent us.
         photo_size = msg.photo[-1]
@@ -1347,7 +1342,8 @@ async def main() -> None:
             image_bytes = buf.getvalue()
         except Exception as exc:
             logger.exception("photo download failed")
-            await msg.answer(f"Не удалось получить фото: {exc}")
+            lang = await lang_for(msg)
+            await msg.answer(t("attendance_photo_fetch_failed", lang, exc=str(exc)))
             return
 
         tg_user_id = msg.from_user.id
@@ -1617,7 +1613,7 @@ async def main() -> None:
             await msg.answer(help_text_ru(), parse_mode="HTML")
         except Exception:
             logger.exception("ops_free_text failed")
-            await msg.answer("❌ Внутренняя ошибка при обработке запроса.")
+            await msg.answer(t("internal_error", lang))
 
     # v2: react to bot being added / removed from a chat so BotChat stays
     # in sync. Aiogram receives `my_chat_member` on chat-membership changes.

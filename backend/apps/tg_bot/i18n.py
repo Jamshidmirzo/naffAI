@@ -266,6 +266,68 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ru": "📜 Логи контейнера (владелец)",
         "uz": "📜 Konteyner loglari (egasi)",
     },
+    "cmd_whoami": {
+        "ru": "👤 Кто я и какая роль",
+        "uz": "👤 Men kim va rolim qanday",
+    },
+    "cmd_checkin": {
+        "ru": "📸 Отметиться о приходе",
+        "uz": "📸 Ishga kelishni belgilash",
+    },
+    "cmd_checkout": {
+        "ru": "📸 Отметиться об уходе",
+        "uz": "📸 Ishdan ketishni belgilash",
+    },
+    "cmd_status": {
+        "ru": "⏱ Моя текущая смена",
+        "uz": "⏱ Mening joriy smenam",
+    },
+    "cmd_link_operator": {
+        "ru": "🔗 Привязать оператора к чату",
+        "uz": "🔗 Operatorni chatga bog'lash",
+    },
+
+    # --- hardcoded → i18n ---
+    "checkin_ask_photo": {
+        "ru": "📸 <b>Пришлите фото для подтверждения прихода.</b>\n\n"
+              "Сделайте селфи прямо сейчас — на нём должно быть видно лицо.",
+        "uz": "📸 <b>Ishga kelishni tasdiqlash uchun rasm yuboring.</b>\n\n"
+              "Selfi hoziroq oling — rasmda yuz aniq ko'rinishi kerak.",
+    },
+    "checkout_ask_photo": {
+        "ru": "📸 <b>Пришлите фото для подтверждения ухода.</b>\n\n"
+              "Сделайте селфи прямо сейчас — на нём должно быть видно лицо.",
+        "uz": "📸 <b>Ishdan ketishni tasdiqlash uchun rasm yuboring.</b>\n\n"
+              "Selfi hoziroq oling — rasmda yuz aniq ko'rinishi kerak.",
+    },
+    "link_operator_ask_phone": {
+        "ru": "Пришли номер, привязанный к твоему оператору (в формате +998...):",
+        "uz": "Operatoringizga biriktirilgan raqamni yuboring (+998... formatida):",
+    },
+    "unlink_ok": {
+        "ru": "✓ Telegram отвязан. Уведомления больше не будут приходить.",
+        "uz": "✓ Telegram uzildi. Xabarlar endi kelmaydi.",
+    },
+    "unlink_none": {
+        "ru": "Здесь нечего отвязывать — этот Telegram не был привязан.",
+        "uz": "Uzish uchun hech nima yo'q — bu Telegram bog'lanmagan edi.",
+    },
+    "attendance_need_photo_not_doc": {
+        "ru": "Ожидаю именно фото (не документ). Попробуйте ещё раз.",
+        "uz": "Faqat rasm yuboring (fayl emas). Qaytadan urinib ko'ring.",
+    },
+    "attendance_photo_fetch_failed": {
+        "ru": "Не удалось получить фото: {exc}",
+        "uz": "Rasmni olib bo'lmadi: {exc}",
+    },
+    "report_preset_not_found": {
+        "ru": "Пресет не найден.\n\n",
+        "uz": "Preset topilmadi.\n\n",
+    },
+    "internal_error": {
+        "ru": "❌ Внутренняя ошибка при обработке запроса.",
+        "uz": "❌ So'rovni qayta ishlashda ichki xato.",
+    },
 
     # --- ops-agent / free-text denials ---
     "ops_denied_operator": {
