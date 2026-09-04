@@ -2,13 +2,13 @@ import datetime as dt
 from decimal import Decimal
 
 from django.db.models import F
-from django.utils.dateparse import parse_datetime
 from rest_framework import serializers, status
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.common.dateparse import parse_dt_end, parse_dt_start
 from apps.common.exceptions import ApplicationError
 from apps.users.permissions import (
     IsAuthenticatedAnyRole,
@@ -337,40 +337,17 @@ class SalePartialUpdateInputSerializer(serializers.Serializer):
 
 
 def _parse_dt(value: str | None) -> dt.datetime | None:
-    if not value:
-        return None
-    # Accept either an ISO datetime (existing callers) or a plain date
-    # like "2026-06-01" coming from the <input type="date"> on the
-    # filters panel. parse_datetime returns None for bare dates, in
-    # which case fall back to parse_date and synthesize a datetime at
-    # 00:00 in the active timezone.
-    parsed = parse_datetime(value)
-    if parsed:
-        return parsed
-    from django.utils import timezone
-    from django.utils.dateparse import parse_date
+    """Backwards-compatible alias — thin wrapper around
+    :func:`apps.common.dateparse.parse_dt_start` so existing callers keep
+    working while the shared helper does the heavy lifting."""
 
-    d = parse_date(value)
-    if not d:
-        return None
-    return timezone.make_aware(dt.datetime.combine(d, dt.time.min))
+    return parse_dt_start(value)
 
 
 def _parse_dt_inclusive_end(value: str | None) -> dt.datetime | None:
-    """Like `_parse_dt` but if the input is a bare date, snap to end-of-day
-    so `date_to=2026-06-01` includes every sale that happened on that day."""
-    if not value:
-        return None
-    parsed = parse_datetime(value)
-    if parsed:
-        return parsed
-    from django.utils import timezone
-    from django.utils.dateparse import parse_date
+    """Backwards-compatible alias for :func:`apps.common.dateparse.parse_dt_end`."""
 
-    d = parse_date(value)
-    if not d:
-        return None
-    return timezone.make_aware(dt.datetime.combine(d, dt.time.max))
+    return parse_dt_end(value)
 
 
 class SaleListFilterSerializer(serializers.Serializer):

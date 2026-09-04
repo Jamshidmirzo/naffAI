@@ -8,13 +8,14 @@ rules (alias resolution, phone normalization, auto-assignment) live in
 
 from __future__ import annotations
 
-from django.utils.dateparse import parse_datetime
 from rest_framework import serializers, status
 from rest_framework.generics import ListCreateAPIView, RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.common.dateparse import parse_dt_end as _parse_dt_end
+from apps.common.dateparse import parse_dt_start
 from apps.common.exceptions import ApplicationError
 from apps.common.pagination import DefaultPagination
 from apps.common.validators import normalize_uz_phone
@@ -750,8 +751,10 @@ class OrphanLeadsApi(APIView):
             statuses = None
             if raw_statuses:
                 statuses = [s.strip() for s in raw_statuses.split(",") if s.strip()]
-            created_from = _parse_dt(qp.get("created_from"))
-            created_to = _parse_dt(qp.get("created_to"))
+            created_from = parse_dt_start(qp.get("created_from"))
+            # `created_to` is inclusive-end: a bare `YYYY-MM-DD` from the
+            # filter panel means «до конца этого дня», not «до полуночи».
+            created_to = _parse_dt_end(qp.get("created_to"))
             qs = orphan_leads(
                 sheet_source_id=sheet_source_id,
                 statuses=statuses,
@@ -1338,7 +1341,13 @@ class LeadStatusLabelDetailApi(APIView):
 
 
 def _parse_dt(value):
-    return parse_datetime(value) if value else None
+    """Backwards-compatible alias — see :func:`apps.common.dateparse.parse_dt_start`.
+
+    Kept for out-of-tree callers that may still reference it; new code
+    should import `parse_dt_start` / `parse_dt_end` directly.
+    """
+
+    return parse_dt_start(value)
 
 
 # ---- Retry-export --------------------------------------------------------
