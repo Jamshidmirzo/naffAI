@@ -19,6 +19,7 @@ from .services import retry_export_statuses_update, system_setting_update
 class DistributionSettingsSerializer(serializers.Serializer):
     auto_distribution_enabled = serializers.BooleanField()
     morning_gate_enabled = serializers.BooleanField()
+    morning_split_cap = serializers.IntegerField()
     updated_at = serializers.DateTimeField()
     updated_by = serializers.SerializerMethodField()
 
@@ -35,14 +36,16 @@ class DistributionSettingsSerializer(serializers.Serializer):
 
 
 class DistributionSettingsUpdateSerializer(serializers.Serializer):
-    # Оба поля опциональны — фронт шлёт только тот тумблер, что двигают.
+    # Все поля опциональны — фронт шлёт только тот параметр, что двигают.
     auto_distribution_enabled = serializers.BooleanField(required=False)
     morning_gate_enabled = serializers.BooleanField(required=False)
+    morning_split_cap = serializers.IntegerField(required=False, min_value=0, max_value=1000)
 
     def validate(self, attrs):
         if not attrs:
             raise serializers.ValidationError(
-                "передайте хотя бы один флаг: auto_distribution_enabled или morning_gate_enabled"
+                "передайте хотя бы одно поле: auto_distribution_enabled, "
+                "morning_gate_enabled или morning_split_cap"
             )
         return attrs
 
@@ -69,6 +72,7 @@ class DistributionSettingsApi(APIView):
             user=request.user,
             auto_distribution_enabled=ser.validated_data.get("auto_distribution_enabled"),
             morning_gate_enabled=ser.validated_data.get("morning_gate_enabled"),
+            morning_split_cap=ser.validated_data.get("morning_split_cap"),
         )
         return Response(DistributionSettingsSerializer(obj).data)
 

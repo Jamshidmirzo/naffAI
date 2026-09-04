@@ -21,6 +21,7 @@ def system_setting_update(
     user: Any | None = None,
     auto_distribution_enabled: bool | None = None,
     morning_gate_enabled: bool | None = None,
+    morning_split_cap: int | None = None,
 ) -> SystemSetting:
     obj = SystemSetting.get_solo()
 
@@ -45,6 +46,17 @@ def system_setting_update(
         }
         obj.morning_gate_enabled = morning_gate_enabled
         dirty_fields.append("morning_gate_enabled")
+
+    if (
+        morning_split_cap is not None
+        and int(obj.morning_split_cap or 0) != int(morning_split_cap)
+    ):
+        changes["morning_split_cap"] = {
+            "from": int(obj.morning_split_cap or 0),
+            "to": int(morning_split_cap),
+        }
+        obj.morning_split_cap = int(morning_split_cap)
+        dirty_fields.append("morning_split_cap")
 
     if not dirty_fields:
         return obj

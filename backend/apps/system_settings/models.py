@@ -31,6 +31,16 @@ class SystemSetting(models.Model):
             "поведение «спец-лиды блокируют раздачу»."
         ),
     )
+    morning_split_cap = models.PositiveSmallIntegerField(
+        default=5,
+        help_text=(
+            "Максимум лидов, которые один оператор получает за утреннюю "
+            "раздачу. Остальной пул остаётся неназначенным и «доедет» через "
+            "auto_refill в течение дня. Дефолт совпадает с RR_BATCH_SIZE=5, "
+            "чтобы утренние выдачи и добивки в течение дня были одного "
+            "размера. Значение 0 → без лимита (старое поведение)."
+        ),
+    )
     retry_export_spreadsheet_id = models.CharField(
         max_length=100,
         blank=True,

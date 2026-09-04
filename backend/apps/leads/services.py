@@ -857,6 +857,23 @@ def refill_operator_leads(
     if not workable:
         return []
 
+    # Anti-race: два параллельных вызова refill для одного и того же
+    # оператора (watcher-минутка + on_commit-хук после закрытия) могут
+    # одновременно посчитать «нужно 5» и оба выдать по 5 → 10 лидов.
+    # Postgres advisory lock, взятый в рамках текущей транзакции,
+    # сериализует эти пути на пер-операторной основе. Второй вызов
+    # дождётся первого и увидит уже обновлённый пул/счётчик.
+    from django.db import connection
+
+    if connection.vendor == "postgresql":
+        with connection.cursor() as cur:
+            # hashtext даёт int4; ключ включает op.id — коллизии для
+            # разных операторов практически исключены.
+            cur.execute(
+                "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                [f"refill-op-{operator.id}"],
+            )
+
     pool_qs = (
         Lead.objects.select_for_update(skip_locked=True)
         .filter(
@@ -931,7 +948,10 @@ def morning_distribute_leads(
     """
     import random as _random
 
-    from apps.system_settings.selectors import auto_distribution_enabled
+    from apps.system_settings.selectors import (
+        auto_distribution_enabled,
+        morning_split_cap,
+    )
 
     from .selectors import (
         active_lead_status_codes,
@@ -946,6 +966,10 @@ def morning_distribute_leads(
     )
     if not operators:
         return {}
+
+    # Верхний лимит выдачи одному оператору за раз (SystemSetting).
+    # 0 → без лимита (легаси-режим «делим всё поровну»).
+    per_op_cap = morning_split_cap()
 
     if seed is not None:
         _random.Random(seed).shuffle(operators)
@@ -974,19 +998,48 @@ def morning_distribute_leads(
     k = len(operators)
     counts: dict[int, int] = {op.id: 0 for op in operators}
 
+    # Round-robin с потолком per_op_cap: пропускаем оператора, если он
+    # уже получил свой максимум. Если все операторы упёрлись в потолок —
+    # остаток пула остаётся неназначенным (доедет через refill в
+    # течение дня по мере закрытий).
+    def _assign_index(i: int) -> int | None:
+        """Вернуть индекс оператора, которому уходит `i`-й лид пула, или None
+        если все уже упёрлись в cap."""
+        if per_op_cap <= 0:
+            return i % k
+        # линейный проход, стартуя с i%k — операторов немного (единицы), это дёшево.
+        for step in range(k):
+            idx = (i % k + step) % k
+            if counts[operators[idx].id] < per_op_cap:
+                return idx
+        return None
+
     if dry_run:
         for i in range(len(pool)):
-            counts[operators[i % k].id] += 1
+            idx = _assign_index(i)
+            if idx is None:
+                break
+            counts[operators[idx].id] += 1
         return counts
 
     now = timezone.now()
+    assigned: list[Lead] = []
     for i, lead in enumerate(pool):
-        op = operators[i % k]
+        idx = _assign_index(i)
+        if idx is None:
+            # Все операторы уже получили свой лимит — оставляем остаток
+            # лидов в пуле неназначенными.
+            break
+        op = operators[idx]
         lead.operator = op
         lead.updated_at = now
         counts[op.id] += 1
+        assigned.append(lead)
 
-    Lead.objects.bulk_update(pool, ["operator", "updated_at"])
+    if not assigned:
+        return {op_id: 0 for op_id in counts}
+
+    Lead.objects.bulk_update(assigned, ["operator", "updated_at"])
 
     op_by_id = {op.id: op for op in operators}
     LeadAssignment.objects.bulk_create(
@@ -998,7 +1051,7 @@ def morning_distribute_leads(
                 active=True,
                 reason="Утренняя раздача",
             )
-            for lead in pool
+            for lead in assigned
         ]
     )
 
@@ -1012,7 +1065,9 @@ def morning_distribute_leads(
             "morning_split": {
                 str(op_id): n for op_id, n in counts.items() if n > 0
             },
-            "total": len(pool),
+            "total_assigned": len(assigned),
+            "pool_size": len(pool),
+            "per_op_cap": per_op_cap,
         },
         comment="Утренняя раздача лидов",
     )

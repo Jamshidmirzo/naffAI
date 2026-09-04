@@ -36,6 +36,19 @@ def morning_gate_enabled() -> bool:
     return SystemSetting.get_solo().morning_gate_enabled
 
 
+def morning_split_cap() -> int:
+    """
+    Верхний лимит лидов, выдаваемых одному оператору за утренний split.
+
+    Читается ровно один раз в сутки при запуске `morning_distribute_leads`
+    — поэтому не кешируем, прямой хит по singleton'у.
+
+    Возвращает 0, если менеджер явно поставил "без лимита" (старое
+    поведение — раздать весь пул поровну).
+    """
+    return int(SystemSetting.get_solo().morning_split_cap or 0)
+
+
 def get_retry_export_statuses() -> list[str]:
     """
     Возвращает список кодов LeadStatusLabel для retry-export'a.
