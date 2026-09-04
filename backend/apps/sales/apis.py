@@ -25,7 +25,7 @@ from .models import (
     SalePartner,
     SaleStatus,
 )
-from .selectors import sale_get, sale_list
+from .selectors import sale_get, sale_list, sales_summary
 from .services import (
     sale_bulk_action,
     sale_confirm,
@@ -617,6 +617,45 @@ class SaleBulkActionApi(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(result)
+
+
+class SaleSummaryApi(APIView):
+    """
+    GET /api/sales/summary/ — сводка «кто сколько продал / что продавали /
+    общая сумма» для панели над таблицей /sales. Принимает те же
+    фильтры, что и список (date_from/date_to/operator_ids/partner_ids/
+    status), чтобы цифры сводки всегда совпадали с таблицей.
+    """
+
+    permission_classes = [IsTeamLeadOrManagerReadOnly]
+
+    def get(self, request):
+        qp = request.query_params
+        filter_data = {
+            "date_from": qp.get("date_from") or "",
+            "date_to": qp.get("date_to") or "",
+        }
+        if qp.getlist("operator_ids"):
+            filter_data["operator_ids"] = qp.getlist("operator_ids")
+        if qp.getlist("partner_ids"):
+            filter_data["partner_ids"] = qp.getlist("partner_ids")
+        if qp.get("status"):
+            filter_data["status"] = qp.get("status")
+
+        ser = SaleListFilterSerializer(data=filter_data)
+        ser.is_valid(raise_exception=True)
+        v = ser.validated_data
+
+        summary = sales_summary(
+            date_from=_parse_dt(v.get("date_from") or None),
+            date_to=_parse_dt_inclusive_end(v.get("date_to") or None),
+            operator_ids=v.get("operator_ids") or None,
+            partner_ids=v.get("partner_ids") or None,
+            # Default: считаем только confirmed — сводка про реальные
+            # деньги. Явный ?status=pending переключает.
+            status=v.get("status") or "confirmed",
+        )
+        return Response(summary)
 
 
 class SalePendingListApi(APIView):

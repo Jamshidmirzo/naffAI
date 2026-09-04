@@ -121,3 +121,68 @@ def operator_sales_aggregate(
     )
     agg = qs.aggregate(total=Sum("amount"), count=Count("sale", distinct=True))
     return {"total": agg["total"] or Decimal("0"), "count": agg["count"] or 0}
+
+
+def sales_summary(
+    *,
+    date_from: dt.datetime | None = None,
+    date_to: dt.datetime | None = None,
+    operator_ids: list[int] | None = None,
+    partner_ids: list[int] | None = None,
+    status: str | None = "confirmed",
+) -> dict:
+    """
+    Сводка «кто сколько продал / что продавали / общая сумма» для панели
+    над таблицей /sales. Фильтры повторяют `sale_list`, чтобы цифры
+    сводки всегда совпадали с тем, что менеджер видит в таблице.
+
+    by_operator считается по SaleOperator-долям (split-продажа на двоих
+    даёт каждому его часть, сумма долей == сумма продаж). by_model — по
+    самим Sale (модель одна на продажу).
+    """
+    base = sale_list(
+        operator_ids=operator_ids,
+        partner_ids=partner_ids,
+        date_from=date_from,
+        date_to=date_to,
+        status=status or None,
+    )
+
+    totals = base.aggregate(total=Sum("amount"), count=Count("id"))
+
+    by_model = list(
+        base.values("phone_model")
+        .annotate(n=Count("id"), total=Sum("amount"))
+        .order_by("-total")[:30]
+    )
+
+    line_qs = SaleOperator.objects.filter(sale__in=base.values("id"))
+    if operator_ids:
+        line_qs = line_qs.filter(operator_id__in=operator_ids)
+    by_operator = list(
+        line_qs.values("operator_id", "operator__full_name")
+        .annotate(n=Count("sale", distinct=True), total=Sum("amount"))
+        .order_by("-total")
+    )
+
+    return {
+        "total_amount": totals["total"] or Decimal("0"),
+        "total_count": totals["count"] or 0,
+        "by_operator": [
+            {
+                "operator_id": r["operator_id"],
+                "name": r["operator__full_name"] or "—",
+                "count": r["n"],
+                "amount": r["total"] or Decimal("0"),
+            }
+            for r in by_operator
+        ],
+        "by_model": [
+            {
+                "model": r["phone_model"] or "—",
+                "count": r["n"],
+                "amount": r["total"] or Decimal("0"),
+            }
+            for r in by_model
+        ],
+    }
