@@ -11,7 +11,7 @@ from django.utils import timezone
 from apps.operators.models import Operator, OperatorStatus
 from apps.sales.selectors import operator_sales_aggregate
 
-from .models import PayoutType, PayrollRule
+from .models import PayoutType, PayrollRule, PayrollScope
 from .selectors import payroll_rule_for
 from django.db import transaction
 from apps.audit.services import AuditAction, audit_log_create, audit_diff
@@ -162,3 +162,77 @@ def payroll_rule_update(*, rule: PayrollRule, user=None, **fields) -> PayrollRul
         changes=audit_diff(old, {k: str(v) for k, v in fields.items()}),
     )
     return rule
+
+
+@transaction.atomic
+def operator_payroll_rule_upsert(*, operator, user=None, **fields) -> PayrollRule:
+    """
+    Создаёт (или обновляет) активный `PayrollRule` в scope=operator для
+    указанного оператора. Соблюдает `uniq_active_operator_rule` — есть
+    ровно одна активная override-строка на оператора; повторный вызов
+    обновляет её in-place, а не плодит новых записей.
+
+    `fields` может содержать `threshold`, `payout_type`, `payout_value`,
+    `tiers`, `period`. Отсутствующие поля не трогаются (partial update).
+    Аудит-лог пишется явно (create — если строки не было, update — иначе).
+    """
+    existing = (
+        PayrollRule.objects.select_for_update()
+        .filter(
+            scope=PayrollScope.OPERATOR,
+            operator_id=operator.id,
+            is_active=True,
+        )
+        .order_by("-id")
+        .first()
+    )
+    if existing:
+        return payroll_rule_update(rule=existing, user=user, **fields)
+
+    create_kwargs = {
+        "scope": PayrollScope.OPERATOR,
+        "operator": operator,
+        "is_active": True,
+        **fields,
+    }
+    return payroll_rule_create(user=user, **create_kwargs)
+
+
+@transaction.atomic
+def operator_payroll_rule_delete(*, operator, user=None) -> bool:
+    """
+    Удаляет активный operator-scoped override. Возвращает True, если
+    что-то было удалено (для того чтобы вызывающий код мог понять,
+    нужно ли перечитывать глобальное правило). Записывает audit-log
+    только если строка действительно существовала — иначе no-op.
+    """
+    existing = (
+        PayrollRule.objects.select_for_update()
+        .filter(
+            scope=PayrollScope.OPERATOR,
+            operator_id=operator.id,
+            is_active=True,
+        )
+        .order_by("-id")
+        .first()
+    )
+    if not existing:
+        return False
+    rule_id = existing.id
+    snapshot = {
+        "scope": existing.scope,
+        "operator_id": existing.operator_id,
+        "threshold": str(existing.threshold),
+        "payout_type": existing.payout_type,
+        "payout_value": str(existing.payout_value),
+        "tiers": existing.tiers or [],
+    }
+    existing.delete()
+    audit_log_create(
+        user=user,
+        action=AuditAction.DELETE,
+        entity="payroll.PayrollRule",
+        entity_id=rule_id,
+        changes=snapshot,
+    )
+    return True
