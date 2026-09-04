@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, FileText, FileType2, XCircle } from "lucide-react";
 import { api } from "../lib/api";
 import { formatUZS } from "../lib/format";
-import { Button, Modal } from "../components/ui";
+import { Button, Modal, toast } from "../components/ui";
 import { MultiSelectPopover } from "../components/MultiSelectPopover";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
@@ -450,6 +450,9 @@ function PayrollDrilldown({
         />
       </div>
 
+      {/* Personal payroll rule (threshold + payout) */}
+      <PayrollRuleSection operatorId={detail.operator_id} />
+
       {/* Days breakdown */}
       {a.days && a.days.length > 0 && (
         <div>
@@ -461,6 +464,330 @@ function PayrollDrilldown({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Personal payroll rule (threshold + payout formula) editor.
+//
+// Показывает effective правило (override оператора > глобальное) и позволяет
+// менеджеру задать личный порог/формулу или сбросить override к глобальному.
+// -----------------------------------------------------------------------------
+
+type PayrollRuleDto = {
+  id: number;
+  scope: "global" | "operator";
+  operator_id: number | null;
+  threshold: string;
+  payout_type: "fixed" | "percent" | "tiers";
+  payout_value: string;
+  tiers: unknown[];
+  period: string;
+  is_active: boolean;
+} | null;
+
+type PayrollRuleResponse = {
+  operator_id: number;
+  source: "override" | "global" | "none";
+  effective: PayrollRuleDto;
+  override: PayrollRuleDto;
+  global: PayrollRuleDto;
+};
+
+function PayrollRuleSection({ operatorId }: { operatorId: number }) {
+  const t = useT();
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+
+  const q = useQuery<PayrollRuleResponse>({
+    queryKey: ["payroll-rule-operator", operatorId],
+    queryFn: () =>
+      api
+        .get<PayrollRuleResponse>(`/payroll/rules/operator/${operatorId}/`)
+        .then((r) => r.data),
+  });
+
+  const invalidateAllPayroll = () => {
+    qc.invalidateQueries({ queryKey: ["payroll-rule-operator", operatorId] });
+    qc.invalidateQueries({ queryKey: ["payroll-list"] });
+    qc.invalidateQueries({ queryKey: ["payroll-detail"] });
+    qc.invalidateQueries({ queryKey: ["payroll"] });
+  };
+
+  const save = useMutation({
+    mutationFn: (body: {
+      threshold: string;
+      payout_type: "fixed" | "percent" | "tiers";
+      payout_value: string;
+    }) =>
+      api
+        .put<PayrollRuleResponse>(`/payroll/rules/operator/${operatorId}/`, body)
+        .then((r) => r.data),
+    onSuccess: () => {
+      toast.success(t("payroll_rule.saved"));
+      setEditing(false);
+      invalidateAllPayroll();
+    },
+    onError: () => toast.error(t("payroll_rule.save_failed")),
+  });
+
+  const reset = useMutation({
+    mutationFn: () =>
+      api
+        .put<PayrollRuleResponse>(`/payroll/rules/operator/${operatorId}/`, {
+          reset: true,
+        })
+        .then((r) => r.data),
+    onSuccess: () => {
+      toast.success(t("payroll_rule.reset_done"));
+      setEditing(false);
+      invalidateAllPayroll();
+    },
+    onError: () => toast.error(t("payroll_rule.save_failed")),
+  });
+
+  if (q.isLoading || !q.data) {
+    return (
+      <div className="rounded-2xl p-4 text-[13px] text-muted"
+        style={{ border: "1px solid var(--border)", background: "var(--faint)" }}
+      >
+        {t("common.loading")}
+      </div>
+    );
+  }
+
+  const data = q.data;
+  const eff = data.effective;
+  const isOverride = data.source === "override";
+
+  return (
+    <div
+      className="rounded-2xl p-4 flex flex-col gap-3"
+      style={{ border: "1px solid var(--border)", background: "var(--faint)" }}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="text-[13px] font-semibold">
+            {t("payroll_rule.section_title")}
+          </div>
+          <span
+            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide"
+            style={{
+              background: isOverride
+                ? "rgba(37,99,235,0.10)"
+                : "rgba(107,114,128,0.10)",
+              color: isOverride ? "#2563eb" : "var(--muted)",
+              border: `1px solid ${
+                isOverride ? "rgba(37,99,235,0.30)" : "var(--border)"
+              }`,
+            }}
+          >
+            {isOverride
+              ? t("payroll_rule.badge_personal")
+              : t("payroll_rule.badge_global")}
+          </span>
+        </div>
+        {!editing && (
+          <div className="flex gap-2 shrink-0">
+            <Button variant="secondary" onClick={() => setEditing(true)}>
+              {t("payroll_rule.edit")}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {!editing && (
+        <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
+          <RuleFact
+            label={t("payroll_rule.threshold_label")}
+            value={eff ? formatUZS(eff.threshold) : "—"}
+          />
+          <RuleFact
+            label={t("payroll_rule.payout_label")}
+            value={eff ? formatPayoutFormula(eff, t) : "—"}
+          />
+        </div>
+      )}
+
+      {editing && (
+        <PayrollRuleForm
+          operatorId={operatorId}
+          initial={eff}
+          isOverride={isOverride}
+          onCancel={() => setEditing(false)}
+          onSubmit={(body) => save.mutate(body)}
+          onReset={() => reset.mutate()}
+          saving={save.isPending}
+          resetting={reset.isPending}
+        />
+      )}
+    </div>
+  );
+}
+
+function RuleFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wide text-muted">
+        {label}
+      </div>
+      <div className="text-[16px] font-semibold tabular-nums">{value}</div>
+    </div>
+  );
+}
+
+function formatPayoutFormula(
+  rule: NonNullable<PayrollRuleDto>,
+  t: (k: string, p?: Record<string, string | number>) => string,
+): string {
+  const v = rule.payout_value;
+  switch (rule.payout_type) {
+    case "percent":
+      return t("payroll_rule.formula_percent", { value: v });
+    case "fixed":
+      return t("payroll_rule.formula_fixed", { value: formatUZS(v) });
+    case "tiers":
+      return t("payroll_rule.formula_tiers");
+  }
+}
+
+function PayrollRuleForm({
+  operatorId: _operatorId,
+  initial,
+  isOverride,
+  onCancel,
+  onSubmit,
+  onReset,
+  saving,
+  resetting,
+}: {
+  operatorId: number;
+  initial: PayrollRuleDto;
+  isOverride: boolean;
+  onCancel: () => void;
+  onSubmit: (body: {
+    threshold: string;
+    payout_type: "fixed" | "percent" | "tiers";
+    payout_value: string;
+  }) => void;
+  onReset: () => void;
+  saving: boolean;
+  resetting: boolean;
+}) {
+  const t = useT();
+  // Pre-fill from effective — если override отсутствует, форма стартует со
+  // значений глобального правила, чтобы менеджер видел точку отсчёта.
+  const [threshold, setThreshold] = useState<string>(
+    initial ? String(initial.threshold) : "50000000",
+  );
+  const [payoutType, setPayoutType] = useState<"fixed" | "percent" | "tiers">(
+    initial?.payout_type ?? "percent",
+  );
+  const [payoutValue, setPayoutValue] = useState<string>(
+    initial ? String(initial.payout_value) : "3",
+  );
+
+  const submit = () => {
+    if (!threshold || Number(threshold) < 0) {
+      toast.error(t("payroll_rule.err_threshold"));
+      return;
+    }
+    if (payoutType !== "tiers" && (!payoutValue || Number(payoutValue) < 0)) {
+      toast.error(t("payroll_rule.err_payout_value"));
+      return;
+    }
+    onSubmit({
+      threshold,
+      payout_type: payoutType,
+      payout_value: payoutValue,
+    });
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] uppercase tracking-wide text-muted">
+            {t("payroll_rule.threshold_label")}
+          </span>
+          <input
+            type="number"
+            min={0}
+            className="nf-input py-2 px-3 text-[13px] tabular-nums"
+            value={threshold}
+            onChange={(e) => setThreshold(e.target.value)}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] uppercase tracking-wide text-muted">
+            {t("payroll_rule.payout_type_label")}
+          </span>
+          <select
+            className="nf-input py-2 px-3 text-[13px]"
+            value={payoutType}
+            onChange={(e) =>
+              setPayoutType(e.target.value as "fixed" | "percent" | "tiers")
+            }
+          >
+            <option value="percent">{t("payroll_rule.type_percent")}</option>
+            <option value="fixed">{t("payroll_rule.type_fixed")}</option>
+            <option value="tiers">{t("payroll_rule.type_tiers")}</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] uppercase tracking-wide text-muted">
+            {payoutType === "percent"
+              ? t("payroll_rule.value_percent_label")
+              : payoutType === "fixed"
+              ? t("payroll_rule.value_fixed_label")
+              : t("payroll_rule.value_tiers_label")}
+          </span>
+          <input
+            type="number"
+            min={0}
+            step={payoutType === "percent" ? "0.1" : "1"}
+            disabled={payoutType === "tiers"}
+            className="nf-input py-2 px-3 text-[13px] tabular-nums disabled:opacity-50"
+            value={payoutValue}
+            onChange={(e) => setPayoutValue(e.target.value)}
+          />
+        </label>
+      </div>
+
+      {payoutType === "tiers" && (
+        <div className="text-[11.5px] text-muted">
+          {t("payroll_rule.tiers_hint")}
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2 justify-end">
+        {isOverride && (
+          <Button
+            variant="secondary"
+            disabled={saving || resetting}
+            onClick={onReset}
+          >
+            {resetting
+              ? t("common.loading")
+              : t("payroll_rule.reset_to_global")}
+          </Button>
+        )}
+        <Button
+          variant="secondary"
+          disabled={saving || resetting}
+          onClick={onCancel}
+        >
+          {t("payroll_rule.cancel")}
+        </Button>
+        <Button
+          variant="primary"
+          disabled={saving || resetting}
+          onClick={submit}
+        >
+          {saving ? t("common.loading") : t("payroll_rule.save")}
+        </Button>
+      </div>
     </div>
   );
 }

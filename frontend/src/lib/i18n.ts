@@ -1471,6 +1471,12 @@ const STRINGS: Lookup = {
     "scan_photo.checkout_at": "Уход в {t}",
     "scan_photo.duration_label": "Отработано: {d}",
     "scan_photo.late_badge": "⚠ Опоздание",
+    // Заголовок-надстрочник (Eyebrow) на верху экрана — контекст «что мы сейчас делаем».
+    // Разделён по действию, чтобы уход визуально отличался от прихода (иначе
+    // операторы жалуются, что «нажал не то»).
+    "scan.checkin_eyebrow": "ПРИХОД НА СМЕНУ",
+    "scan.checkout_eyebrow": "ЗАВЕРШЕНИЕ СМЕНЫ",
+    "scan.checkout_confirm_title": "Подтверждение ухода",
 
     // ------ camera capture ------
     "camera.title": "Селфи для смены",
@@ -2408,6 +2414,34 @@ const STRINGS: Lookup = {
     "payroll.plan_col": "План",
     "payroll.actual_col": "Продано",
 
+    // ------ payroll: личный порог продаж в drilldown-модалке ------
+    "payroll_rule.section_title": "Личный порог продаж",
+    "payroll_rule.badge_personal": "личный",
+    "payroll_rule.badge_global": "глобальный",
+    "payroll_rule.threshold_label": "Порог",
+    "payroll_rule.payout_label": "Формула выплаты",
+    "payroll_rule.payout_type_label": "Тип выплаты",
+    "payroll_rule.type_percent": "Процент от суммы сверх порога",
+    "payroll_rule.type_fixed": "Фиксированный бонус",
+    "payroll_rule.type_tiers": "Прогрессивные тиры",
+    "payroll_rule.value_percent_label": "Процент (%)",
+    "payroll_rule.value_fixed_label": "Бонус, UZS",
+    "payroll_rule.value_tiers_label": "—",
+    "payroll_rule.formula_percent": "{value}% от суммы сверх порога",
+    "payroll_rule.formula_fixed": "фикс. бонус {value}",
+    "payroll_rule.formula_tiers": "прогрессивные тиры",
+    "payroll_rule.tiers_hint":
+      "Тиры настраиваются через админку — форма пока принимает только порог, значения тиров остаются без изменений.",
+    "payroll_rule.edit": "Изменить",
+    "payroll_rule.save": "Сохранить",
+    "payroll_rule.cancel": "Отмена",
+    "payroll_rule.reset_to_global": "Сбросить к глобальному",
+    "payroll_rule.saved": "Правило сохранено",
+    "payroll_rule.reset_done": "Личное правило сброшено",
+    "payroll_rule.save_failed": "Не удалось сохранить",
+    "payroll_rule.err_threshold": "Порог должен быть неотрицательным числом",
+    "payroll_rule.err_payout_value": "Значение выплаты должно быть неотрицательным",
+
     // ------ operator edit form — payroll section ------
     "operator_form.section_salary": "Зарплата и график",
     "operator_form.section_salary_hint":
@@ -2424,6 +2458,13 @@ const STRINGS: Lookup = {
     "operator_form.weekly_day_off": "Выходной",
     "operator_form.weekly_day_off_default": "По умолчанию",
     "operator_form.weekly_free_absences": "Прощённых пропусков в неделю",
+
+    // ------ personal schedule (list badge + collapsible sub-section) ------
+    "op_schedule.section_title": "Личное расписание",
+    "op_schedule.section_hint":
+      "Задайте здесь, если у оператора смена отличается от общей (например, работает с 12:00). Пусто — берутся глобальные настройки смены.",
+    "op_schedule.badge_label": "🕐 личное расписание",
+    "op_schedule.badge_tooltip": "У оператора настроено индивидуальное время смены или выходной",
 
     "weekday.mon": "Понедельник",
     "weekday.tue": "Вторник",
@@ -3882,6 +3923,9 @@ const STRINGS: Lookup = {
     "scan_photo.checkout_at": "Ketish: {t}",
     "scan_photo.duration_label": "Ishlangan vaqt: {d}",
     "scan_photo.late_badge": "⚠ Kechikish",
+    "scan.checkin_eyebrow": "SMENAGA KELISH",
+    "scan.checkout_eyebrow": "SMENANI YAKUNLASH",
+    "scan.checkout_confirm_title": "Ketishni tasdiqlash",
 
     // ------ camera capture — UZ ------
     "camera.title": "Smena uchun selfi",
@@ -4806,6 +4850,34 @@ const STRINGS: Lookup = {
     "payroll.plan_col": "Reja",
     "payroll.actual_col": "Sotilgan",
 
+    // ------ payroll: shaxsiy sotuv chegarasi (drilldown-modal) ------
+    "payroll_rule.section_title": "Shaxsiy sotuv chegarasi",
+    "payroll_rule.badge_personal": "shaxsiy",
+    "payroll_rule.badge_global": "umumiy",
+    "payroll_rule.threshold_label": "Chegara",
+    "payroll_rule.payout_label": "To'lov formulasi",
+    "payroll_rule.payout_type_label": "To'lov turi",
+    "payroll_rule.type_percent": "Chegaradan yuqori summadan foiz",
+    "payroll_rule.type_fixed": "Qat'iy bonus",
+    "payroll_rule.type_tiers": "Progressiv tiralar",
+    "payroll_rule.value_percent_label": "Foiz (%)",
+    "payroll_rule.value_fixed_label": "Bonus, UZS",
+    "payroll_rule.value_tiers_label": "—",
+    "payroll_rule.formula_percent": "chegaradan yuqori summadan {value}%",
+    "payroll_rule.formula_fixed": "qat'iy bonus {value}",
+    "payroll_rule.formula_tiers": "progressiv tiralar",
+    "payroll_rule.tiers_hint":
+      "Tiralar admin panelidan sozlanadi — bu forma faqat chegarani o'zgartiradi, tira qiymatlari o'zgarmaydi.",
+    "payroll_rule.edit": "O'zgartirish",
+    "payroll_rule.save": "Saqlash",
+    "payroll_rule.cancel": "Bekor qilish",
+    "payroll_rule.reset_to_global": "Umumiyga qaytarish",
+    "payroll_rule.saved": "Qoida saqlandi",
+    "payroll_rule.reset_done": "Shaxsiy qoida bekor qilindi",
+    "payroll_rule.save_failed": "Saqlab bo'lmadi",
+    "payroll_rule.err_threshold": "Chegara manfiy bo'lmagan son bo'lishi kerak",
+    "payroll_rule.err_payout_value": "To'lov qiymati manfiy bo'lmasligi kerak",
+
     // ------ operator edit form — payroll section ------
     "operator_form.section_salary": "Ish haqi va jadval",
     "operator_form.section_salary_hint":
@@ -4822,6 +4894,12 @@ const STRINGS: Lookup = {
     "operator_form.weekly_day_off": "Dam olish kuni",
     "operator_form.weekly_day_off_default": "Standart",
     "operator_form.weekly_free_absences": "Haftalik kechirilgan kunlar",
+
+    "op_schedule.section_title": "Shaxsiy jadval",
+    "op_schedule.section_hint":
+      "Operatorda umumiydan farq qiladigan smena bo'lsa (masalan, 12:00 dan boshlanadigan), shu yerda kiriting. Bo'sh bo'lsa — umumiy smena sozlamalari ishlatiladi.",
+    "op_schedule.badge_label": "🕐 shaxsiy jadval",
+    "op_schedule.badge_tooltip": "Operatorda maxsus smena vaqti yoki dam kuni belgilangan",
 
     "weekday.mon": "Dushanba",
     "weekday.tue": "Seshanba",

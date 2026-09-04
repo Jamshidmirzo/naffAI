@@ -196,10 +196,29 @@ export default function ScanPhotoFlow() {
     >
       <div className="max-w-[440px] mx-auto px-5">
         <div className="text-center">
-          <Eyebrow>{isCheckIn ? "ПРИХОД НА СМЕНУ" : "ЗАВЕРШЕНИЕ СМЕНЫ"}</Eyebrow>
+          {/*
+            Eyebrow — RU/UZ i18n. Backend определяет action автоматически:
+            если есть open AttendanceLog → expected_action=check_out. Никакого
+            `?mode=checkout` не нужно — режим переключается сам, здесь мы
+            только красим и подписываем в соответствии.
+          */}
+          <Eyebrow>
+            {isCheckIn ? t("scan.checkin_eyebrow") : t("scan.checkout_eyebrow")}
+          </Eyebrow>
           <h1 className="mt-3 text-[26px] font-bold tracking-tight">
             {preview.operator.full_name}
           </h1>
+          {/* Для checkout — явный «Подтверждение ухода» подзаголовок, чтобы
+              оператор не спутал экраны (жалоба «нажал не то» → надо чтобы
+              визуально режимы отличались сильнее). */}
+          {!isCheckIn && (
+            <div
+              className="mt-1.5 text-[13.5px] font-medium"
+              style={{ color: "#ea580c" }}
+            >
+              {t("scan.checkout_confirm_title")}
+            </div>
+          )}
           {preview.on_shift && preview.checked_in_at && (
             <div className="mt-2 text-[13.5px] text-muted inline-flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5" />

@@ -32,6 +32,73 @@ const STATUS_TABS: { key: StatusFilter; label: string }[] = [
   { key: "gift", label: "Подарки" },
 ];
 
+function _iso(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+const DATE_PRESETS: { key: string; label: string; range: () => { from: string; to: string } }[] = [
+  {
+    key: "today",
+    label: "Сегодня",
+    range: () => {
+      const t = _iso(new Date());
+      return { from: t, to: t };
+    },
+  },
+  {
+    key: "yesterday",
+    label: "Вчера",
+    range: () => {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      const t = _iso(d);
+      return { from: t, to: t };
+    },
+  },
+  {
+    key: "week",
+    label: "7 дней",
+    range: () => {
+      const to = new Date();
+      const from = new Date();
+      from.setDate(from.getDate() - 6);
+      return { from: _iso(from), to: _iso(to) };
+    },
+  },
+  {
+    key: "this_month",
+    label: "Этот месяц",
+    range: () => {
+      const now = new Date();
+      return {
+        from: _iso(new Date(now.getFullYear(), now.getMonth(), 1)),
+        to: _iso(now),
+      };
+    },
+  },
+  {
+    key: "last_month",
+    label: "Прошлый месяц",
+    range: () => {
+      const now = new Date();
+      return {
+        from: _iso(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+        to: _iso(new Date(now.getFullYear(), now.getMonth(), 0)),
+      };
+    },
+  },
+];
+
+type SalesSummary = {
+  total_amount: string | number;
+  total_count: number;
+  by_operator: { operator_id: number; name: string; count: number; amount: string | number }[];
+  by_model: { model: string; count: number; amount: string | number }[];
+};
+
 function paramsToObject(sp: URLSearchParams): Record<string, string | string[]> {
   const obj: Record<string, string | string[]> = {};
   for (const key of new Set(sp.keys())) {
@@ -114,6 +181,26 @@ export default function Sales() {
   const sales = useQuery<Paginated<any>>({
     queryKey,
     queryFn: () => api.get("/sales/", { params: apiParams }).then((r) => r.data),
+    placeholderData: (prev) => prev,
+  });
+
+  // Сводка «кто сколько продал / что продавали / общая сумма» — те же
+  // фильтры, что и таблица (кроме пагинации/поиска), только confirmed.
+  const summaryParams = useMemo(() => {
+    const p = new URLSearchParams();
+    if (dateFrom) p.set("date_from", dateFrom);
+    if (dateTo) p.set("date_to", dateTo);
+    for (const id of operatorIds) p.append("operator_ids", String(id));
+    for (const id of partnerIds) p.append("partner_ids", String(id));
+    return p;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom, dateTo, operatorIds.join(","), partnerIds.join(",")]);
+
+  const summaryQ = useQuery<SalesSummary>({
+    queryKey: ["sales-summary", summaryParams.toString()],
+    queryFn: () =>
+      api.get("/sales/summary/", { params: summaryParams }).then((r) => r.data),
+    enabled: Boolean(dateFrom || dateTo),
     placeholderData: (prev) => prev,
   });
 
@@ -234,6 +321,20 @@ export default function Sales() {
 
       {filtersOpen && (
         <section className="nf-card p-5 flex flex-wrap gap-4 items-end animate-nfFadeUp">
+          <div className="w-full flex flex-wrap gap-2">
+            {DATE_PRESETS.map((p) => (
+              <Chip
+                key={p.key}
+                active={dateFrom === p.range().from && dateTo === p.range().to}
+                onClick={() => {
+                  const r = p.range();
+                  update({ date_from: r.from, date_to: r.to });
+                }}
+              >
+                {p.label}
+              </Chip>
+            ))}
+          </div>
           <div>
             <div className="nf-col mb-1.5">Дата от</div>
             <input
@@ -269,6 +370,63 @@ export default function Sales() {
               <RotateCcw className="w-3.5 h-3.5" /> Сбросить
             </button>
           )}
+        </section>
+      )}
+
+      {/* --- SUMMARY (по выбранному периоду) --- */}
+      {(dateFrom || dateTo) && summaryQ.data && (
+        <section className="nf-card p-5 animate-nfFadeUp">
+          <div className="flex flex-wrap items-baseline gap-3 mb-3">
+            <div className="text-[15px] font-semibold">Сводка за период</div>
+            <div className="text-[13px] text-muted">
+              {summaryQ.data.total_count} продаж ·{" "}
+              <span className="font-semibold" style={{ color: "var(--accent)" }}>
+                {formatUZS(summaryQ.data.total_amount)}
+              </span>
+            </div>
+          </div>
+          <div className="grid gap-5 md:grid-cols-2">
+            <div>
+              <div className="nf-col mb-2">Кто сколько продал</div>
+              {summaryQ.data.by_operator.length === 0 ? (
+                <div className="text-[13px] text-muted">Нет данных</div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {summaryQ.data.by_operator.map((r) => (
+                    <div
+                      key={r.operator_id ?? r.name}
+                      className="flex items-center justify-between text-[13px]"
+                    >
+                      <span className="truncate">{r.name}</span>
+                      <span className="text-muted tabular-nums ml-3 shrink-0">
+                        {r.count} шт · {formatUZS(r.amount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <div className="nf-col mb-2">Что продавали</div>
+              {summaryQ.data.by_model.length === 0 ? (
+                <div className="text-[13px] text-muted">Нет данных</div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {summaryQ.data.by_model.slice(0, 10).map((r) => (
+                    <div
+                      key={r.model}
+                      className="flex items-center justify-between text-[13px]"
+                    >
+                      <span className="truncate">{r.model}</span>
+                      <span className="text-muted tabular-nums ml-3 shrink-0">
+                        {r.count} шт · {formatUZS(r.amount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </section>
       )}
 

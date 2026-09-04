@@ -13,13 +13,21 @@ import datetime as dt
 
 import pytest
 from django.utils import timezone
+from freezegun import freeze_time
 
 from apps.attendance.models import AttendanceSettings
 from apps.attendance.services import _attendance_check_in
 from apps.operators.models import Operator, OperatorStatus
 
+# Все тесты замораживаем на 11:00 утра Ташкента (06:00 UTC): «сейчас ± 1
+# час» не должен перепрыгивать полночь — иначе `.time()` от завтрашних
+# 00:30 превращается в «сегодня 00:30 = давно прошло» и тест флакует
+# при ночных прогонах.
+_FROZEN = "2026-09-04 06:00:00"  # 11:00 Asia/Tashkent
+
 
 @pytest.mark.django_db
+@freeze_time(_FROZEN)
 def test_check_in_uses_operator_shift_start_not_global():
     """Оператор с личной сменой 12:00 → check-in ~11:50 не «опоздал»,
     даже если глобальный shift_start=10:00.
@@ -61,6 +69,7 @@ def test_check_in_uses_operator_shift_start_not_global():
 
 
 @pytest.mark.django_db
+@freeze_time(_FROZEN)
 def test_check_in_falls_back_to_global_shift_when_op_has_none():
     """Оператор без личного shift_start → используется глобальный.
 

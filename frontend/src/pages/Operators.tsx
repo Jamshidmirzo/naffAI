@@ -87,6 +87,26 @@ function isBirthdayToday(iso: string | null): boolean {
 // При меньшем — серый бейдж (или скрыт при 0).
 const FORGOTTEN_ALERT_THRESHOLD = 5;
 
+/**
+ * У оператора настроено «личное расписание», если он переопределил хотя бы
+ * одно из полей смены (`shift_start`, `shift_end`, `weekly_day_off`,
+ * `grace_period_min`, `weekly_free_absences`). Показываем badge в списке,
+ * чтобы менеджер видел, что у этого оператора действуют персональные
+ * часы, а не глобальные из AttendanceSettings.
+ *
+ * NB: `late_penalty_uzs` — это про деньги, а не про часы, специально не
+ * учитываем: badge = именно «расписание».
+ */
+function hasPersonalSchedule(o: OperatorRow): boolean {
+  return (
+    !!o.shift_start ||
+    !!o.shift_end ||
+    o.weekly_day_off != null ||
+    o.grace_period_min != null ||
+    o.weekly_free_absences != null
+  );
+}
+
 function initials(name: string) {
   return (
     name
@@ -460,6 +480,18 @@ export default function Operators() {
                             </span>
                           );
                         })()}
+                        {hasPersonalSchedule(o) && (
+                          <span
+                            title={t("op_schedule.badge_tooltip")}
+                            className="shrink-0 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                            style={{
+                              background: "rgba(59,130,246,.10)",
+                              color: "#2563eb",
+                            }}
+                          >
+                            {t("op_schedule.badge_label")}
+                          </span>
+                        )}
                       </div>
                       <div className="text-[12px] text-muted truncate">
                         {o.phone || t("leads.no_phone")}
@@ -898,6 +930,26 @@ export default function Operators() {
                       setEditModal({ ...editModal, sales_gate_pct: clamped });
                     }}
                   />
+                </div>
+                {/*
+                  Подсекция «Личное расписание» внутри «Зарплата и график».
+                  Визуально отделяет часы/выходной/grace от бонусных полей,
+                  чтобы менеджер сразу видел, что здесь настраивается СМЕНА
+                  конкретного оператора (сдвиг с 10:00 → 12:00 и т.п.), а
+                  не бонусы. Пустые поля → global из AttendanceSettings.
+                  Занимает обе колонки grid'а (col-span-2), заголовок + hint
+                  над time-полями.
+                */}
+                <div className="col-span-2 pt-2 mt-1">
+                  <div
+                    className="text-[12.5px] font-semibold tracking-tight"
+                    style={{ color: "var(--text)" }}
+                  >
+                    {t("op_schedule.section_title")}
+                  </div>
+                  <div className="text-[11.5px] text-muted mt-0.5 leading-snug">
+                    {t("op_schedule.section_hint")}
+                  </div>
                 </div>
                 <div>
                   <div className="nf-col mb-1.5">
