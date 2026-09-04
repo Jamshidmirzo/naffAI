@@ -501,9 +501,18 @@ def _attendance_check_in(
 ) -> dict:
     now = timezone.now()
 
-    # Determine was_late
+    # Determine was_late — уважаем **per-operator** shift_start. Если
+    # оператор со сдвинутой сменой (например, вечерняя 14:00-22:00),
+    # глобальный 10:00 из AttendanceSettings не должен ловить его на
+    # «опоздание» в 13:50. `resolve_operator_config` уже сливает
+    # per-op override с глобальным дефолтом.
+    #
+    # `late_threshold_min` (grace для флага was_late) пока остаётся
+    # глобальным — per-op поля для него в модели нет; `grace_period_min`
+    # на Operator относится к payroll-штрафу и семантически отделён.
+    cfg = resolve_operator_config(operator)
     now_local = timezone.localtime(now)
-    shift_start_time = settings_obj.shift_start
+    shift_start_time = cfg["shift_start"]
     if isinstance(shift_start_time, str):
         h, m = map(int, shift_start_time.split(":")[:2])
         shift_start_dt = now_local.replace(hour=h, minute=m, second=0, microsecond=0)

@@ -27,7 +27,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.attendance.models import AttendanceLog, AttendanceSettings
-from apps.attendance.services import audit_log_create
+from apps.attendance.services import audit_log_create, resolve_operator_config
 from apps.notifications.models import Notification, NotificationKind
 from apps.users.models import Profile
 
@@ -79,10 +79,14 @@ class Command(BaseCommand):
                 )
             return
 
+        # `shift_start` — уважаем per-operator override (например,
+        # вечерняя смена 14:00-22:00). `late_threshold_min` живёт
+        # глобально в AttendanceSettings.
         for log in qs:
+            cfg = resolve_operator_config(log.operator)
             self._process_one(
                 log,
-                shift_start=settings_obj.shift_start,
+                shift_start=cfg["shift_start"],
                 late_threshold_min=int(settings_obj.late_threshold_min or 0),
             )
 

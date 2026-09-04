@@ -32,7 +32,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.attendance.models import AttendanceLog, AttendanceSettings
-from apps.attendance.services import audit_log_create
+from apps.attendance.services import audit_log_create, resolve_operator_config
 from apps.notifications.models import Notification, NotificationKind
 from apps.users.models import Profile
 
@@ -95,7 +95,11 @@ class Command(BaseCommand):
             return
 
         for log in qs:
-            self._process_one(log, n_hours=n_hours, shift_end=settings_obj.shift_end)
+            # `shift_end` — уважаем per-operator override, чтобы
+            # оператор с вечерней сменой (22:00) не отсеивался «past
+            # shift_end+3h» проверкой по глобальному 20:00.
+            cfg = resolve_operator_config(log.operator)
+            self._process_one(log, n_hours=n_hours, shift_end=cfg["shift_end"])
 
     def _process_one(
         self, log: AttendanceLog, *, n_hours: int, shift_end
