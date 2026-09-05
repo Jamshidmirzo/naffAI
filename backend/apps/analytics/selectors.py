@@ -1535,12 +1535,45 @@ def _sales_target_for_period(
     }
 
 
-def dashboard_summary(period: str = "week") -> dict:
+def _month_bounds(
+    month: str,
+) -> tuple[dt.datetime, dt.datetime, dt.datetime, dt.datetime] | None:
+    """
+    `month` = "YYYY-MM" → (cur_start, cur_end, prev_start, prev_end) для
+    конкретного календарного месяца; prev = предыдущий календарный месяц.
+    Возвращает None если строка не парсится.
+    """
+    try:
+        y, m = (int(x) for x in month.split("-")[:2])
+        if not 1 <= m <= 12:
+            return None
+    except (ValueError, AttributeError):
+        return None
+    tz = timezone.get_current_timezone()
+    cur_start = dt.datetime(y, m, 1, tzinfo=tz)
+    cur_end = (
+        dt.datetime(y + 1, 1, 1, tzinfo=tz)
+        if m == 12
+        else dt.datetime(y, m + 1, 1, tzinfo=tz)
+    )
+    prev_start = (
+        dt.datetime(y - 1, 12, 1, tzinfo=tz)
+        if m == 1
+        else dt.datetime(y, m - 1, 1, tzinfo=tz)
+    )
+    return cur_start, cur_end, prev_start, cur_start
+
+
+def dashboard_summary(period: str = "week", *, month: str | None = None) -> dict:
     """
     Aggregate everything the manager «Сводка дня» dashboard needs.
 
     Composes existing selectors — no new business logic here. Shape is
     documented next to the endpoint (see `apis.DashboardSummaryApi`).
+
+    `month="YYYY-MM"` — конкретный календарный месяц (кейс «посмотреть
+    август и посчитать по нему ЗП»); перекрывает `period`, prev-окно =
+    предыдущий календарный месяц.
     """
     from apps.leads.selectors import orphan_leads
     from apps.sales.models import Sale
@@ -1549,7 +1582,12 @@ def dashboard_summary(period: str = "week") -> dict:
     if period not in ("day", "week", "month"):
         period = "week"
 
-    cur_start, cur_end, prev_start, prev_end = _period_bounds(period)
+    month_bounds = _month_bounds(month) if month else None
+    if month_bounds is not None:
+        cur_start, cur_end, prev_start, prev_end = month_bounds
+        period = f"month:{month}"
+    else:
+        cur_start, cur_end, prev_start, prev_end = _period_bounds(period)
 
     # -------- today card (always today, независимо от period) --------
     now = timezone.now()

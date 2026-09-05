@@ -234,6 +234,7 @@ const STRINGS: Lookup = {
 
     // ------ dashboard v2 «Сводка дня» (менеджерская главная) ------
     "dash.title_today_brief": "Сводка дня",
+    "dash.month_picker": "Выбрать конкретный месяц",
     "dash.kpi_done_today": "ПРОВЕДЕНО СЕГОДНЯ",
     "dash.kpi_turnover_sum": "ОБОРОТ, СУМ",
     "dash.kpi_conversion": "КОНВЕРСИЯ ЛИДОВ",
@@ -2719,6 +2720,7 @@ const STRINGS: Lookup = {
 
     // ------ dashboard v2 «Kun xulosasi» (menejer bosh sahifasi) ------
     "dash.title_today_brief": "Kun xulosasi",
+    "dash.month_picker": "Aniq oyni tanlash",
     "dash.kpi_done_today": "BUGUN SOTILDI",
     "dash.kpi_turnover_sum": "AYLANMA, SO'M",
     "dash.kpi_conversion": "LID KONVERSIYASI",

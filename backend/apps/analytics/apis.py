@@ -295,6 +295,12 @@ class DashboardSummaryApi(APIView):
 
     def get(self, request):
         period = (request.query_params.get("period") or "week").lower()
+        month = (request.query_params.get("month") or "").strip() or None
+        if month:
+            # Конкретный месяц («посмотреть август и посчитать ЗП») —
+            # мимо кэша: исторический месяц не меняется, а гонять
+            # invalidation для произвольных YYYY-MM не хотим.
+            return Response(dashboard_summary(period=period, month=month))
         # Wave-1 (2026-08-22): каждая mutation'а Sale инвалидирует все три
         # известные значения period одним delete_many — держатся синхронно
         # с реальностью в пределах commit'а mutation.

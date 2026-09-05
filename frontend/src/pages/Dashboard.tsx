@@ -60,6 +60,9 @@ export default function Dashboard() {
   const nav = useNavigate();
   const t = useT();
   const [period, setPeriod] = useState<Period>("week");
+  // Конкретный календарный месяц ("2026-08") — перекрывает period-табы.
+  // Кейс: посмотреть август целиком и посчитать по нему ЗП.
+  const [month, setMonth] = useState<string>("");
 
   usePageHeader(
     {
@@ -76,10 +79,12 @@ export default function Dashboard() {
   ];
 
   const summary = useQuery<DashboardSummary>({
-    queryKey: ["dashboard-summary", period],
+    queryKey: ["dashboard-summary", period, month],
     queryFn: () =>
       api
-        .get("/analytics/dashboard-summary/", { params: { period } })
+        .get("/analytics/dashboard-summary/", {
+          params: month ? { month } : { period },
+        })
         .then((r) => r.data),
     refetchInterval: 60000,
   });
@@ -129,11 +134,40 @@ export default function Dashboard() {
         >
           {t("dash.title_today_brief")}
         </h1>
-        <TabPill<Period>
-          value={period}
-          onChange={setPeriod}
-          items={PERIOD_TABS}
-        />
+        <div className="flex items-center gap-2 flex-wrap">
+          <TabPill<Period>
+            value={period}
+            onChange={(v) => {
+              setPeriod(v);
+              setMonth("");
+            }}
+            items={PERIOD_TABS}
+          />
+          <input
+            type="month"
+            className="nf-input"
+            style={{
+              padding: "7px 10px",
+              width: 168,
+              borderColor: month ? "var(--accent)" : undefined,
+            }}
+            value={month}
+            max={new Date().toISOString().slice(0, 7)}
+            onChange={(e) => setMonth(e.target.value)}
+            aria-label={t("dash.month_picker")}
+            title={t("dash.month_picker")}
+          />
+          {month && (
+            <button
+              type="button"
+              className="nf-btn nf-btn--ghost"
+              style={{ padding: "7px 10px" }}
+              onClick={() => setMonth("")}
+            >
+              ×
+            </button>
+          )}
+        </div>
       </div>
 
       {/* --- TOP ROW: 4 KPI cards --- */}
