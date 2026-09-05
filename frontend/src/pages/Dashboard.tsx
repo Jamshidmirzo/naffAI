@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { formatNumber, formatUZS } from "../lib/format";
 import { TabPill, type TabItem } from "../components/ui";
+import { SingleSelectCombobox, type ComboboxOption } from "../components/SingleSelectCombobox";
 import { DashKpiCard } from "../components/dashboard/KpiCard";
 import { SalesBarChart, type SalesBarPoint } from "../components/dashboard/SalesBarChart";
 import {
@@ -37,6 +38,42 @@ interface DashboardSummary {
     amount: string;
   }>;
 }
+
+// Список месяцев для dropdown: 24 месяца назад до текущего включительно.
+// `id` = порядковый номер (0 = самый свежий); маппим в "YYYY-MM" туда-обратно.
+const _MONTH_NAMES_RU = [
+  "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+  "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
+];
+
+function _monthList(): { key: string; label: string }[] {
+  const out: { key: string; label: string }[] = [];
+  const now = new Date();
+  for (let i = 0; i < 24; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    const key = `${y}-${String(m + 1).padStart(2, "0")}`;
+    out.push({ key, label: `${_MONTH_NAMES_RU[m]} ${y}` });
+  }
+  return out;
+}
+
+const _MONTHS = _monthList();
+const MONTH_OPTIONS: ComboboxOption[] = _MONTHS.map((m, i) => ({
+  id: i,
+  label: m.label,
+}));
+
+function MONTH_KEY_TO_ID(key: string): number | null {
+  const idx = _MONTHS.findIndex((m) => m.key === key);
+  return idx >= 0 ? idx : null;
+}
+
+function MONTH_ID_TO_KEY(id: number): string {
+  return _MONTHS[id]?.key ?? "";
+}
+
 
 function millionsFormat(n: number): string {
   if (Math.abs(n) >= 1_000_000) {
@@ -143,26 +180,23 @@ export default function Dashboard() {
             }}
             items={PERIOD_TABS}
           />
-          <input
-            type="month"
-            className="nf-input"
-            style={{
-              padding: "7px 10px",
-              width: 168,
-              borderColor: month ? "var(--accent)" : undefined,
-            }}
-            value={month}
-            max={new Date().toISOString().slice(0, 7)}
-            onChange={(e) => setMonth(e.target.value)}
-            aria-label={t("dash.month_picker")}
-            title={t("dash.month_picker")}
-          />
+          <div style={{ minWidth: 200 }}>
+            <SingleSelectCombobox
+              options={MONTH_OPTIONS}
+              value={month ? MONTH_KEY_TO_ID(month) : null}
+              onChange={(next) => {
+                if (typeof next === "number") setMonth(MONTH_ID_TO_KEY(next));
+              }}
+              placeholder={t("dash.month_picker")}
+            />
+          </div>
           {month && (
             <button
               type="button"
               className="nf-btn nf-btn--ghost"
               style={{ padding: "7px 10px" }}
               onClick={() => setMonth("")}
+              title="Сбросить месяц"
             >
               ×
             </button>
