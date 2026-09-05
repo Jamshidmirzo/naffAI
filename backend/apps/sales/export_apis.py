@@ -219,7 +219,25 @@ def _write_savdo_sheet(wb, sales: Iterable[Sale]) -> None:
         for sale in by_date[d]:
             ws.append(_sale_to_savdo_row(sale))
 
-    # ---- Column widths (don't write a "TOTAL" row — source doesn't have one) ----
+    # ---- Итоговая строка (2026-09-05, по запросу владельца) --------------
+    # Колонка G (оператор) намеренно пустая: excel_importer скипает строки
+    # без operator_raw, так что круговой re-import «ИТОГО» не проглотит.
+    if sales_list := [s for day in days for s in by_date[day]]:
+        total_amount = sum((s.amount or 0) for s in sales_list)
+        total_discount = sum((s.discount or 0) for s in sales_list)
+        total_net = total_amount - total_discount
+        ws.append([None] * SAVDO_COL_COUNT)  # разделитель
+        total_row = [None] * SAVDO_COL_COUNT
+        total_row[0] = "ИТОГО:"
+        total_row[1] = f"{len(sales_list)} ta savdo"
+        total_row[5] = float(total_amount)
+        total_row[17] = float(total_discount)
+        total_row[18] = float(total_net)
+        ws.append(total_row)
+        for col_idx in (1, 2, 6, 18, 19):
+            _style_header_cell(ws.cell(row=ws.max_row, column=col_idx))
+
+    # ---- Column widths ----
     for col_idx in range(1, SAVDO_COL_COUNT + 1):
         letter = get_column_letter(col_idx)
         max_len = len(SAVDO_HEADER_BY_COL.get(col_idx - 1, "") or "")
@@ -260,6 +278,71 @@ def _write_davomat_sheet(wb) -> None:
     wb.create_sheet(DAVOMAT_SHEET_NAME)
 
 
+def _write_svodka_sheet(wb, sales: list) -> None:
+    """
+    Лист «svodka» — кто сколько продал / что продавали / общая сумма.
+    Importer его не читает (смотрит только savdo/nomerla по имени), так
+    что круговой re-import безопасен.
+    """
+    ws = wb.create_sheet("svodka")
+
+    total_amount = sum((s.amount or 0) for s in sales)
+    total_discount = sum((s.discount or 0) for s in sales)
+
+    ws.append(["Сводка"])
+    _style_header_cell(ws.cell(row=1, column=1))
+    ws.append(["Всего продаж", len(sales)])
+    ws.append(["Общая сумма", float(total_amount)])
+    ws.append(["Скидки", float(total_discount)])
+    ws.append(["Итог (нетто)", float(total_amount - total_discount)])
+    ws.append([])
+
+    # Кто сколько продал — по SaleOperator-долям (сплит даёт каждому его
+    # часть; продажи без lines падают на legacy operator FK всей суммой).
+    by_op: dict[str, list] = {}
+    for s in sales:
+        lines = list(s.operator_lines.all())
+        if lines:
+            for ln in lines:
+                name = ln.operator.full_name if ln.operator else "—"
+                bucket = by_op.setdefault(name, [0, 0])
+                bucket[0] += 1
+                bucket[1] += float(ln.amount or 0)
+        else:
+            name = s.operator.full_name if s.operator_id else "—"
+            bucket = by_op.setdefault(name, [0, 0])
+            bucket[0] += 1
+            bucket[1] += float(s.amount or 0)
+
+    ws.append(["Кто сколько продал", "Кол-во", "Сумма"])
+    for col in (1, 2, 3):
+        _style_header_cell(ws.cell(row=ws.max_row, column=col))
+    for name, (cnt, amt) in sorted(by_op.items(), key=lambda kv: -kv[1][1]):
+        ws.append([name, cnt, amt])
+    ws.append([])
+
+    by_model: dict[str, list] = {}
+    for s in sales:
+        key = (s.phone_model or "—").strip() or "—"
+        bucket = by_model.setdefault(key, [0, 0])
+        bucket[0] += 1
+        bucket[1] += float(s.amount or 0)
+
+    ws.append(["Что продавали", "Кол-во", "Сумма"])
+    for col in (1, 2, 3):
+        _style_header_cell(ws.cell(row=ws.max_row, column=col))
+    for model, (cnt, amt) in sorted(by_model.items(), key=lambda kv: -kv[1][1]):
+        ws.append([model, cnt, amt])
+
+    ws.column_dimensions["A"].width = 40
+    ws.column_dimensions["B"].width = 12
+    ws.column_dimensions["C"].width = 18
+    for col_letter in ("B", "C"):
+        for cell in ws[col_letter]:
+            if isinstance(cell.value, int | float) and cell.row > 1:
+                cell.number_format = MONEY_FMT
+
+
 class SaleExportApi(APIView):
     permission_classes = [IsTeamLeadOrManagerReadOnly]
 
@@ -271,35 +354,13 @@ class SaleExportApi(APIView):
         date_from_raw = params.get("date_from")
         date_to_raw = params.get("date_to")
 
-        def _parse(value):
-            if not value:
-                return None
-            parsed = parse_datetime(value)
-            if parsed:
-                return parsed
-            from django.utils import timezone
-            from django.utils.dateparse import parse_date
+        # Общий helper (см. apps/common/dateparse) — локальные копии здесь
+        # страдали от Python 3.12 parse_datetime("2026-08-31") == naive
+        # полночь → экспорт терял весь последний день диапазона.
+        from apps.common.dateparse import parse_dt_end, parse_dt_start
 
-            d = parse_date(value)
-            if not d:
-                return None
-            import datetime as _dt
-            return timezone.make_aware(_dt.datetime.combine(d, _dt.time.min))
-
-        def _parse_end(value):
-            if not value:
-                return None
-            parsed = parse_datetime(value)
-            if parsed:
-                return parsed
-            from django.utils import timezone
-            from django.utils.dateparse import parse_date
-
-            d = parse_date(value)
-            if not d:
-                return None
-            import datetime as _dt
-            return timezone.make_aware(_dt.datetime.combine(d, _dt.time.max))
+        _parse = parse_dt_start
+        _parse_end = parse_dt_end
 
         qs = (
             sale_list(
@@ -318,7 +379,9 @@ class SaleExportApi(APIView):
         )
 
         wb = new_workbook()
-        _write_savdo_sheet(wb, list(qs))
+        sales_rows = list(qs)
+        _write_savdo_sheet(wb, sales_rows)
         _write_nomerla_sheet(wb)
         _write_davomat_sheet(wb)
+        _write_svodka_sheet(wb, sales_rows)
         return workbook_response(wb, "naffcrm-savdo.xlsx")
