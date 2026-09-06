@@ -1322,6 +1322,20 @@ const STRINGS: Lookup = {
     "my.toast_debt": "✓ Отмечено: Qarzi bor",
     "my.card_label": "карта",
 
+    // ------ Click-to-call MVP (Фаза 1, 2026-09-06) ------
+    "call_attempt.button.title": "Позвонить и учесть",
+    "call_attempt.badge.today": "Сегодня: {n} звонков, ⌀ {avg}",
+    "call_attempt.badge.today_zero": "Сегодня: нет звонков",
+    "call_attempt.modal.title": "Как прошёл звонок?",
+    "call_attempt.modal.comment_placeholder": "Комментарий (необязательно)",
+    "call_attempt.modal.skip": "Пропустить",
+    "call_attempt.outcome.talked_interested": "Поговорили, интерес",
+    "call_attempt.outcome.talked_callback": "Просят перезвонить",
+    "call_attempt.outcome.no_answer": "Не берёт",
+    "call_attempt.outcome.wrong_number": "Не тот номер",
+    "call_attempt.outcome.rejected": "Отказ",
+    "call_attempt.outcome.tg_only": "Только Telegram",
+
     // ------ Phase 2 outcome buttons (2026-08-04) ------
     "my.call_action": "Позвонить",
     "my.pick_outcome_hint": "выбери результат ниже",
@@ -3804,6 +3818,20 @@ const STRINGS: Lookup = {
     "my.toast_phone_on": "✓ Belgilandi: Telfoni ochiq",
     "my.toast_debt": "✓ Belgilandi: Qarzi bor",
     "my.card_label": "karta",
+
+    // ------ Click-to-call MVP (Faza 1, 2026-09-06) ------
+    "call_attempt.button.title": "Qo'ng'iroq qilish va qayd etish",
+    "call_attempt.badge.today": "Bugun: {n} qo'ng'iroq, ⌀ {avg}",
+    "call_attempt.badge.today_zero": "Bugun: qo'ng'iroq yo'q",
+    "call_attempt.modal.title": "Qo'ng'iroq qanday o'tdi?",
+    "call_attempt.modal.comment_placeholder": "Izoh (ixtiyoriy)",
+    "call_attempt.modal.skip": "O'tkazib yuborish",
+    "call_attempt.outcome.talked_interested": "Gaplashdik, qiziqish bor",
+    "call_attempt.outcome.talked_callback": "Qayta qo'ng'iroq so'rashdi",
+    "call_attempt.outcome.no_answer": "Javob bermadi",
+    "call_attempt.outcome.wrong_number": "Notog'ri raqam",
+    "call_attempt.outcome.rejected": "Rad etdi",
+    "call_attempt.outcome.tg_only": "Faqat Telegram",
 
     // ------ Phase 2 outcome tugmalari (2026-08-04) ------
     "my.call_action": "Qo'ng'iroq qilish",

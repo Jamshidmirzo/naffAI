@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from django.db.models import Count, QuerySet
+from django.db.models import Avg, Count, QuerySet
 from django.utils import timezone
 
 from apps.operators.models import Operator, OperatorStatus
@@ -182,6 +182,54 @@ def operator_activity_report(
         },
         "rows": rows,
     }
+
+
+def call_attempts_metrics_for_operator(
+    operator: Operator, *, days: int = 1
+) -> dict:
+    """
+    Метрики звонков оператора за последние N дней (по локальной дате
+    Ташкента). Используется бейджем «Сегодня: N звонков, ⌀ 1:45» в
+    операторском топбаре.
+
+    Возвращает:
+      {
+        "period_days": int,
+        "total": int,               # всего попыток
+        "avg_duration_seconds": float | None,  # среди тех, у кого он посчитан
+        "by_outcome": {code: n, ...},  # включая пустой outcome как ""
+      }
+    """
+    days = max(1, min(days, 31))
+    tz = timezone.get_current_timezone()
+    now = timezone.now()
+    today_local = now.astimezone(tz).date()
+    start_local = today_local - dt.timedelta(days=days - 1)
+    start_dt = dt.datetime.combine(start_local, dt.time.min, tzinfo=tz)
+
+    qs = CallAttempt.objects.filter(
+        operator=operator, created_at__gte=start_dt
+    )
+    total = qs.count()
+    avg_row = qs.filter(duration_seconds__isnull=False).aggregate(
+        avg=Avg("duration_seconds")
+    )
+    by_outcome_rows = qs.values("outcome").annotate(n=Count("id"))
+    by_outcome = {r["outcome"] or "": r["n"] for r in by_outcome_rows}
+    return {
+        "period_days": days,
+        "total": total,
+        "avg_duration_seconds": (
+            float(avg_row["avg"]) if avg_row["avg"] is not None else None
+        ),
+        "by_outcome": by_outcome,
+    }
+
+
+def call_attempt_get(pk: int) -> CallAttempt | None:
+    return (
+        CallAttempt.objects.select_related("operator", "lead").filter(pk=pk).first()
+    )
 
 
 def callbacks_pending_due(*, now: dt.datetime | None = None) -> QuerySet[CallbackReminder]:

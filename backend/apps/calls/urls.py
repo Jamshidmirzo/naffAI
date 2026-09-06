@@ -1,6 +1,9 @@
 from django.urls import path
 
 from .apis import (
+    CallAttemptFinishApi,
+    CallAttemptMineMetricsApi,
+    CallAttemptStartApi,
     CallbackDoneApi,
     CallbackMineDueApi,
     CallbackMineListApi,
@@ -32,4 +35,12 @@ callback_urlpatterns = [
 # по нему больше нет отдельного URL.
 reports_urlpatterns = [
     path("my-activity/", MyActivityReportApi.as_view()),
+]
+
+
+# Endpoints under /api/calls/… — click-to-call MVP + подготовка под Flutter.
+calls_urlpatterns = [
+    path("start/", CallAttemptStartApi.as_view()),
+    path("mine/", CallAttemptMineMetricsApi.as_view()),
+    path("<int:pk>/finish/", CallAttemptFinishApi.as_view()),
 ]

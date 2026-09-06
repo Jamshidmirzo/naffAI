@@ -25,16 +25,20 @@ from apps.leads.selectors import lead_get
 from apps.operators.selectors import operator_get
 from apps.users.permissions import IsAuthenticatedAnyRole, IsOperator
 
-from .models import CallAttempt, CallbackReminder, CallOutcome
+from .models import CallAttempt, CallbackReminder, CallOutcome, CallSource
 from .selectors import (
+    call_attempt_get,
     call_attempts_for_lead,
+    call_attempts_metrics_for_operator,
     callback_get,
     callbacks_due_soon_for_operator,
     callbacks_for_operator,
     operator_activity_report,
 )
 from .services import (
+    call_attempt_finish,
     call_attempt_log,
+    call_attempt_start,
     callback_reminder_complete,
     callback_reminder_create,
     callback_reminder_snooze,
@@ -318,3 +322,141 @@ class MyActivityReportApi(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(report, status=status.HTTP_200_OK)
+
+
+# ---- Call attempt lifecycle (click-to-call MVP, Фаза 1) ------------------
+
+
+class CallAttemptStartInputSerializer(serializers.Serializer):
+    lead_id = serializers.IntegerField()
+    source = serializers.ChoiceField(
+        choices=CallSource.choices, required=False, default=CallSource.CLICK_TO_CALL
+    )
+
+
+class CallAttemptLifecycleSerializer(serializers.ModelSerializer):
+    operator_name = serializers.CharField(source="operator.full_name", read_only=True)
+
+    class Meta:
+        model = CallAttempt
+        fields = [
+            "id",
+            "lead",
+            "operator",
+            "operator_name",
+            "outcome",
+            "comment",
+            "source",
+            "phone_number",
+            "started_at",
+            "answered_at",
+            "ended_at",
+            "duration_seconds",
+            "sip_call_id",
+            "recording_url_asterisk",
+            "recording_url_mobile",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class CallAttemptFinishInputSerializer(serializers.Serializer):
+    outcome = serializers.ChoiceField(
+        choices=CallOutcome.choices, required=False, allow_blank=True, default=""
+    )
+    duration_seconds = serializers.IntegerField(required=False, min_value=0)
+    comment = serializers.CharField(required=False, allow_blank=True, default="")
+    callback_remind_at = serializers.DateTimeField(required=False)
+    callback_comment = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class CallAttemptStartApi(APIView):
+    """POST /api/calls/start/ — начать попытку звонка (outcome=NULL)."""
+
+    permission_classes = [IsAuthenticatedAnyRole]
+
+    def post(self, request):
+        ser = CallAttemptStartInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        lead = lead_get(ser.validated_data["lead_id"])
+        if not lead:
+            return Response({"detail": "Лид не найден"}, status=404)
+        op = _operator_for_request(request)
+        if op is None:
+            return Response({"detail": "Не указан оператор"}, status=400)
+        try:
+            attempt = call_attempt_start(
+                user=request.user,
+                lead=lead,
+                operator=op,
+                source=ser.validated_data.get("source") or CallSource.CLICK_TO_CALL,
+                phone_number=lead.phone or "",
+            )
+        except ApplicationError as exc:
+            return Response({"detail": exc.message, **exc.extra}, status=400)
+        return Response(
+            CallAttemptLifecycleSerializer(attempt).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class CallAttemptFinishApi(APIView):
+    """PATCH /api/calls/<call_attempt_id>/finish/ — завершить попытку."""
+
+    permission_classes = [IsAuthenticatedAnyRole]
+
+    def patch(self, request, pk: int):
+        attempt = call_attempt_get(pk)
+        if not attempt:
+            return Response({"detail": "Не найдено"}, status=404)
+
+        # Проверка владельца: оператор может завершить только СВОЙ звонок.
+        # Senior (manager / team_lead / superadmin) может завершить любой.
+        profile = getattr(request.user, "profile", None)
+        from apps.users.permissions import SENIOR_ROLES
+
+        role = profile.role if profile else None
+        if role not in SENIOR_ROLES:
+            caller_op_id = profile.operator_id if profile else None
+            if not caller_op_id or caller_op_id != attempt.operator_id:
+                return Response(
+                    {"detail": "Нельзя завершить чужой звонок"}, status=403
+                )
+
+        ser = CallAttemptFinishInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            attempt = call_attempt_finish(
+                user=request.user,
+                call_attempt=attempt,
+                outcome=ser.validated_data.get("outcome") or "",
+                duration_seconds=ser.validated_data.get("duration_seconds"),
+                comment=ser.validated_data.get("comment", ""),
+                callback_remind_at=ser.validated_data.get("callback_remind_at"),
+                callback_comment=ser.validated_data.get("callback_comment", ""),
+            )
+        except ApplicationError as exc:
+            return Response({"detail": exc.message, **exc.extra}, status=400)
+        return Response(CallAttemptLifecycleSerializer(attempt).data)
+
+
+class CallAttemptMineMetricsApi(APIView):
+    """
+    GET /api/calls/mine/?days=1 — операторские метрики звонков за N дней
+    (для бейджа «Сегодня: N звонков, ⌀ 1:45»).
+    """
+
+    permission_classes = [IsOperator]
+
+    def get(self, request):
+        profile = getattr(request.user, "profile", None)
+        if not profile or not profile.operator_id:
+            return Response({"detail": "У пользователя не привязан оператор"}, status=400)
+        op = operator_get(profile.operator_id)
+        if not op:
+            return Response({"detail": "Оператор не найден"}, status=404)
+        try:
+            days = max(1, min(int(request.query_params.get("days", "1")), 31))
+        except ValueError:
+            days = 1
+        return Response(call_attempts_metrics_for_operator(op, days=days))

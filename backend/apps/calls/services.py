@@ -20,6 +20,7 @@ from .models import (
     CallbackReminder,
     CallbackReminderStatus,
     CallOutcome,
+    CallSource,
 )
 
 # ---- Call attempts -------------------------------------------------------
@@ -62,11 +63,18 @@ def call_attempt_log(
             {"field": "callback_remind_at"},
         )
 
+    # Legacy write path — outcome известен в момент создания, lifecycle-поля
+    # либо пустые, либо заполняются коллером явно через `call_attempt_finish`.
+    now = timezone.now()
     attempt = CallAttempt.objects.create(
         lead=lead,
         operator=operator,
         outcome=outcome,
         comment=(comment or "").strip(),
+        source=CallSource.MANUAL,
+        started_at=now,
+        ended_at=now,
+        phone_number=(lead.phone or "")[:64],
     )
     audit_log_create(
         user=user,
@@ -105,6 +113,151 @@ def call_attempt_log(
         )
 
     return attempt
+
+
+# ---- Call attempt lifecycle (Фаза 1 click-to-call + подготовка Flutter) --
+#
+# Двухшаговый flow:
+#   1) `call_attempt_start` — оператор жмёт 📞 в UI, ряд создаётся с
+#      outcome="" (NULL-like) и started_at=now. `phone_number` фиксируется
+#      как снимок телефона лида на момент клика.
+#   2) `call_attempt_finish` — вернувшись из штатного phone-app'а, оператор
+#      выбирает исход в модалке. Ряд обновляется: outcome, ended_at,
+#      duration_seconds. Если оператор нажал «Пропустить» — outcome остаётся
+#      пустым, но ряд остаётся в БД как «попытка без результата»
+#      (менеджер увидит это в отчётах).
+#
+# Legacy `call_attempt_log` (см. выше) продолжает работать без изменений
+# для мест, которые логируют финальный outcome одной операцией.
+
+
+@transaction.atomic
+def call_attempt_start(
+    *,
+    user=None,
+    lead: Lead,
+    operator: Operator,
+    source: str = CallSource.CLICK_TO_CALL,
+    phone_number: str = "",
+) -> CallAttempt:
+    """Создаёт CallAttempt с outcome="" и started_at=now."""
+    if source not in dict(CallSource.choices):
+        raise ApplicationError("Неизвестный источник звонка", {"field": "source"})
+
+    now = timezone.now()
+    attempt = CallAttempt.objects.create(
+        lead=lead,
+        operator=operator,
+        outcome="",
+        comment="",
+        source=source,
+        started_at=now,
+        phone_number=(phone_number or lead.phone or "")[:64],
+    )
+    audit_log_create(
+        user=user,
+        action=AuditAction.CREATE,
+        entity="calls.CallAttempt",
+        entity_id=attempt.id,
+        changes={
+            "lead_id": lead.id,
+            "operator_id": operator.id,
+            "source": source,
+            "phase": "start",
+        },
+    )
+    return attempt
+
+
+@transaction.atomic
+def call_attempt_finish(
+    *,
+    user=None,
+    call_attempt: CallAttempt,
+    outcome: str = "",
+    duration_seconds: int | None = None,
+    comment: str = "",
+    callback_remind_at: dt.datetime | None = None,
+    callback_comment: str = "",
+) -> CallAttempt:
+    """
+    Финализирует CallAttempt: проставляет outcome/ended_at/duration_seconds
+    и синхронизирует статус лида (аналогично `call_attempt_log`).
+
+    Идемпотентна: если ряд уже finished (`ended_at` не пустой), повторные
+    вызовы становятся no-op, кроме случая когда outcome реально меняется
+    (мы разрешаем «переписать» исход через followup PATCH).
+    """
+    if outcome and outcome not in dict(CallOutcome.choices):
+        raise ApplicationError("Неизвестный исход звонка", {"field": "outcome"})
+    if outcome == CallOutcome.TALKED_CALLBACK and callback_remind_at is None:
+        raise ApplicationError(
+            "Для исхода «Просят перезвонить» нужно указать время callback'а",
+            {"field": "callback_remind_at"},
+        )
+
+    already_finished = call_attempt.ended_at is not None
+    now = timezone.now()
+
+    updates: list[str] = []
+    if not already_finished:
+        call_attempt.ended_at = now
+        updates.append("ended_at")
+        if duration_seconds is None and call_attempt.started_at is not None:
+            # Автовычисление длительности из started_at → now. Оператор
+            # может её переопределить (Фаза 3 — из SIP CDR).
+            delta = (now - call_attempt.started_at).total_seconds()
+            duration_seconds = max(0, int(delta))
+    if duration_seconds is not None:
+        call_attempt.duration_seconds = duration_seconds
+        updates.append("duration_seconds")
+    if outcome and call_attempt.outcome != outcome:
+        call_attempt.outcome = outcome
+        updates.append("outcome")
+    if comment:
+        call_attempt.comment = (comment or "").strip()
+        updates.append("comment")
+    if updates:
+        updates.append("updated_at")
+        call_attempt.save(update_fields=updates)
+
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="calls.CallAttempt",
+        entity_id=call_attempt.id,
+        changes={
+            "outcome": outcome or None,
+            "duration_seconds": duration_seconds,
+            "phase": "finish",
+        },
+        comment=comment,
+    )
+
+    # Синхронизируем статус лида (как это делает `call_attempt_log`) —
+    # только если реально выбран outcome.
+    if outcome:
+        lead = call_attempt.lead
+        new_status = _OUTCOME_TO_LEAD_STATUS.get(outcome)
+        if outcome == CallOutcome.NO_ANSWER and lead.status == LeadStatus.NO_ANSWER:
+            new_status = LeadStatus.NO_ANSWER_2
+        if new_status and lead.status != new_status:
+            from apps.leads.services import lead_update_status
+
+            lead_update_status(
+                lead=lead, status=new_status, user=user, comment=outcome
+            )
+        if outcome == CallOutcome.TALKED_CALLBACK and call_attempt.operator_id:
+            callback_reminder_create(
+                user=user,
+                lead=lead,
+                operator=call_attempt.operator,
+                remind_at=callback_remind_at,
+                comment=callback_comment or comment,
+                call_attempt=call_attempt,
+            )
+
+    return call_attempt
 
 
 # ---- Callback reminders --------------------------------------------------

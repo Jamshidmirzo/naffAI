@@ -44,6 +44,8 @@ import { usePageHeader } from "../store/page";
 import { useT, useLangValue } from "../lib/i18n";
 import { GaugeScene } from "../components/three/GaugeScene";
 import AttendanceStatusWidget from "../components/AttendanceStatusWidget";
+import CallOutcomeModal from "../components/CallOutcomeModal";
+import { useTrackedCall } from "../hooks/useTrackedCall";
 
 type MyLeadsView = "active" | "postponed" | "all" | "closed";
 // «quota» — виртуальный таб «Блокирующие»: под капотом view=active +
@@ -729,6 +731,33 @@ export default function MyLeads() {
 
   const watcher = useCallbackWatcher({ enabled: true });
 
+  // Click-to-call MVP (Фаза 1): tracked call flow.
+  // startCall создаёт CallAttempt (outcome="") + открывает tel:.
+  // Когда оператор возвращается через 15+ сек — модалка предлагает
+  // выбрать outcome, который зафиналит попытку.
+  const trackedCall = useTrackedCall({
+    onFinished: () => {
+      // Обновляем список лидов + метрики (значит бейдж тоже обновится).
+      invalidateAllLeadQueries();
+      qc.invalidateQueries({ queryKey: ["calls-mine"] });
+    },
+  });
+
+  const callsMine = useQuery({
+    queryKey: ["calls-mine"],
+    queryFn: async () => {
+      const { data } = await api.get<{
+        total: number;
+        avg_duration_seconds: number | null;
+        by_outcome: Record<string, number>;
+      }>("/calls/mine/?days=1");
+      return data;
+    },
+    // Опрос раз в минуту чтобы бейдж плавно обновлялся.
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
   const openTg = async (lead: Lead) => {
     if (!lead.phone) return;
     try {
@@ -966,6 +995,16 @@ export default function MyLeads() {
     <div className="mx-auto max-w-[960px] flex flex-col gap-5">
       {/* --- Attendance status widget (2026-08-14) --------------------- */}
       <AttendanceStatusWidget />
+
+      {/* --- Click-to-call today metrics (Фаза 1, 2026-09-06) ---------- */}
+      {callsMine.data && (
+        <div className="-mt-2 flex justify-end">
+          <CallsTodayBadge
+            total={callsMine.data.total}
+            avgSeconds={callsMine.data.avg_duration_seconds}
+          />
+        </div>
+      )}
 
       {/* --- Blocking-gate инструкция (2026-08-16 UX overhaul) ------------
           Заменяет старый red-sticky banner + короткое «Разбери просроченные».
@@ -1289,6 +1328,16 @@ export default function MyLeads() {
             onPostpone={() => setPostponeFor(lead)}
             onUnpostpone={() => unpostpone.mutate(lead)}
             onConvert={() => nav(`/sales/new?lead=${lead.id}`)}
+            onTrackedCall={
+              lead.phone
+                ? () =>
+                    trackedCall.startCall({
+                      id: lead.id,
+                      full_name: lead.full_name,
+                      phone: lead.phone,
+                    })
+                : undefined
+            }
           />
         );
 
@@ -1490,6 +1539,60 @@ export default function MyLeads() {
         onDismiss={watcher.dismiss}
         onDone={refetch}
       />
+
+      {/* Click-to-call MVP — Фаза 1 модалка исхода. */}
+      <CallOutcomeModal
+        open={trackedCall.modalOpen}
+        leadName={trackedCall.pending?.leadName ?? ""}
+        leadPhone={trackedCall.pending?.leadPhone ?? ""}
+        onSelect={(outcome, comment) => {
+          void trackedCall.finish(outcome, comment);
+        }}
+        onClose={trackedCall.closeModal}
+      />
+    </div>
+  );
+}
+
+// ---- Click-to-call today badge -------------------------------------------
+// Показывается в топбаре оператора: «Сегодня: N звонков, ⌀ mm:ss».
+function CallsTodayBadge({
+  total,
+  avgSeconds,
+}: {
+  total: number;
+  avgSeconds: number | null;
+}) {
+  const t = useT();
+  if (total === 0) {
+    return (
+      <div
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12.5px]"
+        style={{
+          background: "var(--faint, #f6f6f6)",
+          border: "1px solid var(--border, #eee)",
+          color: "var(--text-muted, #666)",
+        }}
+      >
+        <Phone className="w-3.5 h-3.5" />
+        {t("call_attempt.badge.today_zero")}
+      </div>
+    );
+  }
+  const mm = Math.floor((avgSeconds ?? 0) / 60);
+  const ss = Math.round((avgSeconds ?? 0) - mm * 60);
+  const avg = `${mm}:${ss.toString().padStart(2, "0")}`;
+  return (
+    <div
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12.5px] font-medium"
+      style={{
+        background: "var(--accent-pale-bg, #eef7ee)",
+        border: "1px solid var(--accent-pale-border, #cde5cd)",
+        color: "var(--accent-pale-text-strong, #185218)",
+      }}
+    >
+      <Phone className="w-3.5 h-3.5" />
+      {t("call_attempt.badge.today", { n: total, avg })}
     </div>
   );
 }
@@ -1606,6 +1709,8 @@ interface LeadCardProps {
   onPostpone: () => void;
   onUnpostpone: () => void;
   onConvert: () => void;
+  /** Фаза 1 click-to-call: start tracked call + open tel: */
+  onTrackedCall?: () => void;
 }
 
 function LeadCard({
@@ -1620,6 +1725,7 @@ function LeadCard({
   onPostpone,
   onUnpostpone,
   onConvert,
+  onTrackedCall,
 }: LeadCardProps) {
   const [called, setCalled] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
@@ -1898,6 +2004,29 @@ function LeadCard({
       {/* Action row — full-width on the second visual line so buttons
           never eat into the text column. */}
       <div className="flex flex-wrap gap-2 items-start w-full md:w-auto md:ml-auto md:justify-end">
+        {/* Click-to-call MVP: круглая зелёная 📞. Инициирует tracked
+            CallAttempt через backend + открывает нативный phone-app.
+            Модалка исхода появится когда оператор вернётся во вкладку. */}
+        {onTrackedCall && lead.phone && !called && (
+          <button
+            type="button"
+            title={t("call_attempt.button.title")}
+            aria-label={t("call_attempt.button.title")}
+            onClick={onTrackedCall}
+            className="grid place-items-center transition-transform active:scale-[.92] shrink-0"
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 999,
+              background: "linear-gradient(145deg, #34c759, #1ea34a)",
+              color: "#fff",
+              boxShadow: "0 6px 16px -6px rgba(30,163,74,.55)",
+              border: "1.5px solid rgba(30,163,74,.6)",
+            }}
+          >
+            <Phone className="w-5 h-5" />
+          </button>
+        )}
         {called ? (
           <div className="text-[12.5px] text-muted flex items-center gap-1.5 px-3 py-2">
             <CheckCircle2 className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
