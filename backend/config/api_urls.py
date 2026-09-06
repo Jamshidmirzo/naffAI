@@ -25,8 +25,15 @@ from apps.users.urls import (
     users_urlpatterns,
 )
 from apps.attendance.urls import me_urlpatterns as attendance_me_urlpatterns
+from apps.mobile.urls import auth_urlpatterns as mobile_auth_urlpatterns
+from apps.mobile.urls import mobile_urlpatterns
 
 urlpatterns = [
+    # Mobile-app JWT surface (mounted BEFORE `apps.users.urls` so the
+    # explicit `mobile-login/` / `mobile-refresh/` paths win regardless
+    # of any future overlap; users.urls only defines `login/`/`logout/`/`me/`).
+    path("auth/", include((mobile_auth_urlpatterns, "mobile_auth"))),
+    path("mobile/", include((mobile_urlpatterns, "mobile"))),
     path("auth/", include("apps.users.urls")),
     path("me/", include((users_me_urlpatterns, "users_me"))),
     path("me/", include((me_sticker_urlpatterns, "users_me_sticker"))),

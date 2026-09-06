@@ -39,6 +39,7 @@ DJANGO_APPS = [
 THIRD_PARTY_APPS = [
     "rest_framework",
     "rest_framework.authtoken",
+    "rest_framework_simplejwt",
     "corsheaders",
     "django_filters",
     "drf_spectacular",
@@ -67,6 +68,11 @@ LOCAL_APPS = [
     "apps.notifications",
     "apps.system_settings",
     "apps.helper",
+    # 2026-09-06: mobile-specific endpoints for the Flutter operator app.
+    # Web CRM keeps using SessionAuth+TokenAuth; mobile app authenticates
+    # via JWT (rest_framework_simplejwt). See apps/mobile/README.md-ish
+    # comments in apps.py.
+    "apps.mobile",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -181,6 +187,10 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.TokenAuthentication",
+        # 2026-09-06: JWT is appended last so the existing web-CRM auth
+        # (session + DRF token) keeps its priority. Mobile clients set
+        # `Authorization: Bearer <access>` and hit /api/auth/mobile-*.
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
@@ -218,6 +228,24 @@ CORS_ALLOWED_ORIGINS = config(
     cast=Csv(),
 )
 CORS_ALLOW_CREDENTIALS = True
+
+# --- SimpleJWT (Flutter mobile app, 2026-09-06) ---
+# Access token: короткий (2h), чтобы отозванный аккаунт быстро терял доступ.
+# Refresh token: 30 дней, rotated on refresh + blacklist_after_rotation
+# требует `token_blacklist` app'a — не подключаем ради простоты, поэтому
+# refresh просто выдаёт новый access. Стоит держать в уме перед прод-катом.
+import datetime as _jwt_dt
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": _jwt_dt.timedelta(hours=2),
+    "REFRESH_TOKEN_LIFETIME": _jwt_dt.timedelta(days=30),
+    "ROTATE_REFRESH_TOKENS": False,
+    "BLACKLIST_AFTER_ROTATION": False,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+    "SIGNING_KEY": SECRET_KEY,
+}
 
 # --- Payroll defaults ---
 PAYROLL_DEFAULT_THRESHOLD_UZS = config("PAYROLL_DEFAULT_THRESHOLD_UZS", default="50000000")

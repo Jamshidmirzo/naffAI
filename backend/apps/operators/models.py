@@ -168,6 +168,26 @@ class Operator(TimestampedModel):
         help_text="Персональный порог продаж (%). Пусто → default_sales_gate_pct.",
     )
 
+    # 2026-09-06: SIP-credentials для мобильного оператор-приложения
+    # (Flutter naff-call). Заполняется вручную менеджером после ручной
+    # регистрации SIP-extension на Asterisk. Пока пусто — приложение
+    # получает `sip_credentials: null` и работает только без софтфона.
+    # Пароль храним в открытом виде: сервер сам передаёт клиенту, так
+    # что "хеш" смысла не имеет; в /api/mobile/me/ они отдаются ТОЛЬКО
+    # если явно проставлены (см. mobile.selectors).
+    sip_username = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="SIP username (Asterisk extension). Пусто → SIP выключен для оператора.",
+    )
+    sip_password = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        help_text="SIP password (plaintext). Отдаётся только владельцу через /api/mobile/me/.",
+    )
+
     class Meta:
         ordering = ["full_name"]
         indexes = [models.Index(fields=["status"])]
