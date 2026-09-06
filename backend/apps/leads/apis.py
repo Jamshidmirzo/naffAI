@@ -680,6 +680,14 @@ class LeadPhoneSearchApi(APIView):
                 "status": lead.status,
                 "product_hint": lead.product_hint,
                 "operator_name": lead.operator.full_name if lead.operator else "",
+                # 2026-09-06: отдаём источник, чтобы менеджер видел
+                # «клиент пришёл из Ishonch / Aziz aka / срм», привязывал
+                # Lead к Sale, и sheet_source не терялся. Без этого 73%
+                # августа оформили без Lead → источник потерян.
+                "sheet_source_id": lead.sheet_source_id,
+                "sheet_source_name": (
+                    lead.sheet_source.name if lead.sheet_source_id else ""
+                ),
                 "updated_at": lead.updated_at.isoformat(),
             }
             for lead in qs

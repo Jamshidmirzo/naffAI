@@ -21,6 +21,8 @@ type LeadMatch = {
   status: string;
   product_hint?: string;
   operator_name?: string;
+  sheet_source_id?: number | null;
+  sheet_source_name?: string;
   updated_at?: string;
 };
 
@@ -427,6 +429,18 @@ export default function SaleCreate() {
                   <div className="text-[13.5px] font-medium truncate">
                     {matchedLead.full_name || "—"}
                     <span className="text-muted font-normal ml-2">{matchedLead.phone}</span>
+                    {matchedLead.sheet_source_name && (
+                      <span
+                        className="ml-2 text-[10.5px] px-2 py-0.5 rounded-full inline-block"
+                        style={{
+                          background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+                          color: "var(--accent)",
+                        }}
+                        title="Источник клиента (Google Sheet)"
+                      >
+                        📄 {matchedLead.sheet_source_name}
+                      </span>
+                    )}
                   </div>
                   <div className="text-[11px] text-muted mt-0.5 truncate">
                     {t("sale_create.lead_linked_status", { status: statusLabel(matchedLead.status) })}
@@ -451,6 +465,21 @@ export default function SaleCreate() {
                 }}
               />
             )}
+            {/* Предупреждение: телефон введён, поиск дал 0 совпадений — клиента нет в лидах.
+                Значит sheet_source не сохранится → потом мы не узнаем откуда клиент. */}
+            {!matchedLead && clientPhone.replace(/\D/g, "").length >= 9 && phoneMatches.length === 0 && (
+              <div
+                className="mt-1 text-[11.5px] flex items-start gap-1.5 px-1"
+                style={{ color: "var(--danger, #dc2626)" }}
+              >
+                <span>⚠️</span>
+                <span>
+                  Клиент не найден в списке лидов. Продажа сохранится без источника —
+                  мы не сможем понять с какого шита пришёл клиент. Проверь номер или
+                  оформи как «прямую» продажу.
+                </span>
+              </div>
+            )}
             {phoneDropdownOpen && phoneMatches.length > 0 && !matchedLead && (
               <div className="absolute top-full left-0 right-0 mt-1 z-30 nf-card overflow-hidden">
                 <div className="max-h-72 overflow-y-auto py-1">
@@ -468,6 +497,16 @@ export default function SaleCreate() {
                           </div>
                           <div className="text-[11.5px] text-muted truncate mt-0.5">
                             {lead.phone}
+                            {lead.sheet_source_name ? (
+                              <>
+                                {" · "}
+                                <span
+                                  style={{ color: "var(--accent)", fontWeight: 600 }}
+                                >
+                                  📄 {lead.sheet_source_name}
+                                </span>
+                              </>
+                            ) : null}
                             {lead.product_hint ? ` · ${lead.product_hint}` : ""}
                             {lead.operator_name ? ` · ${lead.operator_name}` : ""}
                           </div>

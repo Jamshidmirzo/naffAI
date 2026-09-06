@@ -116,7 +116,7 @@ def leads_by_phone_search(q_digits: str, *, limit: int = 10) -> QuerySet[Lead]:
     if len(q_digits) < 4:
         return Lead.objects.none()
     return (
-        Lead.objects.select_related("operator")
+        Lead.objects.select_related("operator", "sheet_source")
         .filter(Q(phone__icontains=q_digits) | Q(phone_raw__icontains=q_digits))
         .order_by("-updated_at")[:limit]
     )

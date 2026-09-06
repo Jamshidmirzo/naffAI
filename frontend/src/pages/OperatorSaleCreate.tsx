@@ -32,6 +32,7 @@ type LeadMatch = {
   full_name: string;
   phone: string;
   status: string;
+  sheet_source_name?: string;
 };
 
 type FieldName =
@@ -805,6 +806,18 @@ export default function OperatorSaleCreate() {
                   <span className="text-muted font-normal ml-2">
                     {matchedLead.phone}
                   </span>
+                  {matchedLead.sheet_source_name && (
+                    <span
+                      className="ml-2 text-[10.5px] px-2 py-0.5 rounded-full inline-block"
+                      style={{
+                        background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+                        color: "var(--accent)",
+                      }}
+                      title="Источник клиента"
+                    >
+                      📄 {matchedLead.sheet_source_name}
+                    </span>
+                  )}
                 </div>
                 <div className="text-[11px] text-muted mt-0.5">
                   {LEAD_STATUS_LABEL[matchedLead.status] || matchedLead.status}
@@ -885,6 +898,16 @@ export default function OperatorSaleCreate() {
                         </div>
                         <div className="text-[11.5px] text-muted truncate mt-0.5">
                           {lead.phone}
+                          {lead.sheet_source_name ? (
+                            <>
+                              {" · "}
+                              <span
+                                style={{ color: "var(--accent)", fontWeight: 600 }}
+                              >
+                                📄 {lead.sheet_source_name}
+                              </span>
+                            </>
+                          ) : null}
                         </div>
                       </div>
                       <span
