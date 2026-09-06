@@ -184,6 +184,152 @@ def operator_activity_report(
     }
 
 
+def calls_list_for_manager(
+    *,
+    operator_ids: list[int] | None = None,
+    outcomes: list[str] | None = None,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
+    has_recording: bool | None = None,
+    limit: int = 50,
+    cursor: int | None = None,
+) -> tuple[list[CallAttempt], int | None, int]:
+    """
+    Cursor-paginated list of CallAttempt'ов для менеджерской страницы /calls.
+
+    Cursor = id последнего элемента предыдущей страницы (мы сортируем по
+    -created_at, но id монотонно растёт с created_at → используем id как
+    stable cursor, дешевле чем datetime).
+
+    Возвращает: (rows, next_cursor, total_count_for_filters).
+    """
+    limit = max(1, min(int(limit), 200))
+    qs = CallAttempt.objects.select_related("operator", "lead").all()
+
+    if operator_ids:
+        qs = qs.filter(operator_id__in=operator_ids)
+    if outcomes:
+        # Поддержка спец-фильтра "empty" — попытки без выбранного исхода
+        # (skip'нуто оператором или ещё не завершено).
+        expanded: list[str] = []
+        include_empty = False
+        for o in outcomes:
+            if o in ("", "empty", "unknown"):
+                include_empty = True
+            else:
+                expanded.append(o)
+        if include_empty and expanded:
+            from django.db.models import Q
+
+            qs = qs.filter(Q(outcome__in=expanded) | Q(outcome=""))
+        elif include_empty:
+            qs = qs.filter(outcome="")
+        elif expanded:
+            qs = qs.filter(outcome__in=expanded)
+
+    tz = timezone.get_current_timezone()
+    if date_from:
+        start_dt = dt.datetime.combine(date_from, dt.time.min, tzinfo=tz)
+        qs = qs.filter(created_at__gte=start_dt)
+    if date_to:
+        end_dt = dt.datetime.combine(
+            date_to + dt.timedelta(days=1), dt.time.min, tzinfo=tz
+        )
+        qs = qs.filter(created_at__lt=end_dt)
+
+    if has_recording is True:
+        from django.db.models import Q
+
+        qs = qs.filter(
+            Q(recording_url_asterisk__gt="") | Q(recording_url_mobile__gt="")
+        )
+    elif has_recording is False:
+        qs = qs.filter(recording_url_asterisk="", recording_url_mobile="")
+
+    total = qs.count()
+
+    if cursor is not None:
+        qs = qs.filter(id__lt=cursor)
+
+    rows = list(qs.order_by("-id")[: limit + 1])
+    next_cursor: int | None = None
+    if len(rows) > limit:
+        next_cursor = rows[limit - 1].id
+        rows = rows[:limit]
+    return rows, next_cursor, total
+
+
+def calls_stats_for_manager(
+    *,
+    operator_ids: list[int] | None = None,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
+) -> dict:
+    """
+    Aggregated stats for the manager /calls page: total, avg duration,
+    breakdown by outcome, top-10 operators.
+    """
+    qs = CallAttempt.objects.all()
+    if operator_ids:
+        qs = qs.filter(operator_id__in=operator_ids)
+    tz = timezone.get_current_timezone()
+    if date_from:
+        start_dt = dt.datetime.combine(date_from, dt.time.min, tzinfo=tz)
+        qs = qs.filter(created_at__gte=start_dt)
+    if date_to:
+        end_dt = dt.datetime.combine(
+            date_to + dt.timedelta(days=1), dt.time.min, tzinfo=tz
+        )
+        qs = qs.filter(created_at__lt=end_dt)
+
+    from django.db.models import Q
+
+    total = qs.count()
+    avg_row = qs.filter(duration_seconds__isnull=False).aggregate(
+        avg=Avg("duration_seconds")
+    )
+    avg_duration = float(avg_row["avg"]) if avg_row["avg"] is not None else None
+
+    with_rec = qs.filter(
+        Q(recording_url_asterisk__gt="") | Q(recording_url_mobile__gt="")
+    ).count()
+
+    # Ответили = любой talked_* outcome.
+    from .models import CallOutcome as _CO
+
+    answered_outcomes = [_CO.TALKED_INTERESTED, _CO.TALKED_CALLBACK]
+    answered = qs.filter(outcome__in=answered_outcomes).count()
+
+    by_outcome_rows = qs.values("outcome").annotate(n=Count("id"))
+    by_outcome = {r["outcome"] or "": r["n"] for r in by_outcome_rows}
+
+    top_rows = (
+        qs.exclude(operator__isnull=True)
+        .values("operator_id", "operator__full_name")
+        .annotate(n=Count("id"))
+        .order_by("-n")[:10]
+    )
+    top_operators = [
+        {
+            "operator_id": r["operator_id"],
+            "operator_name": r["operator__full_name"],
+            "count": r["n"],
+        }
+        for r in top_rows
+    ]
+
+    return {
+        "total_calls": total,
+        "avg_duration_seconds": avg_duration,
+        "with_recording": with_rec,
+        "recording_pct": (with_rec / total * 100.0) if total else 0.0,
+        "answered": answered,
+        "answered_pct": (answered / total * 100.0) if total else 0.0,
+        "by_outcome": by_outcome,
+        "top_operators": top_operators,
+    }
+
+
 def call_attempts_metrics_for_operator(
     operator: Operator, *, days: int = 1
 ) -> dict:

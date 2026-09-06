@@ -23,7 +23,7 @@ from rest_framework.views import APIView
 from apps.common.exceptions import ApplicationError
 from apps.leads.selectors import lead_get
 from apps.operators.selectors import operator_get
-from apps.users.permissions import IsAuthenticatedAnyRole, IsOperator
+from apps.users.permissions import IsAuthenticatedAnyRole, IsManager, IsOperator
 
 from .models import CallAttempt, CallbackReminder, CallOutcome, CallSource
 from .selectors import (
@@ -33,6 +33,8 @@ from .selectors import (
     callback_get,
     callbacks_due_soon_for_operator,
     callbacks_for_operator,
+    calls_list_for_manager,
+    calls_stats_for_manager,
     operator_activity_report,
 )
 from .services import (
@@ -460,3 +462,121 @@ class CallAttemptMineMetricsApi(APIView):
         except ValueError:
             days = 1
         return Response(call_attempts_metrics_for_operator(op, days=days))
+
+
+# ---- Manager list + stats (веб-CRM страница /calls) -----------------------
+
+
+class CallAttemptManagerSerializer(serializers.ModelSerializer):
+    operator_name = serializers.CharField(source="operator.full_name", read_only=True)
+    lead_name = serializers.CharField(source="lead.full_name", read_only=True)
+    lead_phone = serializers.CharField(source="lead.phone", read_only=True)
+    has_recording = serializers.SerializerMethodField()
+    recording_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CallAttempt
+        fields = [
+            "id",
+            "lead",
+            "lead_name",
+            "lead_phone",
+            "operator",
+            "operator_name",
+            "outcome",
+            "comment",
+            "source",
+            "phone_number",
+            "started_at",
+            "answered_at",
+            "ended_at",
+            "duration_seconds",
+            "sip_call_id",
+            "has_recording",
+            "recording_url",
+            "recording_url_asterisk",
+            "recording_url_mobile",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_has_recording(self, obj: CallAttempt) -> bool:
+        return bool(obj.recording_url_asterisk or obj.recording_url_mobile)
+
+    def get_recording_url(self, obj: CallAttempt) -> str:
+        return obj.recording_url_asterisk or obj.recording_url_mobile or ""
+
+
+def _parse_optional_date(value: str | None) -> dt.date | None:
+    if not value:
+        return None
+    try:
+        return dt.datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _parse_bool_flag(value: str | None) -> bool | None:
+    if value in (None, "", "any"):
+        return None
+    return value in ("1", "true", "True", "yes")
+
+
+class CallsManagerListApi(APIView):
+    """GET /api/calls/?operator=&outcome=&date_from=&date_to=&has_recording=&limit=&cursor="""
+
+    permission_classes = [IsManager]
+
+    def get(self, request):
+        operator_ids = [
+            int(x) for x in request.query_params.getlist("operator") if x.isdigit()
+        ] or None
+        outcomes = request.query_params.getlist("outcome") or None
+        date_from = _parse_optional_date(request.query_params.get("date_from"))
+        date_to = _parse_optional_date(request.query_params.get("date_to"))
+        has_recording = _parse_bool_flag(request.query_params.get("has_recording"))
+        try:
+            limit = int(request.query_params.get("limit", "50"))
+        except ValueError:
+            limit = 50
+        cursor_raw = request.query_params.get("cursor")
+        cursor: int | None = None
+        if cursor_raw and cursor_raw.isdigit():
+            cursor = int(cursor_raw)
+
+        rows, next_cursor, total = calls_list_for_manager(
+            operator_ids=operator_ids,
+            outcomes=outcomes,
+            date_from=date_from,
+            date_to=date_to,
+            has_recording=has_recording,
+            limit=limit,
+            cursor=cursor,
+        )
+        return Response(
+            {
+                "results": CallAttemptManagerSerializer(rows, many=True).data,
+                "next_cursor": next_cursor,
+                "total": total,
+            }
+        )
+
+
+class CallsManagerStatsApi(APIView):
+    """GET /api/calls/stats/?operator=&date_from=&date_to="""
+
+    permission_classes = [IsManager]
+
+    def get(self, request):
+        operator_ids = [
+            int(x) for x in request.query_params.getlist("operator") if x.isdigit()
+        ] or None
+        date_from = _parse_optional_date(request.query_params.get("date_from"))
+        date_to = _parse_optional_date(request.query_params.get("date_to"))
+        return Response(
+            calls_stats_for_manager(
+                operator_ids=operator_ids,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        )

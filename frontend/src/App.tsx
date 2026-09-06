@@ -52,6 +52,7 @@ import BotSubscribers from "./pages/BotSubscribers";
 import Catalog from "./pages/Catalog";
 import CatalogBanks from "./pages/CatalogBanks";
 import Calculator from "./pages/Calculator";
+import Calls from "./pages/Calls";
 import MarketingSettingsPage from "./pages/MarketingSettingsPage";
 import InstallmentTiersPage from "./pages/InstallmentTiersPage";
 import { useAuth } from "./store/auth";
@@ -119,7 +120,7 @@ export default function App() {
           <Route path="/leads/orphans" element={<RoleGate allow={["manager"]}><OrphanLeads /></RoleGate>} />
           <Route path="/leads/system-lost" element={<SuperadminGate><SystemLostLeads /></SuperadminGate>} />
           <Route path="/settings" element={<RoleGate allow={["manager"]}><Settings /></RoleGate>} />
-          <Route path="/calls" element={<RoleGate allow={["manager"]}><Placeholder title="Звонки" /></RoleGate>} />
+          <Route path="/calls" element={<RoleGate allow={["manager"]}><Calls /></RoleGate>} />
           <Route path="/reports" element={<RoleGate allow={["manager"]}><Reports /></RoleGate>} />
           <Route path="/my/activity" element={<RoleGate allow={["operator"]}><MyActivity /></RoleGate>} />
           <Route path="/catalog" element={<RoleGate allow={["manager", "operator"]}><Catalog /></RoleGate>} />

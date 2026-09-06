@@ -8,6 +8,8 @@ from .apis import (
     CallbackMineDueApi,
     CallbackMineListApi,
     CallbackSnoozeApi,
+    CallsManagerListApi,
+    CallsManagerStatsApi,
     LeadCallAttemptCreateApi,
     LeadCallbackCreateApi,
     MyActivityReportApi,
@@ -40,6 +42,8 @@ reports_urlpatterns = [
 
 # Endpoints under /api/calls/… — click-to-call MVP + подготовка под Flutter.
 calls_urlpatterns = [
+    path("", CallsManagerListApi.as_view()),
+    path("stats/", CallsManagerStatsApi.as_view()),
     path("start/", CallAttemptStartApi.as_view()),
     path("mine/", CallAttemptMineMetricsApi.as_view()),
     path("<int:pk>/finish/", CallAttemptFinishApi.as_view()),

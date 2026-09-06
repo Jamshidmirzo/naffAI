@@ -29,6 +29,7 @@ function useManagerGroups(
         { to: "/", label: t("nav.dashboard"), end: true },
         { to: "/sales", label: t("nav.sales") },
         { to: "/sales/pending", label: t("nav.sales_pending"), badgeKey: "salesPending" },
+        { to: "/calls", label: t("nav.calls") },
         { to: "/leads", label: t("nav.leads"), badgeKey: "leadsReview" },
         { to: "/leads/orphans", label: t("nav.orphans"), badgeKey: "orphans" },
       ],
@@ -84,7 +85,6 @@ function useManagerGroups(
         { to: "/partners", label: t("nav.partners") },
         { to: "/sheet-sources", label: t("nav.sheet_sources") },
         { to: "/statuses", label: t("nav.statuses") },
-        { to: "/calls", label: t("nav.calls") },
       ],
     },
     {

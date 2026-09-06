@@ -126,6 +126,22 @@ export default function Dashboard() {
     refetchInterval: 60000,
   });
 
+  // «Звонков сегодня» — компактный бейдж рядом с header'ом, ведёт на /calls.
+  const callsToday = useQuery<{ total_calls: number }>({
+    queryKey: ["dash-calls-today"],
+    queryFn: () => {
+      const today = new Date();
+      const y = today.getFullYear();
+      const m = String(today.getMonth() + 1).padStart(2, "0");
+      const d = String(today.getDate()).padStart(2, "0");
+      const iso = `${y}-${m}-${d}`;
+      return api
+        .get("/calls/stats/", { params: { date_from: iso, date_to: iso } })
+        .then((r) => r.data);
+    },
+    refetchInterval: 120000,
+  });
+
   const data = summary.data;
 
   const barData: SalesBarPoint[] = useMemo(
@@ -172,6 +188,15 @@ export default function Dashboard() {
           {t("dash.title_today_brief")}
         </h1>
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => nav("/calls")}
+            className="nf-btn nf-btn--ghost"
+            style={{ padding: "7px 12px", fontSize: 12 }}
+            title={t("calls.title")}
+          >
+            📞 {t("calls.today_badge", { n: callsToday.data?.total_calls ?? 0 })}
+          </button>
           <TabPill<Period>
             value={period}
             onChange={(v) => {
