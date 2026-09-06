@@ -1,0 +1,105 @@
+; ============================================================================
+; pjsip.conf.template — базовый шаблон PJSIP для NaffAI Asterisk
+;
+; НЕ подключается напрямую — configure-sip-trunk.sh и
+; create-operator-extension.sh дописывают секции в реальный
+; /etc/asterisk/pjsip.conf.
+;
+; Здесь — референс структуры для ручной правки/дебага.
+; ============================================================================
+
+; -------- Transports --------
+[transport-udp]
+type=transport
+protocol=udp
+bind=0.0.0.0
+; external_media_address=<PUBLIC_IP>    ; раскомментируй если VPS за NAT
+; external_signaling_address=<PUBLIC_IP>
+
+[transport-tls]
+type=transport
+protocol=tls
+bind=0.0.0.0:5061
+cert_file=/etc/asterisk/keys/asterisk.pem
+priv_key_file=/etc/asterisk/keys/asterisk.key
+method=tlsv1_2
+verify_client=no
+verify_server=no
+; external_media_address=<PUBLIC_IP>
+; external_signaling_address=<PUBLIC_IP>
+
+; -------- Шаблон endpoint для оператора (SIP-клиент = Flutter app) --------
+; Реально создаётся через create-operator-extension.sh:
+;
+; [endpoint-2062-auth]
+; type=auth
+; auth_type=userpass
+; username=2062
+; password=<RANDOM_32>
+;
+; [endpoint-2062-aor]
+; type=aor
+; max_contacts=2
+; remove_existing=yes
+; qualify_frequency=30
+;
+; [endpoint-2062]
+; type=endpoint
+; transport=transport-tls
+; context=from-internal
+; disallow=all
+; allow=opus
+; allow=alaw
+; allow=ulaw
+; auth=endpoint-2062-auth
+; aors=endpoint-2062-aor
+; direct_media=no
+; force_rport=yes
+; rewrite_contact=yes
+; rtp_symmetric=yes
+; media_encryption=sdes
+; callerid="Operator +998901234567" <2062>
+
+; -------- Шаблон trunk (SIP-провайдер) --------
+; Реально создаётся через configure-sip-trunk.sh:
+;
+; [trunk-beeline_business-auth]
+; type=auth
+; auth_type=userpass
+; username=<PROVIDER_USER>
+; password=<PROVIDER_PASS>
+;
+; [trunk-beeline_business-aor]
+; type=aor
+; contact=sip:sip.beeline.uz:5060
+; qualify_frequency=60
+;
+; [trunk-beeline_business]
+; type=endpoint
+; transport=transport-udp
+; context=from-trunk
+; disallow=all
+; allow=alaw
+; allow=ulaw
+; outbound_auth=trunk-beeline_business-auth
+; aors=trunk-beeline_business-aor
+; from_domain=sip.beeline.uz
+; from_user=<PROVIDER_USER>
+; direct_media=no
+; rtp_symmetric=yes
+; force_rport=yes
+; rewrite_contact=yes
+;
+; [trunk-beeline_business-identify]
+; type=identify
+; endpoint=trunk-beeline_business
+; match=sip.beeline.uz
+;
+; [trunk-beeline_business-registration]
+; type=registration
+; transport=transport-udp
+; outbound_auth=trunk-beeline_business-auth
+; server_uri=sip:sip.beeline.uz:5060
+; client_uri=sip:<PROVIDER_USER>@sip.beeline.uz
+; retry_interval=60
+; expiration=3600

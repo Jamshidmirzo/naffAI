@@ -1,0 +1,68 @@
+# ==============================================================================
+# docker-compose-additions.yml
+#
+# Что добавить в основной naff /opt/naffAI/docker-compose.prod.yml КОГДА
+# VPS + Asterisk будут готовы (Фаза 2 закрыта, начинаем Фазу 4).
+#
+# Пока — комментированный шаблон. Раскомментируй когда:
+#   1. Asterisk работает на VPS (sip.naff.flek.uz)
+#   2. AMI пользователь заведён в /etc/asterisk/manager.conf
+#   3. В .env основного проекта добавлены переменные ASTERISK_AMI_*
+# ==============================================================================
+
+# --- Добавить в services: -----------------------------------------------------
+#
+#  asterisk-listener:
+#    build:
+#      context: ./backend
+#      dockerfile: Dockerfile
+#    command: python manage.py asterisk_ami_listener
+#    restart: unless-stopped
+#    env_file: .env
+#    environment:
+#      # AMI-соединение с Asterisk (VPS)
+#      ASTERISK_AMI_HOST: ${ASTERISK_AMI_HOST:-sip.naff.flek.uz}
+#      ASTERISK_AMI_PORT: ${ASTERISK_AMI_PORT:-5038}
+#      ASTERISK_AMI_USERNAME: ${ASTERISK_AMI_USERNAME}
+#      ASTERISK_AMI_SECRET: ${ASTERISK_AMI_SECRET}
+#      # Backend API для отправки событий
+#      NAFF_API_BASE: http://backend:8000
+#      NAFF_API_TOKEN: ${ASTERISK_HOOK_TOKEN}
+#    depends_on:
+#      - backend
+#    logging:
+#      driver: json-file
+#      options:
+#        max-size: "10m"
+#        max-file: "3"
+#
+# --- Добавить в .env (в /opt/naffAI/.env): -----------------------------------
+#
+#  # ==== Asterisk (Phase 2) ====
+#  ASTERISK_AMI_HOST=sip.naff.flek.uz
+#  ASTERISK_AMI_PORT=5038
+#  ASTERISK_AMI_USERNAME=naffai
+#  ASTERISK_AMI_SECRET=<generate: openssl rand -hex 32>
+#  ASTERISK_HOOK_TOKEN=<generate: openssl rand -hex 32>  # для mixmonitor-post-hook.sh и AMI listener
+#  SIP_DOMAIN=sip.naff.flek.uz
+#
+# --- На стороне VPS (/etc/asterisk/manager.conf): ----------------------------
+#
+#  [general]
+#  enabled = yes
+#  port = 5038
+#  bindaddr = 0.0.0.0
+#  ; Ограничить IP основного сервера naff!
+#
+#  [naffai]
+#  secret = <ASTERISK_AMI_SECRET из .env выше>
+#  deny=0.0.0.0/0
+#  permit=<PUBLIC_IP основного naff-сервера>/32
+#  read = system,call,cdr,dialplan
+#  write = system,call,originate
+#
+# --- Запуск ------------------------------------------------------------------
+#
+#   cd /opt/naffAI
+#   docker compose -f docker-compose.prod.yml up -d asterisk-listener
+#   docker compose -f docker-compose.prod.yml logs -f asterisk-listener

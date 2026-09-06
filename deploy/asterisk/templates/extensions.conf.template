@@ -1,0 +1,47 @@
+; ============================================================================
+; extensions.conf.template — dialplan для NaffAI
+;
+; Референс структуры. Реальный /etc/asterisk/extensions.conf
+; собирается install-asterisk.sh + configure-sip-trunk.sh.
+; ============================================================================
+
+[globals]
+RECORDING_DIR=/var/spool/asterisk/monitor
+POST_HOOK=/opt/naffAI/deploy/asterisk/mixmonitor-post-hook.sh
+TRUNK_NAME=beeline_business    ; переопределяется в configure-sip-trunk.sh
+
+; ----------------------------------------------------------------------------
+; from-internal: сюда попадают INVITE от SIP-endpoint'ов (Flutter app'ов)
+; ----------------------------------------------------------------------------
+[from-internal]
+
+; Исходящие на UZ-мобильные (+998XXXXXXXXX)
+exten => _+998XXXXXXXXX,1,NoOp(Outbound ${EXTEN} from ${CHANNEL(endpoint)})
+ same => n,Set(CDR(userfield)=${UNIQUEID})
+ ; Запись с обеих сторон + post-hook
+ same => n,MixMonitor(${STRFTIME(${EPOCH},,%Y/%m/%d)}/${UNIQUEID}.wav,ab,${POST_HOOK} ${UNIQUEID})
+ ; CallerID подставляется из транка (send_pai)
+ same => n,Dial(PJSIP/${EXTEN}@trunk-${TRUNK_NAME},60,tT)
+ same => n,Hangup()
+
+; Fallback без + (998XXXXXXXXX)
+exten => _998XXXXXXXXX,1,Goto(from-internal,+${EXTEN},1)
+
+; Тестовый экстеншен *43 → Echo test (для проверки микрофона)
+exten => *43,1,Answer()
+ same => n,Playback(demo-echotest)
+ same => n,Echo()
+ same => n,Hangup()
+
+; Всё остальное — 404
+exten => _.,1,NoOp(Unknown destination ${EXTEN})
+ same => n,Congestion(3)
+ same => n,Hangup()
+
+; ----------------------------------------------------------------------------
+; from-trunk: сюда попадают вызовы ОТ SIP-провайдера (входящие).
+; В фазе 2 inbound не используем — просто hangup.
+; ----------------------------------------------------------------------------
+[from-trunk]
+exten => _.,1,NoOp(Inbound ${EXTEN} — not supported yet)
+ same => n,Hangup()

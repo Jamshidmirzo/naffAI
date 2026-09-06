@@ -1,0 +1,3 @@
+sip_trunk.env
+*.env
+!*.env.example
