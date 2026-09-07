@@ -21,6 +21,7 @@ import LeadStatuses from "./pages/LeadStatuses";
 import Profile from "./pages/Profile";
 import AIChat from "./pages/AIChat";
 import Marketing from "./pages/Marketing";
+import MarketingSources from "./pages/MarketingSources";
 import DailyLesson from "./pages/DailyLesson";
 import LessonsHistory from "./pages/LessonsHistory";
 import TrainingList from "./pages/TrainingList";
@@ -148,6 +149,7 @@ export default function App() {
           <Route path="/audit" element={<RoleGate allow={["manager"]}><Audit /></RoleGate>} />
           <Route path="/ai-chat" element={<RoleGate allow={["manager"]}><AIChat /></RoleGate>} />
           <Route path="/marketing" element={<RoleGate allow={["manager"]}><Marketing /></RoleGate>} />
+          <Route path="/marketing/sources" element={<RoleGate allow={["manager"]}><MarketingSources /></RoleGate>} />
           <Route path="/attendance/today" element={<RoleGate allow={["manager"]}><PinGate><AttendanceToday /></PinGate></RoleGate>} />
           <Route path="/attendance/report" element={<RoleGate allow={["manager"]}><PinGate><AttendanceReport /></PinGate></RoleGate>} />
           <Route path="/attendance/photos" element={<RoleGate allow={["manager"]}><PinGate><AttendancePhotos /></PinGate></RoleGate>} />

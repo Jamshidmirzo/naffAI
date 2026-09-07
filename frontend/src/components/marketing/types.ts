@@ -13,6 +13,14 @@ export interface TopProduct {
   count: number;
 }
 
+/** Wave 2026-09-07 — demand side (Lead.product_hint aggregation). */
+export interface ProductHintRow {
+  model: string;
+  count: number;
+  share_pct: number;
+  example_hint: string;
+}
+
 export interface TopOperator {
   operator_id: number;
   name: string;
@@ -36,6 +44,38 @@ export interface SourceRow {
   delta_pp: number;
   delta_leads: number;
   adspend: AdSpendPart;
+  /** Wave 2026-09-07 — top-3 normalised product-hint asks + demand/supply match ratio. */
+  product_hint_top?: ProductHintRow[];
+  demand_supply_ratio?: number | null;
+}
+
+/** Wave 2026-09-07 — /analytics/product-demand-vs-supply/ shape. */
+export interface DemandRow {
+  model_key: string;
+  count: number;
+  example_hint: string;
+  share_pct: number;
+}
+
+export interface SupplyRow {
+  model_key: string;
+  count: number;
+  share_pct: number;
+}
+
+export interface GapRow {
+  model_key: string;
+  demand_count: number;
+  supply_count: number;
+  conv_pct: number | null;
+  indicator: "gap_deficit" | "gap_surplus" | "match";
+}
+
+export interface DemandSupplyPayload {
+  demand_top: DemandRow[];
+  supply_top: SupplyRow[];
+  gap: GapRow[];
+  totals: { demand: number; supply: number };
 }
 
 export interface FunnelRow {

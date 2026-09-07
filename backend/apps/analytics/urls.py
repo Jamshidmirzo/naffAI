@@ -11,7 +11,9 @@ from .apis import (
     LeaderboardApi,
     LeadStatsApi,
     LeadsDistributionApi,
+    MarketingSourceBreakdownApi,
     OperatorFunnelsApi,
+    ProductDemandVsSupplyApi,
     TimeseriesApi,
 )
 
@@ -28,5 +30,8 @@ urlpatterns = [
     path("lead-stats/", LeadStatsApi.as_view()),
     # Единый aggregate под менеджерский Dashboard «Сводка дня».
     path("dashboard-summary/", DashboardSummaryApi.as_view()),
+    # Wave-N (2026-09-07) — «Аналитика источников» страница.
+    path("marketing-source-breakdown/", MarketingSourceBreakdownApi.as_view()),
+    path("product-demand-vs-supply/", ProductDemandVsSupplyApi.as_view()),
     path("export.xlsx", AnalyticsExportApi.as_view()),
 ]

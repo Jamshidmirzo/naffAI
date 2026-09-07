@@ -794,6 +794,90 @@ def _source_leads_qs(*, date_from, date_to):
     return qs
 
 
+# ---- Model-name normaliser -----------------------------------------------
+#
+# `Lead.product_hint` is user-typed text from the Google-sheet; `Sale.phone_model`
+# is manager-typed on sale creation. Both spellings are messy — «айфон 16»,
+# «iph 16 pro», «Iphone16», «samsung a57», «редми ноут 13». We normalise both
+# sides to a common key so demand/supply can be joined.
+#
+# Rules:
+#   1. lowercase, strip punctuation, collapse whitespace;
+#   2. transliterate the most common Russian phrasings for the brand
+#      («айфон» → iphone, «самсунг» → samsung, «редми» → redmi, «сяоми» →
+#      xiaomi, «поко» → poco, «оппо» → oppo, «виво» → vivo, «хонор» →
+#      honor, «реалми» → realme, «текно» → tecno, «инфиникс» → infinix,
+#      «пиксель» → pixel, «нокиа/нокия» → nokia);
+#   3. glue-split brand+model («iphone16» → «iphone 16»);
+#   4. keep only the first two significant tokens (brand + first model
+#      token, e.g. "iphone 16 pro max" → "iphone 16"). This is coarse on
+#      purpose — a shop that stocks iPhone 16 Pro and iPhone 16 Pro Max is
+#      still "iphone 16 demand" for planning.
+
+
+_BRAND_SYNONYMS: dict[str, str] = {
+    # cyrillic → canonical latin brand
+    "айфон": "iphone",
+    "айфоны": "iphone",
+    "afon": "iphone",
+    "iph": "iphone",
+    "iphon": "iphone",
+    "самсунг": "samsung",
+    "samsun": "samsung",
+    "самс": "samsung",
+    "ксиаоми": "xiaomi",
+    "ксяоми": "xiaomi",
+    "сяоми": "xiaomi",
+    "xiomi": "xiaomi",
+    "редми": "redmi",
+    "redmi": "redmi",
+    "поко": "poco",
+    "оппо": "oppo",
+    "виво": "vivo",
+    "хонор": "honor",
+    "реалми": "realme",
+    "текно": "tecno",
+    "инфиникс": "infinix",
+    "пиксель": "pixel",
+    "нокиа": "nokia",
+    "нокия": "nokia",
+}
+
+
+def _norm_model(text: str | None) -> str:
+    """Return the coarse-key form ("iphone 16", "samsung a57", …) or ""."""
+    if not text:
+        return ""
+    import re
+
+    s = str(text).lower().strip()
+    if not s:
+        return ""
+    # Drop everything except alnum + spaces + cyrillic letters.
+    s = re.sub(r"[^0-9a-zа-яё ]+", " ", s)
+    # Glue-split: "iphone16" → "iphone 16", "samsunga57" → "samsung a57".
+    # Only split letter→digit if the letter run is ≥2 chars, otherwise
+    # "a57" (a common Samsung model prefix) collapses to "a" + "57".
+    s = re.sub(r"([a-zа-яё]{2,})(\d)", r"\1 \2", s)
+    s = re.sub(r"(\d)([a-zа-яё]{2,})", r"\1 \2", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    if not s:
+        return ""
+
+    tokens = s.split(" ")
+    # First token = brand, apply synonym map.
+    brand = _BRAND_SYNONYMS.get(tokens[0], tokens[0])
+    tail = tokens[1:]
+    # Skip pure noise words in the tail ("pro", "max", "plus", "ultra")
+    # so "iphone pro" collapses to "iphone", but keep numeric+alnum model
+    # tokens ("16", "a57", "note").
+    NOISE = {"pro", "max", "plus", "ultra", "lite", "mini", "pluse", "prо"}
+    tail = [t for t in tail if t not in NOISE]
+    if tail:
+        return f"{brand} {tail[0]}".strip()
+    return brand.strip()
+
+
 def marketing_source_breakdown(
     *,
     date_from: dt.datetime,
@@ -852,6 +936,15 @@ def marketing_source_breakdown(
         lead_id__in=lead_ids,
     ).values("id", "lead_id", "amount", "discount", "phone_model", "sold_at", "created_at")
     sales_list = list(sales_qs)
+
+    # ---- Per-lead product_hint (for the demand-side aggregate) -----------
+    # Read `product_hint` off the same lead rows we already loaded.
+    lead_hint_map: dict[int, str] = {}
+    lead_hint_rows = list(
+        Lead.objects.filter(id__in=lead_ids).values("id", "product_hint")
+    )
+    for r in lead_hint_rows:
+        lead_hint_map[r["id"]] = r.get("product_hint") or ""
 
     # Per-group sales aggregation.
     per_group_sales: dict[str, list[dict]] = {label: [] for label in groups}
@@ -967,6 +1060,47 @@ def marketing_source_breakdown(
             for v in sorted(op_totals.values(), key=lambda x: -x["total"])[:top_lists_limit]
         ]
 
+        # --- Product-hint (demand side) aggregation for this group -------
+        # We iterate every lead in the group, normalise its product_hint,
+        # count occurrences. Empty hints go to the "—" bucket but are
+        # excluded from top_3 output.
+        hint_counts: dict[str, dict] = {}
+        for lid in g["lead_ids"]:
+            raw = lead_hint_map.get(lid, "")
+            key = _norm_model(raw)
+            if not key:
+                continue
+            entry = hint_counts.setdefault(key, {"count": 0, "example": raw})
+            entry["count"] += 1
+        hint_total = sum(v["count"] for v in hint_counts.values()) or 1
+        product_hint_top = [
+            {
+                "model": k,
+                "count": v["count"],
+                "share_pct": round(v["count"] * 100.0 / hint_total, 1),
+                "example_hint": v["example"],
+            }
+            for k, v in sorted(hint_counts.items(), key=lambda x: -x[1]["count"])[:top_lists_limit]
+        ]
+
+        # demand_supply_ratio: for how many of the leads-with-hint did the
+        # customer eventually buy the same normalised model?
+        sold_keys_per_lead: dict[int, set[str]] = {}
+        for s in sales_here:
+            k = _norm_model(s.get("phone_model"))
+            if k:
+                sold_keys_per_lead.setdefault(s["lead_id"], set()).add(k)
+        matched = 0
+        hinted = 0
+        for lid in g["lead_ids"]:
+            hkey = _norm_model(lead_hint_map.get(lid, ""))
+            if not hkey:
+                continue
+            hinted += 1
+            if hkey in sold_keys_per_lead.get(lid, set()):
+                matched += 1
+        demand_supply_ratio = round(matched * 100.0 / hinted, 2) if hinted else None
+
         # Previous period comparison.
         prev = prev_groups.get(label, {"leads": 0, "converted": 0})
         prev_conv_rate = round(prev["converted"] * 100.0 / prev["leads"], 2) if prev["leads"] else 0.0
@@ -1004,6 +1138,13 @@ def marketing_source_breakdown(
                 "roi_pct": _decimal_str(roi.quantize(Decimal("0.1"))) if roi else None,
                 "revenue_per_dollar": _decimal_str(rev_per_dollar.quantize(Decimal("0.01"))) if rev_per_dollar else None,
             },
+            # Wave-N (2026-09-07) — demand side. `product_hint_top` = what
+            # customers of this source *asked for* (top-3, normalised),
+            # `demand_supply_ratio` = % of hinted leads whose eventual
+            # purchase matched the ask. Consumer: `/marketing/sources` UI
+            # + LLM marketing analyst.
+            "product_hint_top": product_hint_top,
+            "demand_supply_ratio": demand_supply_ratio,
         })
 
     out.sort(key=lambda x: -x["leads"])
@@ -1709,4 +1850,140 @@ def dashboard_summary(period: str = "week", *, month: str | None = None) -> dict
             "late_today": late_today,
         },
         "top_operators": top_ops_shaped,
+    }
+
+
+# ---- Product demand vs supply ------------------------------------------
+
+
+def product_demand_vs_supply(
+    *,
+    source_id: int | None = None,
+    date_from: dt.datetime,
+    date_to: dt.datetime,
+    top_n: int = 20,
+) -> dict:
+    """
+    Compare what customers *asked for* (Lead.product_hint) against what
+    the shop actually *sold* (Sale.phone_model) in the same window.
+
+    Returns:
+        {
+            "demand_top":  [{model_key, count, example_hint, share_pct}...],
+            "supply_top":  [{model_key, count, share_pct}...],
+            "gap":         [{model_key, demand_count, supply_count,
+                             conv_pct, indicator}...],
+            "totals":      {"demand": N, "supply": M},
+        }
+
+    `source_id` — filter by SheetSource; None means all sources.
+    `demand` / `supply` numbers are group-independent counts — one lead =
+    one demand row, one sale = one supply row.
+
+    The gap `indicator`:
+      - "gap_deficit"  → demand ≥ 5 AND supply/demand < 40 %
+                          (customers ask for it, we barely sell it).
+      - "gap_surplus"  → supply ≥ 5 AND demand/supply < 40 %
+                          (we push it, no one asked for it).
+      - "match"        → everything else.
+    """
+    from apps.leads.models import Lead
+    from apps.sales.models import Sale
+
+    # ---- Demand side (Lead.product_hint) -----------------------------
+    lead_qs = Lead.objects.filter(
+        created_at__gte=date_from,
+        created_at__lte=date_to,
+    ).exclude(product_hint="")
+    if source_id is not None:
+        lead_qs = lead_qs.filter(sheet_source_id=source_id)
+
+    demand: dict[str, dict] = {}
+    for r in lead_qs.values("product_hint"):
+        key = _norm_model(r["product_hint"])
+        if not key:
+            continue
+        entry = demand.setdefault(key, {"count": 0, "example": r["product_hint"]})
+        entry["count"] += 1
+    demand_total = sum(v["count"] for v in demand.values()) or 1
+    demand_top = [
+        {
+            "model_key": k,
+            "count": v["count"],
+            "example_hint": v["example"],
+            "share_pct": round(v["count"] * 100.0 / demand_total, 1),
+        }
+        for k, v in sorted(demand.items(), key=lambda x: -x[1]["count"])[:top_n]
+    ]
+
+    # ---- Supply side (Sale.phone_model) ------------------------------
+    sale_qs = Sale.objects.filter(
+        is_deleted=False,
+        is_returned=False,
+        status="confirmed",
+        sold_at__gte=date_from,
+        sold_at__lte=date_to,
+    )
+    if source_id is not None:
+        from django.db.models import Q as _Q
+        # Denormalised sheet_source_id lives on the Sale itself (populated
+        # at sale-create). Fall through to lead.sheet_source_id if the
+        # denorm is empty — legacy sales before the denorm rollout.
+        sale_qs = sale_qs.filter(
+            _Q(sheet_source_id=source_id) | _Q(lead__sheet_source_id=source_id)
+        )
+
+    supply: dict[str, int] = {}
+    for r in sale_qs.values("phone_model"):
+        key = _norm_model(r["phone_model"])
+        if not key:
+            continue
+        supply[key] = supply.get(key, 0) + 1
+    supply_total = sum(supply.values()) or 1
+    supply_top = [
+        {
+            "model_key": k,
+            "count": v,
+            "share_pct": round(v * 100.0 / supply_total, 1),
+        }
+        for k, v in sorted(supply.items(), key=lambda x: -x[1])[:top_n]
+    ]
+
+    # ---- Gap join (full outer) --------------------------------------
+    all_keys = set(demand.keys()) | set(supply.keys())
+    gap = []
+    for k in all_keys:
+        d = demand.get(k, {"count": 0})["count"]
+        s = supply.get(k, 0)
+        # ratio = supply / demand (bounded ×100 %).
+        if d == 0:
+            conv_pct = None
+        else:
+            conv_pct = round(s * 100.0 / d, 1)
+
+        if d >= 5 and conv_pct is not None and conv_pct < 40:
+            indicator = "gap_deficit"
+        elif s >= 5 and (d == 0 or (d and (d * 100.0 / s) < 40)):
+            indicator = "gap_surplus"
+        else:
+            indicator = "match"
+
+        gap.append({
+            "model_key": k,
+            "demand_count": d,
+            "supply_count": s,
+            "conv_pct": conv_pct,
+            "indicator": indicator,
+        })
+    gap.sort(key=lambda x: -(x["demand_count"] + x["supply_count"]))
+    gap = gap[: top_n * 2]
+
+    return {
+        "demand_top": demand_top,
+        "supply_top": supply_top,
+        "gap": gap,
+        "totals": {
+            "demand": sum(v["count"] for v in demand.values()),
+            "supply": sum(supply.values()),
+        },
     }

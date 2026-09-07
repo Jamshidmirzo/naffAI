@@ -95,6 +95,7 @@ function useManagerGroups(
         { to: "/bot", label: t("nav.bot") },
         { to: "/bot-subscribers", label: t("nav.bot_subscribers") },
         { to: "/marketing", label: t("nav.marketing") },
+        { to: "/marketing/sources", label: t("nav.marketing_sources") },
       ],
     },
     {

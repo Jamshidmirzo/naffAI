@@ -375,6 +375,7 @@ class SaleListFilterSerializer(serializers.Serializer):
         choices=["pending", "confirmed"], required=False
     )
     is_returned = serializers.BooleanField(required=False)
+    sheet_source_id = serializers.IntegerField(required=False)
 
 
 class SaleListCreateApi(ListCreateAPIView):
@@ -413,6 +414,8 @@ class SaleListCreateApi(ListCreateAPIView):
             filter_data["status"] = qp.get("status")
         if qp.get("is_returned") is not None and qp.get("is_returned") != "":
             filter_data["is_returned"] = qp.get("is_returned")
+        if qp.get("sheet_source_id"):
+            filter_data["sheet_source_id"] = qp.get("sheet_source_id")
 
         ser = SaleListFilterSerializer(data=filter_data)
         ser.is_valid(raise_exception=True)
@@ -427,6 +430,7 @@ class SaleListCreateApi(ListCreateAPIView):
             date_to=_parse_dt_inclusive_end(v.get("date_to") or None),
             status=v.get("status"),
             is_returned=v.get("is_returned"),
+            sheet_source_id=v.get("sheet_source_id"),
         ).annotate(total_price=F("amount") - F("discount"))
 
     def create(self, request, *args, **kwargs):

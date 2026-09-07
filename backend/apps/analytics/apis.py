@@ -15,6 +15,8 @@ from .cache import (
     dashboard_summary_key,
     lead_stats_key,
 )
+from apps.common.dateparse import parse_dt_end, parse_dt_start
+
 from .selectors import (
     by_channel,
     by_model,
@@ -24,7 +26,9 @@ from .selectors import (
     lead_stats_snapshot,
     leaderboard,
     leads_distribution_by_operator,
+    marketing_source_breakdown,
     operator_funnels,
+    product_demand_vs_supply,
     resolve_period,
     sales_by_source,
     timeseries_daily,
@@ -311,6 +315,67 @@ class DashboardSummaryApi(APIView):
             timeout=DASHBOARD_SUMMARY_TTL,
         )
         return Response(payload)
+
+
+class ProductDemandVsSupplyApi(APIView):
+    """
+    GET /api/analytics/product-demand-vs-supply/
+        ?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD[&source_id=N]
+
+    "What customers asked for" (Lead.product_hint) vs "what we sold"
+    (Sale.phone_model) over the window. See selector docstring for the
+    payload shape. Manager-only.
+    """
+
+    permission_classes = [IsTeamLeadOrManagerReadOnly]
+
+    def get(self, request):
+        date_from = parse_dt_start(request.query_params.get("date_from"))
+        date_to = parse_dt_end(request.query_params.get("date_to"))
+        if date_from is None or date_to is None:
+            return Response(
+                {"detail": "date_from и date_to обязательны (YYYY-MM-DD)"},
+                status=400,
+            )
+        raw_src = request.query_params.get("source_id")
+        source_id = int(raw_src) if raw_src not in (None, "", "0", "all") else None
+        return Response(
+            product_demand_vs_supply(
+                source_id=source_id,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        )
+
+
+class MarketingSourceBreakdownApi(APIView):
+    """
+    GET /api/analytics/marketing-source-breakdown/
+        ?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+
+    Per-source rows with leads/converted/revenue/avg_check + demand-side
+    fields (`product_hint_top`, `demand_supply_ratio`). Manager-only.
+    Thin wrapper around the selector; the full payload with insights lives
+    at `/marketing/dashboard/` — this endpoint is the standalone feed for
+    the `/marketing/sources` page.
+    """
+
+    permission_classes = [IsTeamLeadOrManagerReadOnly]
+
+    def get(self, request):
+        date_from = parse_dt_start(request.query_params.get("date_from"))
+        date_to = parse_dt_end(request.query_params.get("date_to"))
+        if date_from is None or date_to is None:
+            return Response(
+                {"detail": "date_from и date_to обязательны (YYYY-MM-DD)"},
+                status=400,
+            )
+        return Response(
+            marketing_source_breakdown(
+                date_from=date_from,
+                date_to=date_to,
+            )
+        )
 
 
 class AnalyticsExportApi(APIView):

@@ -47,6 +47,7 @@ def sale_list(
     date_to: dt.datetime | None = None,
     status: str | None = None,
     is_returned: bool | None = None,
+    sheet_source_id: int | None = None,
 ) -> QuerySet[Sale]:
     qs = sale_queryset()
     if search:
@@ -83,6 +84,13 @@ def sale_list(
         qs = qs.filter(status=status)
     if is_returned is not None:
         qs = qs.filter(is_returned=is_returned)
+    if sheet_source_id is not None:
+        # Match by denormalised Sale.sheet_source (fast) OR fall back to
+        # the linked lead's sheet_source (covers pre-denorm sales).
+        qs = qs.filter(
+            Q(sheet_source_id=sheet_source_id)
+            | Q(lead__sheet_source_id=sheet_source_id)
+        ).distinct()
     return qs.order_by("-sold_at", "-id")
 
 
