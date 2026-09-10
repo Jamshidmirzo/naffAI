@@ -1488,15 +1488,21 @@ def lead_qimmatlik_retry(lead: Lead) -> Operator | None:
     """
     from django.db.models import Count, Q
 
-    from .selectors import active_lead_status_codes, operators_eligible_for_new_leads
+    from apps.operators.models import Operator, OperatorStatus
+
+    from .selectors import active_lead_status_codes
 
     previous_ids = list(
         lead.assignments.values_list("operator_id", flat=True).distinct()
     )
     from_op_id = lead.operator_id
 
+    # qimmatlik-retry имеет приоритет над раздачей новых лидов: лид уже
+    # «тёплый» и может остыть, если ждать пока оператор пройдёт morning-gate
+    # / batch-quota. Поэтому берём всех ACTIVE операторов минус тех кто уже
+    # пробовал, и раскидываем по наименьшей загрузке.
     candidate = (
-        operators_eligible_for_new_leads()
+        Operator.objects.filter(status=OperatorStatus.ACTIVE)
         .exclude(pk__in=previous_ids)
         .annotate(
             active_leads_count=Count(

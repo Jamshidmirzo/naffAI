@@ -9,6 +9,7 @@ from .apis import (
     DashboardSummaryApi,
     KpiApi,
     LeaderboardApi,
+    LeadHealthApi,
     LeadStatsApi,
     LeadsDistributionApi,
     MarketingSourceBreakdownApi,
@@ -33,5 +34,7 @@ urlpatterns = [
     # Wave-N (2026-09-07) — «Аналитика источников» страница.
     path("marketing-source-breakdown/", MarketingSourceBreakdownApi.as_view()),
     path("product-demand-vs-supply/", ProductDemandVsSupplyApi.as_view()),
+    # Wave-3 (2026-09-10) — «Здоровье воронки» виджет на Dashboard.
+    path("lead-health/", LeadHealthApi.as_view()),
     path("export.xlsx", AnalyticsExportApi.as_view()),
 ]

@@ -23,6 +23,7 @@ from .selectors import (
     callback_hour_heatmap,
     dashboard_summary,
     kpi_snapshot,
+    lead_health_snapshot,
     lead_stats_snapshot,
     leaderboard,
     leads_distribution_by_operator,
@@ -376,6 +377,18 @@ class MarketingSourceBreakdownApi(APIView):
                 date_to=date_to,
             )
         )
+
+
+class LeadHealthApi(APIView):
+    """
+    Дашборд-виджет «Здоровье воронки» — только для manager/team_lead.
+    Тонкая обёртка над `lead_health_snapshot()`.
+    """
+
+    permission_classes = [IsTeamLeadOrManagerReadOnly]
+
+    def get(self, request):
+        return Response(lead_health_snapshot())
 
 
 class AnalyticsExportApi(APIView):

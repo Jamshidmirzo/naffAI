@@ -13,6 +13,9 @@ import {
 } from "../components/dashboard/RequiresAttentionCard";
 import { TopOperators } from "../components/dashboard/TopOperators";
 import BirthdaysTodayCard from "../components/dashboard/BirthdaysTodayCard";
+import { HealthLeaks, useLeadHealth } from "../components/dashboard/HealthLeaks";
+import { FunnelBottleneck } from "../components/dashboard/FunnelBottleneck";
+import { SheetHealthStrip } from "../components/dashboard/SheetHealthStrip";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
 
@@ -143,6 +146,7 @@ export default function Dashboard() {
   });
 
   const data = summary.data;
+  const health = useLeadHealth();
 
   const barData: SalesBarPoint[] = useMemo(
     () =>
@@ -228,6 +232,18 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* --- Lead Health widgets (manager+ only; Dashboard уже под RoleGate) --- */}
+      <section className="flex flex-col gap-3">
+        <div className="text-[12px] uppercase tracking-wider text-muted font-medium">
+          {t("dash.health.title")}
+        </div>
+        <SheetHealthStrip data={health.data} />
+        <div className="grid gap-[13px] md:grid-cols-2">
+          <HealthLeaks data={health.data} />
+          <FunnelBottleneck data={health.data} />
+        </div>
+      </section>
 
       {/* --- TOP ROW: 4 KPI cards --- */}
       <section className="grid gap-[13px] grid-cols-2 md:grid-cols-4">

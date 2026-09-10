@@ -410,6 +410,7 @@ class LeadAssignmentSource(models.TextChoices):
     QIMMATLIK_RETRY = "qimmatlik_retry", "Retry после qimmatlik"
     MORNING_SPLIT = "morning_split", "Утренняя раздача"
     AUTO_REFILL = "auto_refill", "Автопополнение пачки"
+    AUTO_RESCUE_TOUCHED = "auto_rescue_touched", "Rescue touched-лида с уволенного"
 
 
 class LeadAssignment(TimestampedModel):

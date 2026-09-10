@@ -196,23 +196,36 @@ class OperatorDeactivateApi(APIView):
         op = operator_get(pk)
         if not op:
             return Response({"detail": "Not found"}, status=404)
-        # Флаг `rescue_touched` — «переназначить активные лиды в needs_review».
-        # Default True, потому что без него touched non-terminal лиды
-        # оставались на уволенном и никогда никому не выдавались
-        # (см. rescue_stranded_leads management-команду).
+        # Флаг `rescue_touched` — «трогать ли touched non-terminal лиды».
+        # Параметр `mode`:
+        #   * "reassign" (default, 2026-09-10) — раскидать touched-лидов RR
+        #     активным операторам с сохранением статуса+истории.
+        #   * "mark_lost" — legacy: пометить как system-lost.
         rescue_touched = request.data.get("rescue_touched", True)
         if isinstance(rescue_touched, str):
             rescue_touched = rescue_touched.lower() not in ("0", "false", "no")
+        mode = str(request.data.get("mode", "reassign")).strip() or "reassign"
+        if mode not in ("reassign", "mark_lost"):
+            mode = "reassign"
         operator_deactivate(
-            operator=op, user=request.user, rescue_touched=bool(rescue_touched)
+            operator=op,
+            user=request.user,
+            rescue_touched=bool(rescue_touched),
+            mode=mode,
         )
         payload = OperatorSerializer(op).data
         # Surface the counters the service attached on `op` so the UI
-        # can toast "Deactivated, N leads reassigned + M → needs_review".
+        # can toast "Deactivated, N leads reassigned + M touched reassigned".
         payload["rebalanced_count"] = getattr(op, "rebalanced_count", 0)
         payload["callbacks_moved"] = getattr(op, "callbacks_moved", 0)
         payload["touched_needs_review_count"] = getattr(
             op, "touched_needs_review_count", 0
+        )
+        payload["touched_reassigned_count"] = getattr(
+            op, "touched_reassigned_count", 0
+        )
+        payload["touched_system_lost_count"] = getattr(
+            op, "touched_system_lost_count", 0
         )
         return Response(payload)
 

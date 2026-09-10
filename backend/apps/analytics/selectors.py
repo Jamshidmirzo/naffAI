@@ -1987,3 +1987,163 @@ def product_demand_vs_supply(
             "supply": sum(supply.values()),
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Lead Health snapshot (Dashboard widget — manager+ only).
+# ---------------------------------------------------------------------------
+#
+# Единая точка агрегации «здоровья воронки» — заменяет обход менеджером
+# 5 разных страниц (Dashboard / /marketing/sources / /leads-stats /
+# /leads/system-lost / /sheet-sources). Тонкая обёртка над готовыми
+# querysetами Lead/SheetSource — никаких новых бизнес-инвариантов.
+#
+# Возвращает:
+#   * `sheet_sources` — health по каждому активному SheetSource.
+#   * `leaks` — 4 индикатора: system_lost за 24ч (+ сравнение с 7d avg),
+#               застрявшие no_answer 48ч+, операторы с высоким %lost,
+#               sync errors на sheet-source'ах.
+#   * `bottlenecks` — топ-3 статуса с самой длинной средней задержкой
+#               (места, где лид застревает и его надо толкать вручную).
+def lead_health_snapshot() -> dict:
+    from django.db.models import Case, IntegerField, Q, When
+
+    from apps.leads.models import Lead, LeadStatus, SheetSource
+
+    now = timezone.now()
+    day_ago = now - dt.timedelta(hours=24)
+    week_ago = now - dt.timedelta(days=7)
+    stale_no_answer_cutoff = now - dt.timedelta(hours=48)
+
+    # ---- Sheet sources (active only) — компактный список. --------------
+    ss_qs = SheetSource.objects.filter(active=True).order_by("id")
+    sheet_sources = [
+        {
+            "id": s.id,
+            "name": s.name,
+            "last_sync_error": s.last_sync_error or None,
+        }
+        for s in ss_qs
+    ]
+
+    # ---- Leaks. ---------------------------------------------------------
+    system_lost_24h = Lead.objects.filter(
+        status=LeadStatus.LOST,
+        updated_at__gte=day_ago,
+        metadata__lost_by__startswith="system:",
+    ).count()
+
+    # 7-day rolling: средний за день. За 7d считаем total и делим на 7.
+    system_lost_7d = Lead.objects.filter(
+        status=LeadStatus.LOST,
+        updated_at__gte=week_ago,
+        metadata__lost_by__startswith="system:",
+    ).count()
+    system_lost_7d_avg = round(system_lost_7d / 7.0, 1)
+
+    # Stale no_answer* — лиды в статусах no_answer/no_answer_2 которые
+    # >48ч без обновления. Индикатор что operator их забросил.
+    stale_no_answer_48h = Lead.objects.filter(
+        status__in=[LeadStatus.NO_ANSWER, LeadStatus.NO_ANSWER_2],
+        updated_at__lt=stale_no_answer_cutoff,
+    ).count()
+
+    # High-lost operators — те у кого > 40% lost-конверсии за последние 24ч.
+    # Считаем: closed_24h = won+lost, high_lost_pct если closed>=3 и lost/closed > 40%.
+    lost_by_op = (
+        Lead.objects.filter(
+            status__in=[LeadStatus.WON, LeadStatus.LOST],
+            updated_at__gte=day_ago,
+            operator__isnull=False,
+        )
+        .values("operator_id", "operator__full_name")
+        .annotate(
+            closed=Count("id"),
+            lost=Count(
+                Case(
+                    When(status=LeadStatus.LOST, then=1),
+                    output_field=IntegerField(),
+                )
+            ),
+        )
+    )
+    high_lost_operators: list[dict] = []
+    for row in lost_by_op:
+        closed = row["closed"] or 0
+        if closed < 3:
+            continue
+        lost = row["lost"] or 0
+        pct = round(lost * 100.0 / closed, 1)
+        if pct > 40.0:
+            high_lost_operators.append(
+                {
+                    "operator_id": row["operator_id"],
+                    "name": row["operator__full_name"],
+                    "closed": closed,
+                    "lost": lost,
+                    "lost_pct": pct,
+                }
+            )
+    # Топ-3 по проценту.
+    high_lost_operators.sort(key=lambda x: x["lost_pct"], reverse=True)
+    high_lost_operators = high_lost_operators[:3]
+
+    sync_errors = [
+        {"source_id": s.id, "source_name": s.name, "error": s.last_sync_error}
+        for s in ss_qs
+        if (s.last_sync_error or "").strip()
+    ]
+
+    leaks = {
+        "system_lost_24h": system_lost_24h,
+        "system_lost_7d_avg": system_lost_7d_avg,
+        "stale_no_answer_48h": stale_no_answer_48h,
+        "high_lost_operators": high_lost_operators,
+        "sync_errors": sync_errors,
+    }
+
+    # ---- Bottlenecks: топ-3 статуса с самым долгим средним временем. ----
+    # Берём non-terminal + non-untouched статусы за 7 дней. Считаем сколько
+    # лидов в каждом статусе и средний возраст (hours since updated_at).
+    from apps.leads.selectors import TERMINAL_LEAD_STATUSES, UNTOUCHED_LEAD_STATUSES
+
+    exclude_statuses = set(TERMINAL_LEAD_STATUSES) | set(UNTOUCHED_LEAD_STATUSES)
+    bottleneck_qs = (
+        Lead.objects.exclude(status__in=exclude_statuses)
+        .filter(updated_at__gte=week_ago)
+        .values("status")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:10]
+    )
+    # Считаем avg_days_in_status «на глаз»: (now - updated_at) в днях,
+    # округляя до 1 знака после запятой.
+    bottleneck_status_ids = [row["status"] for row in bottleneck_qs]
+    counts_by_status = {row["status"]: row["count"] for row in bottleneck_qs}
+    age_by_status: dict[str, float] = {}
+    for st in bottleneck_status_ids:
+        ages = (
+            Lead.objects.filter(status=st, updated_at__gte=week_ago)
+            .values_list("updated_at", flat=True)
+        )
+        deltas = [(now - u).total_seconds() / 86400.0 for u in ages]
+        age_by_status[st] = round(sum(deltas) / len(deltas), 1) if deltas else 0.0
+
+    bottlenecks = sorted(
+        (
+            {
+                "status": st,
+                "count": counts_by_status[st],
+                "avg_days_in_status": age_by_status.get(st, 0.0),
+            }
+            for st in bottleneck_status_ids
+        ),
+        key=lambda x: (x["avg_days_in_status"], x["count"]),
+        reverse=True,
+    )[:3]
+
+    return {
+        "generated_at": now.isoformat(),
+        "sheet_sources": sheet_sources,
+        "leaks": leaks,
+        "bottlenecks": bottlenecks,
+    }
