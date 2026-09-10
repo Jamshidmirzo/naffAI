@@ -208,7 +208,7 @@ export default function Sales() {
     queryKey: ["partners-list"],
     queryFn: () => api.get("/channels/", { params: { limit: 200 } }).then((r) => r.data),
   });
-  const operatorsQ = useQuery<Paginated<OperatorOption>>({
+  const operatorsQ = useQuery<Paginated<OperatorOption> | OperatorOption[]>({
     queryKey: ["operators-list"],
     queryFn: () => api.get("/operators/", { params: { limit: 200 } }).then((r) => r.data),
   });
@@ -218,7 +218,11 @@ export default function Sales() {
     [partnersQ.data],
   );
   const operatorOptions = useMemo<Option[]>(
-    () => (operatorsQ.data?.results || []).map((o) => ({ id: o.id, name: o.full_name })),
+    () => {
+      const raw = operatorsQ.data;
+      const arr = Array.isArray(raw) ? raw : (raw?.results || []);
+      return arr.map((o) => ({ id: o.id, name: o.full_name }));
+    },
     [operatorsQ.data],
   );
 

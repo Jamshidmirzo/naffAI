@@ -256,17 +256,17 @@ export default function Calls() {
     placeholderData: (prev) => prev,
   });
 
-  const operatorsQuery = useQuery<Paginated<OperatorOption>>({
+  const operatorsQuery = useQuery<Paginated<OperatorOption> | OperatorOption[]>({
     queryKey: ["operators-list-calls"],
     queryFn: () => api.get("/operators/", { params: { limit: 200 } }).then((r) => r.data),
   });
 
   const operatorOptions = useMemo(
-    () =>
-      (operatorsQuery.data?.results || []).map((o) => ({
-        id: o.id,
-        name: o.full_name,
-      })),
+    () => {
+      const raw = operatorsQuery.data;
+      const arr = Array.isArray(raw) ? raw : (raw?.results || []);
+      return arr.map((o) => ({ id: o.id, name: o.full_name }));
+    },
     [operatorsQuery.data],
   );
 

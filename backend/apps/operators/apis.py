@@ -140,6 +140,7 @@ class OperatorSerializer(serializers.ModelSerializer):
 class OperatorListCreateApi(ListCreateAPIView):
     permission_classes = [IsTeamLeadOrManagerReadOnly]
     serializer_class = OperatorSerializer
+    pagination_class = None  # список операторов небольшой (~30); фронт грузит одним запросом
 
     def get_queryset(self):
         return operator_list(

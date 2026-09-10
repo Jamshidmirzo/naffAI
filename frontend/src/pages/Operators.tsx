@@ -334,7 +334,9 @@ export default function Operators() {
     },
   });
 
-  const rows: OperatorRow[] = ops.data?.results || [];
+  const rows: OperatorRow[] = Array.isArray(ops.data)
+    ? ops.data
+    : (ops.data?.results || []);
 
   const filtered = useMemo(() => {
     let out = rows;
