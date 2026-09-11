@@ -209,6 +209,22 @@ class SheetSourceSerializer(serializers.ModelSerializer):
             "default_operator_name",
         ]
 
+    def validate_column_map(self, value):
+        """Require phone + full_name so newly-created sources always import
+        leads with contact info. Empty column_map used to silently produce
+        a broken source (0 leads imported, no error surface)."""
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                "column_map должен быть объектом {slot: column}."
+            )
+        missing = [k for k in ("phone", "full_name") if not value.get(k)]
+        if missing:
+            raise serializers.ValidationError(
+                f"В column_map обязательны поля: {', '.join(missing)}. "
+                "Без телефона и имени лиды не смогут быть импортированы."
+            )
+        return value
+
 
 class OperatorSheetAliasSerializer(serializers.ModelSerializer):
     operator_name = serializers.CharField(source="operator.full_name", read_only=True)
@@ -1133,6 +1149,201 @@ class SheetSourceDetailApi(APIView):
             user=request.user,
         )
         return Response(SheetSourceSerializer(updated).data)
+
+
+class SheetSourcePreviewApi(APIView):
+    """
+    POST /api/sheet-sources/preview/
+
+    Body: {spreadsheet_url: "..."} OR {spreadsheet_id, gid}.
+
+    Returns:
+        {
+          spreadsheet_id, gid,
+          sheet_title, headers, sample_rows, total_rows,
+          suggested_column_map: {phone, full_name, ...},
+          suggested_writeback: {status_col, ...},
+          already_connected: {id, name} | null,
+        }
+
+    Read-only — does not create/mutate a SheetSource. Wizard step 1.
+    """
+
+    permission_classes = [IsTeamLead]
+
+    def post(self, request):
+        from .integrations.google_sheets.preview import (
+            PreviewError,
+            fetch_sheet_preview,
+            parse_spreadsheet_url,
+            suggest_column_map,
+            suggest_writeback_columns,
+        )
+
+        url = (request.data.get("spreadsheet_url") or "").strip()
+        sid = (request.data.get("spreadsheet_id") or "").strip()
+        gid_raw = request.data.get("gid")
+
+        try:
+            if url:
+                sid, gid = parse_spreadsheet_url(url)
+            else:
+                if not sid or gid_raw is None:
+                    return Response(
+                        {"detail": "Нужен spreadsheet_url или spreadsheet_id + gid"},
+                        status=400,
+                    )
+                gid = int(gid_raw)
+        except PreviewError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        except (TypeError, ValueError):
+            return Response({"detail": "gid должен быть числом"}, status=400)
+
+        try:
+            preview = fetch_sheet_preview(sid, gid)
+        except PreviewError as exc:
+            return Response({"detail": str(exc)}, status=400)
+
+        existing = (
+            SheetSource.objects.filter(spreadsheet_id=sid, gid=gid)
+            .values("id", "name")
+            .first()
+        )
+
+        return Response(
+            {
+                "spreadsheet_id": sid,
+                "gid": gid,
+                "sheet_title": preview["sheet_title"],
+                "headers": preview["headers"],
+                "sample_rows": preview["sample_rows"],
+                "total_rows": preview["total_rows"],
+                "suggested_column_map": suggest_column_map(preview["headers"]),
+                "suggested_writeback": suggest_writeback_columns(preview["headers"]),
+                "already_connected": existing,
+            }
+        )
+
+
+class SheetSourceSyncNowApi(APIView):
+    """
+    POST /api/sheet-sources/{id}/sync-now/ — manual sync trigger for one
+    source. Returns {read, imported, created, merged, resynced, errors,
+    max_row, error}. Rate-limited: refuses (429) if the source was synced
+    less than 30 seconds ago.
+    """
+
+    permission_classes = [IsTeamLead]
+
+    _COOLDOWN_SECONDS = 30
+
+    def post(self, request, pk: int):
+        from django.utils import timezone
+
+        from .integrations.google_sheets.client import GoogleSheetsUnavailable
+        from .integrations.google_sheets.sync import sync_single_source
+
+        src = SheetSource.objects.filter(pk=pk).first()
+        if not src:
+            return Response({"detail": "Not found"}, status=404)
+
+        if src.last_synced_at:
+            delta = (timezone.now() - src.last_synced_at).total_seconds()
+            if 0 <= delta < self._COOLDOWN_SECONDS:
+                wait = int(self._COOLDOWN_SECONDS - delta) + 1
+                return Response(
+                    {
+                        "detail": (
+                            f"Слишком часто. Подождите {wait} сек. и попробуйте снова."
+                        ),
+                        "retry_after": wait,
+                    },
+                    status=429,
+                )
+
+        try:
+            result = sync_single_source(src)
+        except GoogleSheetsUnavailable as exc:
+            return Response(
+                {"detail": f"Google Sheets недоступен: {exc}"}, status=502
+            )
+        except ApplicationError as exc:
+            return Response({"detail": exc.message, **exc.extra}, status=400)
+        except Exception as exc:
+            return Response(
+                {"detail": f"Sync failed: {exc}"}, status=500
+            )
+
+        src.refresh_from_db()
+        return Response(
+            {
+                "read": result.read,
+                "imported": result.imported,
+                "created": result.created,
+                "merged": result.merged,
+                "resynced": result.resynced,
+                "skipped": result.skipped,
+                "errors": result.errors,
+                "max_row": result.max_row,
+                "last_synced_at": (
+                    src.last_synced_at.isoformat() if src.last_synced_at else None
+                ),
+                "last_sync_error": src.last_sync_error or None,
+            }
+        )
+
+
+class SheetSourceStatsApi(APIView):
+    """
+    GET /api/sheet-sources/{id}/stats/ — health/activity snapshot for the
+    source. Powers the health cards on /sheet-sources.
+    """
+
+    permission_classes = [IsTeamLead]
+
+    def get(self, request, pk: int):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.sales.models import Sale
+
+        src = SheetSource.objects.filter(pk=pk).first()
+        if not src:
+            return Response({"detail": "Not found"}, status=404)
+
+        now = timezone.now()
+        d1 = now - timedelta(hours=24)
+        d7 = now - timedelta(days=7)
+
+        leads_qs = Lead.objects.filter(sheet_source=src)
+        leads_total = leads_qs.count()
+        leads_24h = leads_qs.filter(created_at__gte=d1).count()
+        leads_7d = leads_qs.filter(created_at__gte=d7).count()
+        sales_total = Sale.objects.filter(sheet_source=src, is_deleted=False).count()
+
+        healthy = bool(
+            not src.last_sync_error
+            and src.last_synced_at
+            and (now - src.last_synced_at) < timedelta(hours=2)
+        )
+
+        return Response(
+            {
+                "id": src.id,
+                "name": src.name,
+                "active": src.active,
+                "leads_total": leads_total,
+                "leads_last_24h": leads_24h,
+                "leads_last_7d": leads_7d,
+                "sales_from_source": sales_total,
+                "last_sync_at": (
+                    src.last_synced_at.isoformat() if src.last_synced_at else None
+                ),
+                "last_sync_error": src.last_sync_error or None,
+                "is_healthy": healthy,
+            }
+        )
 
 
 class OperatorSheetAliasListCreateApi(ListCreateAPIView):
