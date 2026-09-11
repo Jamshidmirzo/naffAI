@@ -163,6 +163,23 @@ def sync_one(
         raise
 
 
+def sync_single_source(
+    sheet_source: SheetSource, *, force_full_scan: bool = False
+) -> SyncResult:
+    """
+    Sync exactly one `SheetSource` in the current thread.
+
+    Constructs the `GoogleSheetsClient` on the fly, delegates the heavy
+    lifting to `sync_one`, and returns its `SyncResult`. Used by the
+    manual «Sync now» endpoint that the wizard triggers after creating a
+    source — we don't want to wait for the cron.
+    """
+    client = GoogleSheetsClient()  # may raise GoogleSheetsUnavailable
+    return sync_one(
+        client=client, sheet_source=sheet_source, force_full_scan=force_full_scan
+    )
+
+
 def sync_all(*, force_full_scan: bool = False) -> list[SyncResult]:
     try:
         client = GoogleSheetsClient()

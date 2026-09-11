@@ -5,7 +5,7 @@
 
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, X } from "lucide-react";
+import { Plus, Sparkles, X } from "lucide-react";
 import { api } from "../lib/api";
 import {
   Button,
@@ -18,6 +18,8 @@ import {
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
 import { Select } from "../components/Select";
+import { SheetSourceWizard } from "../components/sheet-sources/SheetSourceWizard";
+import { SheetSourceHealthCard } from "../components/sheet-sources/SheetSourceHealthCard";
 
 type DistributionMode =
   | "alias_only"
@@ -114,18 +116,50 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
 
   const [edit, setEdit] = useState<SheetSource | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
 
   const items = q.data || [];
+  const activeItems = items.filter((s) => s.active);
   const gridCols = "1.1fr 1.1fr .5fr .8fr 1fr .8fr .6fr";
 
   return (
     <>
       <div className="flex items-center justify-between animate-nfFadeUp">
         <div className="text-[13px] text-muted">{t("sheet_src.total", { n: items.length })}</div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus className="w-3.5 h-3.5" /> {t("sheet_src.add")}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setShowWizard(true)}>
+            <Sparkles className="w-3.5 h-3.5" /> {t("sheet_src.wizard.open_btn")}
+          </Button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="nf-btn nf-btn--ghost"
+            style={{ padding: "7px 12px", fontSize: 12 }}
+          >
+            <Plus className="w-3.5 h-3.5" /> {t("sheet_src.add")}
+          </button>
+        </div>
       </div>
+
+      {activeItems.length > 0 && (
+        <section className="animate-nfFadeUp">
+          <div className="nf-col mb-2">{t("sheet_src.health.section_title")}</div>
+          <div
+            className="grid gap-3"
+            style={{
+              gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+            }}
+          >
+            {activeItems.map((src) => (
+              <SheetSourceHealthCard
+                key={src.id}
+                sourceId={src.id}
+                fallbackName={src.name}
+                onConfigure={() => setEdit(src)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
       <section className="nf-card overflow-hidden">
         <div
           className="grid gap-2 px-6 pt-5 pb-3 nf-col"
@@ -161,8 +195,13 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                     <StatusBadge tone="neutral">{t("sheet_src.off")}</StatusBadge>
                   )}
                 </div>
-                <div className="font-mono text-[12px] text-muted truncate">
-                  {src.spreadsheet_id}
+                <div className="min-w-0">
+                  <div className="font-mono text-[12px] text-muted truncate">
+                    {src.spreadsheet_id}
+                  </div>
+                  <div className="text-[11px] text-muted truncate" title={humanizeColumnMap(src.column_map)}>
+                    {humanizeColumnMap(src.column_map)}
+                  </div>
                 </div>
                 <div className="font-mono text-[12px] text-muted tabular-nums">
                   {src.gid}
@@ -218,8 +257,43 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
           }}
         />
       )}
+
+      {showWizard && (
+        <SheetSourceWizard
+          operators={ops.data || []}
+          onClose={() => setShowWizard(false)}
+          onDone={() => {
+            setShowWizard(false);
+            qc.invalidateQueries({ queryKey: ["sheet-sources"] });
+          }}
+        />
+      )}
     </>
   );
+}
+
+function humanizeColumnMap(cm: Record<string, unknown>): string {
+  // Show something like "Phone → phone_number · Name → ismingiz_nima?"
+  const parts: string[] = [];
+  const slots: Array<[string, string]> = [
+    ["phone", "Phone"],
+    ["full_name", "Name"],
+    ["product_hint", "Product"],
+    ["has_card", "Card"],
+    ["extra_phone", "Phone 2"],
+    ["operator_alias", "Op"],
+  ];
+  for (const [key, label] of slots) {
+    const raw = cm[key];
+    if (!raw) continue;
+    let disp = "";
+    if (typeof raw === "string") disp = raw;
+    else if (typeof raw === "object" && raw !== null && "column_index" in raw) {
+      disp = `col#${(raw as { column_index: number }).column_index}`;
+    }
+    if (disp) parts.push(`${label} → ${disp}`);
+  }
+  return parts.join(" · ") || "—";
 }
 
 function SheetSourceForm({

@@ -24,6 +24,9 @@ from .apis import (
     RetryExportApi,
     SheetSourceDetailApi,
     SheetSourceListCreateApi,
+    SheetSourcePreviewApi,
+    SheetSourceStatsApi,
+    SheetSourceSyncNowApi,
     SystemLostLeadsApi,
     TelegramLookupApi,
 )
@@ -60,7 +63,11 @@ urlpatterns = [
 
 sheet_source_urlpatterns = [
     path("", SheetSourceListCreateApi.as_view()),
+    # Static paths ПЕРЕД <int:pk>/ — иначе `preview` матчится как id.
+    path("preview/", SheetSourcePreviewApi.as_view()),
     path("<int:pk>/", SheetSourceDetailApi.as_view()),
+    path("<int:pk>/sync-now/", SheetSourceSyncNowApi.as_view()),
+    path("<int:pk>/stats/", SheetSourceStatsApi.as_view()),
 ]
 
 alias_urlpatterns = [
