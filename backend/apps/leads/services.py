@@ -670,7 +670,7 @@ def lead_create_from_sheet_row(
             lead.save(update_fields=["status", "updated_at"])
     elif use_round_robin and not needs_review and status == LeadStatus.NEW and valid:
         try:
-            lead_auto_assign(lead=lead, user=None)
+            lead_auto_assign(lead=lead, user=None, sheet_source=sheet_source)
         except ApplicationError:
             pass  # no eligible op right now → leave in `new`
     elif needs_review and assignment_reason:
@@ -765,13 +765,18 @@ def _merge_sheet_row_into_existing(
 
 
 @transaction.atomic
-def lead_auto_assign(*, lead: Lead, user=None) -> LeadAssignment:
+def lead_auto_assign(
+    *, lead: Lead, user=None, sheet_source: SheetSource | None = None
+) -> LeadAssignment:
     """
     Pick an eligible operator via round-robin and assign the lead to them.
     Fails loudly (`ApplicationError`) if nobody is eligible — callers can
     choose to swallow this and leave the lead unassigned.
+
+    Если передан `sheet_source` с настроенным пул-фильтром
+    (`allowed_operators`) — RR пересечёт кандидатов с этим списком.
     """
-    op = next_operator_for_round_robin()
+    op = next_operator_for_round_robin(sheet_source=sheet_source)
     if op is None:
         raise ApplicationError(
             "Нет доступных операторов для авто-распределения",
@@ -836,6 +841,7 @@ def refill_operator_leads(
     список и ничего не пишет.
     """
     from django.conf import settings
+    from django.db.models import Q
 
     from apps.system_settings.selectors import auto_distribution_enabled
 
@@ -874,6 +880,15 @@ def refill_operator_leads(
                 [f"refill-op-{operator.id}"],
             )
 
+    # Per-sheet operator pool (2026-09-14): если у sheet_source задан
+    # `allowed_operators` — оператор может забирать сирот только из тех
+    # шитов, где он в пуле. Шиты без пула (allowed_operators пуст) и
+    # лиды без sheet_source раздаются как раньше.
+    pool_filter = (
+        Q(sheet_source__isnull=True)
+        | Q(sheet_source__allowed_operators__isnull=True)
+        | Q(sheet_source__allowed_operators=operator.id)
+    )
     pool_qs = (
         Lead.objects.select_for_update(skip_locked=True)
         .filter(
@@ -882,6 +897,8 @@ def refill_operator_leads(
             phone_invalid=False,
             needs_review=False,
         )
+        .filter(pool_filter)
+        .distinct()
         .order_by("created_at")[:size]
     )
     pool = list(pool_qs)
@@ -1739,6 +1756,7 @@ def sheet_source_upsert(
     default_operator: Operator | None = None,
     distribution_mode: str = DistributionMode.ALIAS_ONLY,
     writeback_columns: dict | None = None,
+    allowed_operator_ids: list[int] | None = None,
     user=None,
 ) -> SheetSource:
     defaults = {
@@ -1757,6 +1775,10 @@ def sheet_source_upsert(
         gid=gid,
         defaults=defaults,
     )
+    # Пер-шитовый пул операторов. None → не трогаем (backward compat при
+    # PATCH без поля). Пустой список → очищаем пул (= раздача всем).
+    if allowed_operator_ids is not None:
+        obj.allowed_operators.set(allowed_operator_ids)
     audit_log_create(
         user=user,
         action=AuditAction.CREATE if created else AuditAction.UPDATE,
@@ -1769,6 +1791,11 @@ def sheet_source_upsert(
             "active": obj.active,
             "default_operator_id": obj.default_operator_id,
             "distribution_mode": obj.distribution_mode,
+            "allowed_operator_ids": (
+                list(obj.allowed_operators.values_list("id", flat=True))
+                if allowed_operator_ids is not None
+                else None
+            ),
         },
     )
     return obj

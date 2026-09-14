@@ -50,6 +50,7 @@ type SheetSource = {
   default_operator_name: string | null;
   distribution_mode: DistributionMode;
   writeback_columns: WritebackColumns;
+  allowed_operator_ids?: number[];
 };
 
 const DISTRIBUTION_KEY: Record<DistributionMode, string> = {
@@ -125,15 +126,24 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   return (
     <>
       <div className="flex items-center justify-between animate-nfFadeUp">
-        <div className="text-[13px] text-muted">{t("sheet_src.total", { n: items.length })}</div>
+        <div>
+          <div className="text-[13px] text-muted">{t("sheet_src.total", { n: items.length })}</div>
+          <div className="text-[12px] text-muted mt-0.5" style={{ maxWidth: 520 }}>
+            {t("sheet_src.hint_paste_url")}
+          </div>
+        </div>
         <div className="flex items-center gap-2">
-          <Button onClick={() => setShowWizard(true)}>
-            <Sparkles className="w-3.5 h-3.5" /> {t("sheet_src.wizard.open_btn")}
+          <Button
+            onClick={() => setShowWizard(true)}
+            style={{ padding: "9px 14px", fontSize: 13, fontWeight: 600 }}
+          >
+            <Sparkles className="w-4 h-4" /> {t("sheet_src.wizard.open_btn")}
           </Button>
           <button
             onClick={() => setShowCreate(true)}
             className="nf-btn nf-btn--ghost"
             style={{ padding: "7px 12px", fontSize: 12 }}
+            title={t("sheet_src.add_manual_hint")}
           >
             <Plus className="w-3.5 h-3.5" /> {t("sheet_src.add")}
           </button>
@@ -211,12 +221,19 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                     <span className="text-muted">—</span>
                   )}
                 </div>
-                <div className="text-[12px]">
+                <div className="text-[12px] flex flex-wrap items-center gap-1">
                   <StatusBadge tone="neutral">
                     {DISTRIBUTION_KEY[src.distribution_mode]
                       ? t(DISTRIBUTION_KEY[src.distribution_mode])
                       : src.distribution_mode}
                   </StatusBadge>
+                  {(src.allowed_operator_ids?.length ?? 0) > 0 && (
+                    <StatusBadge tone="hot">
+                      {t("sheet_src.chip.pool_of", {
+                        n: String(src.allowed_operator_ids!.length),
+                      })}
+                    </StatusBadge>
+                  )}
                 </div>
                 <div>
                   <div className="tabular-nums">#{src.last_synced_row}</div>
@@ -321,6 +338,10 @@ function SheetSourceForm({
   const [distributionMode, setDistributionMode] = useState<DistributionMode>(
     value?.distribution_mode || "alias_only",
   );
+  const [allowedOperatorIds, setAllowedOperatorIds] = useState<number[]>(
+    value?.allowed_operator_ids || [],
+  );
+  const poolAll = allowedOperatorIds.length === 0;
   const [mapJson, setMapJson] = useState(
     JSON.stringify(value?.column_map || {}, null, 2),
   );
@@ -357,6 +378,7 @@ function SheetSourceForm({
         active,
         default_operator: defaultOperator ? Number(defaultOperator) : null,
         distribution_mode: distributionMode,
+        allowed_operator_ids: allowedOperatorIds,
         writeback_columns: {
           enabled: writebackEnabled,
           status_col: wbStatusCol.trim().toUpperCase() || "D",
@@ -487,6 +509,71 @@ function SheetSourceForm({
               id="active"
             />
             <label htmlFor="active">{t("sheet_src.active_hint")}</label>
+          </div>
+
+          {/* --- Per-sheet operator pool (2026-09-14) --- */}
+          <div
+            className="col-span-2 rounded-xl border p-4"
+            style={{ borderColor: "var(--border)" }}
+          >
+            <div className="nf-col mb-1.5">
+              {t("sheet_src.wizard.allowed_operators.title")}
+            </div>
+            <div className="text-[11.5px] text-muted mb-2">
+              {t("sheet_src.wizard.allowed_operators.hint")}
+            </div>
+            <label className="flex items-center gap-2 text-[13px] cursor-pointer select-none mb-2">
+              <input
+                type="checkbox"
+                checked={poolAll}
+                onChange={(e) => {
+                  if (e.target.checked) setAllowedOperatorIds([]);
+                }}
+              />
+              {t("sheet_src.wizard.allowed_operators.all")}
+            </label>
+            {!poolAll && (
+              <>
+                <div
+                  className="grid gap-1.5 mt-1"
+                  style={{
+                    gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+                  }}
+                >
+                  {operators
+                    .filter((o) => o.status === "active")
+                    .slice()
+                    .sort((a, b) => a.full_name.localeCompare(b.full_name))
+                    .map((o) => {
+                      const checked = allowedOperatorIds.includes(o.id);
+                      return (
+                        <label
+                          key={o.id}
+                          className="flex items-center gap-2 text-[13px] cursor-pointer select-none px-2 py-1 rounded hover:bg-[color:var(--faint)]"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              setAllowedOperatorIds((prev) =>
+                                e.target.checked
+                                  ? Array.from(new Set([...prev, o.id]))
+                                  : prev.filter((id) => id !== o.id),
+                              );
+                            }}
+                          />
+                          <span className="truncate">{o.full_name}</span>
+                        </label>
+                      );
+                    })}
+                </div>
+                <div className="text-[11.5px] text-muted mt-2">
+                  {t("sheet_src.chip.pool_of", {
+                    n: String(allowedOperatorIds.length),
+                  })}
+                </div>
+              </>
+            )}
           </div>
 
           {/* --- Writeback (CRM → sheet) --- */}

@@ -16,7 +16,7 @@ from django.utils import timezone
 
 from apps.operators.models import Operator, OperatorStatus
 
-from .models import Lead, OperatorSheetAlias, TelegramLink
+from .models import Lead, OperatorSheetAlias, SheetSource, TelegramLink
 
 # ---- Lead queries ---------------------------------------------------------
 
@@ -1276,10 +1276,17 @@ def operators_distribution_status() -> list[dict]:
     return rows
 
 
-def next_operator_for_round_robin() -> Operator | None:
+def next_operator_for_round_robin(
+    *, sheet_source: SheetSource | None = None,
+) -> Operator | None:
     """
     Deterministic-ish round-robin: pick the eligible operator with the
     fewest *currently active* leads. Ties broken by lowest id (stable).
+
+    Если передан `sheet_source` и у него настроен пер-шитовый пул
+    (`allowed_operators`) — кандидаты пересекаются с этим списком. Пустой
+    пул означает «раздача всем активным» и НЕ должен превращаться в
+    «никто».
     """
     qs = operators_eligible_for_new_leads().annotate(
         active_leads_count=Count(
@@ -1287,6 +1294,12 @@ def next_operator_for_round_robin() -> Operator | None:
             filter=Q(leads__status__in=active_lead_status_codes()),
         )
     )
+    if sheet_source is not None:
+        allowed_ids = list(
+            sheet_source.allowed_operators.values_list("id", flat=True)
+        )
+        if allowed_ids:
+            qs = qs.filter(id__in=allowed_ids)
     return qs.order_by("active_leads_count", "id").first()
 
 

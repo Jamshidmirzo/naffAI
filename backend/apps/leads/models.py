@@ -205,6 +205,17 @@ class SheetSource(TimestampedModel):
             "when the row alias didn't resolve to a bound operator."
         ),
     )
+    allowed_operators = models.ManyToManyField(
+        "operators.Operator",
+        blank=True,
+        related_name="allowed_in_sheets",
+        help_text=(
+            "Per-sheet operator pool. Empty = раздача всем активным "
+            "(историческое поведение). Заполнено = только эти операторы "
+            "получают лидов из этого шита (RR/refill/alias_or_rr пересекают "
+            "глобальный пул с этим списком)."
+        ),
+    )
     distribution_mode = models.CharField(
         max_length=32,
         choices=DistributionMode.choices,

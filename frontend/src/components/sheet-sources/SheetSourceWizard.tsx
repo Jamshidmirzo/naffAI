@@ -100,6 +100,11 @@ export function SheetSourceWizard({ operators, onClose, onDone }: Props) {
     useState<DistributionMode>("alias_or_rr");
   const [defaultOperator, setDefaultOperator] = useState<string>("");
   const [defaultStatus, setDefaultStatus] = useState("new");
+  // Per-sheet operator pool (2026-09-14). Пусто = раздача всем активным
+  // (историческое поведение). Заполнено = только эти получают лидов
+  // из этого шита. Toggle "all" — визуальный shortcut, очищает список.
+  const [allowedOperatorIds, setAllowedOperatorIds] = useState<number[]>([]);
+  const poolAll = allowedOperatorIds.length === 0;
   const [createError, setCreateError] = useState("");
 
   const previewMut = useMutation({
@@ -137,8 +142,23 @@ export function SheetSourceWizard({ operators, onClose, onDone }: Props) {
       }
     },
     onError: (err: unknown) => {
-      const e = err as { response?: { data?: { detail?: string } }; message?: string };
-      setPreviewError(e?.response?.data?.detail || e?.message || t("common.error"));
+      const e = err as {
+        response?: { data?: { detail?: string; [k: string]: unknown }; status?: number };
+        message?: string;
+      };
+      // Собираем максимум диагностики: detail, статус, message.
+      // Печатаем в console чтобы user мог открыть DevTools и переслать.
+      // eslint-disable-next-line no-console
+      console.error("[sheet-source wizard] preview failed:", {
+        status: e?.response?.status,
+        detail: e?.response?.data?.detail,
+        data: e?.response?.data,
+        message: e?.message,
+        err,
+      });
+      const msg = e?.response?.data?.detail || e?.message || t("common.error");
+      setPreviewError(msg);
+      toast.error(msg);
       setPreview(null);
     },
   });
@@ -163,6 +183,7 @@ export function SheetSourceWizard({ operators, onClose, onDone }: Props) {
         active: true,
         default_operator: defaultOperator ? Number(defaultOperator) : null,
         distribution_mode: distributionMode,
+        allowed_operator_ids: allowedOperatorIds,
         writeback_columns: {
           enabled: writebackEnabled,
           status_col: (wbStatus || "").toUpperCase() || "D",
@@ -199,8 +220,32 @@ export function SheetSourceWizard({ operators, onClose, onDone }: Props) {
       onDone(data.id);
     },
     onError: (err: unknown) => {
-      const e = err as { response?: { data?: { detail?: string } }; message?: string };
-      setCreateError(e?.response?.data?.detail || e?.message || t("common.error"));
+      const e = err as {
+        response?: { data?: { detail?: string; [k: string]: unknown }; status?: number };
+        message?: string;
+      };
+      // eslint-disable-next-line no-console
+      console.error("[sheet-source wizard] create failed:", {
+        status: e?.response?.status,
+        detail: e?.response?.data?.detail,
+        data: e?.response?.data,
+        message: e?.message,
+        err,
+      });
+      // DRF validation errors бывают в виде {"field": ["error text"]} —
+      // если detail нет, склеиваем первую попавшуюся ошибку из тела.
+      let msg = e?.response?.data?.detail || e?.message;
+      if (!msg && e?.response?.data && typeof e.response.data === "object") {
+        const first = Object.entries(e.response.data)[0];
+        if (first) {
+          const [field, val] = first;
+          const valStr = Array.isArray(val) ? val.join(", ") : String(val);
+          msg = `${field}: ${valStr}`;
+        }
+      }
+      const finalMsg = msg || t("common.error");
+      setCreateError(finalMsg);
+      toast.error(finalMsg);
     },
   });
 
@@ -471,6 +516,78 @@ export function SheetSourceWizard({ operators, onClose, onDone }: Props) {
                 searchable={operators.length > 8}
                 ariaLabel="default_op"
               />
+            </div>
+            <div
+              className="col-span-2 rounded-xl border p-4"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <div className="nf-col mb-1.5">
+                {t("sheet_src.wizard.allowed_operators.title")}
+              </div>
+              <div className="text-[11.5px] text-muted mb-2">
+                {t("sheet_src.wizard.allowed_operators.hint")}
+              </div>
+              <label className="flex items-center gap-2 text-[13px] cursor-pointer select-none mb-2">
+                <input
+                  type="checkbox"
+                  checked={poolAll}
+                  onChange={(e) => {
+                    if (e.target.checked) setAllowedOperatorIds([]);
+                  }}
+                />
+                {t("sheet_src.wizard.allowed_operators.all")}
+              </label>
+              {!poolAll && (
+                <div
+                  className="grid gap-1.5 mt-1"
+                  style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}
+                >
+                  {operators
+                    .filter((o) => o.status === "active")
+                    .slice()
+                    .sort((a, b) => a.full_name.localeCompare(b.full_name))
+                    .map((o) => {
+                      const checked = allowedOperatorIds.includes(o.id);
+                      return (
+                        <label
+                          key={o.id}
+                          className="flex items-center gap-2 text-[13px] cursor-pointer select-none px-2 py-1 rounded hover:bg-[color:var(--faint)]"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              setAllowedOperatorIds((prev) =>
+                                e.target.checked
+                                  ? Array.from(new Set([...prev, o.id]))
+                                  : prev.filter((id) => id !== o.id),
+                              );
+                            }}
+                          />
+                          <span className="truncate">{o.full_name}</span>
+                        </label>
+                      );
+                    })}
+                </div>
+              )}
+              {!poolAll && (
+                <div className="text-[11.5px] text-muted mt-2">
+                  {t("sheet_src.chip.pool_of", {
+                    n: String(allowedOperatorIds.length),
+                  })}
+                </div>
+              )}
+              {!poolAll && (
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    className="text-[12px] underline text-muted"
+                    onClick={() => setAllowedOperatorIds([])}
+                  >
+                    {t("sheet_src.wizard.allowed_operators.all")}
+                  </button>
+                </div>
+              )}
             </div>
             <div className="col-span-2 rounded-xl border p-4" style={{ borderColor: "var(--border)" }}>
               <label className="flex items-center gap-2 text-[13.5px] cursor-pointer select-none">

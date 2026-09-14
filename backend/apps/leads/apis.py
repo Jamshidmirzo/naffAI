@@ -19,6 +19,7 @@ from apps.common.dateparse import parse_dt_start
 from apps.common.exceptions import ApplicationError
 from apps.common.pagination import DefaultPagination
 from apps.common.validators import normalize_uz_phone
+from apps.operators.models import Operator, OperatorStatus
 from apps.operators.selectors import operator_get
 from apps.users.permissions import (
     IsAuthenticatedAnyRole,
@@ -183,6 +184,16 @@ class SheetSourceSerializer(serializers.ModelSerializer):
     default_operator_name = serializers.CharField(
         source="default_operator.full_name", read_only=True, default=None
     )
+    allowed_operator_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        source="allowed_operators",
+        queryset=Operator.objects.all(),
+        required=False,
+        help_text=(
+            "Пер-шитовый пул. Пусто = раздача всем активным. "
+            "Заполнено = только эти операторы получают лидов из этого шита."
+        ),
+    )
 
     class Meta:
         model = SheetSource
@@ -201,6 +212,7 @@ class SheetSourceSerializer(serializers.ModelSerializer):
             "default_operator_name",
             "distribution_mode",
             "writeback_columns",
+            "allowed_operator_ids",
         ]
         read_only_fields = [
             "id",
@@ -208,6 +220,21 @@ class SheetSourceSerializer(serializers.ModelSerializer):
             "last_synced_row",
             "default_operator_name",
         ]
+
+    def validate_allowed_operator_ids(self, value):
+        """
+        Разрешаем пустой список (= «раздача всем»). Не-активных операторов
+        в пул не пускаем — иначе шит перестал бы раздаваться сразу после
+        деактивации оператора.
+        """
+        bad = [op for op in value if op.status != OperatorStatus.ACTIVE]
+        if bad:
+            names = ", ".join(op.full_name or f"#{op.id}" for op in bad)
+            raise serializers.ValidationError(
+                f"В пул можно добавлять только активных операторов. "
+                f"Неактивные: {names}."
+            )
+        return value
 
     def validate_column_map(self, value):
         """Require phone + full_name so newly-created sources always import
@@ -1100,6 +1127,7 @@ class SheetSourceListCreateApi(ListCreateAPIView):
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
         default_op = data.get("default_operator")
+        allowed_ops = data.get("allowed_operators")  # list[Operator] | None
         obj = sheet_source_upsert(
             name=data["name"],
             spreadsheet_id=data["spreadsheet_id"],
@@ -1111,6 +1139,9 @@ class SheetSourceListCreateApi(ListCreateAPIView):
             default_operator=default_op if default_op else None,
             distribution_mode=data.get("distribution_mode") or DistributionMode.ALIAS_ONLY,
             writeback_columns=data.get("writeback_columns"),
+            allowed_operator_ids=(
+                [op.id for op in allowed_ops] if allowed_ops is not None else None
+            ),
             user=request.user,
         )
         return Response(
@@ -1135,6 +1166,13 @@ class SheetSourceDetailApi(APIView):
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
         default_op = data.get("default_operator", obj.default_operator)
+        # allowed_operators передан → пробрасываем список id (в т.ч. пустой,
+        # что означает «очистить пул»). Не передан → None → не трогаем.
+        allowed_ids: list[int] | None
+        if "allowed_operators" in data:
+            allowed_ids = [op.id for op in (data.get("allowed_operators") or [])]
+        else:
+            allowed_ids = None
         updated = sheet_source_upsert(
             name=data.get("name", obj.name),
             spreadsheet_id=data.get("spreadsheet_id", obj.spreadsheet_id),
@@ -1146,6 +1184,7 @@ class SheetSourceDetailApi(APIView):
             default_operator=default_op if default_op else None,
             distribution_mode=data.get("distribution_mode", obj.distribution_mode),
             writeback_columns=data.get("writeback_columns", obj.writeback_columns),
+            allowed_operator_ids=allowed_ids,
             user=request.user,
         )
         return Response(SheetSourceSerializer(updated).data)
