@@ -54,7 +54,11 @@ class Command(BaseCommand):
         verbose = bool(opts.get("verbose"))
         target = int(getattr(settings, "RR_BATCH_SIZE", 5))
 
-        qs = Operator.objects.filter(status=OperatorStatus.ACTIVE).order_by("id")
+        # Paused-операторы исключаются — watcher не должен доливать
+        # им лиды, пока менеджер не снимет паузу.
+        qs = Operator.objects.filter(
+            status=OperatorStatus.ACTIVE, is_paused=False
+        ).order_by("id")
         processed = 0
         total_delivered = 0
 

@@ -853,6 +853,14 @@ def refill_operator_leads(
     if not auto_distribution_enabled():
         return []
 
+    # Paused-оператор не должен получать новых лидов ни через один
+    # auto-канал (включая on_commit-хук refill после закрытия лида и
+    # docker-watcher `refill_idle_operators`). Возвращаем пустой список
+    # молча — вызывающие места (watcher, on_commit) уже толерантны
+    # к «ничего не долилось».
+    if operator.is_paused:
+        return []
+
     size = size or int(getattr(settings, "RR_BATCH_SIZE", 5))
     if size <= 0:
         return []
@@ -979,7 +987,7 @@ def morning_distribute_leads(
         return {}
 
     operators = list(
-        Operator.objects.filter(status=OperatorStatus.ACTIVE).order_by("id")
+        Operator.objects.filter(status=OperatorStatus.ACTIVE, is_paused=False).order_by("id")
     )
     if not operators:
         return {}
@@ -1155,8 +1163,14 @@ def leads_bulk_reassign(
     # Список активных операторов для round-robin — фиксируем один раз,
     # чтобы порядок был воспроизводим внутри вызова.
     if mode == "round_robin":
+        # Paused-операторы исключаются из auto-round-robin: их пометили как
+        # «не раздавать новых лидов». Если менеджер знает что делает и
+        # хочет назначить конкретно paused-оператору — это targeted путь
+        # `operator_id=...`, там мы paused не блокируем.
         active_ops = list(
-            Operator.objects.filter(status=OperatorStatus.ACTIVE).order_by("id")
+            Operator.objects.filter(
+                status=OperatorStatus.ACTIVE, is_paused=False
+            ).order_by("id")
         )
         if not active_ops:
             raise ApplicationError(
@@ -1461,7 +1475,7 @@ def _run_refill_to_target(operator_id: int) -> None:
         from .selectors import operator_working_lead_count
 
         op = Operator.objects.filter(
-            pk=operator_id, status=OperatorStatus.ACTIVE
+            pk=operator_id, status=OperatorStatus.ACTIVE, is_paused=False
         ).first()
         if op is None:
             return
@@ -1519,7 +1533,7 @@ def lead_qimmatlik_retry(lead: Lead) -> Operator | None:
     # / batch-quota. Поэтому берём всех ACTIVE операторов минус тех кто уже
     # пробовал, и раскидываем по наименьшей загрузке.
     candidate = (
-        Operator.objects.filter(status=OperatorStatus.ACTIVE)
+        Operator.objects.filter(status=OperatorStatus.ACTIVE, is_paused=False)
         .exclude(pk__in=previous_ids)
         .annotate(
             active_leads_count=Count(

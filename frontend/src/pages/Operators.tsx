@@ -41,6 +41,11 @@ interface OperatorRow {
   month_count?: number | null;
   blocking_gate_enabled?: boolean;
   require_checkin_enabled?: boolean;
+  // 2026-09-16 «Пауза»: оператор не участвует в auto-distribution,
+  // но его текущие лиды остаются на нём. См. миграцию
+  // operators/0011_operator_pause.
+  is_paused?: boolean;
+  paused_at?: string | null;
   forgotten_checkouts_count?: number;
   // 2026-08-31 payroll overrides. Nullable — при пустом значении расчёт
   // берёт AttendanceSettings.default_* (см. attendance/services.py::
@@ -241,6 +246,23 @@ export default function Operators() {
     },
   });
 
+  // Отдельная мутация для «Паузы» — не путать с toggle Active/Inactive:
+  // пауза НЕ дёргает rescue-каскад, лиды не двигаются, поэтому
+  // invalidate только по operators.
+  const pauseMut = useMutation({
+    mutationFn: ({ id, paused }: { id: number; paused: boolean }) =>
+      api.post(`/operators/${id}/${paused ? "pause" : "unpause"}/`).then((r) => r.data),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["operators"] });
+      toast.success(
+        vars.paused
+          ? t("operators.paused_toast") || "Оператор на паузе — новые лиды не приходят"
+          : t("operators.unpaused_toast") || "Оператор снят с паузы",
+      );
+    },
+    onError: () => toast.error(t("operators.status_update_failed") || "Не удалось обновить статус"),
+  });
+
   const remove = useMutation({
     mutationFn: (id: number) => api.delete(`/operators/${id}/delete/`),
     onSuccess: () => {
@@ -423,7 +445,7 @@ export default function Operators() {
                       padding: "12px 18px",
                       borderTop: i === 0 ? undefined : "1px solid var(--border)",
                       background: isSelected ? "var(--faint)" : undefined,
-                      opacity: inactive ? 0.55 : 1,
+                      opacity: inactive ? 0.55 : o.is_paused ? 0.78 : 1,
                       transition: "background 200ms cubic-bezier(.2,.7,.2,1)",
                       animationDelay: `${0.02 + i * 0.035}s`,
                     }}
@@ -482,6 +504,18 @@ export default function Operators() {
                             </span>
                           );
                         })()}
+                        {o.is_paused && (
+                          <span
+                            title={t("operators.paused_badge_title") || "На паузе — новые лиды не приходят"}
+                            className="shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
+                            style={{
+                              background: "rgba(234,179,8,.15)",
+                              color: "#a16207",
+                            }}
+                          >
+                            ⏸ {t("operators.paused_badge_label") || "На паузе"}
+                          </span>
+                        )}
                         {hasPersonalSchedule(o) && (
                           <span
                             title={t("op_schedule.badge_tooltip")}
@@ -558,10 +592,22 @@ export default function Operators() {
                       </>
                     )}
                   </div>
-                  <div className="mt-2">
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
                     <StatusBadge tone={selected.status === "active" ? "hot" : "neutral"}>
                       {STATUS_LABEL[selected.status]}
                     </StatusBadge>
+                    {selected.is_paused && (
+                      <span
+                        title={t("operators.paused_badge_title") || "На паузе — новые лиды не приходят"}
+                        className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                        style={{
+                          background: "rgba(234,179,8,.15)",
+                          color: "#a16207",
+                        }}
+                      >
+                        ⏸ {t("operators.paused_badge_label") || "На паузе"}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -691,6 +737,25 @@ export default function Operators() {
                     >
                       {t("operators.tile_plan")}
                     </Button>
+                    {/* Пауза — доступна только для НЕинактивных операторов
+                        (у inactive и так лидов не будет). Отдельная от
+                        Активировать/Деактивировать: пауза не двигает лиды. */}
+                    {selected.status !== "inactive" && (
+                      <Button
+                        variant="ghost"
+                        onClick={() =>
+                          pauseMut.mutate({
+                            id: selected.id,
+                            paused: !selected.is_paused,
+                          })
+                        }
+                        disabled={pauseMut.isPending}
+                      >
+                        {selected.is_paused
+                          ? t("operators.unpause_btn") || "▶ Снять с паузы"
+                          : t("operators.pause_btn") || "⏸ На паузу"}
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       onClick={() =>

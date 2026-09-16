@@ -28,6 +28,7 @@ from .services import (
     operator_plan_upsert,
     operator_reactivate,
     operator_self_update_preferences,
+    operator_set_paused,
     operator_update,
 )
 
@@ -55,6 +56,8 @@ class OperatorSerializer(serializers.ModelSerializer):
             "note",
             "blocking_gate_enabled",
             "require_checkin_enabled",
+            "is_paused",
+            "paused_at",
             "birth_date",
             "created_at",
             "updated_at",
@@ -83,6 +86,11 @@ class OperatorSerializer(serializers.ModelSerializer):
             "account",
             "sticker",
             "forgotten_checkouts_count",
+            # Pause состояние меняется ТОЛЬКО через отдельные POST-эндпоинты
+            # /pause/ и /unpause/ (proходят через `operator_set_paused` — там
+            # audit-лог и timestamps). Не даём тихо править через PATCH.
+            "is_paused",
+            "paused_at",
         ]
         extra_kwargs = {
             # Опциональный на write — существующие PATCH'и без него
@@ -244,6 +252,32 @@ class OperatorReactivateApi(APIView):
         # generic toast: "Активирован — N лидов подтянуто от других".
         payload["rebalanced_count"] = getattr(op, "rebalanced_count", 0)
         return Response(payload)
+
+
+class OperatorPauseApi(APIView):
+    """
+    POST /operators/{pk}/pause/    → is_paused=True
+    POST /operators/{pk}/unpause/  → is_paused=False
+
+    Мягкий выкл — оператор перестаёт получать НОВЫЕ лиды через любой
+    auto-канал (round-robin / refill / morning-split / qimmatlik-retry /
+    rescue-target / bulk_reassign round_robin). Его уже назначенные
+    лиды **остаются на нём** — никаких rebalanced / rescue / lost side
+    effects (в отличие от `operator_deactivate`).
+
+    Флаг маршрутизируется через `paused` в pattern-based dispatch по URL
+    (у нас две отдельные routes, чтобы фронт не гонял тело запроса).
+    """
+
+    permission_classes = [IsTeamLead]
+    paused: bool = True  # override в as_view() через `initkwargs`
+
+    def post(self, request, pk: int):
+        op = operator_get(pk)
+        if not op:
+            return Response({"detail": "Not found"}, status=404)
+        operator_set_paused(operator=op, paused=self.paused, user=request.user)
+        return Response(OperatorSerializer(op).data)
 
 
 class OperatorDeleteApi(APIView):

@@ -6,6 +6,7 @@ from .apis import (
     OperatorDeleteApi,
     OperatorDetailApi,
     OperatorListCreateApi,
+    OperatorPauseApi,
     OperatorPlanApi,
     OperatorReactivateApi,
     OperatorStatsApi,
@@ -22,6 +23,8 @@ urlpatterns = [
     path("<int:pk>/plan/", OperatorPlanApi.as_view()),
     path("<int:pk>/deactivate/", OperatorDeactivateApi.as_view()),
     path("<int:pk>/reactivate/", OperatorReactivateApi.as_view()),
+    path("<int:pk>/pause/", OperatorPauseApi.as_view(paused=True)),
+    path("<int:pk>/unpause/", OperatorPauseApi.as_view(paused=False)),
     path("<int:operator_id>/delete/", OperatorDeleteApi.as_view()),
 ]
 

@@ -1122,7 +1122,7 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
     active_today = _leads_active_today_filter()
 
     qs = (
-        Operator.objects.filter(status=OperatorStatus.ACTIVE)
+        Operator.objects.filter(status=OperatorStatus.ACTIVE, is_paused=False)
         .annotate(
             _working_count=Count(
                 "leads",

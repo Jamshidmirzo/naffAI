@@ -188,6 +188,33 @@ class Operator(TimestampedModel):
         help_text="SIP password (plaintext). Отдаётся только владельцу через /api/mobile/me/.",
     )
 
+    # 2026-09-16: «Пауза» — ортогональный флаг к `status`.
+    # Идея: сегодня из 13 операторов пришли 2-3, а автораздача продолжает
+    # раздавать лидов на всех 13 → LOST-каскад. Полная деактивация
+    # (`operator_deactivate`) не подходит — она триггерит rescue-каскад
+    # и часть лидов улетает в system-lost. Пауза — «мягкий выкл»:
+    #   * оператор исключается из ВСЕХ auto-distribution путей
+    #     (round-robin, refill, morning-split, qimmatlik-retry, rescue-target,
+    #     bulk_reassign round_robin),
+    #   * его собственные лиды **остаются на нём** — никаких rebalanced
+    #     / rescue / system-lost при постановке на паузу.
+    # Оператор остаётся `status=ACTIVE`, но `is_paused=True` — так все
+    # операционные хуки (attendance, sales, зарплата) продолжают работать
+    # как обычно, меняется только участие в раздаче новых лидов.
+    is_paused = models.BooleanField(
+        default=False,
+        help_text=(
+            "Временно не получает новых лидов ни через один авто-канал; "
+            "уже назначенные ему лиды остаются на нём. Менеджер снимает "
+            "паузу одним кликом — оператор возвращается в раздачу."
+        ),
+    )
+    paused_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Когда оператора поставили на паузу (для аудита/отчётов).",
+    )
+
     class Meta:
         ordering = ["full_name"]
         indexes = [models.Index(fields=["status"])]

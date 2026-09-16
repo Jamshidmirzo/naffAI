@@ -356,8 +356,12 @@ def _apply_rescue_touched_if_needed(
     # Пул кандидатов: ВСЕ ACTIVE операторы кроме уходящего.
     # Не используем operators_eligible_for_new_leads() — там batch-cap /
     # morning-gate, а touched уже в воронке, их нельзя откладывать.
+    # Paused-операторов исключаем: у них весь смысл флага — не получать
+    # новых/чужих лидов; rescue-target это тот же «новый лид с чужой
+    # историей», но всё равно чужой.
     pool = list(
-        Operator.objects.filter(status=_OpStatus.ACTIVE).exclude(pk=operator.id)
+        Operator.objects.filter(status=_OpStatus.ACTIVE, is_paused=False)
+        .exclude(pk=operator.id)
     )
     if not pool:
         # Никому раздать — fallback: помечаем как system-lost
@@ -803,6 +807,47 @@ def operator_delete(*, operator: Operator, user=None) -> dict:
         },
     )
     return deleted_related
+
+
+@transaction.atomic
+def operator_set_paused(*, operator: Operator, paused: bool, user=None) -> Operator:
+    """
+    Toggle оператора в/из «паузы».
+
+    Пауза — мягкий выкл: оператор перестаёт получать НОВЫЕ лиды через
+    любой auto-канал (round-robin / refill / morning-split /
+    qimmatlik-retry / rescue-target / bulk_reassign round_robin), но его
+    **уже назначенные лиды остаются на нём**. Никаких rebalanced /
+    rescue / system-lost side effects — в этом ключевое отличие от
+    `operator_deactivate`, которая триггерит целый каскад
+    переназначений.
+
+    Идемпотентно: если флаг уже в нужном состоянии — no-op, audit не
+    пишется. При постановке на паузу проставляем `paused_at=now()`,
+    при снятии — обнуляем.
+
+    Параметр `paused` — целевое состояние (True → ставим, False → снимаем).
+    """
+    if operator.is_paused == paused:
+        return operator
+
+    old_paused = operator.is_paused
+    operator.is_paused = paused
+    operator.paused_at = timezone.now() if paused else None
+    operator.save(update_fields=["is_paused", "paused_at", "updated_at"])
+
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="operators.Operator",
+        entity_id=operator.id,
+        changes={
+            "is_paused": f"{old_paused} → {paused}",
+            "paused_at": operator.paused_at.isoformat() if operator.paused_at else None,
+        },
+        comment="Оператор поставлен на паузу" if paused else "Оператор снят с паузы",
+    )
+    return operator
 
 
 @transaction.atomic
