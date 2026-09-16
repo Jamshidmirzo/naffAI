@@ -564,6 +564,19 @@ def lead_stats_snapshot(
     ):
         by_op_leads[int(op_id)].add(int(lead_id))
 
+    # Also include leads updated in window where operator is current owner —
+    # covers status changes done via the lead card dropdown (без CallAttempt).
+    # Operator complained that her "Limit chiqmadi / has_debt / phone_on"
+    # actions weren't showing in her per-op status breakdown because they
+    # were logged without going through the call-button flow.
+    lead_updates_qs = Lead.objects.filter(operator__isnull=False)
+    if date_from:
+        lead_updates_qs = lead_updates_qs.filter(updated_at__gte=date_from)
+    if date_to:
+        lead_updates_qs = lead_updates_qs.filter(updated_at__lte=date_to)
+    for op_id, lead_id in lead_updates_qs.values_list("operator_id", "id"):
+        by_op_leads[int(op_id)].add(int(lead_id))
+
     all_touched: set[int] = set()
     for lead_ids in by_op_leads.values():
         all_touched.update(lead_ids)
