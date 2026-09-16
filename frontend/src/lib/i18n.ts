@@ -1853,6 +1853,13 @@ const STRINGS: Lookup = {
     "operators.status_updated": "Статус обновлён",
     "operators.deactivated_with_rebalance": "Деактивирован · {n} лидов автоматом раскинуты по остальным",
     "operators.activated_with_rebalance": "Активирован · {n} лидов подтянуто от других операторов",
+    "operators.pause_btn": "⏸ На паузу",
+    "operators.unpause_btn": "▶ Снять с паузы",
+    "operators.paused_badge_label": "На паузе",
+    "operators.paused_badge_title": "На паузе — новые лиды не приходят, старые остаются",
+    "operators.paused_toast": "Оператор на паузе — новые лиды не приходят",
+    "operators.unpaused_toast": "Оператор снят с паузы",
+    "operators.status_update_failed": "Не удалось обновить статус",
 
     // ------ lead_statuses ------
     "lead_statuses.title": "Статусы лидов",
@@ -4433,6 +4440,13 @@ const STRINGS: Lookup = {
     "operators.status_updated": "Status yangilandi",
     "operators.deactivated_with_rebalance": "Deaktivatsiya · {n} ta lid boshqalarga avtomatik taqsimlandi",
     "operators.activated_with_rebalance": "Faollashtirildi · {n} ta lid boshqa operatorlardan olindi",
+    "operators.pause_btn": "⏸ Pauzaga qo'yish",
+    "operators.unpause_btn": "▶ Pauzadan olib tashlash",
+    "operators.paused_badge_label": "Pauzada",
+    "operators.paused_badge_title": "Pauzada — yangi lidlar kelmaydi, eskilari saqlanadi",
+    "operators.paused_toast": "Operator pauzada — yangi lidlar kelmaydi",
+    "operators.unpaused_toast": "Operator pauzadan olindi",
+    "operators.status_update_failed": "Statusni yangilab bo'lmadi",
 
     // ------ lead_statuses ------
     "lead_statuses.title": "Lid statuslari",
