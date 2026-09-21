@@ -90,6 +90,19 @@ export default function OperatorSaleCreate() {
     { channel_id: null, amount: "" },
   ]);
   const [contractPhotos, setContractPhotos] = useState<File[]>([]);
+  // Additional products in the same session (2nd / 3rd товар for the same
+  // client). Each is a lightweight ProductItem — same shape as the primary
+  // (IMEI/model/amount/partners/photos) but validated inline with basic
+  // checks rather than the full per-field ceremony of product #1.
+  const [extraProducts, setExtraProducts] = useState<
+    {
+      imei: string;
+      model: string;
+      amount: string;
+      partnerRows: PartnerRow[];
+      contractPhotos: File[];
+    }[]
+  >([]);
   const [leadId, setLeadId] = useState<number | null>(null);
   const [matchedLead, setMatchedLead] = useState<LeadMatch | null>(null);
   const [phoneMatches, setPhoneMatches] = useState<LeadMatch[]>([]);
@@ -241,6 +254,56 @@ export default function OperatorSaleCreate() {
     markTouched("partners");
   };
 
+  // Extra products helpers — mirrors the primary partnerRows/photos APIs.
+  const MAX_EXTRA_PRODUCTS = 2; // primary + 2 extras = up to 3 products
+  const addExtraProduct = () => {
+    if (extraProducts.length >= MAX_EXTRA_PRODUCTS) return;
+    setExtraProducts((prev) => [
+      ...prev,
+      {
+        imei: "",
+        model: "",
+        amount: "",
+        partnerRows: [{ channel_id: null, amount: "" }],
+        contractPhotos: [],
+      },
+    ]);
+  };
+  const removeExtraProduct = (idx: number) =>
+    setExtraProducts((prev) => prev.filter((_, i) => i !== idx));
+  const updateExtraProduct = (
+    idx: number,
+    patch: Partial<{
+      imei: string;
+      model: string;
+      amount: string;
+      partnerRows: PartnerRow[];
+      contractPhotos: File[];
+    }>,
+  ) =>
+    setExtraProducts((prev) =>
+      prev.map((p, i) => (i === idx ? { ...p, ...patch } : p)),
+    );
+
+  // TAC autofill on extra products' IMEI (mirrors primary useEffect).
+  useEffect(() => {
+    extraProducts.forEach((p, idx) => {
+      if (p.imei.length === 15 && /^\d+$/.test(p.imei) && !p.model) {
+        api
+          .get(`/imei/${p.imei}/lookup/`)
+          .then((r) => {
+            if (r.data.brand || r.data.model) {
+              updateExtraProduct(idx, {
+                model: `${r.data.brand} ${r.data.model}`.trim(),
+              });
+            }
+          })
+          .catch(() => {});
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [extraProducts.map((p) => p.imei).join(",")]);
+
   // Compute all errors up-front so we can drive both `canSubmit` and the
   // inline messages from the same source of truth.
   const errors: Record<FieldName, string | null> = {
@@ -281,8 +344,22 @@ export default function OperatorSaleCreate() {
     fieldRefs.current[f] = el;
   };
 
+  // Validate extras with the same rules as primary. Any invalid extra
+  // blocks submit and shows a shared error banner (no per-field ceremony
+  // for extras — keeps the refactor small).
+  const extraErrors: string[] = extraProducts.map((p) => {
+    if (validateImei(p.imei)) return t(validateImei(p.imei) as string) + ` (Товар ${extraProducts.indexOf(p) + 2})`;
+    if (validatePhoneModel(p.model)) return t(validatePhoneModel(p.model) as string) + ` (Товар ${extraProducts.indexOf(p) + 2})`;
+    if (validateAmount(p.amount)) return t(validateAmount(p.amount) as string) + ` (Товар ${extraProducts.indexOf(p) + 2})`;
+    if (validatePartnerSplit(p.partnerRows, p.amount, MAX_PAYMENT_CHANNELS))
+      return t(validatePartnerSplit(p.partnerRows, p.amount, MAX_PAYMENT_CHANNELS) as string) + ` (Товар ${extraProducts.indexOf(p) + 2})`;
+    if (validateContractPhotos(p.contractPhotos, MAX_CONTRACT_PHOTOS))
+      return t(validateContractPhotos(p.contractPhotos, MAX_CONTRACT_PHOTOS) as string) + ` (Товар ${extraProducts.indexOf(p) + 2})`;
+    return "";
+  }).filter(Boolean);
+
   const canSubmit =
-    !busy && Object.values(errors).every((e) => e === null);
+    !busy && Object.values(errors).every((e) => e === null) && extraErrors.length === 0;
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -370,8 +447,49 @@ export default function OperatorSaleCreate() {
       if (contractPhotos[0]) fd.append("contract_photo", contractPhotos[0]);
 
       const r = await api.post("/sales/", fd);
-      toast.success(t("op_sale.sent_for_review"));
-      nav(`/sales/${r.data.id}`);
+
+      // Extra products — sequentially POST each with the same client info.
+      // If any fails, we surface the error but keep the primary as saved.
+      const savedIds: number[] = [r.data.id];
+      for (let i = 0; i < extraProducts.length; i++) {
+        const p = extraProducts[i];
+        const fdE = new FormData();
+        fdE.append("imei", p.imei);
+        fdE.append("phone_model", p.model.trim());
+        fdE.append("amount", p.amount);
+        fdE.append("client_name", clientName.trim());
+        fdE.append("client_phone", phoneOut);
+        if (comment.trim()) fdE.append("comment", comment.trim());
+        // extras don't re-link the lead (already flipped by primary)
+        const eSplitMode = p.partnerRows.length > 1;
+        p.partnerRows.forEach((row, ridx) => {
+          if (row.channel_id == null) return;
+          const rowAmount = eSplitMode ? row.amount : p.amount;
+          fdE.append(`partners[${ridx}][channel_id]`, String(row.channel_id));
+          fdE.append(`partners[${ridx}][amount]`, rowAmount);
+        });
+        if (p.partnerRows[0]?.channel_id != null) {
+          fdE.append("channel_id", String(p.partnerRows[0].channel_id));
+        }
+        p.contractPhotos.forEach((f) => fdE.append("contract_photos", f));
+        if (p.contractPhotos[0]) fdE.append("contract_photo", p.contractPhotos[0]);
+        try {
+          const rE = await api.post("/sales/", fdE);
+          savedIds.push(rE.data.id);
+        } catch (extraErr: unknown) {
+          const extra = extraErr as { response?: { data?: { detail?: string } } };
+          toast.error(
+            `Товар ${i + 2}: ${extra.response?.data?.detail || "не сохранён"}`,
+          );
+          break;
+        }
+      }
+      toast.success(
+        savedIds.length > 1
+          ? `${t("op_sale.sent_for_review")} · ${savedIds.length} tovar`
+          : t("op_sale.sent_for_review"),
+      );
+      nav(`/sales/${savedIds[0]}`);
     } catch (err: any) {
       // Map DRF's per-field error dict onto our inline-error state so
       // the operator sees a red message right under the offending input,
@@ -973,6 +1091,197 @@ export default function OperatorSaleCreate() {
             </div>
           )}
         </div>
+
+        {/* Extra products (same client, separate Sale records). Each is a
+            self-contained section with IMEI + model + amount + partners +
+            photos, submitted sequentially after the primary. */}
+        {extraProducts.map((p, i) => {
+          const eSplit = p.partnerRows.length > 1;
+          const eNum = i + 2;
+          const luhn = imeiLuhnStatus(p.imei);
+          const imeiBorder =
+            luhn === "warn"
+              ? "rgba(220,60,40,.6)"
+              : luhn === "ok"
+              ? "var(--accent)"
+              : "var(--border)";
+          return (
+            <div
+              key={i}
+              className="nf-card p-5 flex flex-col gap-4 border border-[var(--border)] relative"
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-[15px] font-semibold tracking-tight">
+                  Товар {eNum}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeExtraProduct(i)}
+                  className="text-muted hover:text-red-500 transition"
+                  aria-label="remove product"
+                  title="Убрать товар"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div>
+                <label className="nf-col mb-1.5 block">IMEI</label>
+                <input
+                  className="nf-input font-mono"
+                  value={p.imei}
+                  onChange={(e) =>
+                    updateExtraProduct(i, {
+                      imei: e.target.value.replace(/\D/g, "").slice(0, 15),
+                    })
+                  }
+                  placeholder="15 цифр"
+                  inputMode="numeric"
+                  style={{ borderColor: imeiBorder }}
+                />
+              </div>
+
+              <div>
+                <label className="nf-col mb-1.5 block">
+                  {t("op_sale.phone_model")}
+                </label>
+                <input
+                  className="nf-input"
+                  value={p.model}
+                  onChange={(e) => updateExtraProduct(i, { model: e.target.value })}
+                  placeholder={t("op_sale.phone_model_ph")}
+                />
+              </div>
+
+              <div>
+                <label className="nf-col mb-1.5 block">
+                  {t("op_sale.amount")}
+                </label>
+                <NumericInput
+                  value={p.amount}
+                  onChange={(v) => updateExtraProduct(i, { amount: v })}
+                  placeholder="0"
+                />
+              </div>
+
+              {/* Partners — same repeater as primary but scoped to this item */}
+              <div className="flex flex-col gap-2">
+                <div className="nf-col">{t("op_sale.channel")}</div>
+                {p.partnerRows.map((row, ridx) => (
+                  <div key={ridx} className="flex gap-2 items-center">
+                    <div className="flex-1">
+                      <SingleSelectCombobox
+                        value={row.channel_id}
+                        onChange={(id) =>
+                          updateExtraProduct(i, {
+                            partnerRows: p.partnerRows.map((r, k) =>
+                              k === ridx
+                                ? {
+                                    ...r,
+                                    channel_id:
+                                      typeof id === "number" ? id : null,
+                                  }
+                                : r,
+                            ),
+                          })
+                        }
+                        options={partners.map((c) => ({
+                          id: c.id,
+                          label: c.name,
+                        }))}
+                        placeholder={t("op_sale.channel_ph")}
+                      />
+                    </div>
+                    {eSplit && (
+                      <div style={{ width: 130 }}>
+                        <NumericInput
+                          value={row.amount}
+                          onChange={(v) =>
+                            updateExtraProduct(i, {
+                              partnerRows: p.partnerRows.map((r, k) =>
+                                k === ridx ? { ...r, amount: v } : r,
+                              ),
+                            })
+                          }
+                          placeholder="0"
+                        />
+                      </div>
+                    )}
+                    {p.partnerRows.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateExtraProduct(i, {
+                            partnerRows: p.partnerRows.filter((_, k) => k !== ridx),
+                          })
+                        }
+                        className="text-muted hover:text-red-500"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {p.partnerRows.length < MAX_PAYMENT_CHANNELS && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateExtraProduct(i, {
+                        partnerRows: [
+                          ...p.partnerRows,
+                          { channel_id: null, amount: "" },
+                        ],
+                      })
+                    }
+                    className="nf-btn nf-btn--ghost self-start"
+                    style={{ padding: "6px 12px", fontSize: 12.5 }}
+                  >
+                    <Plus className="w-3.5 h-3.5" /> {t("op_sale.add_channel")}
+                  </button>
+                )}
+              </div>
+
+              <PhotosUploader
+                value={p.contractPhotos}
+                onChange={(files) => updateExtraProduct(i, { contractPhotos: files })}
+                max={MAX_CONTRACT_PHOTOS}
+                required
+                label={t("op_sale.contract_photos")}
+                hint={t("op_sale.contract_photos_hint")}
+              />
+
+              {Number(p.amount) > 0 && (
+                <div className="nf-tile p-2.5 flex justify-between items-baseline">
+                  <span className="text-muted text-[12.5px]">
+                    Sotuv {eNum} summasi
+                  </span>
+                  <span className="text-[15px] font-semibold tabular-nums">
+                    {formatNumber(Number(p.amount))} сум
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {extraProducts.length < MAX_EXTRA_PRODUCTS && (
+          <button
+            type="button"
+            onClick={addExtraProduct}
+            className="nf-btn nf-btn--ghost self-start"
+            style={{ padding: "8px 14px" }}
+          >
+            <Plus className="w-4 h-4" /> Ещё товар этому клиенту
+          </button>
+        )}
+
+        {extraErrors.length > 0 && submitAttempted && (
+          <div className="text-[12.5px] text-red-500 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-2.5 flex flex-col gap-0.5">
+            {extraErrors.map((msg, i) => (
+              <div key={i}>{msg}</div>
+            ))}
+          </div>
+        )}
 
         {Number(amount) > 0 && (
           <div className="nf-tile p-3.5 flex justify-between items-baseline">
