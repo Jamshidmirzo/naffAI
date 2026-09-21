@@ -152,6 +152,7 @@ class SaleSerializer(serializers.ModelSerializer):
             "total_price",
             "client_name",
             "client_phone",
+            "client_phones_extra",
             "operator_lines",
             "partner_lines",
             "comment",
@@ -229,6 +230,15 @@ class SaleCreateInputSerializer(serializers.Serializer):
     )
     client_name = serializers.CharField(max_length=128, required=False, allow_blank=True, default="")
     client_phone = serializers.CharField(max_length=32, required=False, allow_blank=True, default="")
+    # Additional phones beyond `client_phone` (primary). Frontend sends the
+    # "+ add phone" rows here; backend stores them in `Sale.client_phones_extra`.
+    # Primary phone (`client_phone`) stays authoritative for sheets/search/
+    # lead-matching backwards compat.
+    client_phones_extra = serializers.ListField(
+        child=serializers.CharField(max_length=32, allow_blank=True),
+        required=False,
+        default=list,
+    )
     comment = serializers.CharField(required=False, allow_blank=True, default="")
     sold_at = serializers.DateTimeField(required=False)
     gifts = serializers.ListField(child=serializers.DictField(), required=False, default=list)

@@ -372,7 +372,19 @@ export default function SaleDetail() {
       hint: isMultiChannel ? `${partnerLines.length}` : "",
     },
     { label: t("sale_detail.tile_operator"), value: opSummary, hint: primaryOp ? opSplitLabel(primaryOp) : "" },
-    { label: t("sale_detail.tile_client"), value: s.client_name || s.client_phone || "—" },
+    {
+      label: t("sale_detail.tile_client"),
+      value: (() => {
+        const extras = ((s as { client_phones_extra?: string[] }).client_phones_extra) || [];
+        const phones = [s.client_phone, ...extras].filter(Boolean);
+        const phoneStr = phones.join(", ");
+        return s.client_name
+          ? phoneStr
+            ? `${s.client_name} · ${phoneStr}`
+            : s.client_name
+          : phoneStr || "—";
+      })(),
+    },
     { label: t("common.date"), value: formatDate(s.sold_at) },
     { label: t("sale_detail.tile_gifts"), value: giftsSummary },
   ];

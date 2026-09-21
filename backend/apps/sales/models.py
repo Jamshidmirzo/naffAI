@@ -50,6 +50,14 @@ class Sale(TimestampedModel):
     )
     client_name = models.CharField(max_length=128, blank=True, default="")
     client_phone = models.CharField(max_length=32, blank=True, default="")
+    client_phones_extra = models.JSONField(
+        blank=True,
+        default=list,
+        help_text=(
+            "Additional client phones beyond `client_phone` "
+            "(kept as primary for sheets/search backwards compat)."
+        ),
+    )
     comment = models.TextField(blank=True, default="")
     sold_at = models.DateTimeField(db_index=True)
     created_by = models.ForeignKey(
