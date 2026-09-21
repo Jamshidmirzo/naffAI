@@ -240,7 +240,6 @@ def sale_create(
     sold_at: dt.datetime | None = None,
     client_name: str = "",
     client_phone: str = "",
-    client_phones_extra: list[str] | None = None,
     comment: str = "",
     status: str = SaleStatus.CONFIRMED,
     gifts: Iterable[dict] | None = None,
@@ -366,16 +365,6 @@ def sale_create(
             "Для отправки продажи на подтверждение приложите фото договора.",
             {"field": "contract_photo"},
         )
-    # Normalize extra phones: strip, dedupe against primary, cap to 32 chars.
-    primary_phone = (client_phone or "").strip()[:32]
-    extra_phones: list[str] = []
-    seen = {primary_phone} if primary_phone else set()
-    for raw in (client_phones_extra or []):
-        p = (raw or "").strip()[:32]
-        if p and p not in seen:
-            extra_phones.append(p)
-            seen.add(p)
-
     sale = Sale.objects.create(
         imei=imei,
         phone_model=phone_model[:128],
@@ -385,8 +374,7 @@ def sale_create(
         amount=total,
         discount=discount_dec,
         client_name=(client_name or "").strip()[:128],
-        client_phone=primary_phone,
-        client_phones_extra=extra_phones,
+        client_phone=(client_phone or "").strip()[:32],
         comment=comment,
         sold_at=sold_at or timezone.now(),
         created_by=user if user and getattr(user, "is_authenticated", False) else None,
@@ -660,7 +648,6 @@ def sale_full_update(
     sold_at: dt.datetime | None = None,
     client_name: str = "",
     client_phone: str = "",
-    client_phones_extra: list[str] | None = None,
     comment: str = "",
     gifts: Iterable[dict] | None = None,
     allow_duplicate_imei: bool = False,
@@ -754,14 +741,6 @@ def sale_full_update(
     sale.discount = discount_dec
     sale.client_name = (client_name or "").strip()[:128]
     sale.client_phone = (client_phone or "").strip()[:32]
-    _extras: list[str] = []
-    _seen = {sale.client_phone} if sale.client_phone else set()
-    for raw in (client_phones_extra or []):
-        p = (raw or "").strip()[:32]
-        if p and p not in _seen:
-            _extras.append(p)
-            _seen.add(p)
-    sale.client_phones_extra = _extras
     sale.comment = comment
     if sold_at:
         sale.sold_at = sold_at

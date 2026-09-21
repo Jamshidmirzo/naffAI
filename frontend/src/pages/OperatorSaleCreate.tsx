@@ -85,11 +85,6 @@ export default function OperatorSaleCreate() {
   const [amount, setAmount] = useState("");
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState(CLIENT_PHONE_PREFIX);
-  // Extra client phones (2nd, 3rd, ...) beyond the primary. Rendered as
-  // additional inputs below the main phone with a "+ add" button. Backend
-  // stores them in `Sale.client_phones_extra`; primary `client_phone`
-  // keeps its lead-matching role.
-  const [extraPhones, setExtraPhones] = useState<string[]>([]);
   const [comment, setComment] = useState("");
   const [partnerRows, setPartnerRows] = useState<PartnerRow[]>([
     { channel_id: null, amount: "" },
@@ -146,30 +141,6 @@ export default function OperatorSaleCreate() {
   // matters because otherwise the operator would silently overshoot and
   // hit the +998xxxxxxxxxxx server-side validator with no idea why.
   const LOCAL_PHONE_MAX = 9;
-
-  // Shared UZ-phone normalizer used for both primary and extras. Returns
-  // the "+998 " prefix + up to 9 local digits, stripping anything else.
-  const normalizeExtraPhoneInput = (raw: string): string => {
-    let v = raw;
-    if (!v.startsWith(CLIENT_PHONE_PREFIX)) {
-      const tail = v.replace(/^\+?9?9?8?\s*/, "");
-      v = CLIENT_PHONE_PREFIX + tail;
-    }
-    const tail = v
-      .slice(CLIENT_PHONE_PREFIX.length)
-      .replace(/\D/g, "")
-      .slice(0, LOCAL_PHONE_MAX);
-    return CLIENT_PHONE_PREFIX + tail;
-  };
-  const addExtraPhone = () =>
-    setExtraPhones((prev) => (prev.length >= 4 ? prev : [...prev, CLIENT_PHONE_PREFIX]));
-  const updateExtraPhone = (idx: number, raw: string) =>
-    setExtraPhones((prev) =>
-      prev.map((v, i) => (i === idx ? normalizeExtraPhoneInput(raw) : v)),
-    );
-  const removeExtraPhone = (idx: number) =>
-    setExtraPhones((prev) => prev.filter((_, i) => i !== idx));
-
   const handleClientPhoneChange = (raw: string) => {
     clearServerError("client_phone");
     let v = raw;
@@ -366,13 +337,6 @@ export default function OperatorSaleCreate() {
         ? matchedLead.phone
         : normalizeUzPhone(clientPhone);
       fd.append("client_phone", phoneOut);
-      // Additional client phones (dropped through the "+ добавить" rows).
-      // Normalize the same way as the primary; drop empties/duplicates.
-      const extrasOut = extraPhones
-        .map((p) => normalizeUzPhone(p))
-        .filter((p) => p && p !== phoneOut);
-      const extrasDedup = Array.from(new Set(extrasOut));
-      extrasDedup.forEach((p) => fd.append("client_phones_extra", p));
       // Optional — skip the key entirely if empty so the backend
       // serializer's `allow_blank=True` default kicks in cleanly.
       if (comment.trim()) fd.append("comment", comment.trim());
@@ -915,47 +879,6 @@ export default function OperatorSaleCreate() {
           {!matchedLead && showError("client_phone") && (
             <div className="text-[11.5px] text-red-500 mt-1">
               {showError("client_phone")}
-            </div>
-          )}
-          {/* Additional client phones ("+ добавить" rows). Only visible when
-              the primary phone isn't a lead match — a matched lead usually
-              means we already have the right contact. Operators can still
-              collect a backup number by unlinking the lead first. */}
-          {!matchedLead && (
-            <div className="mt-2 flex flex-col gap-2">
-              {extraPhones.map((val, i) => (
-                <div key={i} className="flex gap-2">
-                  <input
-                    className="nf-input flex-1"
-                    value={val}
-                    onChange={(e) => updateExtraPhone(i, e.target.value)}
-                    placeholder={t("sale_create.client_phone_ph")}
-                    inputMode="tel"
-                    autoComplete="off"
-                    maxLength={CLIENT_PHONE_PREFIX.length + LOCAL_PHONE_MAX}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeExtraPhone(i)}
-                    className="nf-btn nf-btn--ghost"
-                    style={{ padding: "6px 12px" }}
-                    aria-label="remove phone"
-                    title="Убрать телефон"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-              {extraPhones.length < 4 && (
-                <button
-                  type="button"
-                  onClick={addExtraPhone}
-                  className="nf-btn nf-btn--ghost self-start"
-                  style={{ padding: "6px 12px", fontSize: 12.5 }}
-                >
-                  + добавить телефон
-                </button>
-              )}
             </div>
           )}
           {phoneDropdownOpen && !matchedLead && phoneMatches.length > 0 && (
