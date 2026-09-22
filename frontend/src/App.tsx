@@ -36,6 +36,7 @@ import AttendanceKiosk from "./pages/AttendanceKiosk";
 import PayrollReport from "./pages/PayrollReport";
 import AttendanceSettings from "./pages/AttendanceSettings";
 import MyPayroll from "./pages/MyPayroll";
+import MySales from "./pages/MySales";
 import Placeholder from "./pages/Placeholder";
 import Notifications from "./pages/Notifications";
 import SalesToday from "./pages/SalesToday";
@@ -162,6 +163,7 @@ export default function App() {
           {/* Operator: свой отчёт за месяц (PIN не нужен, backend уже
               фильтрует по profile.operator). */}
           <Route path="/my/payroll" element={<RoleGate allow={["operator"]}><MyPayroll /></RoleGate>} />
+          <Route path="/my/sales" element={<RoleGate allow={["operator"]}><MySales /></RoleGate>} />
           <Route path="/settings/attendance" element={<RoleGate allow={["manager"]}><PinGate><AttendanceSettings /></PinGate></RoleGate>} />
         </Route>
       </Routes>
