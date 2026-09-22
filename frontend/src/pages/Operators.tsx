@@ -224,6 +224,12 @@ export default function Operators() {
     onError: () => toast.error(t("operators.op_add_failed")),
   });
 
+  // PIN gate for destructive deactivate: the backend view now requires a
+  // fresh attendance-PIN session even for superadmin. On 401 pin_required
+  // we open a small modal, verify the PIN, then re-trigger the mutation
+  // with the saved payload.
+  const [pinPrompt, setPinPrompt] = useState<{ id: number; active: boolean } | null>(null);
+
   const toggle = useMutation({
     mutationFn: ({ id, active }: { id: number; active: boolean }) =>
       api
@@ -243,6 +249,15 @@ export default function Operators() {
       } else {
         toast.success(t("operators.status_updated"));
       }
+    },
+    onError: (err: unknown, vars) => {
+      const e = err as { response?: { status?: number; data?: { code?: string; detail?: string } } };
+      if (e.response?.status === 401 && e.response?.data?.code === "pin_required") {
+        // Ask for PIN; on verify we replay the original request.
+        setPinPrompt(vars);
+        return;
+      }
+      toast.error(e.response?.data?.detail || "Не удалось изменить статус");
     },
   });
 
@@ -1276,6 +1291,99 @@ export default function Operators() {
           </div>
         </form>
       </Modal>
+
+      {/* PIN gate for deactivation. Rendered inline so the "Deactivate"
+          button flow feels seamless: click → 401 pin_required → this
+          modal → verify → mutation replays automatically. */}
+      <DeactivatePinDialog
+        open={!!pinPrompt}
+        onClose={() => setPinPrompt(null)}
+        onVerified={() => {
+          const vars = pinPrompt;
+          setPinPrompt(null);
+          if (vars) toggle.mutate(vars);
+        }}
+      />
     </div>
+  );
+}
+
+function DeactivatePinDialog({
+  open,
+  onClose,
+  onVerified,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onVerified: () => void;
+}) {
+  const [pin, setPin] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    setErr("");
+    if (!/^\d{4}$/.test(pin)) {
+      setErr("PIN — 4 цифры");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.post("/attendance/pin/verify/", { pin });
+      setPin("");
+      onVerified();
+    } catch (e: unknown) {
+      const ax = e as { response?: { data?: { detail?: string } } };
+      setErr(ax.response?.data?.detail || "Неверный PIN");
+      setPin("");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} width={380}>
+      <form onSubmit={submit} className="p-6">
+        <div className="text-[16px] font-semibold tracking-tight mb-1">
+          🔒 Подтвердите деактивацию
+        </div>
+        <p className="text-[12.5px] text-muted mb-5">
+          Деактивация переносит touched-лиды на других операторов через
+          rescue-каскад. Введите PIN менеджера.
+        </p>
+        <input
+          type="password"
+          className="nf-input font-mono text-center tabular-nums tracking-[0.4em] text-[22px]"
+          value={pin}
+          onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+          placeholder="••••"
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={4}
+          autoFocus
+        />
+        {err && (
+          <div
+            className="mt-3 text-[12.5px] rounded-xl px-3.5 py-2.5"
+            style={{
+              background: "rgba(220,60,40,.08)",
+              color: "var(--danger)",
+              border: "1px solid rgba(220,60,40,.2)",
+            }}
+          >
+            {err}
+          </div>
+        )}
+        <div className="mt-5 flex gap-2 justify-end">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Отмена
+          </Button>
+          <Button type="submit" disabled={busy || pin.length !== 4}>
+            {busy ? "…" : "Подтвердить"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

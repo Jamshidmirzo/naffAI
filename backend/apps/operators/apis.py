@@ -13,6 +13,7 @@ from apps.users.permissions import IsTeamLead, IsTeamLeadOrManagerReadOnly
 from apps.users.selectors import account_state, user_by_operator
 
 from .models import Operator
+from .permissions import IsDestructiveActionPinVerified
 from .selectors import (
     operator_achievements,
     operator_get,
@@ -199,7 +200,11 @@ class OperatorDetailApi(RetrieveUpdateAPIView):
 
 
 class OperatorDeactivateApi(APIView):
-    permission_classes = [IsTeamLead]
+    # Destructive: strips leads from the operator and triggers rescue cascade
+    # to redistribute touched leads across the remaining active team. Guarded
+    # by the same attendance PIN as the payroll/attendance edit views, but
+    # WITHOUT the superadmin bypass — even root has to type 6810.
+    permission_classes = [IsTeamLead, IsDestructiveActionPinVerified]
 
     def post(self, request, pk: int):
         op = operator_get(pk)
