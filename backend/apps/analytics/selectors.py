@@ -581,14 +581,11 @@ def lead_stats_snapshot(
     for lead_ids in by_op_leads.values():
         all_touched.update(lead_ids)
 
-    # Align the global `total` with the per-operator semantics: instead of
-    # counting leads CREATED in the window (mismatched with the row-sum),
-    # we now count DISTINCT leads any operator worked with in the window.
-    # This makes the header and the sum-of-rows read from the same universe.
-    # Sum-of-rows can still exceed `total` when a lead was touched by more
-    # than one operator (rescue/reassign chains) — that is expected and OK,
-    # documented in the FE hint.
-    total = len(all_touched)
+    # 2026-09-22: reverted the header total override — user prefers the
+    # original 'создано за период' semantics in the top card. The sum of
+    # per-operator rows can and will exceed this number (they cover
+    # touched-in-period, not created-in-period). Not a bug — different
+    # metrics, different universes.
 
     # One-shot fetch of current status для всех тронутых лидов.
     # System-lost исключаем: они автозакрыты по системной причине
