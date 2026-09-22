@@ -691,6 +691,62 @@ class SalePendingListApi(APIView):
         )
 
 
+class SaleMineListApi(APIView):
+    """
+    GET /api/sales/mine/ — продажи текущего оператора.
+
+    Собираем через SaleOperator, чтобы шеринговые продажи (когда оператор
+    в split-строке, но не главный `sale.operator`) тоже попали. Возвращаем
+    только confirmed, не удалённые, не возвращённые. Отдаём с полями
+    `share_amount` — сколько именно этот оператор заработал по продаже,
+    в отличие от `amount` (общая сумма продажи).
+    """
+
+    permission_classes = [IsAuthenticatedAnyRole]
+
+    def get(self, request):
+        profile = getattr(request.user, "profile", None)
+        op_id = getattr(profile, "operator_id", None)
+        if not op_id:
+            return Response(
+                {"detail": "У пользователя не привязан оператор"}, status=400
+            )
+        so_qs = (
+            SaleOperator.objects.filter(
+                operator_id=op_id,
+                sale__is_deleted=False,
+                sale__is_returned=False,
+            )
+            .select_related("sale", "sale__channel")
+            .order_by("-sale__sold_at")[:100]
+        )
+        results = []
+        total_share = 0
+        for so in so_qs:
+            s = so.sale
+            share = so.amount or 0
+            total_share += float(share)
+            results.append(
+                {
+                    "id": s.id,
+                    "imei": s.imei,
+                    "phone_model": s.phone_model,
+                    "client_name": s.client_name,
+                    "client_phone": s.client_phone,
+                    "amount_total": str(s.amount),
+                    "share_amount": str(share),
+                    "channel_name": s.channel.name if s.channel_id else "",
+                    "status": s.status,
+                    "sold_at": s.sold_at.isoformat(),
+                }
+            )
+        return Response({
+            "results": results,
+            "count": len(results),
+            "total_share": str(round(total_share, 2)),
+        })
+
+
 class SaleImportExcelApi(APIView):
     permission_classes = [IsTeamLead]
     parser_classes = [MultiPartParser, FormParser]

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, PhoneCall, Users2 } from "lucide-react";
+import { Calendar, PhoneCall, ShoppingBag, Users2 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { Chip, type TabItem } from "../components/ui";
 import { usePageHeader } from "../store/page";
@@ -144,6 +145,26 @@ export default function MyActivity() {
         .then((r) => r.data),
   });
 
+  // Operator's own sales — separate section under the activity report.
+  // Backend groups by SaleOperator (split-aware) so shared sales still
+  // land in the list with the operator's proper `share_amount`.
+  interface MySaleRow {
+    id: number;
+    imei: string;
+    phone_model: string;
+    client_name: string;
+    client_phone: string;
+    amount_total: string;
+    share_amount: string;
+    channel_name: string;
+    status: string;
+    sold_at: string;
+  }
+  const salesQ = useQuery<{ results: MySaleRow[]; count: number; total_share: string }>({
+    queryKey: ["my-sales"],
+    queryFn: () => api.get("/sales/mine/").then((r) => r.data),
+  });
+
   const row: ActivityRow | null = data?.rows?.[0] ?? null;
 
   const statusLabel = (code: string): string => {
@@ -256,6 +277,91 @@ export default function MyActivity() {
                 </div>
               </div>
             </div>
+          </section>
+
+          {/* Own sales (SaleOperator-aware) */}
+          <section className="nf-card overflow-hidden animate-nfFadeUp">
+            <div className="px-6 pt-5 pb-3 flex items-center justify-between">
+              <div className="text-[14px] font-semibold tracking-tight flex items-center gap-2">
+                <ShoppingBag className="w-4 h-4" />
+                Мои продажи
+              </div>
+              {salesQ.data && salesQ.data.count > 0 && (
+                <div className="text-[12.5px] text-muted">
+                  Всего: {salesQ.data.count} · моя доля:{" "}
+                  <span className="text-text font-semibold tabular-nums">
+                    {new Intl.NumberFormat("ru-RU").format(
+                      Number(salesQ.data.total_share) || 0,
+                    )}{" "}
+                    сум
+                  </span>
+                </div>
+              )}
+            </div>
+            {salesQ.isLoading ? (
+              <div className="text-center text-muted py-6 text-[13px]">
+                Загрузка…
+              </div>
+            ) : !salesQ.data || salesQ.data.count === 0 ? (
+              <div className="text-center text-muted py-8 text-[13px]">
+                Пока нет продаж — как только сохранишь первую, она появится здесь.
+              </div>
+            ) : (
+              <div className="pb-2">
+                {salesQ.data.results.slice(0, 20).map((s) => {
+                  const d = new Date(s.sold_at);
+                  const dateStr = d.toLocaleDateString("ru-RU", {
+                    day: "2-digit",
+                    month: "short",
+                  });
+                  const share = new Intl.NumberFormat("ru-RU").format(
+                    Number(s.share_amount) || 0,
+                  );
+                  const tot = new Intl.NumberFormat("ru-RU").format(
+                    Number(s.amount_total) || 0,
+                  );
+                  const shared = share !== tot;
+                  return (
+                    <Link
+                      to={`/sales/${s.id}`}
+                      key={s.id}
+                      className="grid gap-2 px-6 py-2.5 items-center hover:bg-[var(--faint)] transition"
+                      style={{
+                        gridTemplateColumns: "60px 1.4fr 1fr 1fr",
+                        borderTop: "1px solid var(--border)",
+                      }}
+                    >
+                      <span className="text-[12px] text-muted tabular-nums">
+                        {dateStr}
+                      </span>
+                      <span className="text-[13px] truncate">
+                        {s.phone_model || "—"}
+                        {s.client_name && (
+                          <span className="text-muted"> · {s.client_name}</span>
+                        )}
+                      </span>
+                      <span className="text-[13px] text-muted truncate">
+                        {s.channel_name || "—"}
+                      </span>
+                      <span className="text-right tabular-nums text-[13px] font-semibold">
+                        {share}
+                        {shared && (
+                          <span className="text-muted font-normal text-[11px]">
+                            {" "}
+                            / {tot}
+                          </span>
+                        )}
+                      </span>
+                    </Link>
+                  );
+                })}
+                {salesQ.data.count > 20 && (
+                  <div className="text-center text-muted text-[12px] py-2 border-t" style={{ borderColor: "var(--border)" }}>
+                    показано 20 из {salesQ.data.count}
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           {/* Status breakdown */}

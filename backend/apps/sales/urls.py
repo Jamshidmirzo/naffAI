@@ -6,6 +6,7 @@ from .apis import (
     SaleDetailApi,
     SaleImportExcelApi,
     SaleListCreateApi,
+    SaleMineListApi,
     SalePendingListApi,
     SaleRejectApi,
     SaleReturnApi,
@@ -19,6 +20,7 @@ urlpatterns = [
     path("import-excel/", SaleImportExcelApi.as_view()),
     # Static paths BEFORE <int:pk>/ so `pending` isn't parsed as an id.
     path("pending/", SalePendingListApi.as_view()),
+    path("mine/", SaleMineListApi.as_view()),
     path("summary/", SaleSummaryApi.as_view()),
     path("bulk-confirm/", SaleBulkActionApi.as_view()),
     path("<int:pk>/", SaleDetailApi.as_view()),
