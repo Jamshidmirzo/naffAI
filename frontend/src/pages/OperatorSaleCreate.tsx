@@ -295,7 +295,10 @@ export default function OperatorSaleCreate() {
     setServerErrors({});
     setError("");
     if (!canSubmit) {
-      // Find first invalid field and scroll into view.
+      // Find ALL invalid fields, scroll to the first, and build a
+      // combined banner listing every missing item — operators kept
+      // saying "заполнил всё" while missing the photo or a partner
+      // amount, because the old banner only showed the first field.
       const order: FieldName[] = [
         "imei",
         "phone_model",
@@ -306,7 +309,18 @@ export default function OperatorSaleCreate() {
         "comment",
         "contract_photos",
       ];
-      const firstBad = order.find((f) => errors[f] !== null);
+      const FIELD_LABEL: Record<FieldName, string> = {
+        imei: "IMEI",
+        phone_model: "Модель",
+        amount: "Сумма",
+        partners: "Партнёр/Канал оплаты",
+        client_name: "Имя клиента",
+        client_phone: "Телефон клиента",
+        comment: "Комментарий",
+        contract_photos: "Фото договора",
+      };
+      const bad = order.filter((f) => errors[f] !== null);
+      const firstBad = bad[0];
       if (firstBad) {
         const el = fieldRefs.current[firstBad];
         if (el) {
@@ -319,7 +333,12 @@ export default function OperatorSaleCreate() {
             }
           }
         }
-        setError(t(errors[firstBad] as string));
+        if (bad.length === 1) {
+          setError(t(errors[firstBad] as string));
+        } else {
+          const names = bad.map((f) => FIELD_LABEL[f]).join(", ");
+          setError(`Заполните / проверьте: ${names}`);
+        }
       }
       return;
     }

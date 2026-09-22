@@ -115,11 +115,11 @@ const HAS_LETTER_RE = /\p{L}/u;
 export function validateClientName(name: string): FieldError {
   const v = (name || "").trim();
   if (!v) return "validation.name_required";
-  if (v.length < 2) return "validation.name_short";
   if (v.length > 128) return "validation.name_long";
-  // Reject names that are digits/punctuation only ("2345432fdsa" fails here
-  // because backend accepted it silently, letting garbage into leads).
-  if (!HAS_LETTER_RE.test(v)) return "validation.name_letters_required";
+  // Loosened 2026-09-22: operators complained "заполнил, а форма не даёт".
+  // We now accept 1+ character, any content — backend still normalises and
+  // audit-logs the raw value, so garbage stays visible for cleanup rather
+  // than blocking the sale outright.
   return null;
 }
 
