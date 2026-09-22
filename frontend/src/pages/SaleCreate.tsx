@@ -43,6 +43,39 @@ export default function SaleCreate() {
   const [quantity, setQuantity] = useState("1");
   const [operators, setOperators] = useState<OpLine[]>([{ amount: "" }]);
   const [partners, setPartners] = useState<PLine[]>([{ amount: "" }]);
+  // Additional products (same client, separate Sale records). Each has its
+  // own IMEI/model/qty/operators/partners/discount/bonus. Client name/phone
+  // + main comment are shared with the primary product. Only the primary
+  // sale carries the lead_id link — extras skip it (backend flips lead to
+  // WON on the primary POST already, no need to double-flip).
+  type ExtraProduct = {
+    imei: string;
+    model: string;
+    quantity: string;
+    operators: OpLine[];
+    partners: PLine[];
+    discount: string;
+    hasBonus: boolean;
+    bonusNote: string;
+  };
+  const emptyExtra = (): ExtraProduct => ({
+    imei: "",
+    model: "",
+    quantity: "1",
+    operators: [{ amount: "" }],
+    partners: [{ amount: "" }],
+    discount: "",
+    hasBonus: false,
+    bonusNote: "",
+  });
+  const [extraProducts, setExtraProducts] = useState<ExtraProduct[]>([]);
+  const MAX_EXTRA_PRODUCTS = 3;
+  const addExtraProduct = () =>
+    setExtraProducts((prev) => (prev.length >= MAX_EXTRA_PRODUCTS ? prev : [...prev, emptyExtra()]));
+  const removeExtraProduct = (idx: number) =>
+    setExtraProducts((prev) => prev.filter((_, i) => i !== idx));
+  const updateExtraProduct = (idx: number, patch: Partial<ExtraProduct>) =>
+    setExtraProducts((prev) => prev.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [comment, setComment] = useState("");
@@ -322,6 +355,54 @@ export default function SaleCreate() {
         nav(`/sales/${id}`);
       } else {
         await api.post("/sales/", body);
+        // Extra products (same client, separate sales). Fail-soft: if any
+        // extra breaks, we keep the primary and surface an inline error.
+        for (let i = 0; i < extraProducts.length; i++) {
+          const p = extraProducts[i];
+          const okOpsE = p.operators.filter(
+            (o) => (o.operator_id || (o.operator_name || "").trim()) && Number(o.amount) > 0,
+          );
+          const okPartnersE = p.partners.filter(
+            (pp) => (pp.partner_id || (pp.partner_name || "").trim()) && Number(pp.amount) > 0,
+          );
+          if (!p.imei.trim() || !p.model.trim() || okOpsE.length === 0 || okPartnersE.length === 0) {
+            setError(t("sale_create.save_error") + ` (Товар ${i + 2}: заполните все поля)`);
+            break;
+          }
+          const qtyE = Math.max(1, Number(p.quantity) || 1);
+          const discountE = p.discount === "" ? 0 : Number(p.discount);
+          const bodyE = {
+            imei: p.imei,
+            phone_model: p.model,
+            quantity: qtyE,
+            operators: okOpsE.map((o) => ({
+              operator_id: o.operator_id,
+              operator_name: o.operator_name?.trim(),
+              amount: Number(o.amount).toFixed(2),
+            })),
+            partners: okPartnersE.map((pp) => ({
+              partner_id: pp.partner_id,
+              partner_name: pp.partner_name?.trim(),
+              amount: Number(pp.amount).toFixed(2),
+            })),
+            discount: discountE.toFixed(2),
+            client_name: clientName.trim(),
+            client_phone: clientPhone.trim(),
+            comment,
+            allow_duplicate_imei: false,
+            duplicate_override_comment: "",
+            bonus_note: p.hasBonus ? p.bonusNote.trim() : "",
+            // extras don't re-link the lead — primary already flipped it
+          };
+          try {
+            await api.post("/sales/", bodyE);
+          } catch (extraErr: any) {
+            const d = extraErr.response?.data || {};
+            const detail = d.detail || d.imei?.[0] || d.amount?.[0] || "не сохранён";
+            setError(`Товар ${i + 2}: ${typeof detail === "string" ? detail : "не сохранён"}`);
+            break;
+          }
+        }
         nav("/sales");
       }
     } catch (err: any) {
@@ -641,6 +722,171 @@ export default function SaleCreate() {
             </>
           )}
         </div>
+
+        {/* Multi-product: extra товары для того же клиента. Каждый — отдельный
+            Sale, шлётся отдельным POST после primary. Client name/phone/comment
+            общие (не дублируются в UI). Разрешено только при создании (не при
+            редактировании существующей продажи). */}
+        {!isEdit && extraProducts.map((p, i) => {
+          const partnersTotalE = p.partners
+            .filter((pp) => (pp.partner_id || (pp.partner_name || "").trim()) && Number(pp.amount) > 0)
+            .reduce((s, x) => s + Number(x.amount), 0);
+          return (
+            <div
+              key={i}
+              className="nf-card p-5 flex flex-col gap-4 border border-[var(--border)]"
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-[15px] font-semibold tracking-tight">
+                  Товар {i + 2}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeExtraProduct(i)}
+                  className="text-muted hover:text-red-500"
+                  aria-label="remove product"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-[2fr_auto] gap-4">
+                <div>
+                  <label className="nf-col mb-1.5 block">
+                    {t("sale_create.imei_label")}
+                  </label>
+                  <input
+                    className="nf-input font-mono"
+                    inputMode="numeric"
+                    value={p.imei}
+                    onChange={(e) =>
+                      updateExtraProduct(i, {
+                        imei: e.target.value.replace(/\D/g, "").slice(0, 15),
+                      })
+                    }
+                    placeholder={t("sale_create.imei_ph_full")}
+                  />
+                </div>
+                <div>
+                  <label className="nf-col mb-1.5 block">
+                    {t("sale_create.quantity_label")}
+                  </label>
+                  <input
+                    className="nf-input"
+                    style={{ width: 90 }}
+                    inputMode="numeric"
+                    value={p.quantity}
+                    onChange={(e) =>
+                      updateExtraProduct(i, {
+                        quantity: e.target.value.replace(/\D/g, ""),
+                      })
+                    }
+                    placeholder="1"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="nf-col mb-1.5 block">
+                  {t("sale_create.phone_model")}
+                </label>
+                <input
+                  className="nf-input"
+                  value={p.model}
+                  onChange={(e) => updateExtraProduct(i, { model: e.target.value })}
+                  placeholder={t("sale_create.model_ph")}
+                />
+              </div>
+
+              <LineEditor<OpLine>
+                title="Operatorlar"
+                lines={p.operators}
+                setLines={(v) => updateExtraProduct(i, { operators: v })}
+                options={opOptions.map((o) => ({ id: o.id, label: o.full_name, isActive: o.status === "active" }))}
+                getId={(l) => l.operator_id}
+                getName={(l) => l.operator_name || ""}
+                setLine={(l, patch) => ({ ...l, ...patch })}
+                empty={() => ({ amount: "" })}
+                idKey="operator_id"
+                nameKey="operator_name"
+              />
+
+              <LineEditor<PLine>
+                title="Hamkorlar"
+                lines={p.partners}
+                setLines={(v) => updateExtraProduct(i, { partners: v })}
+                options={partnerOptions.map((c) => ({ id: c.id, label: c.name, isActive: c.is_active !== false }))}
+                getId={(l) => l.partner_id}
+                getName={(l) => l.partner_name || ""}
+                setLine={(l, patch) => ({ ...l, ...patch })}
+                empty={() => ({ amount: "" })}
+                idKey="partner_id"
+                nameKey="partner_name"
+              />
+
+              {partnersTotalE > 0 && (
+                <div className="nf-tile p-3 flex justify-between items-baseline">
+                  <span className="text-muted text-[12.5px]">
+                    Jami {i + 2}-sotuv summasi
+                  </span>
+                  <span className="text-[16px] font-semibold tabular-nums">
+                    {formatNumber(partnersTotalE)} сум
+                  </span>
+                </div>
+              )}
+
+              <div>
+                <label className="nf-col mb-1.5 block">
+                  {t("sale_create.discount_optional")}
+                </label>
+                <NumericInput
+                  className="nf-input"
+                  placeholder="0"
+                  value={p.discount}
+                  onChange={(v) => updateExtraProduct(i, { discount: v })}
+                />
+              </div>
+
+              <div
+                className="rounded-xl border p-3 space-y-2"
+                style={{ borderColor: "var(--border)" }}
+              >
+                <label className="flex items-center gap-2 text-[13.5px] cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={p.hasBonus}
+                    onChange={(e) =>
+                      updateExtraProduct(i, { hasBonus: e.target.checked })
+                    }
+                  />
+                  🎁 {t("sale_create.bonus_toggle")}
+                </label>
+                {p.hasBonus && (
+                  <textarea
+                    className="nf-input"
+                    rows={2}
+                    value={p.bonusNote}
+                    onChange={(e) =>
+                      updateExtraProduct(i, { bonusNote: e.target.value })
+                    }
+                    placeholder={t("sale_create.bonus_ph")}
+                  />
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {!isEdit && extraProducts.length < MAX_EXTRA_PRODUCTS && (
+          <button
+            type="button"
+            onClick={addExtraProduct}
+            className="nf-btn nf-btn--ghost self-start"
+            style={{ padding: "8px 14px" }}
+          >
+            <Plus className="w-4 h-4" /> Ещё товар этому клиенту
+          </button>
+        )}
 
         {allowDup && (
           <div className="nf-tile p-4 space-y-2 ring-1 ring-amber-500/40">
