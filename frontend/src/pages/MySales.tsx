@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ShoppingBag } from "lucide-react";
 import { api } from "../lib/api";
 import { usePageHeader } from "../store/page";
+import { useT } from "../lib/i18n";
 
 /**
  * Operator's own sales page (`/my/sales`).
@@ -29,9 +30,10 @@ interface Row {
 }
 
 export default function MySales() {
+  const t = useT();
   usePageHeader({
-    title: "Mening sotuvlarim",
-    subtitle: "Sotildi bo'lgan barcha lidlarim",
+    title: t("my_sales.title"),
+    subtitle: t("my_sales.subtitle"),
   });
 
   const q = useQuery<{ results: Row[]; count: number; total_share: string }>({
@@ -61,15 +63,16 @@ export default function MySales() {
           <ShoppingBag className="w-6 h-6" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] text-muted">Jami sotuvlar</div>
+          <div className="text-[13px] text-muted">{t("my_sales.total_label")}</div>
           <div className="text-[26px] font-semibold tabular-nums">
             {total}
           </div>
         </div>
         <div className="text-right">
-          <div className="text-[13px] text-muted">Mening ulushim</div>
+          <div className="text-[13px] text-muted">{t("my_sales.share_label")}</div>
           <div className="text-[22px] font-semibold tabular-nums">
-            {fmt.format(share)} <span className="text-[13px] text-muted">so'm</span>
+            {fmt.format(share)}{" "}
+            <span className="text-[13px] text-muted">{t("my_sales.currency")}</span>
           </div>
         </div>
       </section>
@@ -77,16 +80,16 @@ export default function MySales() {
       {/* Sales list */}
       <section className="nf-card overflow-hidden">
         <div className="px-6 pt-5 pb-3 text-[14px] font-semibold tracking-tight">
-          Ro'yxat
+          {t("my_sales.list_title")}
         </div>
 
         {q.isLoading ? (
           <div className="text-center text-muted py-8 text-[13px]">
-            Yuklanmoqda…
+            {t("my_sales.loading")}
           </div>
         ) : rows.length === 0 ? (
           <div className="text-center text-muted py-10 text-[13px]">
-            Hozircha sotuvlar yo'q. Yangi sotuv qo'shganingizdan keyin bu yerda ko'rinadi.
+            {t("my_sales.empty")}
           </div>
         ) : (
           <div>
@@ -94,10 +97,10 @@ export default function MySales() {
               className="grid gap-3 px-6 pb-3 text-[11px] uppercase tracking-wide text-muted"
               style={{ gridTemplateColumns: "70px 1.4fr 1fr 1.1fr" }}
             >
-              <div>Sana</div>
-              <div>Model / Mijoz</div>
-              <div>Kanal</div>
-              <div className="text-right">Summa</div>
+              <div>{t("my_sales.col.date")}</div>
+              <div>{t("my_sales.col.model")}</div>
+              <div>{t("my_sales.col.channel")}</div>
+              <div className="text-right">{t("my_sales.col.amount")}</div>
             </div>
             {rows.map((s) => {
               const d = new Date(s.sold_at);
@@ -145,11 +148,11 @@ export default function MySales() {
                   </div>
                   <div className="text-right">
                     <div className="text-[14.5px] font-semibold tabular-nums">
-                      {shareAmt} so'm
+                      {shareAmt} {t("my_sales.currency")}
                     </div>
                     {shared && (
                       <div className="text-[11px] text-muted">
-                        jami: {totalAmt}
+                        {t("my_sales.shared_total")} {totalAmt}
                       </div>
                     )}
                   </div>

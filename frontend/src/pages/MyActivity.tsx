@@ -284,27 +284,28 @@ export default function MyActivity() {
             <div className="px-6 pt-5 pb-3 flex items-center justify-between">
               <div className="text-[14px] font-semibold tracking-tight flex items-center gap-2">
                 <ShoppingBag className="w-4 h-4" />
-                Мои продажи
+                {t("my_activity.my_sales_title")}
               </div>
               {salesQ.data && salesQ.data.count > 0 && (
                 <div className="text-[12.5px] text-muted">
-                  Всего: {salesQ.data.count} · моя доля:{" "}
+                  {t("my_activity.my_sales_total")} {salesQ.data.count} ·{" "}
+                  {t("my_activity.my_sales_share")}{" "}
                   <span className="text-text font-semibold tabular-nums">
                     {new Intl.NumberFormat("ru-RU").format(
                       Number(salesQ.data.total_share) || 0,
                     )}{" "}
-                    сум
+                    {t("my_sales.currency")}
                   </span>
                 </div>
               )}
             </div>
             {salesQ.isLoading ? (
               <div className="text-center text-muted py-6 text-[13px]">
-                Загрузка…
+                {t("my_activity.my_sales_loading")}
               </div>
             ) : !salesQ.data || salesQ.data.count === 0 ? (
               <div className="text-center text-muted py-8 text-[13px]">
-                Пока нет продаж — как только сохранишь первую, она появится здесь.
+                {t("my_activity.my_sales_empty")}
               </div>
             ) : (
               <div className="pb-2">
@@ -357,7 +358,7 @@ export default function MyActivity() {
                 })}
                 {salesQ.data.count > 20 && (
                   <div className="text-center text-muted text-[12px] py-2 border-t" style={{ borderColor: "var(--border)" }}>
-                    показано 20 из {salesQ.data.count}
+                    {t("my_activity.my_sales_shown", { shown: 20, n: salesQ.data.count })}
                   </div>
                 )}
               </div>

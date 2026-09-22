@@ -129,7 +129,7 @@ function useOperatorGroups(t: (k: string) => string): SidebarGroup[] {
         // 2026-08-31: свой месячный зарплатный отчёт (attendance-based).
         // PIN не требуется — backend фильтрует по profile.operator.
         { to: "/my/payroll", label: t("nav.my_payroll") },
-        { to: "/my/sales", label: "Mening sotuvlarim" },
+        { to: "/my/sales", label: t("nav.my_sales") },
         { to: "/profile", label: t("nav.profile") },
       ],
     },
