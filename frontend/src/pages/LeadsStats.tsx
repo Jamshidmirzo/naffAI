@@ -43,6 +43,9 @@ type OperatorRow = {
   calls_total?: number;
   unique_leads_touched?: number;
   conversion_pct: number;
+  // Full status breakdown for this operator (code → count). Rendered as
+  // an expandable inline row when the user clicks the arrow on the left.
+  by_status?: Record<string, number>;
 };
 
 type DailyRow = { date: string; created: number; won: number; lost: number };
@@ -129,6 +132,16 @@ export default function LeadsStats() {
   // Раскрытие блока «Retry статусы» — по умолчанию свёрнут, чтобы не
   // отвлекать; менеджер разворачивает, когда надо поменять выбор.
   const [statusesOpen, setStatusesOpen] = useState(false);
+  // Operators whose status-breakdown row is expanded. Toggle by clicking the
+  // ▸/▾ chevron on the left of each operator row.
+  const [expandedOps, setExpandedOps] = useState<Set<number>>(new Set());
+  const toggleOpExpand = (opId: number) =>
+    setExpandedOps((prev) => {
+      const next = new Set(prev);
+      if (next.has(opId)) next.delete(opId);
+      else next.add(opId);
+      return next;
+    });
   const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(
     new Set(),
   );
@@ -563,31 +576,91 @@ export default function LeadsStats() {
                 </tr>
               </thead>
               <tbody>
-                {(data?.by_operator || []).map((r) => (
-                  <tr key={r.operator_id} className="border-b" style={{ borderColor: "var(--border)" }}>
-                    <td className="py-2 pr-3">{r.operator_name}</td>
-                    <td className="py-2 px-3 text-right tabular-nums font-medium">{r.total}</td>
-                    <td className="py-2 px-3 text-right tabular-nums">
-                      {r.calls_total ?? 0}
-                    </td>
-                    <td className="py-2 px-3 text-right tabular-nums">
-                      {r.unique_leads_touched ?? 0}
-                    </td>
-                    <td className="py-2 px-3 text-right tabular-nums" style={{ color: "#059669" }}>
-                      {r.won}
-                    </td>
-                    <td className="py-2 px-3 text-right tabular-nums font-medium" style={{ color: "#059669" }}>
-                      {r.sold_total ?? 0}
-                    </td>
-                    <td className="py-2 px-3 text-right tabular-nums">{r.in_progress}</td>
-                    <td className="py-2 px-3 text-right tabular-nums" style={{ color: "#dc2626" }}>
-                      {r.lost}
-                    </td>
-                    <td className="py-2 pl-3 text-right tabular-nums font-medium">
-                      {r.conversion_pct}%
-                    </td>
-                  </tr>
-                ))}
+                {(data?.by_operator || []).map((r) => {
+                  const expanded = expandedOps.has(r.operator_id);
+                  const bs = r.by_status || {};
+                  const statusEntries = Object.entries(bs)
+                    .filter(([, n]) => n > 0)
+                    .sort((a, b) => b[1] - a[1]);
+                  const statusLabels: Record<string, { label: string; emoji: string; tone: string }> = {};
+                  for (const s of data?.by_status || []) {
+                    statusLabels[s.code] = {
+                      label: s.label_uz || s.label_ru || s.code,
+                      emoji: s.emoji || "",
+                      tone: s.tone || "neutral",
+                    };
+                  }
+                  return (
+                    <>
+                      <tr
+                        key={r.operator_id}
+                        className="border-b cursor-pointer hover:bg-[var(--faint)] transition-colors"
+                        style={{ borderColor: "var(--border)" }}
+                        onClick={() => toggleOpExpand(r.operator_id)}
+                      >
+                        <td className="py-2 pr-3">
+                          <span className="inline-block w-3 mr-1.5 text-muted select-none">
+                            {expanded ? "▾" : "▸"}
+                          </span>
+                          {r.operator_name}
+                        </td>
+                        <td className="py-2 px-3 text-right tabular-nums font-medium">{r.total}</td>
+                        <td className="py-2 px-3 text-right tabular-nums">
+                          {r.calls_total ?? 0}
+                        </td>
+                        <td className="py-2 px-3 text-right tabular-nums">
+                          {r.unique_leads_touched ?? 0}
+                        </td>
+                        <td className="py-2 px-3 text-right tabular-nums" style={{ color: "#059669" }}>
+                          {r.won}
+                        </td>
+                        <td className="py-2 px-3 text-right tabular-nums font-medium" style={{ color: "#059669" }}>
+                          {r.sold_total ?? 0}
+                        </td>
+                        <td className="py-2 px-3 text-right tabular-nums">{r.in_progress}</td>
+                        <td className="py-2 px-3 text-right tabular-nums" style={{ color: "#dc2626" }}>
+                          {r.lost}
+                        </td>
+                        <td className="py-2 pl-3 text-right tabular-nums font-medium">
+                          {r.conversion_pct}%
+                        </td>
+                      </tr>
+                      {expanded && (
+                        <tr key={`${r.operator_id}-expand`} className="border-b" style={{ borderColor: "var(--border)", background: "var(--faint)" }}>
+                          <td colSpan={9} className="py-3 px-5">
+                            {statusEntries.length === 0 ? (
+                              <div className="text-[12.5px] text-muted">
+                                Нет разбивки по статусам за этот период
+                              </div>
+                            ) : (
+                              <div className="flex flex-wrap gap-2">
+                                {statusEntries.map(([code, n]) => {
+                                  const meta = statusLabels[code] || { label: code, emoji: "", tone: "neutral" };
+                                  const stripe = TONE_ACCENT[meta.tone] || TONE_ACCENT.neutral;
+                                  return (
+                                    <div
+                                      key={code}
+                                      className="rounded-lg px-3 py-1.5 text-[12.5px] flex items-center gap-2"
+                                      style={{
+                                        background: "var(--surface)",
+                                        border: "1px solid var(--border)",
+                                        borderLeft: `3px solid ${stripe}`,
+                                      }}
+                                    >
+                                      {meta.emoji && <span>{meta.emoji}</span>}
+                                      <span className="text-muted">{meta.label}:</span>
+                                      <span className="tabular-nums font-semibold">{n}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  );
+                })}
               </tbody>
             </table>
           </div>
