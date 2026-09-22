@@ -17,7 +17,7 @@ import {
 import { api } from "../lib/api";
 import { apiErrorMessage, type ApiError } from "../lib/api-types";
 import { toast } from "../components/ui";
-import { useT } from "../lib/i18n";
+import { useT, useLangValue } from "../lib/i18n";
 
 type StatusRow = {
   code: string;
@@ -124,6 +124,12 @@ type RetryStatusesResp = { statuses: string[]; available: RetryLabel[] };
 
 export default function LeadsStats() {
   const t = useT();
+  const lang = useLangValue();
+  // Bilingual label picker for LeadStatusLabel rows — the backend sends
+  // both label_ru and label_uz, and this chart was hardcoded to Russian
+  // even when the UI language was Uzbek. Fall back to code as last resort.
+  const pickLabel = (s: { label_uz?: string; label_ru?: string; code: string }) =>
+    (lang === "uz" ? s.label_uz : s.label_ru) || s.label_ru || s.label_uz || s.code;
   const qc = useQueryClient();
   const [preset, setPreset] = useState<Preset>("today");
   const initial = presetRange("today")!;
@@ -252,7 +258,7 @@ export default function LeadsStats() {
   const statusChartData = useMemo(
     () =>
       (data?.by_status || []).map((s) => ({
-        name: s.label_ru || s.code,
+        name: pickLabel(s),
         count: s.count,
         pct: s.pct,
         tone: s.tone,
@@ -414,7 +420,7 @@ export default function LeadsStats() {
                 >
                   {on && <Check className="w-3 h-3" />}
                   {s.emoji && <span>{s.emoji}</span>}
-                  <span>{s.label_ru || s.code}</span>
+                  <span>{pickLabel(s)}</span>
                 </button>
               );
             })}
@@ -511,7 +517,7 @@ export default function LeadsStats() {
                       style={{ color: "var(--fg)" }}
                     >
                       {s.emoji && <span>{s.emoji}</span>}
-                      <span className="truncate">{s.label_ru || s.code}</span>
+                      <span className="truncate">{pickLabel(s)}</span>
                     </div>
                     <div className="flex items-baseline gap-1.5 mt-0.5">
                       <span

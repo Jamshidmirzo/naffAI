@@ -1,8 +1,12 @@
 import axios, { AxiosError, AxiosRequestConfig } from "axios";
 import { toast } from "sonner";
 
+// Relative by default: browser resolves it against the current origin, so
+// demo.naff.flek.uz hits its own demo-web via nginx while naff.flek.uz
+// hits prod-web. Override with VITE_API_BASE_URL only for local dev
+// (e.g. http://localhost:8000/api when running Django on a different port).
 export const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string) || "http://localhost:8001/api";
+  (import.meta.env.VITE_API_BASE_URL as string) || "/api";
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
