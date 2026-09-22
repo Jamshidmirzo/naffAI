@@ -688,33 +688,35 @@ export default function OperatorDetail() {
                     actual: formatUZS(Number(planQuery.data.actual)),
                     target: formatUZS(Number(planQuery.data.target)),
                   })}
-                  {isManager && (
-                    <button
-                      className="ml-2 text-[11.5px]"
-                      style={{ color: "var(--accent)" }}
-                      onClick={() => {
-                        setEditPlan(true);
-                        setPlanInput(String(Math.round(Number(planQuery.data.target))));
-                      }}
-                    >
-                      {t("op_detail.plan_change")}
-                    </button>
-                  )}
                 </div>
-              </>
-            ) : (
-              <div className="mt-1 text-muted text-[13px]">
-                {t("op_detail.plan_none")}
                 {isManager && (
                   <button
-                    className="ml-2 text-[13px]"
-                    style={{ color: "var(--accent)" }}
+                    className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold px-3 py-1.5 rounded-full text-white transition hover:opacity-90"
+                    style={{ background: "var(--accent-grad)" }}
+                    onClick={() => {
+                      setEditPlan(true);
+                      setPlanInput(String(Math.round(Number(planQuery.data.target))));
+                    }}
+                  >
+                    ✏️ {t("op_detail.plan_change")}
+                  </button>
+                )}
+              </>
+            ) : (
+              <div className="mt-1 flex flex-col gap-2">
+                <div className="text-muted text-[13px]">
+                  {t("op_detail.plan_none")}
+                </div>
+                {isManager && (
+                  <button
+                    className="inline-flex items-center gap-1 self-start text-[13px] font-semibold px-3.5 py-1.5 rounded-full text-white transition hover:opacity-90"
+                    style={{ background: "var(--accent-grad)" }}
                     onClick={() => {
                       setEditPlan(true);
                       setPlanInput("");
                     }}
                   >
-                    {t("op_detail.plan_set")}
+                    ➕ {t("op_detail.plan_set")}
                   </button>
                 )}
               </div>
