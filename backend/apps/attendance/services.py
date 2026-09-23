@@ -571,11 +571,22 @@ def _attendance_check_in(
     # checkout / nightly auto-close. Manager who intentionally paused an
     # operator will need to re-pause after check-in — accepted trade-off
     # for the simple "check-in ⇒ ready for work" mental model.
+    #
+    # 2026-09-23 EXCEPTION: если у оператора сегодня одобренный day-off,
+    # НЕ снимаем паузу — иначе он получит лиды, а менеджер думал что
+    # он в выходной. Пусть сначала попросит менеджера отменить day-off.
     if operator.is_paused:
-        try:
-            operator_set_paused(operator=operator, paused=False, user=None)
-        except Exception:
-            pass
+        from apps.operators.models import DayOffStatus, OperatorDayOff
+        has_approved_day_off = OperatorDayOff.objects.filter(
+            operator=operator,
+            date=timezone.localdate(),
+            status=DayOffStatus.APPROVED,
+        ).exists()
+        if not has_approved_day_off:
+            try:
+                operator_set_paused(operator=operator, paused=False, user=None)
+            except Exception:
+                pass
     transaction.on_commit(
         lambda: _notify_managers_attendance(
             operator=operator, action="check_in", was_late=was_late

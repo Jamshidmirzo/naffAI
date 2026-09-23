@@ -35,6 +35,10 @@ const fmtDate = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
 
 function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function tomorrowISO(): string {
   const d = new Date();
   d.setDate(d.getDate() + 1);
   return d.toISOString().slice(0, 10);
@@ -51,7 +55,7 @@ export default function MyDayOff() {
   const qc = useQueryClient();
   usePageHeader({ title: t("my_day_off.title"), subtitle: t("my_day_off.subtitle") });
 
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useState(tomorrowISO());
   const [reason, setReason] = useState("");
 
   const q = useQuery<{ results: Row[]; count: number }>({

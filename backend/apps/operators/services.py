@@ -810,9 +810,17 @@ def operator_delete(*, operator: Operator, user=None) -> dict:
 
 
 @transaction.atomic
+@transaction.atomic
 def operator_set_paused(*, operator: Operator, paused: bool, user=None) -> Operator:
     """
     Toggle оператора в/из «паузы».
+
+    2026-09-23 CRITICAL: добавлен `@transaction.atomic`, чтобы при вложенном
+    вызове (из auto_close_open_logs / _attendance_check_out /
+    _attendance_check_in / day_off_request_approve) Django создавал
+    savepoint. Без него любая ошибка внутри `save()` отравляла бы всю
+    внешнюю транзакцию, и caller'ы, которые оборачивают этот вызов в
+    try/except, тихо теряли бы ВСЕ свои предыдущие write'ы на выходе.
 
     Пауза — мягкий выкл: оператор перестаёт получать НОВЫЕ лиды через
     любой auto-канал (round-robin / refill / morning-split /
