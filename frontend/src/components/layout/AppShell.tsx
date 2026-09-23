@@ -62,6 +62,7 @@ function useManagerGroups(
       title: t("sidebar.team"),
       items: [
         { to: "/operators", label: t("nav.operators") },
+        { to: "/operators/day-off", label: t("nav.day_off_admin") },
         // 2026-08-31: nav.payroll теперь ведёт на новый attendance-based
         // «Зарплата» (/attendance/payroll). Старый sales-bonus payroll
         // (/payroll) остаётся доступным по прямому URL, но убран из nav —
@@ -130,6 +131,7 @@ function useOperatorGroups(t: (k: string) => string): SidebarGroup[] {
         // PIN не требуется — backend фильтрует по profile.operator.
         { to: "/my/payroll", label: t("nav.my_payroll") },
         { to: "/my/sales", label: t("nav.my_sales") },
+        { to: "/my/day-off", label: t("nav.my_day_off") },
         { to: "/profile", label: t("nav.profile") },
       ],
     },

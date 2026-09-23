@@ -37,6 +37,8 @@ import PayrollReport from "./pages/PayrollReport";
 import AttendanceSettings from "./pages/AttendanceSettings";
 import MyPayroll from "./pages/MyPayroll";
 import MySales from "./pages/MySales";
+import MyDayOff from "./pages/MyDayOff";
+import DayOffRequests from "./pages/DayOffRequests";
 import Placeholder from "./pages/Placeholder";
 import Notifications from "./pages/Notifications";
 import SalesToday from "./pages/SalesToday";
@@ -164,6 +166,8 @@ export default function App() {
               фильтрует по profile.operator). */}
           <Route path="/my/payroll" element={<RoleGate allow={["operator"]}><MyPayroll /></RoleGate>} />
           <Route path="/my/sales" element={<RoleGate allow={["operator"]}><MySales /></RoleGate>} />
+          <Route path="/my/day-off" element={<RoleGate allow={["operator"]}><MyDayOff /></RoleGate>} />
+          <Route path="/operators/day-off" element={<RoleGate allow={["manager"]}><DayOffRequests /></RoleGate>} />
           <Route path="/settings/attendance" element={<RoleGate allow={["manager"]}><PinGate><AttendanceSettings /></PinGate></RoleGate>} />
         </Route>
       </Routes>
