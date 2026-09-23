@@ -16,6 +16,7 @@ from django.db import transaction
 from django.core.files.base import ContentFile
 
 from apps.operators.models import Operator
+from apps.operators.services import operator_set_paused
 from apps.users.models import Profile
 from apps.audit.services import audit_log_create
 from .models import OperatorQr, AttendanceLog, AttendanceSettings
@@ -566,6 +567,15 @@ def _attendance_check_in(
             "has_photo": bool(photo_bytes),
         },
     )
+    # Auto-unpause on check-in: undo the auto-pause set by the previous
+    # checkout / nightly auto-close. Manager who intentionally paused an
+    # operator will need to re-pause after check-in — accepted trade-off
+    # for the simple "check-in ⇒ ready for work" mental model.
+    if operator.is_paused:
+        try:
+            operator_set_paused(operator=operator, paused=False, user=None)
+        except Exception:
+            pass
     transaction.on_commit(
         lambda: _notify_managers_attendance(
             operator=operator, action="check_in", was_late=was_late
@@ -636,6 +646,12 @@ def _attendance_check_out(
 
     duration_min = int((now - log.checked_in_at).total_seconds() / 60)
     op_ref = log.operator
+    # Auto-pause on checkout: no new leads should flow to an operator who
+    # ended their shift. Cleared on next check-in.
+    try:
+        operator_set_paused(operator=op_ref, paused=True, user=None)
+    except Exception:
+        pass
     transaction.on_commit(
         lambda: _notify_managers_attendance(
             operator=op_ref, action="check_out", duration_min=duration_min
@@ -665,7 +681,23 @@ def auto_close_open_logs(*, at: dt.datetime | None = None) -> int:
     if token_keys:
         Token.objects.filter(key__in=token_keys).delete()
 
+    # Snapshot which operators were on shift BEFORE the update — we need
+    # to auto-pause them once the shift is force-closed so the next-day
+    # RR doesn't hand them fresh leads until they check in again.
+    op_ids = list(open_logs.values_list("operator_id", flat=True).distinct())
+
     open_logs.update(checked_out_at=target_time, auto_closed=True)
+
+    # Auto-pause each closed operator. Best-effort — a single failure
+    # (e.g. operator row deleted mid-flight) must not abort the batch.
+    for op_id in op_ids:
+        if op_id is None:
+            continue
+        try:
+            op = Operator.objects.get(pk=op_id)
+            operator_set_paused(operator=op, paused=True, user=None)
+        except Exception:
+            pass
     return count
 
 

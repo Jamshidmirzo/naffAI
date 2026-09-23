@@ -174,6 +174,38 @@ services:
           python manage.py send_daily_manager_report || echo "daily_report rc=$$?"
         done
 
+  # Auto-close all open attendance logs every day at 22:00 Asia/Tashkent
+  # (= 17:00 UTC). Anyone who forgot to `/checkout` gets their shift
+  # force-closed AND auto-paused so overnight RR doesn't dump leads on
+  # them. Command is `attendance_auto_close` (backend/apps/attendance).
+  attendance-auto-close:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          now_epoch=$$(date -u +%s)
+          today_target=$$(date -u -d 'today 17:00' +%s 2>/dev/null || python -c "import datetime,calendar; d=datetime.datetime.utcnow().replace(hour=17,minute=0,second=0,microsecond=0); print(calendar.timegm(d.timetuple()))")
+          if [ "$$now_epoch" -ge "$$today_target" ]; then
+            tomorrow_target=$$((today_target + 86400))
+            sleep_sec=$$((tomorrow_target - now_epoch))
+          else
+            sleep_sec=$$((today_target - now_epoch))
+          fi
+          echo "[$$(date +%FT%T%z)] attendance-auto-close sleep $$sleep_sec s (until 22:00 Tashkent)"
+          sleep "$$sleep_sec"
+          echo "[$$(date +%FT%T%z)] attendance_auto_close"
+          python manage.py attendance_auto_close || echo "attendance_auto_close rc=$$?"
+        done
+
   # Daily lessons — generate yesterday's summary for every operator
   # once per calendar day (loop sleeps 6h between passes; the command
   # itself is idempotent — skips operators that already have a lesson
