@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from apps.audit.services import AuditAction, audit_diff, audit_log_create
 
-from .models import Operator, OperatorMonthlyPlan, OperatorStatus
+from .models import DayOffStatus, Operator, OperatorDayOff, OperatorMonthlyPlan, OperatorStatus
 
 
 @transaction.atomic
@@ -953,3 +953,250 @@ def operator_plan_upsert(*, operator: Operator, year: int, month: int, target_am
         changes={"year": str(year), "month": str(month), "target_amount": str(target_amount)},
     )
     return plan
+
+
+# ---------------------------------------------------------------------------
+# Day-off requests: заявки на разовый выходной (не еженедельный).
+#
+# Оператор создаёт заявку через /operators/day-off/, менеджер видит её
+# в /operators/day-off/pending/ с полным контекстом (когда последний
+# раз брал выходной, сколько операторов на этот же день уже одобрены,
+# показатели за 7 дней) и принимает решение. При approve — cron ставит
+# is_paused=True в 00:05 нужного дня; на следующий check-in оператор
+# автоматически снимается с паузы (см. _attendance_check_in).
+# ---------------------------------------------------------------------------
+
+_DAY_OFF_MAX_FUTURE_DAYS = 60
+
+
+def _validate_day_off_date(date_value):
+    import datetime as _dt
+    if isinstance(date_value, str):
+        try:
+            date_value = _dt.date.fromisoformat(date_value)
+        except ValueError:
+            from apps.common.exceptions import ApplicationError
+            raise ApplicationError("Некорректный формат даты, ожидается YYYY-MM-DD", {"field": "date"})
+    if not isinstance(date_value, _dt.date):
+        from apps.common.exceptions import ApplicationError
+        raise ApplicationError("Дата обязательна", {"field": "date"})
+    today = timezone.localdate()
+    if date_value < today:
+        from apps.common.exceptions import ApplicationError
+        raise ApplicationError("Дата выходного не может быть в прошлом", {"field": "date"})
+    if (date_value - today).days > _DAY_OFF_MAX_FUTURE_DAYS:
+        from apps.common.exceptions import ApplicationError
+        raise ApplicationError(
+            f"Выходной можно запросить максимум на {_DAY_OFF_MAX_FUTURE_DAYS} дней вперёд",
+            {"field": "date"},
+        )
+    return date_value
+
+
+@transaction.atomic
+def day_off_request_create(
+    *,
+    operator: Operator,
+    date,
+    reason: str = "",
+    requested_by=None,
+) -> OperatorDayOff:
+    """
+    Создать заявку на выходной. Дублирующая активная заявка (pending/approved)
+    на ту же дату блокируется UniqueConstraint.
+    """
+    date = _validate_day_off_date(date)
+    from apps.common.exceptions import ApplicationError
+
+    existing = OperatorDayOff.objects.filter(
+        operator=operator, date=date
+    ).exclude(status=DayOffStatus.REJECTED).first()
+    if existing:
+        raise ApplicationError(
+            f"Заявка на {date.isoformat()} уже существует (статус: {existing.status})",
+            {"field": "date"},
+        )
+
+    req = OperatorDayOff.objects.create(
+        operator=operator,
+        date=date,
+        reason=(reason or "").strip()[:2000],
+        status=DayOffStatus.PENDING,
+        requested_by=requested_by if requested_by and getattr(requested_by, "is_authenticated", False) else None,
+    )
+    audit_log_create(
+        user=requested_by,
+        action=AuditAction.CREATE,
+        entity="operators.OperatorDayOff",
+        entity_id=req.id,
+        changes={"operator_id": operator.id, "date": date.isoformat(), "reason": req.reason[:120]},
+    )
+    return req
+
+
+@transaction.atomic
+def day_off_request_approve(
+    *,
+    request: OperatorDayOff,
+    decided_by,
+    note: str = "",
+) -> OperatorDayOff:
+    """Одобрить заявку. Если date == сегодня — сразу пауза оператору."""
+    from apps.common.exceptions import ApplicationError
+    if request.status != DayOffStatus.PENDING:
+        raise ApplicationError(
+            f"Заявка уже в статусе {request.status}, повторное решение не допускается",
+            {"field": "status"},
+        )
+    request.status = DayOffStatus.APPROVED
+    request.decided_by = decided_by if decided_by and getattr(decided_by, "is_authenticated", False) else None
+    request.decided_at = timezone.now()
+    request.decision_note = (note or "").strip()[:2000]
+    request.save(update_fields=["status", "decided_by", "decided_at", "decision_note", "updated_at"])
+
+    audit_log_create(
+        user=decided_by,
+        action=AuditAction.UPDATE,
+        entity="operators.OperatorDayOff",
+        entity_id=request.id,
+        changes={"status": f"pending → approved", "date": request.date.isoformat()},
+        comment=request.decision_note[:120],
+    )
+
+    # Если выходной на сегодня — паузим прямо сейчас. Иначе cron
+    # attendance_apply_day_offs в 00:05 нужного дня поставит паузу.
+    if request.date == timezone.localdate():
+        try:
+            operator_set_paused(operator=request.operator, paused=True, user=decided_by)
+        except Exception:
+            pass
+
+    return request
+
+
+@transaction.atomic
+def day_off_request_reject(
+    *,
+    request: OperatorDayOff,
+    decided_by,
+    note: str,
+) -> OperatorDayOff:
+    """Отклонить. Note обязательна (min 3 символа) чтобы менеджер объяснил."""
+    from apps.common.exceptions import ApplicationError
+    if request.status != DayOffStatus.PENDING:
+        raise ApplicationError(
+            f"Заявка уже в статусе {request.status}",
+            {"field": "status"},
+        )
+    note = (note or "").strip()
+    if len(note) < 3:
+        raise ApplicationError(
+            "Причина отклонения обязательна (минимум 3 символа)",
+            {"field": "note"},
+        )
+    request.status = DayOffStatus.REJECTED
+    request.decided_by = decided_by if decided_by and getattr(decided_by, "is_authenticated", False) else None
+    request.decided_at = timezone.now()
+    request.decision_note = note[:2000]
+    request.save(update_fields=["status", "decided_by", "decided_at", "decision_note", "updated_at"])
+
+    audit_log_create(
+        user=decided_by,
+        action=AuditAction.UPDATE,
+        entity="operators.OperatorDayOff",
+        entity_id=request.id,
+        changes={"status": f"pending → rejected", "date": request.date.isoformat()},
+        comment=note[:120],
+    )
+    return request
+
+
+def day_off_context(*, operator: Operator, date, exclude_request_id: int | None = None) -> dict:
+    """
+    Данные для карточки решения менеджера. Возвращает:
+      - last_day_off: последний APPROVED day-off этого оператора (ISO date | None)
+      - others_on_date: сколько других операторов APPROVED на ту же date
+      - recent: {sales_7d_count, sales_7d_total, leads_7d_touched, calls_7d_total}
+    """
+    import datetime as _dt
+    if isinstance(date, str):
+        date = _dt.date.fromisoformat(date)
+
+    q = OperatorDayOff.objects.filter(
+        operator=operator, status=DayOffStatus.APPROVED, date__lt=date
+    )
+    if exclude_request_id:
+        q = q.exclude(id=exclude_request_id)
+    last = q.order_by("-date").values_list("date", flat=True).first()
+
+    others_q = OperatorDayOff.objects.filter(
+        date=date, status=DayOffStatus.APPROVED
+    ).exclude(operator_id=operator.id)
+    if exclude_request_id:
+        others_q = others_q.exclude(id=exclude_request_id)
+    others_count = others_q.count()
+
+    today = timezone.localdate()
+    week_ago = today - _dt.timedelta(days=7)
+
+    sales_agg = {"total": "0", "count": 0}
+    try:
+        from apps.sales.selectors import operator_sales_aggregate
+        # operator_sales_aggregate ждёт datetime, а не date — обёртка:
+        tz = timezone.get_current_timezone()
+        d0 = _dt.datetime.combine(week_ago, _dt.time.min, tzinfo=tz)
+        d1 = _dt.datetime.combine(today, _dt.time.max, tzinfo=tz)
+        agg = operator_sales_aggregate(operator_id=operator.id, date_from=d0, date_to=d1) or {}
+        sales_agg = {"total": str(agg.get("total") or "0"), "count": int(agg.get("count") or 0)}
+    except Exception:
+        pass
+
+    activity = {"leads_touched": 0, "calls_total": 0}
+    try:
+        from apps.calls.selectors import operator_activity_report
+        report = operator_activity_report(
+            date_from=week_ago, date_to=today, operator_ids=[operator.id],
+        ) or {}
+        rows = report.get("rows") or []
+        if rows:
+            r = rows[0]
+            activity = {
+                "leads_touched": int(r.get("unique_leads_touched") or 0),
+                "calls_total": int(r.get("calls_total") or 0),
+            }
+    except Exception:
+        pass
+
+    return {
+        "last_day_off": last.isoformat() if last else None,
+        "others_on_date": others_count,
+        "recent": {
+            "sales_7d_count": sales_agg["count"],
+            "sales_7d_total": sales_agg["total"],
+            "leads_7d_touched": activity["leads_touched"],
+            "calls_7d_total": activity["calls_total"],
+        },
+    }
+
+
+def day_offs_apply_for_today() -> int:
+    """
+    Ставит is_paused=True всем операторам с одобренным day-off на сегодня.
+    Идемпотентно. Возвращает сколько операторов реально было пауcнуто
+    (без учёта тех, кто уже был paused). Вызывается cron-командой.
+    """
+    today = timezone.localdate()
+    reqs = OperatorDayOff.objects.filter(
+        date=today, status=DayOffStatus.APPROVED
+    ).select_related("operator")
+    count = 0
+    for r in reqs:
+        op = r.operator
+        if not op or op.is_paused:
+            continue
+        try:
+            operator_set_paused(operator=op, paused=True, user=None)
+            count += 1
+        except Exception:
+            pass
+    return count

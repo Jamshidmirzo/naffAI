@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
@@ -256,3 +257,65 @@ class OperatorMonthlyPlan(TimestampedModel):
 
     class Meta:
         unique_together = ("operator", "year", "month")
+
+
+class DayOffStatus(models.TextChoices):
+    PENDING = "pending", "На рассмотрении"
+    APPROVED = "approved", "Одобрен"
+    REJECTED = "rejected", "Отклонён"
+
+
+class OperatorDayOff(TimestampedModel):
+    """
+    Заявка оператора на выходной в конкретную дату. Отдельно от
+    еженедельного `weekly_day_off` — тут разовая договорённость.
+
+    Флоу:
+      pending → менеджер approve/reject
+      approved → cron `attendance_apply_day_offs` в 00:05 ставит
+        оператору is_paused=True на этот день; следующий check-in
+        снимает паузу автоматически (см. _attendance_check_in).
+      rejected → просто хранится в истории, можно переспросить
+        (UniqueConstraint исключает rejected из уникальности).
+    """
+    operator = models.ForeignKey(
+        Operator, on_delete=models.CASCADE, related_name="day_offs"
+    )
+    date = models.DateField(db_index=True)
+    status = models.CharField(
+        max_length=16,
+        choices=DayOffStatus.choices,
+        default=DayOffStatus.PENDING,
+    )
+    reason = models.TextField(blank=True, default="")
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decision_note = models.TextField(blank=True, default="")
+
+    class Meta:
+        constraints = [
+            # Один активный (pending или approved) запрос на пару
+            # operator+date; rejected'ы не мешают переспросить.
+            models.UniqueConstraint(
+                fields=["operator", "date"],
+                condition=~models.Q(status="rejected"),
+                name="uniq_operator_day_off_active",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "date"]),
+        ]
+
+    def __str__(self):
+        return f"{self.operator_id} · {self.date} · {self.status}"

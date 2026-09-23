@@ -12,7 +12,7 @@ from apps.analytics.selectors import resolve_period
 from apps.users.permissions import IsTeamLead, IsTeamLeadOrManagerReadOnly
 from apps.users.selectors import account_state, user_by_operator
 
-from .models import Operator
+from .models import DayOffStatus, Operator, OperatorDayOff
 from .permissions import IsDestructiveActionPinVerified
 from .selectors import (
     operator_achievements,
@@ -23,6 +23,10 @@ from .selectors import (
     operators_with_birthday_today_public,
 )
 from .services import (
+    day_off_context,
+    day_off_request_approve,
+    day_off_request_create,
+    day_off_request_reject,
     operator_create,
     operator_deactivate,
     operator_delete,
@@ -32,6 +36,7 @@ from .services import (
     operator_set_paused,
     operator_update,
 )
+from apps.common.exceptions import ApplicationError
 
 
 class OperatorSerializer(serializers.ModelSerializer):
@@ -442,3 +447,175 @@ class OperatorsBirthdayTodayApi(APIView):
 
     def get(self, request):
         return Response(operators_with_birthday_today_public())
+
+
+# ---------------------------------------------------------------------------
+# Day-off requests API
+# ---------------------------------------------------------------------------
+
+
+class DayOffRequestSerializer(serializers.ModelSerializer):
+    operator_id = serializers.IntegerField(source="operator.id", read_only=True)
+    operator_name = serializers.CharField(source="operator.full_name", read_only=True)
+    decided_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OperatorDayOff
+        fields = [
+            "id", "operator_id", "operator_name", "date", "status",
+            "reason", "decision_note", "decided_at", "decided_by_name",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_decided_by_name(self, obj):
+        if not obj.decided_by_id:
+            return None
+        u = obj.decided_by
+        return (u.get_full_name() or u.username or "").strip() or None
+
+
+class DayOffCreateInputSerializer(serializers.Serializer):
+    operator_id = serializers.IntegerField(required=False, allow_null=True)
+    date = serializers.DateField()
+    reason = serializers.CharField(required=False, allow_blank=True, default="", max_length=2000)
+
+
+class DayOffDecideInputSerializer(serializers.Serializer):
+    note = serializers.CharField(required=False, allow_blank=True, default="", max_length=2000)
+
+
+def _profile_role(user):
+    profile = getattr(user, "profile", None)
+    return getattr(profile, "role", None) if profile else None
+
+
+def _profile_operator_id(user):
+    profile = getattr(user, "profile", None)
+    return getattr(profile, "operator_id", None) if profile else None
+
+
+def _is_manager(user):
+    role = _profile_role(user)
+    return role in ("manager", "team_lead", "superadmin")
+
+
+class DayOffCreateApi(APIView):
+    """POST /operators/day-off/ — создать заявку на выходной."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        ser = DayOffCreateInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        v = ser.validated_data
+        target_op_id = v.get("operator_id")
+        if _is_manager(request.user):
+            if not target_op_id:
+                return Response({"detail": "operator_id обязателен для менеджера"}, status=400)
+            op = operator_get(target_op_id)
+            if not op:
+                return Response({"detail": "Оператор не найден"}, status=404)
+        else:
+            my_op_id = _profile_operator_id(request.user)
+            if not my_op_id:
+                return Response({"detail": "Пользователь не привязан к оператору"}, status=400)
+            if target_op_id and target_op_id != my_op_id:
+                return Response({"detail": "Нельзя создать заявку от имени другого оператора"}, status=403)
+            op = operator_get(my_op_id)
+            if not op:
+                return Response({"detail": "Оператор не найден"}, status=404)
+        try:
+            req = day_off_request_create(
+                operator=op, date=v["date"], reason=v.get("reason") or "",
+                requested_by=request.user,
+            )
+        except ApplicationError as exc:
+            return Response({"detail": exc.message, **exc.extra}, status=400)
+        return Response(DayOffRequestSerializer(req).data, status=201)
+
+
+class MyDayOffListApi(APIView):
+    """GET /my/day-off/ — свои заявки (для оператора)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        my_op_id = _profile_operator_id(request.user)
+        if not my_op_id:
+            return Response({"results": [], "count": 0})
+        qs = (
+            OperatorDayOff.objects
+            .filter(operator_id=my_op_id)
+            .select_related("operator", "decided_by")
+            .order_by("-date", "-created_at")[:100]
+        )
+        rows = DayOffRequestSerializer(qs, many=True).data
+        return Response({"results": rows, "count": len(rows)})
+
+
+class DayOffPendingListApi(APIView):
+    """GET /operators/day-off/pending/ — pending-заявки для менеджера."""
+    permission_classes = [IsTeamLead]
+
+    def get(self, request):
+        qs = (
+            OperatorDayOff.objects
+            .filter(status=DayOffStatus.PENDING)
+            .select_related("operator", "requested_by")
+            .order_by("date", "created_at")
+        )
+        rows = DayOffRequestSerializer(qs, many=True).data
+        return Response({"results": rows, "count": len(rows)})
+
+
+class DayOffContextApi(APIView):
+    """GET /operators/day-off/{pk}/context/ — контекст для решения."""
+    permission_classes = [IsTeamLead]
+
+    def get(self, request, pk: int):
+        req = OperatorDayOff.objects.select_related("operator").filter(pk=pk).first()
+        if not req:
+            return Response({"detail": "Not found"}, status=404)
+        ctx = day_off_context(
+            operator=req.operator, date=req.date, exclude_request_id=req.id,
+        )
+        payload = DayOffRequestSerializer(req).data
+        payload["context"] = ctx
+        return Response(payload)
+
+
+class DayOffApproveApi(APIView):
+    """POST /operators/day-off/{pk}/approve/"""
+    permission_classes = [IsTeamLead]
+
+    def post(self, request, pk: int):
+        req = OperatorDayOff.objects.select_related("operator").filter(pk=pk).first()
+        if not req:
+            return Response({"detail": "Not found"}, status=404)
+        ser = DayOffDecideInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            req = day_off_request_approve(
+                request=req, decided_by=request.user, note=ser.validated_data.get("note") or "",
+            )
+        except ApplicationError as exc:
+            return Response({"detail": exc.message, **exc.extra}, status=400)
+        return Response(DayOffRequestSerializer(req).data)
+
+
+class DayOffRejectApi(APIView):
+    """POST /operators/day-off/{pk}/reject/  (note обязательна)."""
+    permission_classes = [IsTeamLead]
+
+    def post(self, request, pk: int):
+        req = OperatorDayOff.objects.select_related("operator").filter(pk=pk).first()
+        if not req:
+            return Response({"detail": "Not found"}, status=404)
+        ser = DayOffDecideInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            req = day_off_request_reject(
+                request=req, decided_by=request.user, note=ser.validated_data.get("note") or "",
+            )
+        except ApplicationError as exc:
+            return Response({"detail": exc.message, **exc.extra}, status=400)
+        return Response(DayOffRequestSerializer(req).data)
