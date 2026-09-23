@@ -68,10 +68,16 @@ def installment_rows(phone: PhoneModel) -> list[dict]:
 
 
 def build_phone_quote(phone: PhoneModel, language: str = "uz") -> str:
+    """
+    "Text-only" copy for chat — phone info without installment/rassrochka
+    block. Marketing card (build_marketing_text) is the one that has the
+    installments layout. This one is optimised for sending straight to a
+    client: header + full specs + description + contact line.
+    """
     lang = language or "uz"
     lines: list[str] = []
-    lines.append(f"📱 <b>{phone.brand} {phone.model_name}</b>".replace("<b>", "").replace("</b>", ""))
-    # Config line
+    lines.append(f"📱 {phone.brand} {phone.model_name}")
+    # Config line (storage + RAM combined)
     cfg_parts: list[str] = []
     if phone.storage_gb:
         cfg_parts.append(f"{phone.storage_gb}GB")
@@ -79,6 +85,24 @@ def build_phone_quote(phone: PhoneModel, language: str = "uz") -> str:
         cfg_parts.append(f"{phone.ram_gb}GB RAM")
     if cfg_parts:
         lines.append(f"💾 {' / '.join(cfg_parts)}")
+
+    # Camera
+    if phone.camera_mp:
+        camera_word = _tr("камера", "kamera", lang)
+        lines.append(f"📸 {phone.camera_mp} MP {camera_word}")
+
+    # Battery
+    if phone.battery_mah:
+        battery_word = _tr("батарея", "batareya", lang)
+        lines.append(f"🔋 {phone.battery_mah} mAh {battery_word}")
+
+    # Extra specs from specs_json — arbitrary key/value pairs (screen size,
+    # chipset, refresh rate, etc). Skip empty values so a partially-filled
+    # card still reads clean.
+    for key, value in (phone.specs_json or {}).items():
+        if value in (None, ""):
+            continue
+        lines.append(f"• {key}: {value}")
 
     # Colors
     color_qs = phone.colors.filter(is_available=True).order_by("sort_order", "name")
@@ -89,19 +113,8 @@ def build_phone_quote(phone: PhoneModel, language: str = "uz") -> str:
     lines.append("")
     lines.append(f"💰 {_tr('Цена', 'Narxi', lang)}: {_fmt_money(phone.price, lang)}")
 
-    rows = installment_rows(phone)
-    if rows:
-        lines.append("")
-        installments_label = _tr("Рассрочка", "Bo'lib-bo'lib to'lash", lang)
-        lines.append(f"📊 {installments_label}:")
-        for r in rows:
-            month_word = _tr("мес", "oy", lang)
-            per_month = _tr("/ мес", "/oy", lang)
-            monthly_fmt = _fmt_money(r["monthly"], lang)
-            lines.append(
-                f"  • {r['bank']} {r['term_months']} {month_word} — {monthly_fmt}{per_month}"
-            )
-
+    # Description (from catalog admin) — extra context for the client.
+    # Stays at the end so specs are the first thing seen.
     if phone.description:
         lines.append("")
         lines.append(phone.description.strip())
