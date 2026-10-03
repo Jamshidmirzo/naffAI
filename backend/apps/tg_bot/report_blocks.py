@@ -33,7 +33,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from django.db.models import Count, Sum
+from django.db.models import Count, Sum, Value
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from apps.sales.models import Sale, SaleOperator, SalePartner
@@ -461,6 +462,57 @@ def render_discount_leakage(start: dt.datetime, end: dt.datetime, language: str)
     return "\n".join(lines)
 
 
+def render_sales_by_sheet_source(
+    start: dt.datetime, end: dt.datetime, language: str
+) -> BlockOutput:
+    """Продажи, сгруппированные по источнику лида (Sheet / реклама).
+
+    Основной ключ — денормализованный ``Sale.sheet_source``;
+    если он не заполнен (старые продажи), падаем в ``Sale.lead.sheet_source``.
+    Если ни того, ни другого нет — агрегируем в бакет «без источника».
+    """
+    unknown = _tr("Без источника", "Manbasiz", language)
+    qs = (
+        _confirmed_sales_qs(start, end)
+        .annotate(
+            source_name=Coalesce(
+                "sheet_source__name",
+                "lead__sheet_source__name",
+                Value(unknown),
+            )
+        )
+        .values("source_name")
+        .annotate(total=Sum("amount"), cnt=Count("id"))
+        .order_by("-total")
+    )
+    rows = list(qs)
+    if not rows:
+        return None
+
+    unit = _tr("сум", "so'm", language)
+    sale_word = _tr("продаж", "ta sotuv", language)
+    header = _tr(
+        "Продажи по источнику (шиту)",
+        "Manba bo'yicha sotuvlar",
+        language,
+    )
+    total_label = _tr("ИТОГО", "JAMI", language)
+
+    lines = [f"📊 <b>{header}:</b>"]
+    grand_total = 0
+    grand_cnt = 0
+    for r in rows:
+        name = r["source_name"] or unknown
+        total = int(r["total"] or 0)
+        cnt = int(r["cnt"] or 0)
+        grand_total += total
+        grand_cnt += cnt
+        lines.append(f"  • <b>{name}</b> — {_fmt_amount_full(total)} {unit} · {cnt} {sale_word}")
+    lines.append("━━━━━━━━━━")
+    lines.append(f"<b>{total_label}:</b> {_fmt_amount_full(grand_total)} {unit} · {grand_cnt} {sale_word}")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Wave 2 — Leads
 # ---------------------------------------------------------------------------
@@ -818,6 +870,14 @@ BLOCKS: dict[str, BlockSpec] = {
         ),
         BlockSpec(
             "discount_leakage", "Скидки", "Chegirmalar", "sales", True, render_discount_leakage
+        ),
+        BlockSpec(
+            "sales_by_sheet_source",
+            "Продажи по источнику (шиту)",
+            "Manba bo'yicha sotuvlar",
+            "sales",
+            False,
+            render_sales_by_sheet_source,
         ),
         # Leads
         BlockSpec(
