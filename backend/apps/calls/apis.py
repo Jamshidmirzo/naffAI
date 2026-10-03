@@ -209,15 +209,17 @@ class CallbackMineDueApi(APIView):
     Query param `window` (seconds) defaults to 60.
     """
 
-    permission_classes = [IsOperator]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         profile = getattr(request.user, "profile", None)
         if not profile or not profile.operator_id:
-            return Response({"detail": "У пользователя не привязан оператор"}, status=400)
+            # Managers / superadmins have no operator profile — return empty
+            # payload so the front-end callback watcher stops showing 403 errors.
+            return Response({"count": 0, "results": []})
         op = operator_get(profile.operator_id)
         if not op:
-            return Response({"detail": "Оператор не найден"}, status=404)
+            return Response({"count": 0, "results": []})
         try:
             window = max(0, int(request.query_params.get("window", "60")))
         except ValueError:
