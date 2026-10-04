@@ -646,21 +646,21 @@ async def main() -> None:
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        "📅 Bugun" if lang == "uz" else "📅 Сегодня",
+                        text="📅 Bugun" if lang == "uz" else "📅 Сегодня",
                         callback_data="smm_period:today",
                     ),
                     InlineKeyboardButton(
-                        "📆 Kecha" if lang == "uz" else "📆 Вчера",
+                        text="📆 Kecha" if lang == "uz" else "📆 Вчера",
                         callback_data="smm_period:yesterday",
                     ),
                 ],
                 [
                     InlineKeyboardButton(
-                        "📊 Hafta" if lang == "uz" else "📊 Неделя",
+                        text="📊 Hafta" if lang == "uz" else "📊 Неделя",
                         callback_data="smm_period:week",
                     ),
                     InlineKeyboardButton(
-                        "📈 Oy" if lang == "uz" else "📈 Месяц",
+                        text="📈 Oy" if lang == "uz" else "📈 Месяц",
                         callback_data="smm_period:month",
                     ),
                 ],
