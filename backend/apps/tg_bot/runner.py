@@ -607,25 +607,14 @@ async def main() -> None:
     async def cmd_report(msg: Message, **data) -> None:
         """
         /report command:
-        For SMM, manager, and superadmin users, present inline period picker.
-        Also supports legacy `/report <preset>` if arguments are given by managers.
+        Presents inline period picker for on-demand sales report.
+        Supports `/report <preset>` if argument is given.
         """
         lang = await lang_for(msg)
-        role = data.get("bot_role", "any")
-        if role not in ("smm", "manager", "superadmin"):
-            deny_msg = (
-                "Sizda bu buyruqni ishlatish uchun huquq yo'q."
-                if lang == "uz"
-                else "У вас нет прав для использования этой команды."
-            )
-            await msg.answer(deny_msg)
-            return
-
         parts = (msg.text or "").split(maxsplit=1)
         arg = parts[1].strip().lower() if len(parts) > 1 else ""
 
-        # If preset argument provided by manager/superadmin, run legacy/preset renderer
-        if arg and role in ("manager", "superadmin"):
+        if arg:
             if arg == "legacy":
                 text = await asyncio.to_thread(build_daily_report, None, lang)
                 await msg.answer(text, parse_mode="Markdown")
@@ -671,13 +660,6 @@ async def main() -> None:
     @dp.callback_query(F.data.startswith("smm_period:"))
     async def cb_smm_period(cb: CallbackQuery, **data) -> None:
         lang = await lang_for(cb)
-        role = data.get("bot_role", "any")
-        if role not in ("smm", "manager", "superadmin"):
-            await cb.answer(
-                "Ruxsat yo'q" if lang == "uz" else "Нет доступа", show_alert=True
-            )
-            return
-
         period = cb.data.removeprefix("smm_period:")
         from apps.tg_bot.report_blocks import get_period_range, render_sales_by_sheet_source
 
