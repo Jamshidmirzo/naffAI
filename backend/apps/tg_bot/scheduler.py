@@ -79,13 +79,18 @@ async def dispatch_report(bot, report: BotReport, mark_sent: bool = True) -> dic
             failed += 1
             continue
         try:
-            await bot.send_message(
-                chat.chat_id,
-                rendered.html,
-                parse_mode="HTML",
-                disable_web_page_preview=True,
-                reply_markup=_build_kb(rendered),
-            )
+            from .selectors import chunk_html_for_telegram
+
+            chunks = chunk_html_for_telegram(rendered.html)
+            for i, chunk_text in enumerate(chunks):
+                kb = _build_kb(rendered) if i == len(chunks) - 1 else None
+                await bot.send_message(
+                    chat.chat_id,
+                    chunk_text,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True,
+                    reply_markup=kb,
+                )
             sent += 1
             sent_chats.append(chat.chat_id)
             await sync_to_async(_write_audit)(chat, report, outcome="scheduled_sent")
@@ -125,13 +130,18 @@ async def dispatch_report_to_chat(bot, report: BotReport, chat: BotChat) -> dict
     except Exception as exc:
         return {"ok": False, "detail": f"render failed: {exc}"}
     try:
-        await bot.send_message(
-            chat.chat_id,
-            rendered.html,
-            parse_mode="HTML",
-            disable_web_page_preview=True,
-            reply_markup=_build_kb(rendered),
-        )
+        from .selectors import chunk_html_for_telegram
+
+        chunks = chunk_html_for_telegram(rendered.html)
+        for i, chunk_text in enumerate(chunks):
+            kb = _build_kb(rendered) if i == len(chunks) - 1 else None
+            await bot.send_message(
+                chat.chat_id,
+                chunk_text,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+                reply_markup=kb,
+            )
         await sync_to_async(_write_audit)(chat, report, outcome="scheduled_sent")
         return {"ok": True}
     except TelegramForbiddenError:

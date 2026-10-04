@@ -76,8 +76,8 @@ def _seed_two_sales(db, operator, channel):
 
 
 def test_registry_has_23_blocks():
-    """Wave 1+2 = 9 (existing) + 14 (new). Regression guard."""
-    assert len(BLOCKS) == 23
+    """Wave 1+2+3 blocks count assertion guard."""
+    assert len(BLOCKS) == 24
 
 
 def test_sensitive_set_is_exactly_the_expected_slugs():
@@ -524,3 +524,41 @@ def test_ondemand_find_empty(db):
 
     out = _ondemand_find("никогонетxyz")
     assert "ничего не найдено" in out
+
+
+def test_mask_phone_utility():
+    from apps.tg_bot.report_blocks import _mask_phone
+
+    assert _mask_phone("+998909421068") == "+9989094…1068"
+    assert _mask_phone("+998901234567") == "+9989012…4567"
+    assert _mask_phone("") == ""
+
+
+@pytest.mark.django_db
+def test_render_sales_by_sheet_source_details(db, operator, channel):
+    import datetime as dt
+    from apps.leads.models import SheetSource
+    from apps.sales.models import Sale
+    from apps.tg_bot.report_blocks import render_sales_by_sheet_source
+    from django.utils import timezone
+
+    src = SheetSource.objects.create(name="instagram", gid=0)
+    now = timezone.now()
+    start = now - dt.timedelta(days=1)
+    end = now + dt.timedelta(days=1)
+
+    Sale.objects.create(
+        phone_model="iPhone 15 Pro",
+        amount=10500000,
+        operator=operator,
+        channel=channel,
+        sheet_source=src,
+        client_phone="+998901234567",
+        sold_at=now,
+        status="confirmed",
+    )
+
+    out = render_sales_by_sheet_source(start, end, "uz")
+    assert "instagram" in out
+    assert "iPhone 15 Pro" in out
+    assert "+9989012…4567" in out

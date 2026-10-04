@@ -20,6 +20,7 @@ class Role(models.TextChoices):
     TEAM_LEAD = "team_lead", "Тимлид"
     MANAGER = "manager", "Менеджер"
     OPERATOR = "operator", "Оператор"
+    SMM = "smm", "SMM"
     # Внутренняя роль «супер-админ» — расширенный менеджер: имеет
     # ВСЕ права manager/team_lead + доступ к галерее фото
     # attendance по всем операторам. В UI отображается как менеджер

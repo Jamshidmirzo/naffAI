@@ -33,7 +33,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from django.db.models import Count, Sum, Value
+from django.db.models import Count, Q, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -462,6 +462,17 @@ def render_discount_leakage(start: dt.datetime, end: dt.datetime, language: str)
     return "\n".join(lines)
 
 
+def _mask_phone(phone: str) -> str:
+    if not phone:
+        return ""
+    p = phone.strip()
+    if p.startswith("+998") and len(p) >= 12:
+        return f"{p[:8]}…{p[-4:]}"
+    elif len(p) > 7:
+        return f"{p[:4]}…{p[-3:]}"
+    return p
+
+
 def render_sales_by_sheet_source(
     start: dt.datetime, end: dt.datetime, language: str
 ) -> BlockOutput:
@@ -490,26 +501,95 @@ def render_sales_by_sheet_source(
         return None
 
     unit = _tr("сум", "so'm", language)
-    sale_word = _tr("продаж", "ta sotuv", language)
-    header = _tr(
-        "Продажи по источнику (шиту)",
-        "Manba bo'yicha sotuvlar",
-        language,
+    sale_word = _tr("та", "ta", language) if language == "uz" else _tr("продаж", "ta", language)
+    header = (
+        _tr("Manba bo'yicha sotuvlar", "Manba bo'yicha sotuvlar", language)
+        if language == "uz"
+        else _tr("Продажи по источнику", "Manba bo'yicha sotuvlar", language)
     )
     total_label = _tr("ИТОГО", "JAMI", language)
 
-    lines = [f"📊 <b>{header}:</b>"]
+    # Determine period label suffix (e.g. " — oktyabr 2026")
+    start_local = timezone.localtime(start)
+    end_local = timezone.localtime(end)
+    month_names_uz = [
+        "", "yanvar", "fevral", "mart", "aprel", "may", "iyun",
+        "iyul", "avgust", "sentabr", "oktyabr", "noyabr", "dekabr"
+    ]
+    month_names_ru = [
+        "", "январь", "февраль", "март", "апрель", "май", "июнь",
+        "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"
+    ]
+
+    if start_local.month == (end_local - dt.timedelta(seconds=1)).month:
+        m_name = (
+            month_names_uz[start_local.month]
+            if language == "uz"
+            else month_names_ru[start_local.month]
+        )
+        period_suffix = f" — {m_name} {start_local.year}"
+    else:
+        period_suffix = f" ({start_local.strftime('%d.%m')} – {end_local.strftime('%d.%m')})"
+
+    lines = [f"📊 <b>{header}{period_suffix}:</b>", ""]
     grand_total = 0
     grand_cnt = 0
+
     for r in rows:
         name = r["source_name"] or unknown
         total = int(r["total"] or 0)
         cnt = int(r["cnt"] or 0)
         grand_total += total
         grand_cnt += cnt
-        lines.append(f"  • <b>{name}</b> — {_fmt_amount_full(total)} {unit} · {cnt} {sale_word}")
+
+        lines.append(f"📍 <b>{name}</b> — {_fmt_amount_full(total)} {unit} · {cnt} {sale_word}")
+
+        # Fetch top 20 individual sales for this source
+        if name == unknown:
+            sales_qs = _confirmed_sales_qs(start, end).filter(
+                sheet_source__isnull=True, lead__sheet_source__isnull=True
+            )
+        else:
+            sales_qs = _confirmed_sales_qs(start, end).filter(
+                Q(sheet_source__name=name) | Q(lead__sheet_source__name=name)
+            )
+
+        sales = list(sales_qs.select_related("operator").order_by("-sold_at")[:20])
+
+        for idx, sale in enumerate(sales, start=1):
+            phone_model = sale.phone_model or "—"
+            amount_str = _fmt_amount_full(sale.amount)
+            op_name = (
+                sale.operator.full_name.split()[0]
+                if (sale.operator and sale.operator.full_name)
+                else ""
+            )
+            phone_masked = _mask_phone(sale.client_phone)
+            dt_local = timezone.localtime(sale.sold_at) if sale.sold_at else None
+            dt_str = dt_local.strftime("%d.%m") if dt_local else ""
+
+            details = []
+            if op_name:
+                details.append(op_name)
+            if phone_masked:
+                details.append(phone_masked)
+            if dt_str:
+                details.append(dt_str)
+
+            det_formatted = f" ({', '.join(details)})" if details else ""
+            lines.append(f"   {idx}. {phone_model} — {amount_str}{det_formatted}")
+
+        if cnt > len(sales):
+            more = cnt - len(sales)
+            more_text = _tr(f"… и ещё {more} продаж", f"… va yana {more} ta sotuv", language)
+            lines.append(f"   ↳ {more_text}")
+
+        lines.append("")
+
     lines.append("━━━━━━━━━━")
-    lines.append(f"<b>{total_label}:</b> {_fmt_amount_full(grand_total)} {unit} · {grand_cnt} {sale_word}")
+    lines.append(
+        f"<b>{total_label}:</b> {_fmt_amount_full(grand_total)} {unit} · {grand_cnt} {sale_word}"
+    )
     return "\n".join(lines)
 
 

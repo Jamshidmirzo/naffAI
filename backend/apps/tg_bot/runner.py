@@ -406,7 +406,7 @@ async def main() -> None:
         )
 
     @dp.message(CommandStart())
-    async def cmd_start(msg: Message, state: FSMContext) -> None:
+    async def cmd_start(msg: Message, state: FSMContext, **data) -> None:
         """
         /start in a private chat now asks for the user's phone the first
         time (via request_contact) so a manager can identify the caller
@@ -418,6 +418,23 @@ async def main() -> None:
         """
         lang = await lang_for(msg)
         await state.clear()
+
+        # Gate for SMM role
+        if data.get("bot_role") == "smm":
+            smm_greeting = (
+                "Assalomu alaykum! 👋\n\n"
+                "Siz SMM rolidasiz. Har kuni soat 09:00 da avtomatik hisobot olasiz.\n"
+                "Istalgan vaqtda /report buyrug'idan foydalanib hisobotni ko'rishingiz mumkin."
+                if lang == "uz"
+                else (
+                    "Здравствуйте! 👋\n\n"
+                    "Вы вошли под ролью SMM. Ежедневно в 09:00 вы получаете автоматический отчёт.\n"
+                    "Вы можете запросить отчёт в любой момент с помощью команды /report."
+                )
+            )
+            await msg.answer(smm_greeting)
+            return
+
         # request_contact is a private-chat-only feature.
         chat_type = getattr(msg.chat, "type", "") or ""
         if chat_type == "private":
@@ -447,9 +464,16 @@ async def main() -> None:
         await state.set_state(NewSale.model)
 
     @dp.message(Command("new"))
-    async def cmd_new(msg: Message, state: FSMContext) -> None:
+    async def cmd_new(msg: Message, state: FSMContext, **data) -> None:
         """Explicit sale-entry point — bypasses the contact-request greeting."""
         lang = await lang_for(msg)
+        if data.get("bot_role") == "smm":
+            await msg.answer(
+                "Siz faqat SMM hisobotlarni ko'rishingiz mumkin. /report ni ishlating."
+                if lang == "uz"
+                else "Вы можете просматривать только SMM-отчёты. Используйте /report."
+            )
+            return
         await state.clear()
         await msg.answer(t("intro", lang), parse_mode="Markdown")
         await state.set_state(NewSale.model)
@@ -580,36 +604,96 @@ async def main() -> None:
         await msg.answer(t("unsub_ok" if n else "unsub_none", lang))
 
     @dp.message(Command("report"))
-    async def cmd_report(msg: Message) -> None:
+    async def cmd_report(msg: Message, **data) -> None:
         """
-        /report                — list available preset slugs.
-        /report <preset_slug>  — render the preset on-demand and send it here.
+        /report command:
+        For SMM, manager, and superadmin users, present inline period picker.
+        Also supports legacy `/report <preset>` if arguments are given by managers.
+        """
+        lang = await lang_for(msg)
+        role = data.get("bot_role", "any")
+        if role not in ("smm", "manager", "superadmin"):
+            deny_msg = (
+                "Sizda bu buyruqni ishlatish uchun huquq yo'q."
+                if lang == "uz"
+                else "У вас нет прав для использования этой команды."
+            )
+            await msg.answer(deny_msg)
+            return
 
-        Falls back to the legacy daily-report builder if `/report legacy`
-        is passed (keeps historical behaviour for one release).
-        """
         parts = (msg.text or "").split(maxsplit=1)
         arg = parts[1].strip().lower() if len(parts) > 1 else ""
-        lang = await lang_for(msg)
 
-        if not arg:
-            text = await asyncio.to_thread(_ondemand_list_templates, lang)
-            await msg.answer(text, parse_mode="HTML")
-            return
-        if arg == "legacy":
-            text = await asyncio.to_thread(build_daily_report, None, lang)
-            await msg.answer(text, parse_mode="Markdown")
+        # If preset argument provided by manager/superadmin, run legacy/preset renderer
+        if arg and role in ("manager", "superadmin"):
+            if arg == "legacy":
+                text = await asyncio.to_thread(build_daily_report, None, lang)
+                await msg.answer(text, parse_mode="Markdown")
+                return
+            result = await asyncio.to_thread(_ondemand_render_by_preset, arg, msg.chat.id)
+            if result:
+                html, kb = result
+                await msg.answer(html, parse_mode="HTML", disable_web_page_preview=True, reply_markup=kb)
+                return
+
+        # Default behaviour: show period picker keyboard
+        prompt_text = (
+            "Qaysi davr uchun hisobot kerak?"
+            if lang == "uz"
+            else "За какой период нужен отчёт?"
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        "📅 Bugun" if lang == "uz" else "📅 Сегодня",
+                        callback_data="smm_period:today",
+                    ),
+                    InlineKeyboardButton(
+                        "📆 Kecha" if lang == "uz" else "📆 Вчера",
+                        callback_data="smm_period:yesterday",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "📊 Hafta" if lang == "uz" else "📊 Неделя",
+                        callback_data="smm_period:week",
+                    ),
+                    InlineKeyboardButton(
+                        "📈 Oy" if lang == "uz" else "📈 Месяц",
+                        callback_data="smm_period:month",
+                    ),
+                ],
+            ]
+        )
+        await msg.answer(prompt_text, reply_markup=kb)
+
+    @dp.callback_query(F.data.startswith("smm_period:"))
+    async def cb_smm_period(cb: CallbackQuery, **data) -> None:
+        lang = await lang_for(cb)
+        role = data.get("bot_role", "any")
+        if role not in ("smm", "manager", "superadmin"):
+            await cb.answer(
+                "Ruxsat yo'q" if lang == "uz" else "Нет доступа", show_alert=True
+            )
             return
 
-        result = await asyncio.to_thread(_ondemand_render_by_preset, arg, msg.chat.id)
-        if not result:
-            text = await asyncio.to_thread(_ondemand_list_templates, lang)
-            await msg.answer(t("report_preset_not_found", lang) + text, parse_mode="HTML")
-            return
+        period = cb.data.removeprefix("smm_period:")
+        from apps.tg_bot.report_blocks import get_period_range, render_sales_by_sheet_source
 
-        # result = (html, reply_markup_or_None)
-        html, kb = result
-        await msg.answer(html, parse_mode="HTML", disable_web_page_preview=True, reply_markup=kb)
+        now = timezone.localtime()
+        start, end, _, _ = get_period_range(period, now)
+
+        html_text = await asyncio.to_thread(render_sales_by_sheet_source, start, end, lang)
+        if not html_text:
+            await cb.message.answer(
+                "Bu davr uchun sotuvlar yo'q"
+                if lang == "uz"
+                else "За этот период продаж нет."
+            )
+        else:
+            await _send_html_chunks(cb.message, html_text)
+        await cb.answer()
 
     @dp.message(Command("sales"))
     async def cmd_sales(msg: Message) -> None:
@@ -1190,11 +1274,42 @@ async def main() -> None:
         [BotCommand(command=name, description=t(key, "ru")) for name, key in common],
     )
 
+    # Configure custom commands menu for SMM role chats (only /report, /help)
+    from aiogram.types import BotCommandScopeChat
+    from apps.tg_bot.models import BotChat
+
+    def _get_smm_chat_ids():
+        return list(
+            BotChat.objects.filter(
+                linked_profile__role="smm", is_active=True
+            ).values_list("chat_id", flat=True)
+        )
+
+    smm_chats = await asyncio.to_thread(_get_smm_chat_ids)
+    smm_commands = [
+        BotCommand(command="report", description=t("cmd_report", "ru")),
+        BotCommand(command="help", description=t("cmd_help", "ru")),
+    ]
+    for smm_chat_id in smm_chats:
+        try:
+            await bot.set_my_commands(
+                smm_commands, scope=BotCommandScopeChat(chat_id=smm_chat_id)
+            )
+        except Exception as exc:
+            logger.warning("Failed to set SMM commands for chat %s: %s", smm_chat_id, exc)
+
     # ---------- Operator link (FSM /link_operator) ----------
 
     @dp.message(Command("link_operator"))
-    async def cmd_link_operator(msg: Message, state: FSMContext) -> None:
+    async def cmd_link_operator(msg: Message, state: FSMContext, **data) -> None:
         lang = await lang_for(msg)
+        if data.get("bot_role") == "smm":
+            await msg.answer(
+                "Siz faqat SMM hisobotlarni ko'rishingiz mumkin. /report ni ishlating."
+                if lang == "uz"
+                else "Вы можете просматривать только SMM-отчёты. Используйте /report."
+            )
+            return
         await msg.answer(t("link_operator_ask_phone", lang))
         await state.set_state(LinkOperator.phone)
 
