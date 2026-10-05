@@ -906,7 +906,6 @@ def refill_operator_leads(
             needs_review=False,
         )
         .filter(pool_filter)
-        .distinct()
         .order_by("created_at")[:size]
     )
     pool = list(pool_qs)
