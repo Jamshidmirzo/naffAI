@@ -897,16 +897,26 @@ def refill_operator_leads(
         | Q(sheet_source__allowed_operators__isnull=True)
         | Q(sheet_source__allowed_operators=operator.id)
     )
-    pool_qs = (
-        Lead.objects.select_for_update(skip_locked=True)
-        .filter(
+    # Two-step to avoid Postgres caveats: SELECT ... FOR UPDATE cannot run
+    # against SELECT DISTINCT, nor against the nullable side of a LEFT JOIN
+    # (pool_filter traverses sheet_source → allowed_operators M2M). So we
+    # resolve candidate IDs with a plain query, then lock them separately.
+    candidate_ids = list(
+        Lead.objects.filter(
             operator__isnull=True,
             status__in=workable,
             phone_invalid=False,
             needs_review=False,
         )
         .filter(pool_filter)
-        .order_by("created_at")[:size]
+        .order_by("created_at")
+        .values_list("id", flat=True)
+        .distinct()[:size]
+    )
+    pool_qs = (
+        Lead.objects.filter(id__in=candidate_ids)
+        .select_for_update(skip_locked=True)
+        .order_by("created_at")
     )
     pool = list(pool_qs)
     if not pool:
