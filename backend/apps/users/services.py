@@ -248,8 +248,8 @@ def profile_role_update(
     Change a user's role with hierarchy-aware guardrails.
 
     Only `superadmin` (or Django superuser) can promote anyone to
-    SUPER_MANAGER, and there can be at most ONE super_manager in the whole
-    system — subsequent attempts fail with ValidationError. Setting the
+    SUPER_MANAGER. Multiple super_managers are allowed — owner picks
+    which one owns which manager via `Profile.reports_to`. Setting the
     same role is a no-op (just returns the profile unchanged).
 
     No side-effects on `reports_to` here — ownership (reports_to /
@@ -274,21 +274,6 @@ def profile_role_update(
         if not actor_is_superadmin:
             raise PermissionDenied(
                 "Назначать super_manager может только superadmin"
-            )
-        singleton_exists = (
-            Profile.objects
-            .filter(role=Role.SUPER_MANAGER)
-            .exclude(pk=profile.pk)
-            .exists()
-        )
-        if singleton_exists:
-            raise ValidationError(
-                {
-                    "role": (
-                        "Уже есть super_manager — снимите роль с него "
-                        "сначала (должен быть ровно один)."
-                    )
-                }
             )
 
     profile.role = new_role
