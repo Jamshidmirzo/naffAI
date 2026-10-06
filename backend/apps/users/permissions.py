@@ -73,10 +73,16 @@ class IsOperator(BasePermission):
 
 
 class IsAuthenticatedAnyRole(BasePermission):
-    """Anyone with a valid role (team_lead / manager / operator) may proceed."""
+    """Anyone with a known role may proceed (ops, managers, super_managers, superadmin)."""
 
     def has_permission(self, request, view) -> bool:
-        return _role(request.user) in {Role.TEAM_LEAD, Role.MANAGER, Role.OPERATOR}
+        return _role(request.user) in {
+            Role.TEAM_LEAD,
+            Role.MANAGER,
+            Role.SUPER_MANAGER,
+            Role.OPERATOR,
+            Role.SUPERADMIN,
+        }
 
 
 class IsManager(BasePermission):
