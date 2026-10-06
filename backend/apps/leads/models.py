@@ -16,6 +16,7 @@ Pre-sale domain: Lead + assignments + Google-Sheets sync configuration.
 from __future__ import annotations
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from apps.common.models import TimestampedModel
@@ -241,6 +242,28 @@ class SheetSource(TimestampedModel):
             "'comment_col': 'G'}. Missing keys fall back to the defaults."
         ),
     )
+    # «ТЕЗ-лид» (hot) — лид из этого шита горячий: клиент сейчас ждёт
+    # звонка (например, пришёл с рекламы, оставил заявку минуту назад).
+    # Если `is_hot=True`, при импорте строки проставляется
+    # `Lead.hot_until = now + hot_sla_minutes` — через столько минут
+    # операторская эскалация считает лид «остывшим». Оператор может
+    # закрыть SLA, тронув лид (lead_update_status обнуляет hot_until);
+    # если не тронул до deadline — watcher `hot_leads_escalation`
+    # отправит владельцу один групповой TG-отчёт и обнулит счётчик.
+    is_hot = models.BooleanField(
+        default=False,
+        help_text=(
+            "Горячий шит (ТЕЗ): новые лиды помечаются hot_until при импорте."
+        ),
+    )
+    hot_sla_minutes = models.PositiveSmallIntegerField(
+        default=10,
+        validators=[MinValueValidator(1), MaxValueValidator(120)],
+        help_text=(
+            "Сколько минут у оператора на первый контакт с горячим лидом. "
+            "По истечении лид считается остывшим — watcher уведомит владельца."
+        ),
+    )
 
     class Meta:
         ordering = ["name"]
@@ -387,6 +410,22 @@ class Lead(TimestampedModel):
         blank=True,
         default="",
         help_text="Комментарий оператора: «после обеда», «ждёт зарплату», …",
+    )
+    # Горячий лид (ТЕЗ): дедлайн первого контакта. Выставляется в
+    # `lead_create_from_sheet_row`, если `sheet_source.is_hot=True`.
+    # Сбрасывается в `lead_update_status` — любое движение статуса
+    # (оператор взял в работу, перевёл в no_answer / won / lost и т.п.)
+    # закрывает SLA. Если `hot_until <= now` и всё ещё NEW/ASSIGNED —
+    # watcher `hot_leads_escalation` помечает лид как «остыл» (clear
+    # `hot_until`) и шлёт групповой TG-отчёт владельцу.
+    hot_until = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text=(
+            "Дедлайн первого контакта для горячих лидов (ТЕЗ). NULL = не "
+            "горячий, уже обработан, или уже остыл + эскалирован."
+        ),
     )
 
     class Meta:
