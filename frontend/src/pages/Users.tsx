@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, KeyRound, Plus, ShieldOff, Trash2, UserCog } from "lucide-react";
+import { Copy, KeyRound, Pencil, Plus, ShieldOff, Trash2, UserCog } from "lucide-react";
 import { api } from "../lib/api";
 import {
   Button,
@@ -71,6 +71,12 @@ export default function Users() {
   const [credsModal, setCredsModal] = useState<Creds | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<UserRow | null>(null);
   const [confirmReset, setConfirmReset] = useState<UserRow | null>(null);
+  // Edit modal state: editing an existing user's role / reports_to.
+  // operator-rows allowed too → можно повысить оператора в manager/team_lead.
+  const [editingUser, setEditingUser] = useState<UserRow | null>(null);
+  const [editRole, setEditRole] = useState<Role | "operator">("manager");
+  const [editReportsToId, setEditReportsToId] = useState<number | "">("");
+  const [editError, setEditError] = useState("");
 
   const usersQ = useQuery<UserRow[]>({
     queryKey: ["users"],
@@ -135,6 +141,35 @@ export default function Users() {
     },
     onError: (err: unknown) => toast.error(apiErrorMessage(err)),
   });
+
+  const editMut = useMutation({
+    mutationFn: () => {
+      if (!editingUser) throw new Error("no user");
+      const payload: Record<string, unknown> = { role: editRole };
+      if (editRole === "manager") {
+        payload.reports_to_id = editReportsToId === "" ? null : editReportsToId;
+      } else {
+        // For non-manager roles reports_to has no meaning — nullify.
+        payload.reports_to_id = null;
+      }
+      return api
+        .patch(`/users/${editingUser.id}/`, payload)
+        .then((r) => r.data);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      setEditingUser(null);
+      toast.success(t("users.saved") || "Сохранено");
+    },
+    onError: (err: unknown) => setEditError(apiErrorMessage(err)),
+  });
+
+  const openEdit = (u: UserRow) => {
+    setEditingUser(u);
+    setEditRole((u.role as Role | "operator") ?? "manager");
+    setEditReportsToId(u.reports_to_id ?? "");
+    setEditError("");
+  };
 
   const languageMut = useMutation({
     mutationFn: ({ user_id, preferred_language }: { user_id: number; preferred_language: Language }) =>
@@ -252,6 +287,14 @@ export default function Users() {
                     {fmtDate(u.last_login)}
                   </div>
                   <div className="flex gap-1.5 justify-end">
+                    <button
+                      onClick={() => openEdit(u)}
+                      className="nf-btn nf-btn--ghost"
+                      style={{ padding: "6px 10px", fontSize: 12 }}
+                      title={t("users.edit_role") || "Редактировать роль"}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
                     <button
                       onClick={() => setConfirmReset(u)}
                       className="nf-btn nf-btn--ghost"
@@ -397,6 +440,111 @@ export default function Users() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Edit role / reports_to */}
+      <Modal open={!!editingUser} onClose={() => setEditingUser(null)} width={460}>
+        {editingUser && (
+          <div className="p-7">
+            <div className="flex items-center gap-2.5 mb-2">
+              <div
+                className="grid place-items-center text-white"
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 10,
+                  background: "var(--accent-grad)",
+                }}
+              >
+                <Pencil className="w-4 h-4" />
+              </div>
+              <div className="text-[16px] font-semibold tracking-tight">
+                {editingUser.username}
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-4">
+              <div>
+                <div className="nf-col mb-1.5">{t("common.role")}</div>
+                <div className="flex gap-2 flex-wrap">
+                  <Chip
+                    active={editRole === "manager"}
+                    onClick={() => setEditRole("manager")}
+                  >
+                    {t("role.manager")}
+                  </Chip>
+                  <Chip
+                    active={editRole === "team_lead"}
+                    onClick={() => setEditRole("team_lead")}
+                  >
+                    {t("users.role_team_lead")}
+                  </Chip>
+                  <Chip
+                    active={editRole === "super_manager"}
+                    onClick={() => setEditRole("super_manager")}
+                  >
+                    {t("role.super_manager")}
+                  </Chip>
+                  <Chip
+                    active={editRole === "operator"}
+                    onClick={() => setEditRole("operator")}
+                  >
+                    {t("role.operator") || "Оператор"}
+                  </Chip>
+                </div>
+              </div>
+
+              {editRole === "manager" && reportsToOptions.length > 0 && (
+                <div>
+                  <div className="nf-col mb-1.5">{t("users.reports_to")}</div>
+                  <select
+                    className="nf-input"
+                    value={editReportsToId === "" ? "" : String(editReportsToId)}
+                    onChange={(e) =>
+                      setEditReportsToId(
+                        e.target.value === "" ? "" : Number(e.target.value)
+                      )
+                    }
+                  >
+                    <option value="">{t("users.reports_to_none")}</option>
+                    {reportsToOptions
+                      .filter((u) => u.id !== editingUser.id)
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.username} ({ROLE_LABEL[u.role] ?? u.role})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
+              {editError && (
+                <div
+                  className="text-[13px] rounded-xl px-3.5 py-2.5"
+                  style={{
+                    background: "rgba(220,60,40,.08)",
+                    color: "var(--danger)",
+                    border: "1px solid rgba(220,60,40,.2)",
+                  }}
+                >
+                  {editError}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-7 flex gap-2 justify-end">
+              <Button variant="ghost" onClick={() => setEditingUser(null)}>
+                {t("common.cancel")}
+              </Button>
+              <Button
+                onClick={() => editMut.mutate()}
+                disabled={editMut.isPending}
+              >
+                {editMut.isPending ? t("common.saving") || "Сохраняем..." : t("common.save") || "Сохранить"}
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Credentials shown once */}
