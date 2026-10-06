@@ -106,6 +106,14 @@ interface OperatorDetail {
   note?: string;
   account: AccountState;
   blocking_gate_enabled?: boolean;
+  managed_by_id?: number | null;
+}
+
+interface OwnerUserRow {
+  id: number;
+  username: string;
+  role: string;
+  reports_to_id?: number | null;
 }
 
 type OperatorStatusChoice = "active" | "trainee" | "inactive";
@@ -152,12 +160,17 @@ export default function OperatorDetail() {
     status: OperatorStatusChoice;
     note: string;
     blocking_gate_enabled: boolean;
+    // null = не трогать, "" (строка пустая) = выставить NULL (unassign).
+    // Числовое id = выставить конкретного владельца. Отделяем null от ""
+    // чтобы managed_by не слал PATCH когда поле не поменяли.
+    managed_by_id: number | null | "";
   }>({
     full_name: "",
     hired_at: "",
     status: "active",
     note: "",
     blocking_gate_enabled: false,
+    managed_by_id: null,
   });
 
   const isSpecific = choice.kind !== "current";
@@ -325,6 +338,7 @@ export default function OperatorDetail() {
       status: OperatorStatusChoice;
       note: string;
       blocking_gate_enabled: boolean;
+      managed_by_id?: number | null;
     }) => api.patch(`/operators/${id}/`, payload),
     onSuccess: () => {
       invalidateAccount();
@@ -357,9 +371,21 @@ export default function OperatorDetail() {
       status,
       note: d?.note || "",
       blocking_gate_enabled: !!d?.blocking_gate_enabled,
+      // Загружаем текущего owner'а в форму. null → поле выставлено в
+      // «не назначен», числовое id — текущий владелец (его можно
+      // поменять или сбросить).
+      managed_by_id: d?.managed_by_id ?? null,
     });
     setEditProfile(true);
   };
+
+  // Load users list for the «managed_by» dropdown. Only for managers
+  // (operator-роль не редактирует карточку оператора).
+  const ownersQ = useQuery<OwnerUserRow[]>({
+    queryKey: ["users"],
+    queryFn: () => api.get<OwnerUserRow[]>("/users/").then((r) => r.data),
+    enabled: isManager && editProfile,
+  });
 
   const rotateQrMut = useMutation({
     mutationFn: () => api.post(`/attendance/operators/${id}/qr/rotate/`),
@@ -1669,6 +1695,48 @@ export default function OperatorDetail() {
               </div>
             </div>
           </label>
+
+          {/* managed_by dropdown — 3-level hierarchy ownership
+              (2026-10-06). Options фильтруются frontend'ом: показываем
+              только senior-роли (manager/team_lead/super_manager/
+              superadmin), не operator'ов. Backend дополнительно
+              валидирует permission (super_manager может назначать
+              только себя / своих managers; manager — только себя). */}
+          <div>
+            <div className="nf-col mb-1.5">{t("op_edit.managed_by")}</div>
+            <select
+              className="nf-input"
+              value={
+                profileForm.managed_by_id === null
+                  ? ""
+                  : String(profileForm.managed_by_id)
+              }
+              onChange={(e) =>
+                setProfileForm({
+                  ...profileForm,
+                  managed_by_id:
+                    e.target.value === ""
+                      ? ""  // пустая строка = явно unassign (NULL)
+                      : Number(e.target.value),
+                })
+              }
+            >
+              <option value="">{t("op_edit.managed_by_unassigned")}</option>
+              {(ownersQ.data ?? [])
+                .filter((u) =>
+                  ["manager", "team_lead", "super_manager", "superadmin"].includes(u.role)
+                )
+                .map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.username} ({u.role})
+                  </option>
+                ))}
+            </select>
+            <div className="text-[11px] text-muted mt-1">
+              {t("op_edit.managed_by_hint")}
+            </div>
+          </div>
+
           <div className="flex justify-end gap-2 pt-2">
             <Button
               variant="ghost"
@@ -1678,15 +1746,33 @@ export default function OperatorDetail() {
               {t("common.cancel")}
             </Button>
             <Button
-              onClick={() =>
-                saveProfileMut.mutate({
+              onClick={() => {
+                const payload: {
+                  full_name: string;
+                  hired_at: string | null;
+                  status: OperatorStatusChoice;
+                  note: string;
+                  blocking_gate_enabled: boolean;
+                  managed_by_id?: number | null;
+                } = {
                   full_name: profileForm.full_name.trim(),
                   hired_at: profileForm.hired_at || null,
                   status: profileForm.status,
                   note: profileForm.note,
                   blocking_gate_enabled: profileForm.blocking_gate_enabled,
-                })
-              }
+                };
+                // Отправляем managed_by_id только если пользователь
+                // явно трогал поле: "" = unassign (null), number = id.
+                // null в state = «поле не загружено / не менялось» —
+                // не отправляем, чтобы случайно не стереть владельца.
+                if (profileForm.managed_by_id !== null) {
+                  payload.managed_by_id =
+                    profileForm.managed_by_id === ""
+                      ? null
+                      : profileForm.managed_by_id;
+                }
+                saveProfileMut.mutate(payload);
+              }}
               disabled={
                 saveProfileMut.isPending || !profileForm.full_name.trim()
               }

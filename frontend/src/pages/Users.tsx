@@ -15,7 +15,7 @@ import { normaliseRole } from "../components/RoleGate";
 import { useT } from "../lib/i18n";
 import { apiErrorMessage } from "../lib/api-types";
 
-type Role = "manager" | "team_lead";
+type Role = "manager" | "team_lead" | "super_manager" | "superadmin";
 type Language = "ru" | "uz";
 
 interface UserRow {
@@ -27,6 +27,7 @@ interface UserRow {
   date_joined: string | null;
   last_login: string | null;
   preferred_language?: Language;
+  reports_to_id?: number | null;
 }
 
 interface Creds {
@@ -58,11 +59,14 @@ export default function Users() {
   const ROLE_LABEL: Record<string, string> = {
     manager: t("role.manager"),
     team_lead: t("users.role_team_lead"),
+    super_manager: t("role.super_manager"),
+    superadmin: t("role.manager"),
   };
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [newRole, setNewRole] = useState<Role>("manager");
+  const [newReportsToId, setNewReportsToId] = useState<number | "">("");
   const [createError, setCreateError] = useState("");
   const [credsModal, setCredsModal] = useState<Creds | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<UserRow | null>(null);
@@ -74,17 +78,25 @@ export default function Users() {
   });
 
   const createMut = useMutation({
-    mutationFn: () =>
-      api
-        .post<Creds & { role: string; is_active: boolean }>("/users/", {
-          username: newUsername.trim(),
-          role: newRole,
-        })
-        .then((r) => r.data),
+    mutationFn: () => {
+      const payload: Record<string, unknown> = {
+        username: newUsername.trim(),
+        role: newRole,
+      };
+      // Attach reports_to only when assigning MANAGER to a specific
+      // super_manager (otherwise backend defaults to null = unassigned).
+      if (newRole === "manager" && newReportsToId !== "") {
+        payload.reports_to_id = newReportsToId;
+      }
+      return api
+        .post<Creds & { role: string; is_active: boolean }>("/users/", payload)
+        .then((r) => r.data);
+    },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["users"] });
       setCreateOpen(false);
       setNewUsername("");
+      setNewReportsToId("");
       setCredsModal({
         id: data.id,
         username: data.username,
@@ -94,6 +106,14 @@ export default function Users() {
     },
     onError: (err: unknown) => setCreateError(apiErrorMessage(err)),
   });
+
+  // reports_to options для dropdown — superadmin'ы + текущий super_manager.
+  // Фронт просто показывает всех видимых senior'ов; backend сам fail'ит
+  // некорректный id с 400. Operator-rows и обычные manager'ы отфильтрованы
+  // (менеджер не может быть «начальником» менеджера).
+  const reportsToOptions = (usersQ.data ?? []).filter(
+    (u) => u.role === "super_manager" || u.role === "superadmin"
+  );
 
   const resetMut = useMutation({
     mutationFn: (user_id: number) =>
@@ -304,7 +324,7 @@ export default function Users() {
             </div>
             <div>
               <div className="nf-col mb-1.5">{t("common.role")}</div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <Chip
                   active={newRole === "manager"}
                   onClick={() => setNewRole("manager")}
@@ -317,8 +337,41 @@ export default function Users() {
                 >
                   {t("users.role_team_lead")}
                 </Chip>
+                <Chip
+                  active={newRole === "super_manager"}
+                  onClick={() => setNewRole("super_manager")}
+                >
+                  {t("role.super_manager")}
+                </Chip>
               </div>
             </div>
+            {/* reports_to dropdown — only for MANAGER role (super_manager
+                / superadmin assignment лежит на backend). Пустое значение
+                означает «пока ничей» (legacy pool). */}
+            {newRole === "manager" && reportsToOptions.length > 0 && (
+              <div>
+                <div className="nf-col mb-1.5">{t("users.reports_to")}</div>
+                <select
+                  className="nf-input"
+                  value={newReportsToId === "" ? "" : String(newReportsToId)}
+                  onChange={(e) =>
+                    setNewReportsToId(
+                      e.target.value === "" ? "" : Number(e.target.value)
+                    )
+                  }
+                >
+                  <option value="">{t("users.reports_to_none")}</option>
+                  {reportsToOptions.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.username} ({ROLE_LABEL[u.role] ?? u.role})
+                    </option>
+                  ))}
+                </select>
+                <div className="text-[11px] text-muted mt-1">
+                  {t("users.reports_to_hint")}
+                </div>
+              </div>
+            )}
             {createError && (
               <div
                 className="text-[13px] rounded-xl px-3.5 py-2.5"
