@@ -105,6 +105,10 @@ export function SheetSourceWizard({ operators, onClose, onDone }: Props) {
   // из этого шита. Toggle "all" — визуальный shortcut, очищает список.
   const [allowedOperatorIds, setAllowedOperatorIds] = useState<number[]>([]);
   const poolAll = allowedOperatorIds.length === 0;
+  // ТЕЗ: горячий шит с SLA 10 мин. Если включено — Lead.hot_until при
+  // импорте, watcher уведомит владельца при остывании.
+  const [isHot, setIsHot] = useState(false);
+  const [hotSlaMinutes, setHotSlaMinutes] = useState<number>(10);
   const [createError, setCreateError] = useState("");
 
   const previewMut = useMutation({
@@ -173,6 +177,12 @@ export function SheetSourceWizard({ operators, onClose, onDone }: Props) {
       if (mapHasCard) columnMap.has_card = mapHasCard;
       if (mapExtraPhone) columnMap.extra_phone = mapExtraPhone;
 
+      // ТЕЗ: clamp SLA в 1..120 (бэк валидирует через MinValueValidator /
+      // MaxValueValidator — здесь предохраняем от 400 при опечатке).
+      const clampedSla = Math.min(
+        120,
+        Math.max(1, Math.floor(Number(hotSlaMinutes) || 10)),
+      );
       const body = {
         name: name.trim() || preview.sheet_title || "New source",
         spreadsheet_id: preview.spreadsheet_id,
@@ -184,6 +194,8 @@ export function SheetSourceWizard({ operators, onClose, onDone }: Props) {
         default_operator: defaultOperator ? Number(defaultOperator) : null,
         distribution_mode: distributionMode,
         allowed_operator_ids: allowedOperatorIds,
+        is_hot: isHot,
+        hot_sla_minutes: clampedSla,
         writeback_columns: {
           enabled: writebackEnabled,
           status_col: (wbStatus || "").toUpperCase() || "D",
@@ -586,6 +598,43 @@ export function SheetSourceWizard({ operators, onClose, onDone }: Props) {
                   >
                     {t("sheet_src.wizard.allowed_operators.all")}
                   </button>
+                </div>
+              )}
+            </div>
+            {/* --- ТЕЗ (hot sheet) ---------------------------------- */}
+            <div
+              className="col-span-2 rounded-xl border p-4"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <label className="flex items-center gap-2 text-[13.5px] cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isHot}
+                  onChange={(e) => setIsHot(e.target.checked)}
+                />
+                {t("sheet_src.wizard.is_hot")}
+              </label>
+              <div className="text-[11.5px] text-muted mt-1.5">
+                {t("sheet_src.wizard.is_hot_hint")}
+              </div>
+              {isHot && (
+                <div className="mt-3 flex items-end gap-3">
+                  <div style={{ maxWidth: 160 }}>
+                    <div className="nf-col mb-1">
+                      {t("sheet_src.wizard.hot_sla")}
+                    </div>
+                    <input
+                      type="number"
+                      min={1}
+                      max={120}
+                      className="nf-input tabular-nums text-center"
+                      value={hotSlaMinutes}
+                      onChange={(e) => setHotSlaMinutes(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="text-[11.5px] text-muted pb-1 flex-1">
+                    {t("sheet_src.wizard.hot_sla_hint")}
+                  </div>
                 </div>
               )}
             </div>

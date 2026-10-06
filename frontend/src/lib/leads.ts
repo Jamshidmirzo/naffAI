@@ -53,6 +53,9 @@ export type Lead = {
   postpone_reason: string;
   previous_operator_name?: string;
   is_retry?: boolean;
+  // Горячий лид (ТЕЗ): дедлайн первого контакта.
+  // null = не горячий / уже обработан / уже остыл.
+  hot_until?: string | null;
   created_at: string;
   updated_at: string;
 };

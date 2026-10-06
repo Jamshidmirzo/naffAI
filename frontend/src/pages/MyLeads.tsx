@@ -1696,6 +1696,75 @@ function ClosedLeadCard({
 }
 
 // -------------------------------------------------------------------------
+// HotLeadBadge — countdown MM:SS для горячих лидов (ТЕЗ). При
+// `hot_until > now` показывает «🔥 ТЕЗ 09:58» и красит в красный,
+// при `hot_until <= now` переключается на «💀 Остыл» (серый).
+// Тик 1 секунда через setInterval; cleanup освобождает таймер.
+// Если prop `hotUntil` null/undefined — рендерим null (нет бейджа).
+function HotLeadBadge({ hotUntil }: { hotUntil?: string | null }) {
+  const t = useT();
+  const deadlineMs = useMemo(() => {
+    if (!hotUntil) return null;
+    const ms = new Date(hotUntil).getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }, [hotUntil]);
+
+  const [remainingMs, setRemainingMs] = useState<number>(() =>
+    deadlineMs == null ? 0 : deadlineMs - Date.now(),
+  );
+
+  useEffect(() => {
+    if (deadlineMs == null) return;
+    // Первый пересчёт сразу — на случай когда state ещё хранит прошлое значение.
+    setRemainingMs(deadlineMs - Date.now());
+    const id = window.setInterval(() => {
+      setRemainingMs(deadlineMs - Date.now());
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [deadlineMs]);
+
+  if (deadlineMs == null) return null;
+
+  if (remainingMs <= 0) {
+    // Остыл: красивый серый бейдж — watcher следующим тиком всё равно
+    // обнулит hot_until и эскалирует владельцу.
+    return (
+      <span
+        className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+        style={{
+          background: "rgba(100,116,139,.14)",
+          color: "rgb(71,85,105)",
+        }}
+      >
+        {t("hot.cold")}
+      </span>
+    );
+  }
+
+  const totalSec = Math.max(0, Math.ceil(remainingMs / 1000));
+  const mm = String(Math.floor(totalSec / 60)).padStart(2, "0");
+  const ss = String(totalSec % 60).padStart(2, "0");
+  const time = `${mm}:${ss}`;
+  // В последнюю минуту делаем пульсацию, чтобы оператор не пропустил.
+  const urgent = totalSec <= 60;
+  return (
+    <span
+      className={
+        "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums " +
+        (urgent ? "animate-pulse" : "")
+      }
+      style={{
+        background: "rgba(220,38,38,.14)",
+        color: "rgb(185,28,28)",
+      }}
+      title={t("hot.badge_tez", { time })}
+    >
+      {t("hot.badge_tez", { time })}
+    </span>
+  );
+}
+
+// -------------------------------------------------------------------------
 
 interface LeadCardProps {
   lead: Lead;
@@ -1901,6 +1970,7 @@ function LeadCard({
             {lead.full_name || t("my.no_name")}
           </div>
           <LeadStatusBadge code={lead.status} overdue={overdue} />
+          <HotLeadBadge hotUntil={lead.hot_until} />
           {isPostponed && (
             <StatusBadge tone="hot">
               <PauseCircle className="w-3 h-3 inline mr-0.5" /> {t("my.postponed_badge")}

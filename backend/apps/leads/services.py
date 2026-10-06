@@ -17,11 +17,11 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import threading
+from datetime import timedelta
 from typing import Any
 
 from django.db import transaction
 from django.utils import timezone
-from datetime import timedelta
 
 logger = logging.getLogger("leads.writeback")
 

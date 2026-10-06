@@ -980,6 +980,14 @@ const STRINGS: Lookup = {
     "sheet_src.wizard.allowed_operators.hint": "Оставьте пустым — раздача всем активным. Отметьте — только эти операторы получают лидов из этого шита.",
     "sheet_src.wizard.allowed_operators.all": "Все активные операторы (без ограничения)",
     "sheet_src.chip.pool_of": "Пул: {n}",
+    // --- ТЕЗ (горячий шит) --------------------------------------------
+    // Чекбокс в wizard'е/edit-модалке источника. is_hot=True взводит
+    // Lead.hot_until при импорте — у оператора hot_sla_minutes на звонок.
+    "sheet_src.wizard.is_hot": "🔥 Горячий шит (ТЕЗ)",
+    "sheet_src.wizard.is_hot_hint": "Лиды из этого шита — горячие. Клиент только что оставил заявку и ждёт звонка в ближайшие минуты.",
+    "sheet_src.wizard.hot_sla": "SLA, минут",
+    "sheet_src.wizard.hot_sla_hint": "Через столько минут после импорта лид считается остывшим. Watcher уведомит владельца.",
+    "sheet_src.chip.hot": "🔥 ТЕЗ · {n} мин",
     "sheet_src.health.section_title": "Активные источники",
     "sheet_src.health.ok": "работает",
     "sheet_src.health.warn": "давно не синкался",
@@ -1361,6 +1369,12 @@ const STRINGS: Lookup = {
     "my.phone_alt_prefix": "также:",
     "lead.retry_badge": "🔄 Уже звонил {name}",
     "lead.retry_hint": "Клиент сказал дорого — предложи рассрочку или скидку.",
+    // --- Горячий лид (ТЕЗ) --------------------------------------------
+    // Бейдж на карточке лида на /my: пока hot_until > now показываем
+    // countdown MM:SS. Как истёк — переключаемся на cold-бейдж (watcher
+    // всё равно уведомит владельца следующим тиком).
+    "hot.badge_tez": "🔥 ТЕЗ {time}",
+    "hot.cold": "💀 Остыл",
     "my.resolve": "Разобрать",
     // --- BlockingGateCard (2026-08-16 UX overhaul) --------------------
     // Заменяет "my.locked_title/hint/backlog_gate" — новая карточка-инструкция
@@ -3720,6 +3734,11 @@ const STRINGS: Lookup = {
     "sheet_src.wizard.allowed_operators.hint": "Bo'sh qoldiring — barcha faol operatorlarga tarqatiladi. Belgilang — faqat shu operatorlar bu shitdan lid oladi.",
     "sheet_src.wizard.allowed_operators.all": "Barcha faol operatorlar (cheklovsiz)",
     "sheet_src.chip.pool_of": "Hovuz: {n}",
+    "sheet_src.wizard.is_hot": "🔥 Qaynoq shit (TEZ)",
+    "sheet_src.wizard.is_hot_hint": "Bu shitdagi lidlar qaynoq. Mijoz yangi ariza qoldirdi va yaqin daqiqalarda qo'ng'iroq kutmoqda.",
+    "sheet_src.wizard.hot_sla": "SLA, daqiqa",
+    "sheet_src.wizard.hot_sla_hint": "Import qilingandan keyin shuncha daqiqa o'tgach lid soviqdi hisoblanadi. Watcher egani ogohlantiradi.",
+    "sheet_src.chip.hot": "🔥 TEZ · {n} daq",
     "sheet_src.health.section_title": "Faol manbalar",
     "sheet_src.health.ok": "ishlayapti",
     "sheet_src.health.warn": "uzoq vaqt sync bo'lmagan",
@@ -4101,6 +4120,9 @@ const STRINGS: Lookup = {
     "my.phone_alt_prefix": "shuningdek:",
     "lead.retry_badge": "🔄 Avval {name} qo'ng'iroq qilgan",
     "lead.retry_hint": "Mijoz qimmat dedi — bo'lib to'lash yoki chegirma taklif qiling.",
+    // --- Qaynoq lid (TEZ) ---------------------------------------------
+    "hot.badge_tez": "🔥 TEZ {time}",
+    "hot.cold": "💀 Soviqdi",
     "my.resolve": "Hal qilish",
     // BlockingGateCard (2026-08-16) — see RU section above for context.
     "my.gate.title": "Yangi lid olish uchun bu {n} ta lidni yoping",

@@ -51,6 +51,10 @@ type SheetSource = {
   distribution_mode: DistributionMode;
   writeback_columns: WritebackColumns;
   allowed_operator_ids?: number[];
+  // ТЕЗ-шит: hot_until выставляется при импорте, Watcher
+  // `hot_leads_escalation` уведомляет владельца если лид остыл.
+  is_hot?: boolean;
+  hot_sla_minutes?: number;
 };
 
 const DISTRIBUTION_KEY: Record<DistributionMode, string> = {
@@ -234,6 +238,13 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                       })}
                     </StatusBadge>
                   )}
+                  {src.is_hot && (
+                    <StatusBadge tone="danger">
+                      {t("sheet_src.chip.hot", {
+                        n: String(src.hot_sla_minutes ?? 10),
+                      })}
+                    </StatusBadge>
+                  )}
                 </div>
                 <div>
                   <div className="tabular-nums">#{src.last_synced_row}</div>
@@ -342,6 +353,10 @@ function SheetSourceForm({
     value?.allowed_operator_ids || [],
   );
   const poolAll = allowedOperatorIds.length === 0;
+  const [isHot, setIsHot] = useState<boolean>(value?.is_hot ?? false);
+  const [hotSlaMinutes, setHotSlaMinutes] = useState<number>(
+    value?.hot_sla_minutes ?? 10,
+  );
   const [mapJson, setMapJson] = useState(
     JSON.stringify(value?.column_map || {}, null, 2),
   );
@@ -368,6 +383,12 @@ function SheetSourceForm({
       } catch {
         throw new Error(t("sheet_src.map_invalid"));
       }
+      // ТЕЗ: SLA ограничен 1..120 на бэке. Clamp'им на фронте, чтобы
+      // не словить 400 из-за опечатки «1500 минут».
+      const clampedSla = Math.min(
+        120,
+        Math.max(1, Math.floor(Number(hotSlaMinutes) || 10)),
+      );
       const body = {
         name,
         spreadsheet_id: ss,
@@ -379,6 +400,8 @@ function SheetSourceForm({
         default_operator: defaultOperator ? Number(defaultOperator) : null,
         distribution_mode: distributionMode,
         allowed_operator_ids: allowedOperatorIds,
+        is_hot: isHot,
+        hot_sla_minutes: clampedSla,
         writeback_columns: {
           enabled: writebackEnabled,
           status_col: wbStatusCol.trim().toUpperCase() || "D",
@@ -573,6 +596,44 @@ function SheetSourceForm({
                   })}
                 </div>
               </>
+            )}
+          </div>
+
+          {/* --- Hot sheet (ТЕЗ) ------------------------------------- */}
+          <div
+            className="col-span-2 rounded-xl border p-4"
+            style={{ borderColor: "var(--border)" }}
+          >
+            <label className="flex items-center gap-2 text-[13.5px] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isHot}
+                onChange={(e) => setIsHot(e.target.checked)}
+              />
+              {t("sheet_src.wizard.is_hot")}
+            </label>
+            <div className="text-[11.5px] text-muted mt-1.5">
+              {t("sheet_src.wizard.is_hot_hint")}
+            </div>
+            {isHot && (
+              <div className="mt-3 flex items-end gap-3">
+                <div style={{ maxWidth: 160 }}>
+                  <div className="nf-col mb-1">
+                    {t("sheet_src.wizard.hot_sla")}
+                  </div>
+                  <input
+                    type="number"
+                    min={1}
+                    max={120}
+                    className="nf-input tabular-nums text-center"
+                    value={hotSlaMinutes}
+                    onChange={(e) => setHotSlaMinutes(Number(e.target.value))}
+                  />
+                </div>
+                <div className="text-[11.5px] text-muted pb-1 flex-1">
+                  {t("sheet_src.wizard.hot_sla_hint")}
+                </div>
+              </div>
             )}
           </div>
 
