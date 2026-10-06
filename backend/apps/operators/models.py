@@ -216,6 +216,28 @@ class Operator(TimestampedModel):
         help_text="Когда оператора поставили на паузу (для аудита/отчётов).",
     )
 
+    # 2026-10-06: ownership-FK для 3-уровневой иерархии (см. Role.SUPER_MANAGER
+    # в apps.users.models). Указывает на User, который напрямую владеет
+    # этим оператором:
+    #   * super_manager — direct-операторы (напрямую подчинены);
+    #   * manager       — свои операторы (назначил super_manager или сам);
+    #   * NULL          — legacy «общий пул» (видят все manager'ы через
+    #                     fallback в visible_operator_ids).
+    # on_delete=SET_NULL — при деактивации владельца оператор остаётся
+    # в системе, но становится «unassigned», пока менеджер руками его
+    # не переназначит через PATCH /operators/{id}/.
+    managed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="managed_operators",
+        help_text=(
+            "Manager или super_manager, который напрямую владеет этим "
+            "оператором. NULL = legacy «общий пул», виден всем менеджерам."
+        ),
+    )
+
     class Meta:
         ordering = ["full_name"]
         indexes = [models.Index(fields=["status"])]

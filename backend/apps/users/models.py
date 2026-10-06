@@ -19,6 +19,18 @@ from django.db import models
 class Role(models.TextChoices):
     TEAM_LEAD = "team_lead", "Тимлид"
     MANAGER = "manager", "Менеджер"
+    # 2026-10-06: 3-уровневая иерархия (superadmin → super_manager →
+    # manager → operator). super_manager = «middle-tier» между
+    # superadmin'ом и обычным менеджером: назначает managers себе в
+    # подчинение (Profile.reports_to), владеет своими операторами
+    # (Operator.managed_by) и видит scope-ed статистику по своей ветке
+    # (менеджеры + их операторы + свои direct-операторы).
+    #
+    # В UI отображается отдельно (`normaliseRole → "super_manager"`),
+    # имеет собственные /team/* страницы. Назначать роль может только
+    # superadmin, и во всей БД она должна быть ровно у одного юзера —
+    # проверяется в services.profile_role_update.
+    SUPER_MANAGER = "super_manager", "Супер-менеджер"
     OPERATOR = "operator", "Оператор"
     SMM = "smm", "SMM"
     # Внутренняя роль «супер-админ» — расширенный менеджер: имеет
@@ -79,6 +91,27 @@ class Profile(models.Model):
         null=True,
         blank=True,
         help_text="Soft-delete marker for operator accounts (set together with User.is_active=False).",
+    )
+    # 2026-10-06: owner-link для 3-уровневой иерархии (см. Role.SUPER_MANAGER).
+    # Семантика:
+    #   * role=MANAGER  → reports_to = super_manager (кому manager подчинён);
+    #   * role=SUPER_MANAGER → reports_to = superadmin (owner);
+    #   * иначе (operator / superadmin / smm) — поле не используется (NULL).
+    # Nullable, т.к. до ручного назначения ownership'a в UI всё остаётся
+    # legacy-плоским: existing managers продолжают видеть всех операторов
+    # через fallback «managed_by IS NULL» в visible_operator_ids.
+    # on_delete=SET_NULL — если super_manager деактивирован, подчинённый
+    # manager отвязывается, но не удаляется.
+    reports_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="direct_reports",
+        help_text=(
+            "Для role=manager → super_manager owner. Для super_manager → "
+            "owner (superadmin). NULL для прочих ролей или legacy-профилей."
+        ),
     )
     # 2026-08-15: attendance PIN изначально жил здесь (per-manager). Через
     # день переехал в `AttendanceSettings.pin_hash` (один общий PIN на
