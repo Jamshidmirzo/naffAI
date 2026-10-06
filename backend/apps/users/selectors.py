@@ -88,9 +88,17 @@ def visible_operator_ids(actor) -> list[int]:
         return list(qs.values_list("id", flat=True))
 
     if role in (Role.MANAGER, Role.TEAM_LEAD):
-        qs = Operator.objects.filter(
-            Q(managed_by=actor) | Q(managed_by__isnull=True)
-        )
+        # Differentiate NEW manager (in hierarchy, has reports_to) from
+        # LEGACY manager (no reports_to). NEW manager: strict scope — only
+        # operators explicitly handed to them (managed_by=self). LEGACY
+        # manager: fallback to own + unassigned pool, preserves pre-super_manager
+        # behavior so existing managers don't suddenly see an empty list.
+        if getattr(profile, "reports_to_id", None):
+            qs = Operator.objects.filter(managed_by=actor)
+        else:
+            qs = Operator.objects.filter(
+                Q(managed_by=actor) | Q(managed_by__isnull=True)
+            )
         return list(qs.values_list("id", flat=True))
 
     if role == Role.OPERATOR:
