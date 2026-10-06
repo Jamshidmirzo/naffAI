@@ -9,7 +9,7 @@ from .models import Role
 #   - `superadmin` — расширенный senior + доступ к галерее attendance-фото
 # Все senior-роли ниже трактуются одинаково для permission-classes;
 # `superadmin` — надмножество manager (+ фото-галерея).
-SENIOR_ROLES = {Role.TEAM_LEAD, Role.MANAGER, Role.SUPERADMIN}
+SENIOR_ROLES = {Role.TEAM_LEAD, Role.MANAGER, Role.SUPER_MANAGER, Role.SUPERADMIN}
 MANAGER_LEVEL_ROLES = SENIOR_ROLES  # публичный alias для внешних мест
 
 
