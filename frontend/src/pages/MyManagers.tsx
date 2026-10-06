@@ -177,14 +177,24 @@ export default function MyManagers() {
     return map;
   }, [operatorsQ.data]);
 
-  // Для team-modal: operatorы ЭТОГО manager'а + pool unassigned.
+  // Для team-modal: operatorы ЭТОГО manager'а.
   const teamOperators = useMemo(() => {
     if (!teamOf) return [] as OperatorRow[];
     return (operatorsQ.data ?? []).filter((op) => op.managed_by_id === teamOf.id);
   }, [operatorsQ.data, teamOf]);
-  const unassignedOperators = useMemo(() => {
-    return (operatorsQ.data ?? []).filter((op) => op.managed_by_id == null);
-  }, [operatorsQ.data]);
+  // Add-pool: ВСЕ operator'ы кроме уже в этой команде. Super_manager
+  // может «украсть» у другого manager'а — managed_by единственный FK,
+  // при PATCH на другой owner — автоматически уходит от предыдущего.
+  const availableOperators = useMemo(() => {
+    if (!teamOf) return [] as OperatorRow[];
+    return (operatorsQ.data ?? []).filter((op) => op.managed_by_id !== teamOf.id);
+  }, [operatorsQ.data, teamOf]);
+  // Map user_id → username для отображения «сейчас у X» в dropdown.
+  const userById = useMemo(() => {
+    const m = new Map<number, string>();
+    (usersQ.data ?? []).forEach((u) => m.set(u.id, u.username));
+    return m;
+  }, [usersQ.data]);
 
   return (
     <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
@@ -435,11 +445,12 @@ export default function MyManagers() {
         {confirmDelete && (
           <div className="p-7">
             <div className="text-[18px] font-semibold tracking-tight">
-              {t("super_manager.delete_q") || "Удалить менеджера?"}
+              {t("super_manager.delete_q")}
             </div>
             <div className="text-[13px] text-muted mt-2">
-              {t("super_manager.delete_hint") ||
-                `Аккаунт ${confirmDelete.username} будет деактивирован. Его операторы (${opsByManager.get(confirmDelete.id) ?? 0}) останутся без владельца и вы сможете переназначить их другому менеджеру.`}
+              {t("super_manager.delete_hint_tpl")
+                .replace("{name}", confirmDelete.username)
+                .replace("{n}", String(opsByManager.get(confirmDelete.id) ?? 0))}
             </div>
             <div className="mt-6 flex gap-2 justify-end">
               <Button variant="ghost" onClick={() => setConfirmDelete(null)}>
@@ -528,11 +539,13 @@ export default function MyManagers() {
               )}
             </div>
 
-            {/* Add from pool dropdown */}
-            {unassignedOperators.length > 0 && (
+            {/* Add from pool dropdown: ВСЕ operator'ы (кроме этой команды).
+                Можно "украсть" у другого manager'а — managed_by единственный
+                FK, при PATCH уйдёт от предыдущего. */}
+            {availableOperators.length > 0 && (
               <div className="pt-3 border-t" style={{ borderColor: "var(--border)" }}>
                 <div className="nf-col mb-1.5">
-                  {t("super_manager.add_from_pool") || "Добавить из свободных"}
+                  {t("super_manager.add_from_pool")}
                 </div>
                 <div className="flex gap-2">
                   <select
@@ -542,14 +555,20 @@ export default function MyManagers() {
                       setAddOpSelect(e.target.value === "" ? "" : Number(e.target.value))
                     }
                   >
-                    <option value="">
-                      {t("super_manager.select_operator") || "— выбери оператора —"}
-                    </option>
-                    {unassignedOperators.map((op) => (
-                      <option key={op.id} value={op.id}>
-                        {op.full_name} ({op.phone ?? "—"})
-                      </option>
-                    ))}
+                    <option value="">{t("super_manager.select_operator")}</option>
+                    {availableOperators.map((op) => {
+                      const ownerName = op.managed_by_id
+                        ? userById.get(op.managed_by_id) ?? `#${op.managed_by_id}`
+                        : null;
+                      const suffix = ownerName
+                        ? ` — ${t("super_manager.currently_with").replace("{name}", ownerName)}`
+                        : ` — ${t("super_manager.unassigned")}`;
+                      return (
+                        <option key={op.id} value={op.id}>
+                          {op.full_name} ({op.phone ?? "—"}){suffix}
+                        </option>
+                      );
+                    })}
                   </select>
                   <Button
                     onClick={() =>
@@ -561,12 +580,11 @@ export default function MyManagers() {
                     }
                     disabled={addOpSelect === "" || reassignOpMut.isPending}
                   >
-                    <Plus className="w-3.5 h-3.5" /> {t("common.add") || "Добавить"}
+                    <Plus className="w-3.5 h-3.5" /> {t("common.add")}
                   </Button>
                 </div>
                 <div className="text-[11px] text-muted mt-1">
-                  {t("super_manager.add_hint") ||
-                    "Доступны операторы без менеджера (unassigned pool)."}
+                  {t("super_manager.add_hint")}
                 </div>
               </div>
             )}
