@@ -2,7 +2,7 @@ import { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../store/auth";
 
-type Role = "manager" | "operator";
+type Role = "manager" | "super_manager" | "operator";
 
 interface Props {
   allow: Role[];
@@ -10,15 +10,23 @@ interface Props {
 }
 
 /**
- * Normalise backend role strings to the two UI-facing roles.
- * Backend stores several internal roles (`team_lead`, `manager`, `operator`,
- * `superadmin`), but the product exposes two — все senior-роли (team_lead /
- * manager / superadmin) сворачиваются в `manager`, чтобы навигация и права
- * в UI были одинаковые. Superadmin отличается только дополнительным
- * пунктом «Фото сотрудников» — эта проверка идёт через `isSuperadmin()`.
+ * Normalise backend role strings to the UI-facing roles.
+ *
+ * Backend stores several internal roles (`team_lead`, `manager`,
+ * `super_manager`, `operator`, `superadmin`); the product exposes three:
+ *   - operator       — рядовой оператор
+ *   - manager        — все «senior»-роли без иерархии: team_lead / manager
+ *                      / superadmin сворачиваются сюда
+ *   - super_manager  — middle-tier владелец (видит scope-ed статистику
+ *                      по своей ветке, свои страницы /team/*)
+ *
+ * Superadmin отличается только пунктом «Фото сотрудников» / «Системно
+ * потерянные» в nav — проверка идёт через `isSuperadmin()`. На уровне
+ * нормализованной роли он остаётся "manager" (видит всё, что manager).
  */
 export function normaliseRole(raw: string | null | undefined): Role | null {
   if (raw === "operator") return "operator";
+  if (raw === "super_manager") return "super_manager";
   if (raw === "manager" || raw === "team_lead" || raw === "superadmin")
     return "manager";
   return null;
@@ -29,11 +37,21 @@ export function isSuperadmin(raw: string | null | undefined): boolean {
   return raw === "superadmin";
 }
 
+/** True если raw-роль = "super_manager" (новая middle-tier роль). */
+export function isSuperManager(raw: string | null | undefined): boolean {
+  return raw === "super_manager";
+}
+
 export function RoleGate({ allow, children }: Props) {
   const rawRole = useAuth((s) => s.role);
   const role = normaliseRole(rawRole);
   if (!role) return <Navigate to="/login" replace />;
-  if (!allow.includes(role)) return <Navigate to="/my" replace />;
+  if (!allow.includes(role)) {
+    // Role-aware fallback: operator → /my, остальные (manager /
+    // super_manager) → /. Super_manager не отправляем на /my, у него
+    // нет operator-FK, страница пустая.
+    return <Navigate to={role === "operator" ? "/my" : "/"} replace />;
+  }
   return <>{children}</>;
 }
 

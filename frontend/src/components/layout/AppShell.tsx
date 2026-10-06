@@ -1,6 +1,6 @@
 import { Outlet } from "react-router-dom";
 import { useAuth } from "../../store/auth";
-import { normaliseRole, isSuperadmin } from "../RoleGate";
+import { normaliseRole, isSuperadmin, isSuperManager } from "../RoleGate";
 import { Sidebar, type SidebarGroup } from "./Sidebar";
 import { Header } from "./Header";
 import MorningGreeting from "../MorningGreeting";
@@ -9,6 +9,7 @@ import CheckinGate from "../CheckinGate";
 import CheckoutBackfillGate from "../CheckoutBackfillGate";
 import CheckoutReminderBanner from "../CheckoutReminderBanner";
 import BirthdayCelebration from "../BirthdayCelebration";
+import SaleCelebration from "../SaleCelebration";
 import { useT } from "../../lib/i18n";
 import { useMe } from "../../hooks/useMe";
 
@@ -115,6 +116,34 @@ function useManagerGroups(
   ];
 }
 
+function useSuperManagerGroups(t: (k: string) => string): SidebarGroup[] {
+  // Super_manager navigation — чистая «моя ветка» без доступа к общим
+  // менеджерским экранам (/users, /settings, bot config и т.д.). Три
+  // главных пункта + leaderboard / lessons / profile.
+  return [
+    {
+      items: [
+        { to: "/team/sales", label: t("nav.my_team_sales"), end: true },
+        { to: "/team/operators", label: t("nav.my_team_operators") },
+        { to: "/team/managers", label: t("nav.my_managers") },
+      ],
+    },
+    {
+      title: t("sidebar.analytics"),
+      items: [
+        { to: "/analytics", label: t("nav.analytics") },
+        { to: "/leaderboard", label: t("nav.leaderboard") },
+      ],
+    },
+    {
+      items: [
+        { to: "/lessons/today", label: t("nav.lesson_today") },
+        { to: "/profile", label: t("nav.profile") },
+      ],
+    },
+  ];
+}
+
 function useOperatorGroups(t: (k: string) => string): SidebarGroup[] {
   return [
     {
@@ -146,7 +175,15 @@ export default function AppShell() {
   const showSystemLost = isSuperadmin(rawRole);
   const managerGroups = useManagerGroups(t, showPhotos, showSystemLost);
   const operatorGroups = useOperatorGroups(t);
-  const groups = role === "operator" ? operatorGroups : managerGroups;
+  const superManagerGroups = useSuperManagerGroups(t);
+  // Role-based sidebar: operator → operator groups, super_manager →
+  // dedicated 3-item «my branch» nav, остальные (manager/team_lead/
+  // superadmin) — full manager nav.
+  const groups = isSuperManager(rawRole)
+    ? superManagerGroups
+    : role === "operator"
+    ? operatorGroups
+    : managerGroups;
 
   // Read the operator's preferred content language from the profile so
   // MorningGreeting fetches the correct RU/UZ daily quote. Default 'uz'
@@ -155,9 +192,15 @@ export default function AppShell() {
   const me = useMe();
   const greetingLang = (me.data?.preferred_language ?? "uz") as "ru" | "uz";
 
+  // Sidebar expects a 2-value role (manager|operator) for badge logic.
+  // Super_manager → treat as manager at the sidebar-chrome layer; the
+  // groups array itself is already the super_manager-specific one.
+  const sidebarRole: "manager" | "operator" =
+    role === "operator" ? "operator" : "manager";
+
   return (
     <div className="min-h-screen flex bg-[color:var(--bg)] text-[color:var(--text)]">
-      <Sidebar groups={groups} role={role} />
+      <Sidebar groups={groups} role={sidebarRole} />
       <div className="flex-1 min-w-0 flex flex-col">
         <Header />
         {/* Enforcement wave 2026-08-26 — soft reminder про уход. Только
@@ -168,6 +211,12 @@ export default function AppShell() {
             (is_birthday_today=true из /api/auth/me/). Manager/team-lead
             operator FK не имеют → флаг всегда false → компонент null. */}
         {role === "operator" && <BirthdayCelebration />}
+        {/* Peer-operator celebration overlay: конфетти + имя коллеги-
+            автора продажи. Polling `/notifications/?kind=sale_celebration
+            &unread=1` каждые 30 сек, до 4 сек на экране, mark-read после
+            показа. Автор своей продажи overlay не видит (backend
+            исключает `sale.operator_id` из recipients). */}
+        {role === "operator" && <SaleCelebration />}
         <main
           className="flex-1"
           style={{ padding: "30px 40px 70px" }}

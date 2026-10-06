@@ -46,6 +46,8 @@ import Reports from "./pages/Reports";
 import MyActivity from "./pages/MyActivity";
 import TgQueue from "./pages/TgQueue";
 import Users from "./pages/Users";
+import MyManagers from "./pages/MyManagers";
+import MyTeamSales from "./pages/MyTeamSales";
 import Settings from "./pages/Settings";
 import OrphanLeads from "./pages/OrphanLeads";
 import SystemLostLeads from "./pages/SystemLostLeads";
@@ -73,6 +75,7 @@ function Protected({ children }: { children: React.ReactNode }) {
 function RoleAwareHome() {
   const role = normaliseRole(useAuth((s) => s.role));
   if (role === "operator") return <Navigate to="/my" replace />;
+  if (role === "super_manager") return <Navigate to="/team/sales" replace />;
   return <Dashboard />;
 }
 
@@ -134,6 +137,13 @@ export default function App() {
           <Route path="/calculator" element={<RoleGate allow={["manager", "operator"]}><Calculator /></RoleGate>} />
           <Route path="/stickers" element={<RoleGate allow={["manager"]}><Placeholder title="Стикеры" /></RoleGate>} />
           <Route path="/users" element={<RoleGate allow={["manager"]}><Users /></RoleGate>} />
+          {/* 2026-10-06: super_manager admin pages. Поддоменом /team/* чтобы
+              не коллизировать с существующими /sales / /operators (их тоже
+              даём super_manager'у, но scope-ed данные через backend
+              visible_operator_ids). */}
+          <Route path="/team/managers" element={<RoleGate allow={["super_manager"]}><MyManagers /></RoleGate>} />
+          <Route path="/team/operators" element={<RoleGate allow={["super_manager"]}><Operators /></RoleGate>} />
+          <Route path="/team/sales" element={<RoleGate allow={["super_manager"]}><MyTeamSales /></RoleGate>} />
           <Route path="/sales-today" element={<RoleGate allow={["manager"]}><SalesToday /></RoleGate>} />
           <Route path="/tg-queue" element={<RoleGate allow={["manager"]}><TgQueue /></RoleGate>} />
           <Route path="/sheet-sources" element={<RoleGate allow={["manager"]}><SheetSources /></RoleGate>} />
