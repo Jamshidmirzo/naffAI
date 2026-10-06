@@ -21,6 +21,7 @@ from typing import Any
 
 from django.db import transaction
 from django.utils import timezone
+from datetime import timedelta
 
 logger = logging.getLogger("leads.writeback")
 
@@ -625,6 +626,25 @@ def lead_create_from_sheet_row(
         assigned_op = None
         use_round_robin = False
 
+    # Горячий лид (ТЕЗ): для «горячих» шитов проставляем hot_until при
+    # импорте — у оператора hot_sla_minutes на первый контакт. Watcher
+    # `hot_leads_escalation` ищет лиды с просроченным hot_until и шлёт
+    # владельцу групповой TG. Любая смена статуса в lead_update_status
+    # обнулит hot_until (оператор тронул лид до остывания).
+    #
+    # Не ставим hot_until, если:
+    #   * шит не горячий;
+    #   * лид сразу уехал в needs_review / archived (нет живого контакта);
+    #   * default_status шита — архивный (sheet-3 исторический импорт).
+    hot_until_dt = None
+    if (
+        sheet_source.is_hot
+        and status not in (LeadStatus.NEEDS_REVIEW, LeadStatus.ARCHIVED)
+        and not needs_review
+    ):
+        sla_minutes = int(sheet_source.hot_sla_minutes or 10)
+        hot_until_dt = timezone.now() + timedelta(minutes=sla_minutes)
+
     lead = Lead.objects.create(
         full_name=full_name[:128],
         phone_raw=phone_raw[:64],
@@ -640,6 +660,7 @@ def lead_create_from_sheet_row(
         operator=assigned_op,
         needs_review=needs_review,
         metadata=metadata,
+        hot_until=hot_until_dt,
     )
     audit_log_create(
         user=None,
@@ -1369,7 +1390,15 @@ def lead_update_status(
     if old == status:
         return lead
     lead.status = status
-    lead.save(update_fields=["status", "updated_at"])
+    update_fields = ["status", "updated_at"]
+    # Hot-lead SLA: любое движение статуса закрывает «горячий» таймер.
+    # Оператор отреагировал — больше не нужно эскалировать владельцу.
+    # Watcher тоже обнуляет hot_until после отправки отчёта, но первое
+    # касание оператора всегда важнее.
+    if lead.hot_until is not None:
+        lead.hot_until = None
+        update_fields.append("hot_until")
+    lead.save(update_fields=update_fields)
     audit_log_create(
         user=user,
         action=AuditAction.UPDATE,

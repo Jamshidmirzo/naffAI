@@ -138,6 +138,7 @@ class LeadSerializer(serializers.ModelSerializer):
             "postpone_reason",
             "previous_operator_name",
             "is_retry",
+            "hot_until",
             "created_at",
             "updated_at",
         ]
@@ -152,6 +153,7 @@ class LeadSerializer(serializers.ModelSerializer):
             "postpone_reason",
             "previous_operator_name",
             "is_retry",
+            "hot_until",
             "created_at",
             "updated_at",
         ]
@@ -214,6 +216,8 @@ class SheetSourceSerializer(serializers.ModelSerializer):
             "distribution_mode",
             "writeback_columns",
             "allowed_operator_ids",
+            "is_hot",
+            "hot_sla_minutes",
         ]
         read_only_fields = [
             "id",
