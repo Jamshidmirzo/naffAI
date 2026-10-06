@@ -179,10 +179,16 @@ export default function AppShell() {
   // Role-based sidebar: operator → operator groups, super_manager →
   // dedicated 3-item «my branch» nav, остальные (manager/team_lead/
   // superadmin) — full manager nav.
+  // Role-based sidebar: operator → operator groups, super_manager →
+  // dedicated 3-item «my branch» nav, superadmin → super_manager-nav
+  // PRE-pended to full manager nav (owner sees everything), остальные
+  // (manager/team_lead) — full manager nav.
   const groups = isSuperManager(rawRole)
     ? superManagerGroups
     : role === "operator"
     ? operatorGroups
+    : isSuperadmin(rawRole)
+    ? [...superManagerGroups, ...managerGroups]
     : managerGroups;
 
   // Read the operator's preferred content language from the profile so

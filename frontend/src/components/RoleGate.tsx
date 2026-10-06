@@ -44,6 +44,8 @@ export function isSuperManager(raw: string | null | undefined): boolean {
 
 export function RoleGate({ allow, children }: Props) {
   const rawRole = useAuth((s) => s.role);
+  // Superadmin bypass: owner sees everything, incl. super_manager-only pages.
+  if (isSuperadmin(rawRole)) return <>{children}</>;
   const role = normaliseRole(rawRole);
   if (!role) return <Navigate to="/login" replace />;
   if (!allow.includes(role)) {
