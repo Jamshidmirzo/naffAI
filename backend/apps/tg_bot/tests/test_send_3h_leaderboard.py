@@ -2,7 +2,7 @@
 Tests for the 3-hour leaderboard cron command (`send_3h_leaderboard`).
 
 Covers:
-  - render: sort order (unique_leads_touched DESC), top-10 cap, RU / UZ labels;
+  - render: sort order (touched-total DESC), top-10 cap, RU / UZ labels;
   - empty-state message when there's no operator activity today;
   - --dry-run doesn't invoke aiogram at all;
   - --min-hour / --max-hour guards skip send silently;
@@ -55,46 +55,46 @@ def _now_working_hour():
 # --- pure render tests -------------------------------------------------
 
 
-def test_sort_leaderboard_orders_by_unique_desc():
+def test_sort_leaderboard_orders_by_touched_desc():
     rows = [
-        {"operator_name": "A", "unique_leads_touched": 5, "sold_total": 1, "calls_total": 7},
-        {"operator_name": "B", "unique_leads_touched": 10, "sold_total": 2, "calls_total": 12},
-        {"operator_name": "C", "unique_leads_touched": 10, "sold_total": 5, "calls_total": 15},
+        {"operator_name": "A", "total": 5, "sold_total": 1, "calls_total": 7},
+        {"operator_name": "B", "total": 10, "sold_total": 2, "calls_total": 12},
+        {"operator_name": "C", "total": 10, "sold_total": 5, "calls_total": 15},
     ]
     ordered = _sort_leaderboard(rows)
-    # B and C tied on unique_leads=10 → C wins on sold_total tiebreak.
+    # B and C tied on total=10 → C wins on sold_total tiebreak.
     assert [r["operator_name"] for r in ordered] == ["C", "B", "A"]
 
 
 def test_build_report_ru_shape():
     snapshot = {
         "by_operator": [
-            {"operator_name": "Bonu", "unique_leads_touched": 39, "sold_total": 12, "calls_total": 45},
-            {"operator_name": "Umida", "unique_leads_touched": 31, "sold_total": 8, "calls_total": 34},
+            {"operator_name": "Bonu", "total": 39, "sold_total": 12, "calls_total": 45},
+            {"operator_name": "Umida", "total": 31, "sold_total": 8, "calls_total": 34},
         ]
     }
     now = timezone.now()
     txt = _build_report(snapshot, now=now, lang="ru")
     assert "Оперативная сводка" in txt
     assert "Топ операторов" in txt
-    assert "1. Bonu</b> — 39 обзвонил, 12 продажи" in txt
-    assert "2. Umida</b> — 31 обзвонил, 8 продажи" in txt
-    assert "Всего звонков" in txt
+    assert "1. Bonu</b> — 39 касаний, 12 продажи" in txt
+    assert "2. Umida</b> — 31 касаний, 8 продажи" in txt
+    assert "Всего касаний" in txt
     assert "Всего продаж" in txt
 
 
 def test_build_report_uz_shape():
     snapshot = {
         "by_operator": [
-            {"operator_name": "Bonu", "unique_leads_touched": 3, "sold_total": 1, "calls_total": 4},
+            {"operator_name": "Bonu", "total": 3, "sold_total": 1, "calls_total": 4},
         ]
     }
     now = timezone.now()
     txt = _build_report(snapshot, now=now, lang="uz")
     assert "3 soatlik hisobot" in txt
     assert "Eng faol operatorlar" in txt
-    assert "1. Bonu</b> — 3 obzvon, 1 sotuv" in txt
-    assert "Jami qo'ng'iroqlar" in txt
+    assert "1. Bonu</b> — 3 aloqa, 1 sotuv" in txt
+    assert "Jami aloqalar" in txt
 
 
 def test_build_report_empty_state_ru():
@@ -111,14 +111,14 @@ def test_build_report_empty_state_uz():
 
 def test_build_report_skips_zero_activity_rows():
     """
-    Rows with `unique_leads_touched == 0` (e.g. dostik — sold but didn't
-    call) must not pollute the leaderboard, though their sold_total still
+    Rows with `total == 0` (e.g. dostik — sold but didn't touch any lead)
+    must not pollute the leaderboard, though their sold_total still
     contributes to the aggregate `Всего продаж` line.
     """
     snapshot = {
         "by_operator": [
-            {"operator_name": "Bonu", "unique_leads_touched": 5, "sold_total": 1, "calls_total": 6},
-            {"operator_name": "Dostik", "unique_leads_touched": 0, "sold_total": 10, "calls_total": 0},
+            {"operator_name": "Bonu", "total": 5, "sold_total": 1, "calls_total": 6},
+            {"operator_name": "Dostik", "total": 0, "sold_total": 10, "calls_total": 0},
         ]
     }
     txt = _build_report(snapshot, now=timezone.now(), lang="ru")
@@ -131,7 +131,7 @@ def test_build_report_skips_zero_activity_rows():
 def test_build_report_top_n_cap():
     snapshot = {
         "by_operator": [
-            {"operator_name": f"Op{i}", "unique_leads_touched": 100 - i, "sold_total": 0, "calls_total": 100 - i}
+            {"operator_name": f"Op{i}", "total": 100 - i, "sold_total": 0, "calls_total": 100 - i}
             for i in range(15)
         ]
     }
@@ -273,5 +273,5 @@ def test_live_send_end_to_end_with_real_activity(_now_working_hour):
     assert send_mock.await_count == 1
     sent_text = send_mock.await_args_list[0].args[1]
     # Bonu did 2 leads, Umida 1 → Bonu ranked #1.
-    assert "1. Bonu</b> — 2 обзвонил" in sent_text
-    assert "2. Umida</b> — 1 обзвонил" in sent_text
+    assert "1. Bonu</b> — 2 касаний" in sent_text
+    assert "2. Umida</b> — 1 касаний" in sent_text

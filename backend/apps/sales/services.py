@@ -630,6 +630,62 @@ def _broadcast_new_sale(sale, primary_op, operator_lines, total) -> None:
         except Exception:
             pass
 
+    # Peer-operator celebration overlay: fan out an in-app notification
+    # (kind=sale_celebration) to every active operator EXCEPT the sellers
+    # of this sale. Frontend polls unread ones every 30s and shows a
+    # confetti overlay ("Gozal iPhone 15 Pro sotdi! 🎉"). Sellers
+    # themselves are excluded — no self-celebration. No Telegram DM for
+    # this kind, only in-app.
+    try:
+        # Collect every Operator FK linked to this sale (multi-allocation:
+        # a sale may credit 2+ operators via SaleOperator). Their profiles
+        # (User rows) are the ones we must EXCLUDE from the celebration
+        # audience. Fall back to primary_op.id if operator_lines is empty.
+        seller_operator_ids = {
+            o.id for o, _ in (operator_lines or []) if getattr(o, "id", None)
+        }
+        if primary_op and getattr(primary_op, "id", None):
+            seller_operator_ids.add(primary_op.id)
+
+        seller_user_ids = set(
+            Profile.objects.filter(
+                operator_id__in=seller_operator_ids
+            ).values_list("user_id", flat=True)
+        )
+
+        peer_operator_users = Profile.objects.filter(
+            role=Role.OPERATOR,
+            deleted_at__isnull=True,
+            user__is_active=True,
+        ).exclude(user_id__in=seller_user_ids).values_list("user_id", flat=True)
+        peer_user_ids = [uid for uid in peer_operator_users if uid]
+
+        if peer_user_ids:
+            display_name = (primary_op.full_name if primary_op else "") or op_names
+            device_label = (sale.phone_model or "").strip()
+            notification_broadcast(
+                kind=NotificationKind.SALE_CELEBRATION,
+                # Title/body are stored but the overlay renders from
+                # metadata directly, so backend copy is minimal (used only
+                # if this notification ever surfaces on the plain list
+                # view, which for operators is unlikely).
+                title=f"🎉 {display_name} · {device_label}"[:280],
+                body=f"{display_name} sotdi: {device_label}",
+                link=f"/sales/{sale.id}",
+                recipient_ids=peer_user_ids,
+                metadata={
+                    "sale_id": sale.id,
+                    "seller_id": primary_op.id if primary_op else None,
+                    "seller_name": display_name,
+                    "amount": amount_int,
+                    "device": device_label,
+                    "created_at": sale.sold_at.isoformat() if sale.sold_at else None,
+                },
+            )
+    except Exception:
+        # Notification layer must never abort the sale itself.
+        logger.exception("sale_celebration broadcast failed sale=%s", sale.id)
+
 
 @transaction.atomic
 def sale_full_update(

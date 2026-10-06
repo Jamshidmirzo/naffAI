@@ -75,17 +75,10 @@ def visible_operator_ids(actor) -> list[int]:
         return list(Operator.objects.values_list("id", flat=True))
 
     if role == Role.SUPER_MANAGER:
-        my_manager_user_ids = list(
-            Profile.objects
-            .filter(reports_to=actor, role=Role.MANAGER)
-            .values_list("user_id", flat=True)
-        )
-        qs = Operator.objects.filter(
-            Q(managed_by=actor) | Q(managed_by_id__in=my_manager_user_ids)
-        )
-        # distinct() superfluous because managed_by is a single FK — a row
-        # can satisfy at most one leg of the OR.
-        return list(qs.values_list("id", flat=True))
+        # Business rule: super_managers are «shared owners» — все super_managers
+        # видят ВСЕХ operator'ов (как superadmin). Отдельные ветки не ведём,
+        # операторов делят между собой managers через managed_by.
+        return list(Operator.objects.values_list("id", flat=True))
 
     if role in (Role.MANAGER, Role.TEAM_LEAD):
         # Differentiate NEW manager (in hierarchy, has reports_to) from
@@ -133,12 +126,10 @@ def visible_manager_user_ids(actor) -> list[int]:
         return list(User.objects.values_list("id", flat=True))
 
     if role == Role.SUPER_MANAGER:
-        direct_report_ids = list(
-            Profile.objects
-            .filter(reports_to=actor, role=Role.MANAGER)
-            .values_list("user_id", flat=True)
-        )
-        return [actor.id, *direct_report_ids]
+        # Super_managers — shared senior tier. Видят ВСЕХ юзеров системы
+        # (как superadmin), чтобы один super_manager мог управлять любым
+        # manager'ом независимо от reports_to.
+        return list(User.objects.values_list("id", flat=True))
 
     if role in (Role.MANAGER, Role.TEAM_LEAD):
         return [actor.id]

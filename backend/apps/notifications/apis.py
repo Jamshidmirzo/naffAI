@@ -35,8 +35,9 @@ class NotificationListApi(ListAPIView):
 
     def get_queryset(self):
         only_unread = self.request.query_params.get("unread") in ("1", "true", "True")
+        kind = self.request.query_params.get("kind") or None
         return notifications_for_user(
-            user_id=self.request.user.id, only_unread=only_unread
+            user_id=self.request.user.id, only_unread=only_unread, kind=kind
         )
 
     def list(self, request, *args, **kwargs):

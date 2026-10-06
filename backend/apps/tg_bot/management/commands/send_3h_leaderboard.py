@@ -4,7 +4,8 @@
 Runs from a host cron (see ``deploy/cron/naffai-3h-leaderboard.cron``) at
 10:00 / 13:00 / 16:00 / 19:00 Asia/Tashkent (05:00, 08:00, 11:00, 14:00 UTC).
 Pulls today's snapshot from :func:`apps.analytics.selectors.lead_stats_snapshot`,
-renders a top-10 leaderboard sorted by ``unique_leads_touched`` DESC, and
+renders a top-10 leaderboard sorted by touched-leads ``total`` DESC (union of
+CallAttempt + Lead-update path), and
 sends the message as a Telegram DM to every active
 :class:`BotSubscription`.
 
@@ -64,14 +65,19 @@ def _short_date(day: dt.date, *, lang: str) -> str:
 def _sort_leaderboard(rows: list[dict]) -> list[dict]:
     """
     Order operators for the leaderboard:
-      1) unique_leads_touched DESC (main KPI — who worked today),
+      1) total DESC — touched leads (union of CallAttempt + Lead-update path),
+         same source `lead_stats_snapshot` uses for its by_operator.total field.
+         Was `unique_leads_touched` (CallAttempt only) до 2026-09-24 — но
+         часть операторов работает только через смену статуса без нажатия
+         «позвонить», из-за чего они выпадали из отчёта и totals занижались
+         в 3–4×.
       2) sold_total DESC (tie-break for hard workers who closed more),
       3) calls_total DESC (very quiet tie-break).
     """
     return sorted(
         rows,
         key=lambda r: (
-            int(r.get("unique_leads_touched", 0) or 0),
+            int(r.get("total", 0) or 0),
             int(r.get("sold_total", 0) or 0),
             int(r.get("calls_total", 0) or 0),
         ),
@@ -95,12 +101,14 @@ def _build_report(
     rows = _sort_leaderboard(snapshot.get("by_operator") or [])
     # Only surface operators that actually did something today — a 0/0/0
     # row is noise in an operational leaderboard.
-    active_rows = [r for r in rows if int(r.get("unique_leads_touched", 0) or 0) > 0]
+    # `total` = touched-leads union (CallAttempt ∪ Lead-update path), из
+    # `lead_stats_snapshot.by_operator[*].total`. См. _sort_leaderboard.
+    active_rows = [r for r in rows if int(r.get("total", 0) or 0) > 0]
 
     hh_mm = now.strftime("%H:%M")
     day_str = _short_date(now.date(), lang=lang)
 
-    total_calls = sum(int(r.get("calls_total", 0) or 0) for r in rows)
+    total_touched = sum(int(r.get("total", 0) or 0) for r in rows)
     total_sold = sum(int(r.get("sold_total", 0) or 0) for r in rows)
 
     if lang == "uz":
@@ -108,9 +116,9 @@ def _build_report(
         subhdr = f"Bugungi kunga, {day_str}"
         top_label = "🏆 Eng faol operatorlar:"
         empty_line = "Hozircha faoliyat yo'q"
-        calls_word = "obzvon"
+        calls_word = "aloqa"
         sold_word = "sotuv"
-        total_calls_lbl = "📞 Jami qo'ng'iroqlar"
+        total_calls_lbl = "📞 Jami aloqalar"
         total_sold_lbl = "💰 Jami sotuvlar"
         statuses_label = "📋 Statuslar:"
     else:
@@ -118,9 +126,9 @@ def _build_report(
         subhdr = f"За сегодня, {day_str}"
         top_label = "🏆 Топ операторов:"
         empty_line = "Пока нет обзвонов"
-        calls_word = "обзвонил"
+        calls_word = "касаний"
         sold_word = "продажи"
-        total_calls_lbl = "📞 Всего звонков"
+        total_calls_lbl = "📞 Всего касаний"
         total_sold_lbl = "💰 Всего продаж"
         statuses_label = "📋 Статусы:"
 
@@ -141,7 +149,7 @@ def _build_report(
     else:
         for i, r in enumerate(active_rows[:top_n], start=1):
             name = (r.get("operator_name") or "—").strip() or "—"
-            calls = int(r.get("unique_leads_touched", 0) or 0)
+            calls = int(r.get("total", 0) or 0)
             sold = int(r.get("sold_total", 0) or 0)
             lines.append(f"<b>{i}. {name}</b> — {calls} {calls_word}, {sold} {sold_word}")
             # Per-operator status breakdown (DESC by count).
@@ -173,7 +181,7 @@ def _build_report(
             lines.append(f"{prefix}{label}: <b>{int(s.get('count', 0) or 0)}</b>")
         lines.append("")
 
-    lines.append(f"{total_calls_lbl}: <b>{total_calls}</b>")
+    lines.append(f"{total_calls_lbl}: <b>{total_touched}</b>")
     lines.append(f"{total_sold_lbl}: <b>{total_sold}</b>")
     return "\n".join(lines)
 
@@ -216,8 +224,9 @@ async def _send_dm(chat_id: int, text: str) -> tuple[bool, str]:
 
 class Command(BaseCommand):
     help = (
-        "Send a 3-hour operator leaderboard DM (top 10 by unique leads "
-        "touched today) to every active BotSubscription. Bilingual RU/UZ."
+        "Send a 3-hour operator leaderboard DM (top 10 by touched leads "
+        "today — union of CallAttempt + Lead-update path) to every active "
+        "BotSubscription. Bilingual RU/UZ."
     )
 
     def add_arguments(self, parser):

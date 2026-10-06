@@ -87,10 +87,8 @@ export default function MyManagers() {
     queryFn: () => api.get<UserRow[]>("/users/").then((r) => r.data),
   });
 
-  // Keep only managers (role=manager / team_lead) и исключаем себя.
-  // Super_manager не должен видеть «себя» в этом списке — у него для
-  // этого /profile. Backend возвращает self + direct_reports; фильтр
-  // «только managers, не я» делает список чисто подчинёнными.
+  // All managers / team_leads system-wide (super_managers — shared tier,
+  // видят всех manager'ов, не только своих). Исключаем себя (super_manager'а).
   const rows = (usersQ.data ?? []).filter(
     (u) => u.username !== meUsername && (u.role === "manager" || u.role === "team_lead")
   );
@@ -101,34 +99,12 @@ export default function MyManagers() {
         .post<Creds & { role: string; is_active: boolean }>("/users/", {
           username: newUsername.trim(),
           role: "manager",
-          // reports_to_id = me implicitly via UserListCreateApi.post —
-          // но backend сам не ставит, нужно передать. На фронте мы id
-          // текущего юзера не держим напрямую, поэтому полагаемся на
-          // отдельный follow-up PATCH /users/{id}/ сразу после create.
+          // reports_to не ставим — super_managers общий tier, manager'ы
+          // не привязываются к конкретному super_manager'у. Scope у
+          // manager'ов идёт по managed_by на operator-уровне.
         })
         .then((r) => r.data),
     onSuccess: async (data) => {
-      // Follow-up PATCH: привязать нового manager'а себе через
-      // reports_to_id=self. API-слой само на себя — т.е. PATCH на
-      // /users/{data.id}/ с reports_to_id=<my-user-id>. Текущий user
-      // id мы знаем из /auth/me/, но здесь напрямую — через чуть более
-      // окольный путь: сначала попросим API найти my-id через рефреш
-      // списка (super_manager видит сам себя как первую строку).
-      try {
-        const list = await api
-          .get<UserRow[]>("/users/")
-          .then((r) => r.data);
-        const myRow = list.find((u) => u.username === meUsername);
-        if (myRow) {
-          await api.patch(`/users/${data.id}/`, {
-            reports_to_id: myRow.id,
-          });
-        }
-      } catch {
-        // Non-fatal — manager создан, просто reports_to не выставлен.
-        // Super_manager может потом вручную привязать через /users или
-        // backend-cli. Toast об успехе всё равно показываем.
-      }
       qc.invalidateQueries({ queryKey: ["users"] });
       setCreateOpen(false);
       setNewUsername("");

@@ -133,11 +133,11 @@ class OperatorSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         """
-        Permission gate for `managed_by` reassignment (Phase 1 hierarchy).
+        Permission gate for `managed_by` reassignment.
 
           * superadmin / superuser: free assignment to anyone.
-          * super_manager: can assign to self or to any of their managers
-            (reports_to=self).
+          * super_manager: shared senior tier — can assign to self or
+            to any manager / team_lead / super_manager in the system.
           * manager / team_lead: can set/unset ownership on their own ops
             but can only point `managed_by` at themselves (or NULL).
           * else: 403.
@@ -159,16 +159,21 @@ class OperatorSerializer(serializers.ModelSerializer):
 
         new_owner = attrs["managed_by"]  # User instance or None
         if role == _Role.SUPER_MANAGER:
-            allowed = {actor.id}
-            allowed.update(
-                _Profile.objects
-                .filter(reports_to=actor, role=_Role.MANAGER)
-                .values_list("user_id", flat=True)
-            )
-            if new_owner is not None and new_owner.id not in allowed:
-                raise serializers.ValidationError(
-                    {"managed_by_id": "Можно назначать только себе или своим менеджерам"}
+            # Super_managers — shared tier, назначают любому senior.
+            if new_owner is not None:
+                new_role = getattr(
+                    _Profile.objects.filter(user_id=new_owner.id).first(),
+                    "role", None,
                 )
+                if new_role not in (
+                    _Role.MANAGER,
+                    _Role.TEAM_LEAD,
+                    _Role.SUPER_MANAGER,
+                    _Role.SUPERADMIN,
+                ):
+                    raise serializers.ValidationError(
+                        {"managed_by_id": "Можно назначать только senior-роли"}
+                    )
             return attrs
 
         if role in (_Role.MANAGER, _Role.TEAM_LEAD):

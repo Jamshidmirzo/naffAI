@@ -17,6 +17,7 @@ class NotificationKind(models.TextChoices):
     CALLBACK_OVERDUE = "callback_overdue", "Просроченный колбэк"
     LEAD_ASSIGNED = "lead_assigned", "Новый лид"
     BIRTHDAY = "birthday", "День рождения оператора"
+    SALE_CELEBRATION = "sale_celebration", "Овация за продажу коллеги"
     SYSTEM = "system", "Системное сообщение"
 
 
