@@ -20,8 +20,9 @@ export function Header() {
 
   return (
     <header
-      className="sticky top-0 z-30 flex items-center justify-between"
+      className="sticky top-0 flex items-center justify-between"
       style={{
+        zIndex: "var(--z-header)" as unknown as number,
         padding: "16px 40px",
         borderBottom: "1px solid var(--border)",
         background: "color-mix(in oklab, var(--bg) 82%, transparent)",

@@ -3,6 +3,31 @@
 @tailwind utilities;
 
 /* ============================================================
+   Layered z-index scale (2026-09-24).
+   Everything positioned above the page flow must pull its z-index
+   from these tokens, not literal numbers, so a Portal-based Popover
+   is guaranteed to sit above the sticky header but under the modal
+   and toast layers. See components/ui/Popover.tsx.
+   ============================================================ */
+:root {
+  --z-header: 40;
+  --z-popover: 55;
+  --z-modal: 60;
+  --z-toast: 80;
+}
+
+/* Popover content shell — Portal children get a common look so
+   individual components don't repeat border/bg/shadow tokens. */
+.nf-popover-content {
+  border-radius: 0.75rem; /* rounded-xl */
+  border: 1px solid var(--border-main);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: 0 20px 44px -22px rgba(0, 0, 0, 0.35),
+              0 4px 12px -4px rgba(0, 0, 0, 0.15);
+}
+
+/* ============================================================
    naffAI Phase 1 redesign tokens (handoff «design_handoff_naffai_simple»).
    Эти переменные добавлены поверх легаси-токенов ниже: старые токены
    (accent-grad/faint/surface/border/shadow/muted/hero/sidebar) остаются

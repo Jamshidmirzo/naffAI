@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Plus } from "lucide-react";
+import { Popover } from "./ui/Popover";
 
 export type ComboboxOption = {
   id: number;
@@ -26,7 +27,7 @@ type Props = {
 /**
  * Compact single-select combobox with:
  *  - a button-styled trigger showing the current label,
- *  - a popover with an always-visible search input,
+ *  - a Portal-based popover with an always-visible search input,
  *  - scrollable, hoverable option list,
  *  - inactive options shown grey with a "неактивен" badge,
  *  - optional "+ Добавить «{query}»" row when allowFreeText is on and the
@@ -44,25 +45,16 @@ export function SingleSelectCombobox({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    // Focus the search input after the popover renders.
-    setTimeout(() => inputRef.current?.focus(), 0);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
+    if (open) {
+      // Focus the search input after the popover renders.
+      setTimeout(() => inputRef.current?.focus(), 0);
+    } else {
+      setQ("");
+    }
   }, [open]);
 
   const matchedById = useMemo(
@@ -100,8 +92,9 @@ export function SingleSelectCombobox({
   };
 
   return (
-    <div className={`relative ${className ?? ""}`} ref={ref}>
+    <div className={`relative ${className ?? ""}`}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => !disabled && setOpen((v) => !v)}
         disabled={disabled}
@@ -117,78 +110,83 @@ export function SingleSelectCombobox({
         <ChevronDown className="w-4 h-4 opacity-60 ml-2 flex-shrink-0" />
       </button>
 
-      {open && (
-        <div className="absolute z-30 mt-1 left-0 right-0 min-w-full max-h-72 overflow-auto rounded-xl border border-[color:var(--border-main)] bg-[color:var(--bg-card)] text-[color:var(--text-primary)] shadow-modal p-2">
-          {options.length >= searchThreshold && (
-            <input
-              ref={inputRef}
-              className="nf-input mb-2 text-sm"
-              placeholder="Поиск…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  if (filtered.length > 0) {
-                    pickOption(filtered[0]);
-                  } else if (allowFreeText) {
-                    commitFreeText();
-                  }
+      <Popover
+        open={open}
+        onClose={() => setOpen(false)}
+        triggerRef={triggerRef}
+        matchTriggerWidth
+        role="listbox"
+        contentClassName="max-h-72 overflow-auto p-2"
+      >
+        {options.length >= searchThreshold && (
+          <input
+            ref={inputRef}
+            className="nf-input mb-2 text-sm"
+            placeholder="Поиск…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (filtered.length > 0) {
+                  pickOption(filtered[0]);
+                } else if (allowFreeText) {
+                  commitFreeText();
                 }
-              }}
-            />
-          )}
-          {filtered.length === 0 && !showAddFreeText && (
-            <div className="px-2 py-3 text-xs text-[color:var(--text-muted)]">
-              Нет вариантов
-            </div>
-          )}
-          <ul className="space-y-0.5">
-            {filtered.map((o) => {
-              const isInactive = o.isActive === false;
-              const selected =
-                typeof value === "number" && value === o.id;
-              return (
-                <li key={o.id}>
-                  <button
-                    type="button"
-                    onClick={() => pickOption(o)}
-                    className={`w-full text-left flex items-center justify-between gap-2 px-2 py-1.5 rounded text-sm transition-colors
-                      ${
-                        selected
-                          ? "bg-[color:var(--accent-pale-bg)] text-[color:var(--accent-pale-text-strong)] font-medium"
-                          : "text-[color:var(--text-primary)] hover:bg-[color:var(--bg-nested)]"
-                      }
-                      ${isInactive ? "opacity-60" : ""}
-                    `}
-                  >
-                    <span className="truncate">{o.label}</span>
-                    {isInactive && (
-                      <span className="badge text-[10px] px-1.5 py-0.5 rounded bg-[color:var(--bg-nested)] text-[color:var(--text-muted)]">
-                        неактивен
-                      </span>
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-            {showAddFreeText && (
-              <li>
+              }
+            }}
+          />
+        )}
+        {filtered.length === 0 && !showAddFreeText && (
+          <div className="px-2 py-3 text-xs text-[color:var(--text-muted)]">
+            Нет вариантов
+          </div>
+        )}
+        <ul className="space-y-0.5">
+          {filtered.map((o) => {
+            const isInactive = o.isActive === false;
+            const selected =
+              typeof value === "number" && value === o.id;
+            return (
+              <li key={o.id}>
                 <button
                   type="button"
-                  onClick={commitFreeText}
-                  className="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded text-sm text-[color:var(--success-text-strong)] hover:bg-[color:var(--success-bg)]"
+                  onClick={() => pickOption(o)}
+                  className={`w-full text-left flex items-center justify-between gap-2 px-2 py-1.5 rounded text-sm transition-colors
+                    ${
+                      selected
+                        ? "bg-[color:var(--accent-pale-bg)] text-[color:var(--accent-pale-text-strong)] font-medium"
+                        : "text-[color:var(--text-primary)] hover:bg-[color:var(--bg-nested)]"
+                    }
+                    ${isInactive ? "opacity-60" : ""}
+                  `}
                 >
-                  <Plus className="w-3 h-3" />
-                  <span>
-                    Добавить «<span className="font-medium">{q.trim()}</span>»
-                  </span>
+                  <span className="truncate">{o.label}</span>
+                  {isInactive && (
+                    <span className="badge text-[10px] px-1.5 py-0.5 rounded bg-[color:var(--bg-nested)] text-[color:var(--text-muted)]">
+                      неактивен
+                    </span>
+                  )}
                 </button>
               </li>
-            )}
-          </ul>
-        </div>
-      )}
+            );
+          })}
+          {showAddFreeText && (
+            <li>
+              <button
+                type="button"
+                onClick={commitFreeText}
+                className="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded text-sm text-[color:var(--success-text-strong)] hover:bg-[color:var(--success-bg)]"
+              >
+                <Plus className="w-3 h-3" />
+                <span>
+                  Добавить «<span className="font-medium">{q.trim()}</span>»
+                </span>
+              </button>
+            </li>
+          )}
+        </ul>
+      </Popover>
     </div>
   );
 }

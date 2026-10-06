@@ -7,6 +7,7 @@ import MiniCalendar, {
   todayIso,
   type Cell,
 } from "./MiniCalendar";
+import { Popover } from "./ui/Popover";
 
 // Universal single-day picker — a token-styled button that opens a
 // compact popover with our own mini-calendar. Never uses the native
@@ -51,7 +52,7 @@ export default function DateInput({
   id,
 }: Props) {
   const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   const today = todayIso();
 
@@ -69,23 +70,7 @@ export default function DateInput({
     }
   }, [initialView, open]);
 
-  // Close on outside click / Escape.
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!wrapRef.current) return;
-      if (!wrapRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  // Outside-click + Escape delegated to <Popover>.
 
   const label = value ? formatDateRu(value) : "";
 
@@ -168,8 +153,9 @@ export default function DateInput({
   );
 
   return (
-    <div className={`relative ${className}`} ref={wrapRef}>
+    <div className={`relative ${className}`}>
       <button
+        ref={triggerRef}
         type="button"
         id={id}
         onClick={toggle}
@@ -208,58 +194,51 @@ export default function DateInput({
         </span>
       </button>
 
-      {open && (
-        <>
-          {/* Mobile centred popover backdrop — invisible layer that
-              re-centres the calendar on small screens. */}
-          <div className="hidden max-sm:block fixed inset-0 z-40 bg-black/20" />
-          <div
-            role="dialog"
-            className={
-              "z-50 rounded-xl border border-[color:var(--border-main)] bg-[color:var(--bg-card)] text-[color:var(--text-primary)] shadow-modal p-3 w-72 " +
-              // On sm+ anchor under the trigger. On max-sm centre in viewport.
-              "absolute left-0 mt-1 " +
-              "max-sm:fixed max-sm:left-1/2 max-sm:top-1/2 max-sm:-translate-x-1/2 max-sm:-translate-y-1/2 max-sm:mt-0"
-            }
-          >
-            <MiniCalendar
-              year={view.year}
-              month={view.month}
-              onNavigate={(y, m) => setView({ year: y, month: m })}
-              onPickDay={pickDay}
-              renderCellClass={renderCellClass}
-              isDisabled={isDisabledCell}
-              headerCenter={yearHeader}
-            />
+      <Popover
+        open={open}
+        onClose={() => setOpen(false)}
+        triggerRef={triggerRef}
+        align="start"
+        minWidth={288}
+        role="dialog"
+        contentClassName="p-3 w-72"
+      >
+        <MiniCalendar
+          year={view.year}
+          month={view.month}
+          onNavigate={(y, m) => setView({ year: y, month: m })}
+          onPickDay={pickDay}
+          renderCellClass={renderCellClass}
+          isDisabled={isDisabledCell}
+          headerCenter={yearHeader}
+        />
 
-            <div className="flex items-center justify-between pt-2 mt-2 border-t border-[color:var(--border-row)]">
-              <button
-                type="button"
-                onClick={() => {
-                  const t = parseIso(today)!;
-                  setView({ year: t.y, month: t.m });
-                  pickDay(today);
-                }}
-                className="text-xs px-2 py-1 rounded-md text-[color:var(--accent)] hover:bg-[color:var(--accent-pale-bg)] font-medium"
-              >
-                Сегодня
-              </button>
-              {allowClear && value && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChange("");
-                    setOpen(false);
-                  }}
-                  className="text-xs px-2 py-1 rounded-md text-[color:var(--text-muted)] hover:bg-[color:var(--bg-nested)]"
-                >
-                  Очистить
-                </button>
-              )}
-            </div>
-          </div>
-        </>
-      )}
+        <div className="flex items-center justify-between pt-2 mt-2 border-t border-[color:var(--border-row)]">
+          <button
+            type="button"
+            onClick={() => {
+              const t = parseIso(today)!;
+              setView({ year: t.y, month: t.m });
+              pickDay(today);
+            }}
+            className="text-xs px-2 py-1 rounded-md text-[color:var(--accent)] hover:bg-[color:var(--accent-pale-bg)] font-medium"
+          >
+            Сегодня
+          </button>
+          {allowClear && value && (
+            <button
+              type="button"
+              onClick={() => {
+                onChange("");
+                setOpen(false);
+              }}
+              className="text-xs px-2 py-1 rounded-md text-[color:var(--text-muted)] hover:bg-[color:var(--bg-nested)]"
+            >
+              Очистить
+            </button>
+          )}
+        </div>
+      </Popover>
     </div>
   );
 }

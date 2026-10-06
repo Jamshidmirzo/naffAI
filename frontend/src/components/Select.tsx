@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
+import { Popover } from "./ui/Popover";
 
 export type SelectOption<V extends string | number = string> = {
   value: V;
@@ -25,10 +26,11 @@ type Props<V extends string | number> = {
 
 /**
  * Design-system single <select> replacement. Renders a token-styled
- * button trigger + popover with an option list — no native <select>
- * so the OS blue picker never leaks through and the UI matches the
- * rest of the naffAI popovers. Preserves the value/onChange contract
- * so it can slot in wherever a bare <select> used to sit.
+ * button trigger + Portal-based popover with an option list — no
+ * native <select> so the OS blue picker never leaks through and the
+ * UI matches the rest of the naffAI popovers. Preserves the
+ * value/onChange contract so it can slot in wherever a bare <select>
+ * used to sit.
  */
 export function Select<V extends string | number = string>({
   value,
@@ -44,26 +46,14 @@ export function Select<V extends string | number = string>({
 }: Props<V>) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    if (searchable) {
+    if (open && searchable) {
       setTimeout(() => searchRef.current?.focus(), 0);
     }
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
+    if (!open) setQ("");
   }, [open, searchable]);
 
   const current = useMemo(
@@ -85,8 +75,9 @@ export function Select<V extends string | number = string>({
   };
 
   return (
-    <div className={`relative ${className ?? ""}`} ref={ref}>
+    <div className={`relative ${className ?? ""}`}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => !disabled && setOpen((v) => !v)}
         disabled={disabled}
@@ -105,56 +96,59 @@ export function Select<V extends string | number = string>({
         <ChevronDown className="w-4 h-4 opacity-60 ml-2 flex-shrink-0" />
       </button>
 
-      {open && (
-        <div
-          role="listbox"
-          className={`absolute z-30 mt-1 left-0 right-0 min-w-full max-h-72 overflow-auto rounded-xl border border-[color:var(--border-main)] bg-[color:var(--bg-card)] text-[color:var(--text-primary)] shadow-modal p-2 ${popoverClassName ?? ""}`}
-        >
-          {searchable && (
-            <input
-              ref={searchRef}
-              className="nf-input mb-2 text-sm"
-              placeholder="Поиск…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          )}
-          {filtered.length === 0 && (
-            <div className="px-2 py-3 text-xs text-[color:var(--text-muted)]">
-              Нет вариантов
-            </div>
-          )}
-          <ul className="space-y-0.5">
-            {filtered.map((o) => {
-              const selected = o.value === value;
-              return (
-                <li key={String(o.value)}>
-                  <button
-                    type="button"
-                    onClick={() => pick(o)}
-                    disabled={o.disabled}
-                    role="option"
-                    aria-selected={selected}
-                    className={`w-full text-left flex items-center justify-between gap-2 px-2 py-1.5 rounded text-sm transition-colors
-                      ${
-                        selected
-                          ? "bg-[color:var(--accent-pale-bg)] text-[color:var(--accent-pale-text-strong)] font-medium"
-                          : "text-[color:var(--text-primary)] hover:bg-[color:var(--bg-nested)]"
-                      }
-                      ${o.disabled ? "opacity-40 cursor-not-allowed" : ""}
-                    `}
-                  >
-                    <span className="truncate">{o.label}</span>
-                    {selected && (
-                      <Check className="w-3.5 h-3.5 flex-shrink-0 text-[color:var(--accent)]" />
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
+      <Popover
+        open={open}
+        onClose={() => setOpen(false)}
+        triggerRef={triggerRef}
+        matchTriggerWidth
+        role="listbox"
+        ariaLabel={ariaLabel}
+        contentClassName={`max-h-72 overflow-auto p-2 ${popoverClassName ?? ""}`}
+      >
+        {searchable && (
+          <input
+            ref={searchRef}
+            className="nf-input mb-2 text-sm"
+            placeholder="Поиск…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        )}
+        {filtered.length === 0 && (
+          <div className="px-2 py-3 text-xs text-[color:var(--text-muted)]">
+            Нет вариантов
+          </div>
+        )}
+        <ul className="space-y-0.5">
+          {filtered.map((o) => {
+            const selected = o.value === value;
+            return (
+              <li key={String(o.value)}>
+                <button
+                  type="button"
+                  onClick={() => pick(o)}
+                  disabled={o.disabled}
+                  role="option"
+                  aria-selected={selected}
+                  className={`w-full text-left flex items-center justify-between gap-2 px-2 py-1.5 rounded text-sm transition-colors
+                    ${
+                      selected
+                        ? "bg-[color:var(--accent-pale-bg)] text-[color:var(--accent-pale-text-strong)] font-medium"
+                        : "text-[color:var(--text-primary)] hover:bg-[color:var(--bg-nested)]"
+                    }
+                    ${o.disabled ? "opacity-40 cursor-not-allowed" : ""}
+                  `}
+                >
+                  <span className="truncate">{o.label}</span>
+                  {selected && (
+                    <Check className="w-3.5 h-3.5 flex-shrink-0 text-[color:var(--accent)]" />
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </Popover>
     </div>
   );
 }

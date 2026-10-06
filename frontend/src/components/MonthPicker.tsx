@@ -6,6 +6,7 @@ import {
   recentMonths,
   type MonthChoice,
 } from "../lib/period";
+import { Popover } from "./ui/Popover";
 
 // Compact period picker with a fully custom popover: "Все период",
 // "Текущий период", a rolling list of past N calendar months, and an
@@ -110,7 +111,7 @@ const buildCalendarGrid = (
 export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) {
   const [open, setOpen] = useState(false);
   const [rangeMode, setRangeMode] = useState(value.kind === "range");
-  const ref = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const months = recentMonths(monthsBack + 1);
 
   const today = todayIso();
@@ -157,22 +158,7 @@ export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) 
     return monthLabel(value.year, value.month);
   }, [value]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!ref.current) return;
-      if (!ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  // Outside-click + Escape are handled by <Popover> via the trigger ref.
 
   const isAll = value.kind === "all";
   const isCurrent = value.kind === "current";
@@ -223,8 +209,9 @@ export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) 
   };
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-[color:var(--border-main)] bg-[color:var(--bg-card)] text-[color:var(--text-primary)] hover:bg-[color:var(--bg-nested)] transition-colors"
@@ -235,11 +222,15 @@ export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) 
         <ChevronDown className="w-4 h-4 opacity-60" />
       </button>
 
-      {open && (
-        <div
-          role="listbox"
-          className="absolute right-0 z-30 mt-1 w-80 rounded-xl border border-[color:var(--border-main)] bg-[color:var(--bg-card)] text-[color:var(--text-primary)] shadow-modal py-1 max-h-[32rem] overflow-auto"
-        >
+      <Popover
+        open={open}
+        onClose={() => setOpen(false)}
+        triggerRef={triggerRef}
+        align="end"
+        minWidth={320}
+        role="listbox"
+        contentClassName="w-80 py-1 max-h-[32rem] overflow-auto"
+      >
           <button
             role="option"
             aria-selected={isAll}
@@ -427,8 +418,7 @@ export default function MonthPicker({ value, onChange, monthsBack = 6 }: Props) 
               </button>
             );
           })}
-        </div>
-      )}
+      </Popover>
     </div>
   );
 }

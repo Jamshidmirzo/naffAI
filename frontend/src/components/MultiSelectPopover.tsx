@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, X } from "lucide-react";
+import { Popover } from "./ui/Popover";
 
 type Option = { id: number; name: string };
 
@@ -14,11 +15,12 @@ type Props = {
 };
 
 /**
- * Compact multi-select with a popover. Trigger button shows either
- * "{label}: все" or "{label}: N выбрано". Click outside or press Esc
- * closes. Selection commits immediately as the user toggles checkboxes
- * — there is no "Apply" button, since the parent uses the value to
- * update the URL and the React Query key in real time.
+ * Compact multi-select with a Portal-based popover. Trigger button
+ * shows either "{label}: все" or "{label}: N выбрано". Click outside
+ * or press Esc closes. Selection commits immediately as the user
+ * toggles checkboxes — there is no "Apply" button, since the parent
+ * uses the value to update the URL and the React Query key in real
+ * time.
  */
 export function MultiSelectPopover({
   label,
@@ -30,23 +32,7 @@ export function MultiSelectPopover({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const filtered = useMemo(() => {
     if (!q.trim()) return options;
@@ -68,8 +54,9 @@ export function MultiSelectPopover({
   };
 
   return (
-    <div className={`relative inline-block ${className ?? ""}`} ref={ref}>
+    <div className={`relative inline-block ${className ?? ""}`}>
       <button
+        ref={triggerRef}
         type="button"
         className="btn-ghost"
         onClick={() => setOpen((v) => !v)}
@@ -91,51 +78,57 @@ export function MultiSelectPopover({
         </button>
       )}
 
-      {open && (
-        <div className="absolute z-30 mt-1 left-0 min-w-[14rem] max-h-72 overflow-auto rounded-xl border border-[color:var(--border-main)] bg-[color:var(--bg-card)] text-[color:var(--text-primary)] shadow-modal p-2">
-          {options.length >= searchThreshold && (
-            <input
-              autoFocus
-              className="nf-input mb-2 text-sm"
-              placeholder="Поиск…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          )}
-          {filtered.length === 0 && (
-            <div className="px-2 py-3 text-xs text-[color:var(--text-muted)]">
-              Нет вариантов
-            </div>
-          )}
-          <ul className="space-y-1">
-            {filtered.map((o) => {
-              const checked = selectedIds.includes(o.id);
-              return (
-                <li key={o.id}>
-                  <label className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-nested)]">
-                    <span
-                      className={`w-4 h-4 rounded border flex items-center justify-center ${
-                        checked
-                          ? "bg-[color:var(--accent)] border-[color:var(--accent)] text-white"
-                          : "border-[color:var(--border-btn)] bg-[color:var(--bg-card)]"
-                      }`}
-                    >
-                      {checked && <Check className="w-3 h-3" />}
-                    </span>
-                    <input
-                      type="checkbox"
-                      className="sr-only"
-                      checked={checked}
-                      onChange={() => toggle(o.id)}
-                    />
-                    <span>{o.name}</span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
+      <Popover
+        open={open}
+        onClose={() => setOpen(false)}
+        triggerRef={triggerRef}
+        align="start"
+        minWidth={224}
+        role="listbox"
+        contentClassName="max-h-72 overflow-auto p-2"
+      >
+        {options.length >= searchThreshold && (
+          <input
+            autoFocus
+            className="nf-input mb-2 text-sm"
+            placeholder="Поиск…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        )}
+        {filtered.length === 0 && (
+          <div className="px-2 py-3 text-xs text-[color:var(--text-muted)]">
+            Нет вариантов
+          </div>
+        )}
+        <ul className="space-y-1">
+          {filtered.map((o) => {
+            const checked = selectedIds.includes(o.id);
+            return (
+              <li key={o.id}>
+                <label className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-nested)]">
+                  <span
+                    className={`w-4 h-4 rounded border flex items-center justify-center ${
+                      checked
+                        ? "bg-[color:var(--accent)] border-[color:var(--accent)] text-white"
+                        : "border-[color:var(--border-btn)] bg-[color:var(--bg-card)]"
+                    }`}
+                  >
+                    {checked && <Check className="w-3 h-3" />}
+                  </span>
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={checked}
+                    onChange={() => toggle(o.id)}
+                  />
+                  <span>{o.name}</span>
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      </Popover>
     </div>
   );
 }

@@ -49,8 +49,9 @@ export function Modal({ open, onClose, title, children, widthClass = "max-w-md" 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 flex items-center justify-center p-4"
       style={{
+        zIndex: "var(--z-modal)" as unknown as number,
         background: "rgba(20,12,6,.36)",
         backdropFilter: "blur(14px)",
         WebkitBackdropFilter: "blur(14px)",
