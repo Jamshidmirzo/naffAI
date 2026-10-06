@@ -536,5 +536,52 @@ services:
           sleep 600
         done
 
+  # ТЕЗ-эскалация. SheetSource с is_hot=True взводит на Lead.hot_until
+  # дедлайн (default 10 мин) при импорте. Если оператор не тронул лид
+  # до истечения — команда `hot_leads_escalation` соберёт остывших и
+  # отправит один групповой TG владельцу (chat 88938071) с id-ами +
+  # операторами. Тик 60с: быстрее реагировать на тёплых клиентов, чем
+  # qimmatlik-retry (600с).
+  hot-leads-watch:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          python manage.py hot_leads_escalation || echo "hot_leads_escalation rc=$$?"
+          sleep 60
+        done
+
+  # Demo-mirror для hot-leads-watch (пишет в demo DB через .env.demo
+  # override). Контекст сборки — /opt/naffAI-demo/backend (git worktree
+  # ветки demo). Матчит паттерн demo-apply-day-offs / demo-attendance-auto-close.
+  demo-hot-leads-watch:
+    build:
+      context: /opt/naffAI-demo/backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+      - .env.demo
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          python manage.py hot_leads_escalation || echo "hot_leads_escalation rc=$$?"
+          sleep 60
+        done
+
 volumes:
   postgres-data:
