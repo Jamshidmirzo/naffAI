@@ -12,7 +12,7 @@ from apps.common.validators import normalize_uz_phone
 from apps.operators.selectors import operator_get
 
 from .permissions import IsManager
-from .selectors import account_state, user_by_operator
+from .selectors import account_state, user_by_operator, visible_manager_user_ids
 from .services import (
     account_activate,
     account_create_for_operator,
@@ -20,6 +20,7 @@ from .services import (
     account_reset_password,
     account_soft_delete,
     password_view,
+    profile_role_update,
     self_change_password,
 )
 
@@ -413,9 +414,15 @@ class UserListCreateApi(APIView):
         username = serializers.CharField(max_length=150)
         password = serializers.CharField(required=False, allow_blank=True)
         role = serializers.ChoiceField(
-            choices=[Role.MANAGER, Role.TEAM_LEAD, Role.SUPERADMIN],
+            choices=[
+                Role.MANAGER,
+                Role.TEAM_LEAD,
+                Role.SUPER_MANAGER,
+                Role.SUPERADMIN,
+            ],
             default=Role.MANAGER,
         )
+        reports_to_id = serializers.IntegerField(required=False, allow_null=True)
 
     def get(self, request):
         # We only list web-only accounts (not operator-linked ones —
@@ -423,10 +430,15 @@ class UserListCreateApi(APIView):
         #
         # Optional `?role=` filter — used by the OperatorSaleCreate
         # form's "менеджеры-партнёры" select. Accepts a single role
-        # code (`manager`/`team_lead`/`superadmin`) or a comma-separated
-        # list. Silently ignores unknown codes so the caller can't
-        # smuggle arbitrary predicates in.
-        allowed_roles = {Role.MANAGER, Role.TEAM_LEAD, Role.SUPERADMIN}
+        # code (`manager`/`team_lead`/`super_manager`/`superadmin`) or a
+        # comma-separated list. Silently ignores unknown codes so the
+        # caller can't smuggle arbitrary predicates in.
+        allowed_roles = {
+            Role.MANAGER,
+            Role.TEAM_LEAD,
+            Role.SUPER_MANAGER,
+            Role.SUPERADMIN,
+        }
         role_param = (request.query_params.get("role") or "").strip()
         role_filter: set[str] = set()
         if role_param:
@@ -444,6 +456,16 @@ class UserListCreateApi(APIView):
         if role_filter:
             qs = qs.filter(profile__role__in=role_filter)
 
+        # Scoping (2026-10-06 hierarchy):
+        #   * superadmin  → all users (helper returns ids of every User);
+        #   * super_manager → self + own managers (reports_to=self);
+        #   * manager/team_lead → self only.
+        # Legacy /users was fully open to any senior; this preserves
+        # access for superadmin while narrowing для middle-tier owners.
+        allowed_user_ids = visible_manager_user_ids(request.user)
+        if allowed_user_ids:
+            qs = qs.filter(id__in=allowed_user_ids)
+
         rows = []
         for user in qs:
             profile = getattr(user, "profile", None)
@@ -457,6 +479,7 @@ class UserListCreateApi(APIView):
                 "date_joined": user.date_joined.isoformat() if user.date_joined else None,
                 "last_login": user.last_login.isoformat() if user.last_login else None,
                 "preferred_language": getattr(profile, "preferred_language", None) or "uz",
+                "reports_to_id": getattr(profile, "reports_to_id", None),
             })
         return Response(rows)
 
@@ -466,6 +489,35 @@ class UserListCreateApi(APIView):
         username = s.validated_data["username"].strip()
         role = s.validated_data.get("role") or Role.MANAGER
         plain = s.validated_data.get("password") or generate_temp_password()
+        reports_to_id = s.validated_data.get("reports_to_id")
+
+        # Singleton guard for super_manager — ровно один в системе.
+        # Validator is inside the service, but doing a pre-check here
+        # gives нам chance to return 400 before DB side-effects.
+        if role == Role.SUPER_MANAGER:
+            actor = request.user
+            actor_is_superadmin = bool(
+                actor.is_superuser
+                or (
+                    getattr(getattr(actor, "profile", None), "role", None)
+                    == Role.SUPERADMIN
+                )
+            )
+            if not actor_is_superadmin:
+                return Response(
+                    {"detail": "Назначать super_manager может только superadmin"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            if Profile.objects.filter(role=Role.SUPER_MANAGER).exists():
+                return Response(
+                    {
+                        "detail": (
+                            "Уже есть super_manager — снимите роль с него "
+                            "сначала (должен быть ровно один)."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         if User.objects.filter(username=username).exists():
             return Response(
@@ -473,15 +525,34 @@ class UserListCreateApi(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Resolve reports_to (optional). Caller may hand us an id of a
+        # super_manager / superadmin — we don't validate hierarchy here
+        # beyond "the user exists"; frontend filters the dropdown options.
+        reports_to_user = None
+        if reports_to_id:
+            reports_to_user = User.objects.filter(pk=reports_to_id).first()
+            if reports_to_user is None:
+                return Response(
+                    {"detail": "reports_to_id указывает на несуществующего пользователя"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         user = User.objects.create(username=username, is_active=True)
         user_password_set(user=user, plain=plain)
-        Profile.objects.update_or_create(user=user, defaults={"role": role})
+        Profile.objects.update_or_create(
+            user=user,
+            defaults={"role": role, "reports_to": reports_to_user},
+        )
         audit_log_create(
             user=request.user,
             action=AuditAction.CREATE,
             entity="users.User",
             entity_id=user.id,
-            changes={"username": username, "role": role},
+            changes={
+                "username": username,
+                "role": role,
+                "reports_to_id": reports_to_id,
+            },
         )
         return Response(
             {
@@ -490,6 +561,7 @@ class UserListCreateApi(APIView):
                 "role": role,
                 "is_active": True,
                 "password": plain,
+                "reports_to_id": reports_to_id,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -553,10 +625,18 @@ class UserUpdateApi(APIView):
     """
     PATCH /users/{id}/ — manager-only partial update.
 
-    Currently supports only `preferred_language` (RU/UZ) — used by
-    the Users admin page so a manager can force an account's UI/AI
-    language without needing the operator to log in and change it.
-    Audit-logged so the trail shows who flipped whose language.
+    Supports:
+      * `preferred_language` (RU/UZ) — used by the Users admin page so a
+        manager can force an account's UI/AI language without needing the
+        operator to log in and change it.
+      * `role` — change the user's Role. Promoting to SUPER_MANAGER is
+        superadmin-only + singleton (`profile_role_update` enforces both).
+      * `profile.reports_to_id` / top-level `reports_to_id` — owner link
+        for the 3-level hierarchy. Permission:
+          - superadmin / superuser: free
+          - super_manager: can only set reports_to=self on a manager they
+            «claim» (role must be MANAGER after save).
+    Every mutation is audit-logged.
     """
 
     permission_classes = [IsManager]
@@ -565,6 +645,20 @@ class UserUpdateApi(APIView):
         preferred_language = serializers.ChoiceField(
             choices=[("ru", "ru"), ("uz", "uz")],
             required=False,
+        )
+        role = serializers.ChoiceField(
+            choices=[
+                Role.MANAGER,
+                Role.TEAM_LEAD,
+                Role.SUPER_MANAGER,
+                Role.OPERATOR,
+                Role.SMM,
+                Role.SUPERADMIN,
+            ],
+            required=False,
+        )
+        reports_to_id = serializers.IntegerField(
+            required=False, allow_null=True,
         )
 
     def patch(self, request, user_id: int):
@@ -577,6 +671,7 @@ class UserUpdateApi(APIView):
         s.is_valid(raise_exception=True)
 
         updated: dict = {}
+        profile = None
         if "preferred_language" in s.validated_data:
             profile, _ = Profile.objects.get_or_create(user=user)
             old = profile.preferred_language
@@ -592,6 +687,68 @@ class UserUpdateApi(APIView):
                     changes={"preferred_language": {"old": old, "new": new}},
                 )
             updated["preferred_language"] = new
+
+        if "role" in s.validated_data:
+            if profile is None:
+                profile, _ = Profile.objects.get_or_create(user=user)
+            new_role = s.validated_data["role"]
+            # profile_role_update is the single enforcement point for the
+            # super_manager singleton + superadmin-only promotion rule.
+            profile = profile_role_update(
+                profile=profile, new_role=new_role, actor=request.user,
+            )
+            updated["role"] = profile.role
+
+        if "reports_to_id" in s.validated_data:
+            if profile is None:
+                profile, _ = Profile.objects.get_or_create(user=user)
+            new_owner_id = s.validated_data["reports_to_id"]
+            new_owner = None
+            if new_owner_id is not None:
+                new_owner = User.objects.filter(pk=new_owner_id).first()
+                if new_owner is None:
+                    return Response(
+                        {"detail": "reports_to_id указывает на несуществующего пользователя"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+            # Hierarchy guard — see docstring. Superadmin / superuser:
+            # free pass; super_manager: can only assign reports_to=self;
+            # anyone else: 403.
+            actor = request.user
+            actor_profile = getattr(actor, "profile", None)
+            actor_role = actor_profile.role if actor_profile else None
+            if not (actor.is_superuser or actor_role == Role.SUPERADMIN):
+                if actor_role == Role.SUPER_MANAGER:
+                    if new_owner is not None and new_owner.id != actor.id:
+                        return Response(
+                            {"detail": "Super_manager может назначать reports_to только на себя"},
+                            status=status.HTTP_403_FORBIDDEN,
+                        )
+                else:
+                    return Response(
+                        {"detail": "Недостаточно прав для изменения reports_to"},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
+            old_owner_id = profile.reports_to_id
+            if old_owner_id != (new_owner.id if new_owner else None):
+                profile.reports_to = new_owner
+                profile.save(update_fields=["reports_to"])
+                audit_log_create(
+                    user=request.user,
+                    action=AuditAction.UPDATE,
+                    entity="users.Profile",
+                    entity_id=profile.id,
+                    changes={
+                        "reports_to_id": {
+                            "old": old_owner_id,
+                            "new": new_owner.id if new_owner else None,
+                        },
+                        "target_user_id": user.id,
+                    },
+                )
+            updated["reports_to_id"] = new_owner.id if new_owner else None
 
         return Response({
             "id": user.id,

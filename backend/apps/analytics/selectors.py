@@ -47,8 +47,27 @@ def resolve_period(period: str | None) -> tuple[dt.datetime, dt.datetime] | tupl
     return start_of_month, now
 
 
-def _base_qs(date_from: dt.datetime | None = None, date_to: dt.datetime | None = None):
+def _base_qs(
+    date_from: dt.datetime | None = None,
+    date_to: dt.datetime | None = None,
+    *,
+    operator_ids: list[int] | None = None,
+):
+    """Confirmed, non-deleted, non-returned Sales, optionally scope-filtered.
+
+    `operator_ids` — ownership allowlist (see `apps.users.selectors.
+    visible_operator_ids`). A sale matches when its primary FK OR any
+    SaleOperator allocation is inside the allowlist. Empty list → no rows.
+    """
     qs = Sale.objects.filter(is_deleted=False, is_returned=False, status="confirmed")
+    if operator_ids is not None:
+        if not operator_ids:
+            return qs.none()
+        from django.db.models import Q as _Q
+        qs = qs.filter(
+            _Q(operator_id__in=operator_ids)
+            | _Q(operator_lines__operator_id__in=operator_ids)
+        ).distinct()
     if date_from:
         qs = qs.filter(sold_at__gte=date_from)
     if date_to:
@@ -61,11 +80,27 @@ def _line_qs(
     *,
     date_from: dt.datetime | None = None,
     date_to: dt.datetime | None = None,
+    operator_ids: list[int] | None = None,
 ):
-    """SaleOperator / SalePartner queryset gated to confirmed, non-deleted, non-returned sales."""
+    """SaleOperator / SalePartner queryset gated to confirmed, non-deleted, non-returned sales.
+
+    `operator_ids` — ownership allowlist. For SaleOperator rows we filter
+    on the line's own operator_id (direct hit). For SalePartner rows we
+    filter on sales where any SaleOperator line is in the allowlist
+    (indirect, since partners don't carry operator). Empty list → no rows.
+    """
     qs = model.objects.filter(
         sale__is_deleted=False, sale__is_returned=False, sale__status="confirmed"
     )
+    if operator_ids is not None:
+        if not operator_ids:
+            return qs.none()
+        if model is SaleOperator:
+            qs = qs.filter(operator_id__in=operator_ids)
+        else:
+            qs = qs.filter(
+                sale__operator_lines__operator_id__in=operator_ids
+            ).distinct()
     if date_from:
         qs = qs.filter(sale__sold_at__gte=date_from)
     if date_to:
@@ -78,6 +113,7 @@ def kpi_snapshot(
     *,
     date_from: dt.datetime | None = None,
     date_to: dt.datetime | None = None,
+    operator_ids: list[int] | None = None,
 ) -> dict:
     """
     Returns:
@@ -101,13 +137,19 @@ def kpi_snapshot(
     start_of_month = start_of_day.replace(day=1)
 
     def agg(*, d_from=None, d_to=None):
-        a = _base_qs(date_from=d_from, date_to=d_to).aggregate(
+        a = _base_qs(date_from=d_from, date_to=d_to, operator_ids=operator_ids).aggregate(
             total=Sum(NET_AMOUNT), count=Count("id")
         )
         return {"total": str(a["total"] or Decimal("0")), "count": a["count"] or 0}
 
-    operators_active = Operator.objects.filter(status=OperatorStatus.ACTIVE).count()
-    operators_trainee = Operator.objects.filter(status=OperatorStatus.TRAINEE).count()
+    # Operator counters respect the scope too — super_manager sees only
+    # его собственную ветку, обычный manager без ownership — весь legacy
+    # пул (который для него и есть «вся команда»).
+    operators_scope = Operator.objects.all()
+    if operator_ids is not None:
+        operators_scope = operators_scope.filter(id__in=operator_ids)
+    operators_active = operators_scope.filter(status=OperatorStatus.ACTIVE).count()
+    operators_trainee = operators_scope.filter(status=OperatorStatus.TRAINEE).count()
 
     # Selected window: explicit range wins over period label.
     if date_from is not None or date_to is not None:
@@ -119,7 +161,7 @@ def kpi_snapshot(
 
     selected = agg(d_from=sel_from, d_to=sel_to)
 
-    top_qs = _line_qs(SaleOperator, date_from=sel_from, date_to=sel_to)
+    top_qs = _line_qs(SaleOperator, date_from=sel_from, date_to=sel_to, operator_ids=operator_ids)
     top = (
         top_qs.values("operator_id", "operator__full_name")
         .annotate(total=Sum("amount"), count=Count("sale", distinct=True))
@@ -156,14 +198,17 @@ def leaderboard(
     date_from: dt.datetime | None = None,
     date_to: dt.datetime | None = None,
     limit: int | None = 20,
+    operator_ids: list[int] | None = None,
 ) -> list[dict]:
     """Per-operator credit aggregated from SaleOperator lines (multi-op aware).
 
     Pass ``limit=None`` (or ``0``) to return every operator with sales in the
     window — used by the big-screen dashboard which shows the full ranking.
+
+    `operator_ids` — ownership scope (empty list → zero rows).
     """
     qs = (
-        _line_qs(SaleOperator, date_from=date_from, date_to=date_to)
+        _line_qs(SaleOperator, date_from=date_from, date_to=date_to, operator_ids=operator_ids)
         .values("operator_id", "operator__full_name", "operator__status")
         .annotate(total=Sum("amount"), count=Count("sale", distinct=True), avg_ticket=Avg("amount"))
         .order_by("-total")
@@ -182,10 +227,19 @@ def leaderboard(
     ]
 
 
-def by_channel(*, date_from=None, date_to=None) -> list[dict]:
-    """Per-partner totals aggregated from SalePartner lines (multi-partner aware)."""
+def by_channel(
+    *,
+    date_from=None,
+    date_to=None,
+    operator_ids: list[int] | None = None,
+) -> list[dict]:
+    """Per-partner totals aggregated from SalePartner lines (multi-partner aware).
+
+    `operator_ids` — ownership scope. Partners don't carry an operator ref
+    directly, so the filter joins through sale.operator_lines.
+    """
     rows = (
-        _line_qs(SalePartner, date_from=date_from, date_to=date_to)
+        _line_qs(SalePartner, date_from=date_from, date_to=date_to, operator_ids=operator_ids)
         .values("partner_id", "partner__name")
         .annotate(total=Sum("amount"), count=Count("sale", distinct=True))
         .order_by("-total")
@@ -201,8 +255,14 @@ def by_channel(*, date_from=None, date_to=None) -> list[dict]:
     ]
 
 
-def by_model(*, date_from=None, date_to=None, limit: int = 20) -> list[dict]:
-    qs = _base_qs(date_from=date_from, date_to=date_to)
+def by_model(
+    *,
+    date_from=None,
+    date_to=None,
+    limit: int = 20,
+    operator_ids: list[int] | None = None,
+) -> list[dict]:
+    qs = _base_qs(date_from=date_from, date_to=date_to, operator_ids=operator_ids)
     rows = (
         qs.values("phone_model")
         .annotate(total=Sum(NET_AMOUNT), count=Count("id"))
@@ -218,6 +278,7 @@ def sales_by_source(
     *,
     date_from: dt.datetime | None = None,
     date_to: dt.datetime | None = None,
+    operator_ids: list[int] | None = None,
 ) -> list[dict]:
     """
     Aggregate confirmed sales by the sheet source they came from. Sales
@@ -229,7 +290,7 @@ def sales_by_source(
     from apps.leads.models import Lead
 
     sales_rows = (
-        _base_qs(date_from=date_from, date_to=date_to)
+        _base_qs(date_from=date_from, date_to=date_to, operator_ids=operator_ids)
         .values("sheet_source_id", "sheet_source__name")
         .annotate(total=Sum(NET_AMOUNT), sales_count=Count("id"))
     )
@@ -280,8 +341,13 @@ def sales_by_source(
     return out
 
 
-def timeseries_daily(*, date_from, date_to) -> list[dict]:
-    qs = _base_qs(date_from=date_from, date_to=date_to)
+def timeseries_daily(
+    *,
+    date_from,
+    date_to,
+    operator_ids: list[int] | None = None,
+) -> list[dict]:
+    qs = _base_qs(date_from=date_from, date_to=date_to, operator_ids=operator_ids)
     rows = (
         qs.annotate(day=TruncDate("sold_at"))
         .values("day")

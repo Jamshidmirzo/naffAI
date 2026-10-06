@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 
 from apps.common.excel import new_workbook, workbook_response, write_sheet
 from apps.users.permissions import IsAuthenticatedAnyRole, IsTeamLeadOrManagerReadOnly
+from apps.users.selectors import visible_operator_ids
 
 from .cache import (
     DASHBOARD_SUMMARY_TTL,
@@ -69,6 +70,7 @@ class KpiApi(APIView):
                 period=request.query_params.get("period"),
                 date_from=date_from,
                 date_to=date_to,
+                operator_ids=visible_operator_ids(request.user),
             )
         )
 
@@ -91,6 +93,7 @@ class LeaderboardApi(APIView):
                 date_from=date_from,
                 date_to=date_to,
                 limit=limit,
+                operator_ids=visible_operator_ids(request.user),
             )
         )
 
@@ -100,7 +103,13 @@ class ByChannelApi(APIView):
 
     def get(self, request):
         date_from, date_to = _window(request)
-        return Response(by_channel(date_from=date_from, date_to=date_to))
+        return Response(
+            by_channel(
+                date_from=date_from,
+                date_to=date_to,
+                operator_ids=visible_operator_ids(request.user),
+            )
+        )
 
 
 class BySourceApi(APIView):
@@ -110,7 +119,13 @@ class BySourceApi(APIView):
 
     def get(self, request):
         date_from, date_to = _window(request)
-        return Response(sales_by_source(date_from=date_from, date_to=date_to))
+        return Response(
+            sales_by_source(
+                date_from=date_from,
+                date_to=date_to,
+                operator_ids=visible_operator_ids(request.user),
+            )
+        )
 
 
 class ByModelApi(APIView):
@@ -123,6 +138,7 @@ class ByModelApi(APIView):
                 date_from=date_from,
                 date_to=date_to,
                 limit=int(request.query_params.get("limit", 20)),
+                operator_ids=visible_operator_ids(request.user),
             )
         )
 
@@ -136,7 +152,13 @@ class TimeseriesApi(APIView):
             date_from = dt.datetime.now() - dt.timedelta(days=30)
         if date_to is None:
             date_to = dt.datetime.now()
-        return Response(timeseries_daily(date_from=date_from, date_to=date_to))
+        return Response(
+            timeseries_daily(
+                date_from=date_from,
+                date_to=date_to,
+                operator_ids=visible_operator_ids(request.user),
+            )
+        )
 
 
 # Guardrail for the merged manager stats page: the by_operator table

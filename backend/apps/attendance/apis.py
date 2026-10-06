@@ -18,6 +18,7 @@ from apps.users.permissions import (
     IsSuperadminOrManager,
 )
 from apps.users.models import Role
+from apps.users.selectors import visible_operator_ids
 from apps.common.pagination import DefaultPagination
 
 from .models import AttendanceLog, AttendanceSettings
@@ -1313,7 +1314,19 @@ class PayrollListAttendanceApi(APIView):
         from .selectors import attendance_payroll_summary
 
         year, month = _parse_month_param(request.query_params.get("month")) or _default_month()
-        operators = Operator.objects.exclude(status=OperatorStatus.INACTIVE).order_by("full_name")
+        operators = (
+            Operator.objects
+            .exclude(status=OperatorStatus.INACTIVE)
+            .order_by("full_name")
+        )
+        # Ownership scope: super_manager видит только свою ветку;
+        # обычный manager — свои + legacy unassigned.
+        visible = visible_operator_ids(request.user)
+        if visible is not None:
+            if not visible:
+                operators = operators.none()
+            else:
+                operators = operators.filter(id__in=visible)
 
         rows = []
         for op in operators:

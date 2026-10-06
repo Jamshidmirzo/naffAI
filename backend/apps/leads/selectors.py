@@ -82,7 +82,22 @@ def lead_list(
     needs_review: bool | None = None,
     phone_invalid: bool | None = None,
     search: str | None = None,
+    visible_operator_ids: list[int] | None = None,
 ) -> QuerySet[Lead]:
+    """
+    List leads with the usual filters, and (optionally) an ownership scope.
+
+    `visible_operator_ids` — allowlist of operator ids the caller may see
+    (see `apps.users.selectors.visible_operator_ids`). The scope matches
+    leads whose `operator_id` is in the list OR unassigned (`NULL`),
+    because the orphan pool is always visible to managers so they can
+    distribute leads to their team.
+
+    Pass `None` to skip the ownership gate (superadmin / internal use).
+    An empty list restricts the view to orphan leads only (operator is
+    NULL) — a super_manager with zero operators can still triage the
+    unassigned pool.
+    """
     qs = Lead.objects.select_related("operator", "sheet_source")
     if status:
         qs = qs.filter(status=status)
@@ -102,6 +117,10 @@ def lead_list(
             | Q(phone__icontains=search)
             | Q(phone_raw__icontains=search)
             | Q(product_hint__icontains=search)
+        )
+    if visible_operator_ids is not None:
+        qs = qs.filter(
+            Q(operator_id__in=visible_operator_ids) | Q(operator__isnull=True)
         )
     return qs
 

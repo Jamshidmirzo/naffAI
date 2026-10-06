@@ -77,6 +77,7 @@ from .services import (
     sheet_source_upsert,
     telegram_link_upsert,
 )
+from apps.users.selectors import visible_operator_ids
 
 # ---- Serializers ---------------------------------------------------------
 
@@ -369,6 +370,9 @@ class LeadListCreateApi(ListCreateAPIView):
                 else None
             ),
             search=qp.get("search") or None,
+            # Ownership scope. Orphan pool (operator IS NULL) всегда виден,
+            # чтобы super_manager мог раздавать unassigned leads своим.
+            visible_operator_ids=visible_operator_ids(self.request.user),
         )
 
     def create(self, request, *args, **kwargs):

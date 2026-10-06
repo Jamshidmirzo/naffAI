@@ -15,6 +15,7 @@ from apps.users.permissions import (
     IsTeamLead,
     IsTeamLeadOrManagerReadOnly,
 )
+from apps.users.selectors import visible_operator_ids
 
 from .imports.excel_importer import import_file
 from .models import (
@@ -431,6 +432,11 @@ class SaleListCreateApi(ListCreateAPIView):
             status=v.get("status"),
             is_returned=v.get("is_returned"),
             sheet_source_id=v.get("sheet_source_id"),
+            # Ownership scope — superadmin sees everything (helper returns
+            # all ids), super_manager только свою ветку, manager — свои +
+            # legacy unassigned pool (fallback). Operators normally не
+            # ходят в list, но если ходят — видят только свои продажи.
+            visible_operator_ids=visible_operator_ids(self.request.user),
         ).annotate(total_price=F("amount") - F("discount"))
 
     def create(self, request, *args, **kwargs):

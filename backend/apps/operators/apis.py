@@ -10,7 +10,12 @@ from rest_framework.views import APIView
 
 from apps.analytics.selectors import resolve_period
 from apps.users.permissions import IsTeamLead, IsTeamLeadOrManagerReadOnly
-from apps.users.selectors import account_state, user_by_operator
+from apps.users.selectors import (
+    account_state,
+    user_by_operator,
+    visible_manager_user_ids,
+    visible_operator_ids,
+)
 
 from .models import DayOffStatus, Operator, OperatorDayOff
 from .permissions import IsDestructiveActionPinVerified
@@ -49,6 +54,12 @@ class OperatorSerializer(serializers.ModelSerializer):
     account = serializers.SerializerMethodField()
     sticker = serializers.SerializerMethodField()
     forgotten_checkouts_count = serializers.SerializerMethodField()
+    managed_by_id = serializers.PrimaryKeyRelatedField(
+        source="managed_by",
+        queryset=__import__("django.contrib.auth", fromlist=["get_user_model"]).get_user_model().objects.all(),
+        allow_null=True,
+        required=False,
+    )
 
     class Meta:
         model = Operator
@@ -72,6 +83,8 @@ class OperatorSerializer(serializers.ModelSerializer):
             "account",
             "sticker",
             "forgotten_checkouts_count",
+            # 2026-10-06: 3-level hierarchy ownership.
+            "managed_by_id",
             # 2026-08-31: payroll overrides (см. миграцию 0008).
             "salary_uzs",
             "shift_start",
@@ -118,6 +131,57 @@ class OperatorSerializer(serializers.ModelSerializer):
             "sales_gate_pct": {"required": False, "allow_null": True},
         }
 
+    def validate(self, attrs):
+        """
+        Permission gate for `managed_by` reassignment (Phase 1 hierarchy).
+
+          * superadmin / superuser: free assignment to anyone.
+          * super_manager: can assign to self or to any of their managers
+            (reports_to=self).
+          * manager / team_lead: can set/unset ownership on their own ops
+            but can only point `managed_by` at themselves (or NULL).
+          * else: 403.
+
+        Nullable passthrough — if the PATCH payload doesn't include
+        `managed_by_id`, `attrs` won't have `managed_by` and this is a
+        no-op.
+        """
+        if "managed_by" not in attrs:
+            return attrs
+
+        actor = self.context["request"].user
+        from apps.users.models import Role as _Role, Profile as _Profile
+
+        profile = getattr(actor, "profile", None)
+        role = profile.role if profile else None
+        if actor.is_superuser or role == _Role.SUPERADMIN:
+            return attrs
+
+        new_owner = attrs["managed_by"]  # User instance or None
+        if role == _Role.SUPER_MANAGER:
+            allowed = {actor.id}
+            allowed.update(
+                _Profile.objects
+                .filter(reports_to=actor, role=_Role.MANAGER)
+                .values_list("user_id", flat=True)
+            )
+            if new_owner is not None and new_owner.id not in allowed:
+                raise serializers.ValidationError(
+                    {"managed_by_id": "Можно назначать только себе или своим менеджерам"}
+                )
+            return attrs
+
+        if role in (_Role.MANAGER, _Role.TEAM_LEAD):
+            if new_owner is not None and new_owner.id != actor.id:
+                raise serializers.ValidationError(
+                    {"managed_by_id": "Можно назначать только себе или оставить пустым"}
+                )
+            return attrs
+
+        raise serializers.ValidationError(
+            {"managed_by_id": "Недостаточно прав для изменения ownership"}
+        )
+
     def get_account(self, obj: Operator) -> dict:
         return account_state(user_by_operator(obj))
 
@@ -162,6 +226,10 @@ class OperatorListCreateApi(ListCreateAPIView):
             status=self.request.query_params.get("status"),
             include_inactive=self.request.query_params.get("include_inactive", "1") != "0",
             with_plan=True,
+            # Ownership scope — super_manager видит свою ветку (свои direct
+            # + все operators своих managers), обычный manager видит свои +
+            # legacy unassigned (NULL) pool. Superadmin — всех.
+            visible_operator_ids=visible_operator_ids(self.request.user),
         )
 
     def get_serializer_context(self):

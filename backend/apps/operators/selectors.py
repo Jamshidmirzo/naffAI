@@ -27,8 +27,22 @@ def operator_list(
     status: str | None = None,
     include_inactive: bool = True,
     with_plan: bool = False,
+    visible_operator_ids: list[int] | None = None,
 ) -> QuerySet[Operator]:
+    """
+    Base queryset for the operators list. Optional ownership filter.
+
+    `visible_operator_ids` — allowlist from
+    `apps.users.selectors.visible_operator_ids(actor)`. When provided, the
+    queryset is sliced to that set. An empty list intentionally returns
+    zero rows so a user without any visible operators sees nothing. Pass
+    `None` to skip the gate.
+    """
     qs = Operator.objects.all()
+    if visible_operator_ids is not None:
+        if not visible_operator_ids:
+            return qs.none()
+        qs = qs.filter(id__in=visible_operator_ids)
     if not include_inactive:
         qs = qs.exclude(status="inactive")
     if status:

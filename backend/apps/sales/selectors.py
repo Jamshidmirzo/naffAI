@@ -48,8 +48,27 @@ def sale_list(
     status: str | None = None,
     is_returned: bool | None = None,
     sheet_source_id: int | None = None,
+    visible_operator_ids: list[int] | None = None,
 ) -> QuerySet[Sale]:
+    """
+    Base read query for the sales list.
+
+    `visible_operator_ids` — ownership-scoped allowlist of operator ids the
+    caller is allowed to see (see `apps.users.selectors.visible_operator_ids`).
+    When provided, the queryset is restricted to sales where either the
+    legacy primary FK OR any SaleOperator allocation falls inside the
+    allowlist. An empty list restricts the view to zero rows — intentional,
+    so a caller without any visible operators sees nothing. Pass `None` to
+    skip the ownership gate entirely (superadmin / internal use).
+    """
     qs = sale_queryset()
+    if visible_operator_ids is not None:
+        if not visible_operator_ids:
+            return qs.none()
+        qs = qs.filter(
+            Q(operator_id__in=visible_operator_ids)
+            | Q(operator_lines__operator_id__in=visible_operator_ids)
+        ).distinct()
     if search:
         qs = qs.filter(
             Q(imei__icontains=search)

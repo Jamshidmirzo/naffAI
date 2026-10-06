@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 from apps.common.excel import new_workbook, workbook_response, write_sheet
 from apps.operators.models import Operator
 from apps.users.permissions import IsManager, IsTeamLead, IsTeamLeadOrManagerReadOnly
+from apps.users.selectors import visible_operator_ids
 
 from .models import PayoutType, PayrollRule, PayrollScope
 from .services import (
@@ -68,13 +69,37 @@ def _ym(request) -> tuple[int, int]:
     return year, month
 
 
+def _scoped_operators_for_payroll(request) -> list[Operator] | None:
+    """
+    Return the Operator list the caller is allowed to see for payroll,
+    or `None` when the scope is global (superadmin / superuser) and the
+    service should fall back to its default queryset.
+    """
+    visible = visible_operator_ids(request.user)
+    if visible is None:
+        return None
+    if not visible:
+        return []
+    return list(
+        Operator.objects.filter(id__in=visible).order_by("full_name")
+    )
+
+
 class PayrollMonthlyApi(APIView):
     permission_classes = [IsTeamLeadOrManagerReadOnly]
 
     def get(self, request):
         year, month = _ym(request)
         include_trainees = request.query_params.get("include_trainees", "1") != "0"
-        lines = compute_monthly_payroll(year=year, month=month, include_trainees=include_trainees)
+        scoped = _scoped_operators_for_payroll(request)
+        kwargs = {
+            "year": year,
+            "month": month,
+            "include_trainees": include_trainees,
+        }
+        if scoped is not None:
+            kwargs["operators"] = scoped
+        lines = compute_monthly_payroll(**kwargs)
         return Response(
             {
                 "year": year,
@@ -89,7 +114,11 @@ class PayrollMonthlyExportApi(APIView):
 
     def get(self, request):
         year, month = _ym(request)
-        lines = compute_monthly_payroll(year=year, month=month)
+        scoped = _scoped_operators_for_payroll(request)
+        kwargs = {"year": year, "month": month}
+        if scoped is not None:
+            kwargs["operators"] = scoped
+        lines = compute_monthly_payroll(**kwargs)
         wb = new_workbook()
         rows = []
         total_sales, total_payout = 0.0, 0.0

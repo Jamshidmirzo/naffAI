@@ -17,7 +17,7 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.audit.services import AuditAction, audit_log_create
 from apps.common.validators import normalize_uz_phone
@@ -235,6 +235,76 @@ def password_view(*, actor: User, target_user: User) -> str:
         },
     )
     return plain
+
+
+@transaction.atomic
+def profile_role_update(
+    *,
+    profile: Profile,
+    new_role: str,
+    actor: User | None,
+) -> Profile:
+    """
+    Change a user's role with hierarchy-aware guardrails.
+
+    Only `superadmin` (or Django superuser) can promote anyone to
+    SUPER_MANAGER, and there can be at most ONE super_manager in the whole
+    system — subsequent attempts fail with ValidationError. Setting the
+    same role is a no-op (just returns the profile unchanged).
+
+    No side-effects on `reports_to` here — ownership (reports_to /
+    managed_by) is a separate assignment flow in the dedicated PATCH
+    endpoints.
+    """
+    old_role = profile.role
+    if old_role == new_role:
+        return profile
+
+    if new_role == Role.SUPER_MANAGER:
+        actor_is_superadmin = bool(
+            actor
+            and (
+                actor.is_superuser
+                or (
+                    getattr(getattr(actor, "profile", None), "role", None)
+                    == Role.SUPERADMIN
+                )
+            )
+        )
+        if not actor_is_superadmin:
+            raise PermissionDenied(
+                "Назначать super_manager может только superadmin"
+            )
+        singleton_exists = (
+            Profile.objects
+            .filter(role=Role.SUPER_MANAGER)
+            .exclude(pk=profile.pk)
+            .exists()
+        )
+        if singleton_exists:
+            raise ValidationError(
+                {
+                    "role": (
+                        "Уже есть super_manager — снимите роль с него "
+                        "сначала (должен быть ровно один)."
+                    )
+                }
+            )
+
+    profile.role = new_role
+    profile.save(update_fields=["role"])
+
+    audit_log_create(
+        user=actor,
+        action=AuditAction.UPDATE,
+        entity="users.Profile",
+        entity_id=profile.id,
+        changes={
+            "role": {"old": old_role, "new": new_role},
+            "target_user_id": profile.user_id,
+        },
+    )
+    return profile
 
 
 @transaction.atomic
