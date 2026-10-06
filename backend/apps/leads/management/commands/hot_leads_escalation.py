@@ -59,17 +59,19 @@ class Command(BaseCommand):
 
         # Выбираем остывших горячих. status__in гарантирует, что лид ещё
         # «новый» для оператора — любая смена статуса сбросила бы hot_until
-        # заранее. metadata.hot_escalated — защита от повторной эскалации
-        # (hot_until мы занулим после отправки, но между SELECT и UPDATE
-        # на следующий тик уже должно быть пусто; на всякий случай
-        # дополнительный guard через metadata).
+        # заранее. Защита от повторной эскалации — обнуление hot_until
+        # после отправки: следующий тик уже не попадёт в filter.
+        #
+        # NB: раньше здесь был `.exclude(metadata__hot_escalated=True)` —
+        # но для лидов с metadata={} jsonb-оператор `metadata->'hot_escalated'`
+        # возвращает NULL, и `NOT (NULL = jsonb(true))` = NULL → WHERE
+        # отфильтровывает их. Полагаемся на hot_until-занул вместо этого.
         qs = (
             Lead.objects.filter(
                 hot_until__lte=now,
                 hot_until__isnull=False,
                 status__in=["new", "assigned"],
             )
-            .exclude(metadata__hot_escalated=True)
             .select_related("operator")
             .order_by("hot_until")
         )
