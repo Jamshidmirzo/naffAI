@@ -254,7 +254,10 @@ export default function Leads() {
               const cbAt = (lead as unknown as { callback_at?: string }).callback_at;
               const overdue = isCallbackOverdue(cbAt);
               const calls = (lead as unknown as { calls_count?: number }).calls_count ?? 0;
-              const source = (lead as unknown as { source_name?: string }).source_name ?? "—";
+              const source =
+                (lead as unknown as { sheet_source_name?: string }).sheet_source_name ??
+                (lead as unknown as { source_name?: string }).source_name ??
+                "—";
               return (
                 <div
                   key={lead.id}
