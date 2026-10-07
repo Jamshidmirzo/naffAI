@@ -150,15 +150,38 @@ class GoogleSheetsClient:
 
         token = self._access_token()
         url = f"{_SHEETS_API_ROOT}/{spreadsheet_id}/values/{quote(sheet_range, safe='!:')}"
-        r = httpx.put(
-            url,
-            params={"valueInputOption": "RAW"},
-            headers={"Authorization": f"Bearer {token}"},
-            json={"values": values},
-            timeout=15.0,
-        )
-        r.raise_for_status()
-        return r.json()
+        # Retry on 429 (rate limit) + 5xx with exponential backoff. Google
+        # Sheets API occasionally throttles writeback bursts; swallowing
+        # the first failure meant the sheet silently drifted from the DB
+        # (see audit 2026-10-07: 4% rows had stale sheet value). Three
+        # attempts with 1s / 2s / 4s pauses — total <= 7s added worst
+        # case, OK for writeback path (already async via on_commit).
+        import time as _time
+        last_exc = None
+        for attempt in range(3):
+            try:
+                r = httpx.put(
+                    url,
+                    params={"valueInputOption": "RAW"},
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={"values": values},
+                    timeout=15.0,
+                )
+                if r.status_code == 429 or 500 <= r.status_code < 600:
+                    last_exc = httpx.HTTPStatusError(
+                        f"Sheets API {r.status_code}", request=r.request, response=r,
+                    )
+                    _time.sleep(2 ** attempt)
+                    continue
+                r.raise_for_status()
+                return r.json()
+            except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout) as e:
+                last_exc = e
+                _time.sleep(2 ** attempt)
+                continue
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("update_cells: unreachable")
 
     def ensure_tab(self, spreadsheet_id: str, tab_name: str) -> int:
         """

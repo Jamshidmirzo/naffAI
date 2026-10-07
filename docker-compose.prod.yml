@@ -472,6 +472,38 @@ services:
           sleep 300
         done
 
+  # Nightly writeback reconcile — читает D-колонку srm, сравнивает с
+  # Lead.status за 30 дней, перезаписывает все расхождения (empty /
+  # mismatch). Запуск в 22:00 UTC (03:00 Tashkent) чтобы не мешать
+  # дневной активности.
+  writeback-reconcile:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          now_epoch=$$(date -u +%s)
+          today_target=$$(date -u -d 'today 22:00' +%s 2>/dev/null || python -c "import datetime,calendar; d=datetime.datetime.utcnow().replace(hour=22,minute=0,second=0,microsecond=0); print(calendar.timegm(d.timetuple()))")
+          if [ "$$now_epoch" -ge "$$today_target" ]; then
+            tomorrow_target=$$((today_target + 86400))
+            sleep_sec=$$((tomorrow_target - now_epoch))
+          else
+            sleep_sec=$$((today_target - now_epoch))
+          fi
+          echo "[$$(date +%FT%T%z)] writeback-reconcile sleep $$sleep_sec s (until 22:00 UTC)"
+          sleep "$$sleep_sec"
+          echo "[$$(date +%FT%T%z)] writeback_reconcile_srm --days 30"
+          python manage.py writeback_reconcile_srm --days 30 || echo "writeback_reconcile_srm rc=$$?"
+        done
+
   # Hot-sheets sync — SheetSource(is_hot=True) синк каждую минуту,
   # чтобы ТЕЗ10 лиды попадали в систему быстро (до истечения 10-мин SLA).
   # Обычный sheet-sync продолжает тикать по всем шитам раз в 5 мин.
