@@ -1116,7 +1116,7 @@ def operator_has_open_backlog(operator: Operator) -> bool:
     return operator_has_open_callbacks(operator) or operator_yesterday_backlog_count(operator) > 0
 
 
-def operators_eligible_for_new_leads() -> QuerySet[Operator]:
+def operators_eligible_for_new_leads(*, bypass_gate: bool = False) -> QuerySet[Operator]:
     """
     Active operators eligible for round-robin.
 
@@ -1131,6 +1131,12 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
     overridable by settings.MORNING_GATE_ENABLED), additionally excludes
     anyone with a due callback or a blocking-status lead (spec-leads
     gate — «пока не разобрал спец-лиды, новых не получишь»).
+
+    `bypass_gate=True` — для hot-sheets (is_hot=True). Отключает
+    morning_gate И batch cap: горячий лид должен уйти оператору
+    сразу, даже если он уперся в 5/5 или сидит с заблокированным
+    спец-лидом. Используется в `next_operator_for_round_robin` когда
+    `sheet_source.is_hot=True`.
     """
     from django.db.models import Count, Q
 
@@ -1152,11 +1158,12 @@ def operators_eligible_for_new_leads() -> QuerySet[Operator]:
                 & active_today,
             ),
         )
-        .filter(_working_count__lt=batch)
         .order_by("id")
     )
+    if not bypass_gate:
+        qs = qs.filter(_working_count__lt=batch)
 
-    if not _morning_gate_enabled():
+    if bypass_gate or not _morning_gate_enabled():
         return qs
 
     # Per-operator opt-in: гейт применяется ТОЛЬКО к операторам с
@@ -1306,8 +1313,13 @@ def next_operator_for_round_robin(
     (`allowed_operators`) — кандидаты пересекаются с этим списком. Пустой
     пул означает «раздача всем активным» и НЕ должен превращаться в
     «никто».
+
+    Если `sheet_source.is_hot=True` — RR обходит morning_gate и batch cap
+    (горячий лид доходит до оператора даже с заблокированным спец-лидом
+    или полной 5/5 пачкой — ТЕЗ10 SLA важнее).
     """
-    qs = operators_eligible_for_new_leads().annotate(
+    bypass = bool(sheet_source and getattr(sheet_source, "is_hot", False))
+    qs = operators_eligible_for_new_leads(bypass_gate=bypass).annotate(
         active_leads_count=Count(
             "leads",
             filter=Q(leads__status__in=active_lead_status_codes()),
