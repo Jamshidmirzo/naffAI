@@ -14,6 +14,7 @@ Design:
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -31,6 +32,24 @@ def _resolve_model(channel: str) -> str:
     if channel == "alert":
         return getattr(settings, "ROP_LLM_MODEL_ALERT", "") or default
     return default
+
+
+def _extra_headers() -> dict[str, str]:
+    """
+    Parse ``ROP_LLM_EXTRA_HEADERS`` (JSON string) for providers that use
+    non-standard auth (e.g. Bifrost proxy expects ``x-bf-vk: sk-bf-...``
+    instead of ``Authorization: Bearer``). Empty / malformed → ``{}``.
+    """
+    raw = getattr(settings, "ROP_LLM_EXTRA_HEADERS", "") or ""
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return {str(k): str(v) for k, v in parsed.items()}
+    except Exception as exc:
+        logger.warning("ROP_LLM_EXTRA_HEADERS parse failed: %s", exc)
+    return {}
 
 
 def _client():
@@ -52,11 +71,30 @@ def _client():
             api_key=api_key,
             base_url=base_url,
             timeout=getattr(settings, "ROP_LLM_TIMEOUT_SECONDS", 45),
+            default_headers=_extra_headers() or None,
         )
     except Exception as exc:
         logger.warning("OpenAI client init failed: %s", exc)
         return None
     return _CLIENT
+
+
+def _reasoning_effort_for(channel: str) -> str:
+    """
+    Per-channel reasoning budget. GLM-5.3 (and other OpenAI-compatible
+    reasoning models) accept ``reasoning_effort`` ∈ {minimal, low, medium, high}.
+
+    Default = minimal for everything except weekly scorecard (gets medium —
+    worth a bit more deliberation once a week). Set ``ROP_LLM_REASONING_EFFORT``
+    to override the default; set to ``none`` to drop the field entirely for
+    providers that reject unknown params.
+    """
+    override = getattr(settings, "ROP_LLM_REASONING_EFFORT", "") or ""
+    if override:
+        return override
+    if channel == "weekly":
+        return "medium"
+    return "minimal"
 
 
 def synthesize(
@@ -72,6 +110,10 @@ def synthesize(
     if client is None:
         return synthesize_stub(system_prompt, user_payload, channel=channel)
     model = _resolve_model(channel)
+    extra_body: dict[str, Any] = {}
+    effort = _reasoning_effort_for(channel)
+    if effort and effort.lower() != "none":
+        extra_body["reasoning_effort"] = effort
     try:
         resp = client.chat.completions.create(
             model=model,
@@ -81,6 +123,7 @@ def synthesize(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_payload},
             ],
+            extra_body=extra_body or None,
         )
         text = (resp.choices[0].message.content or "").strip()
         usage = getattr(resp, "usage", None)

@@ -445,6 +445,15 @@ ROP_LLM_MODEL = config("ROP_LLM_MODEL", default="glm-4-plus")
 ROP_LLM_MODEL_WEEKLY = config("ROP_LLM_MODEL_WEEKLY", default="")
 ROP_LLM_MODEL_ALERT = config("ROP_LLM_MODEL_ALERT", default="")
 ROP_LLM_TIMEOUT_SECONDS = config("ROP_LLM_TIMEOUT_SECONDS", default=45, cast=int)
+# Extra HTTP headers for the LLM endpoint. JSON string (so a single env var
+# carries any number of headers). Required by providers that use custom auth
+# instead of `Authorization: Bearer` — e.g. Bifrost expects `x-bf-vk`:
+#   ROP_LLM_EXTRA_HEADERS='{"x-bf-vk": "sk-bf-..."}'
+ROP_LLM_EXTRA_HEADERS = config("ROP_LLM_EXTRA_HEADERS", default="")
+# Reasoning budget for reasoning models (GLM-5.3, GPT-5, etc.). One of
+# {minimal, low, medium, high}; set `none` to drop the field entirely for
+# providers that reject unknown params. Default: minimal (weekly = medium).
+ROP_LLM_REASONING_EFFORT = config("ROP_LLM_REASONING_EFFORT", default="")
 
 # --- Logging ---
 LOG_DIR = config("LOG_DIR", default="")
