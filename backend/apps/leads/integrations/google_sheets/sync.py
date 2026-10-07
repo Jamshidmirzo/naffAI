@@ -180,7 +180,7 @@ def sync_single_source(
     )
 
 
-def sync_all(*, force_full_scan: bool = False) -> list[SyncResult]:
+def sync_all(*, force_full_scan: bool = False, hot_only: bool = False) -> list[SyncResult]:
     try:
         client = GoogleSheetsClient()
     except GoogleSheetsUnavailable as exc:
@@ -188,7 +188,10 @@ def sync_all(*, force_full_scan: bool = False) -> list[SyncResult]:
         return []
 
     results: list[SyncResult] = []
-    for src in SheetSource.objects.filter(active=True).order_by("id"):
+    qs = SheetSource.objects.filter(active=True)
+    if hot_only:
+        qs = qs.filter(is_hot=True)
+    for src in qs.order_by("id"):
         try:
             r = sync_one(client=client, sheet_source=src, force_full_scan=force_full_scan)
             results.append(r)

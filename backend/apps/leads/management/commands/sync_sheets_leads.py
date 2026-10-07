@@ -22,9 +22,17 @@ class Command(BaseCommand):
             action="store_true",
             help="Ignore watermarks and re-scan every configured sheet.",
         )
+        parser.add_argument(
+            "--hot-only",
+            action="store_true",
+            help="Sync ONLY sheets with is_hot=True (used by the per-minute hot watcher).",
+        )
 
     def handle(self, *args, **opts) -> None:
-        results = sync_all(force_full_scan=bool(opts.get("full")))
+        results = sync_all(
+            force_full_scan=bool(opts.get("full")),
+            hot_only=bool(opts.get("hot_only")),
+        )
         for r in results:
             self.stdout.write(
                 self.style.SUCCESS(
