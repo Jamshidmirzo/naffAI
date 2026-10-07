@@ -116,9 +116,9 @@ def _build_report(
         subhdr = f"Bugungi kunga, {day_str}"
         top_label = "🏆 Eng faol operatorlar:"
         empty_line = "Hozircha faoliyat yo'q"
-        calls_word = "aloqa"
+        calls_word = "obzvon"
         sold_word = "sotuv"
-        total_calls_lbl = "📞 Jami aloqalar"
+        total_calls_lbl = "📞 Jami qo'ng'iroqlar"
         total_sold_lbl = "💰 Jami sotuvlar"
         statuses_label = "📋 Statuslar:"
     else:
@@ -126,11 +126,42 @@ def _build_report(
         subhdr = f"За сегодня, {day_str}"
         top_label = "🏆 Топ операторов:"
         empty_line = "Пока нет обзвонов"
-        calls_word = "касаний"
+        calls_word = "обзвонил"
         sold_word = "продажи"
-        total_calls_lbl = "📞 Всего касаний"
+        total_calls_lbl = "📞 Всего звонков"
         total_sold_lbl = "💰 Всего продаж"
         statuses_label = "📋 Статусы:"
+
+    # Hardcoded UZ/RU display labels — fallback если в
+    # LeadStatusLabel.label_uz/label_ru пусто, чтобы в отчёте не было
+    # сырых кодов типа `kartsi_yoq`/`phone_on` и смеси языков.
+    _HARDCODED_LABELS: dict[str, dict[str, str]] = {
+        "new": {"uz": "Yangi", "ru": "Новый"},
+        "assigned": {"uz": "Tayinlangan", "ru": "Назначен"},
+        "in_progress": {"uz": "Jarayonda", "ru": "В работе"},
+        "no_answer": {"uz": "Javob yo'q", "ru": "Не отвечает"},
+        "no_answer_2": {"uz": "Javob yo'q (2-marta)", "ru": "Не отвечает (2)"},
+        "phone_on": {"uz": "Telefon ulanmagan", "ru": "Телефон вне сети"},
+        "has_debt": {"uz": "Qarzi bor", "ru": "Есть долг"},
+        "kartsi_yoq": {"uz": "Kartasi yo'q", "ru": "Нет карты"},
+        "sms_jonatildi": {"uz": "SMS yuborildi", "ru": "SMS отправлен"},
+        "contacted_telegram": {"uz": "Telegramda bog'landi", "ru": "Telegram связался"},
+        "callback_scheduled": {"uz": "Qayta qo'ng'iroq", "ru": "Перезвон назначен"},
+        "qimmatlik_qildi": {"uz": "Qimmatlik qildi", "ru": "Сказал дорого"},
+        "shunchaki_qiziqdi": {"uz": "Shunchaki qiziqdi", "ru": "Просто интересовался"},
+        "notogri_raqam": {"uz": "Noto'g'ri raqam", "ru": "Неверный номер"},
+        "boshqa_madel_soradi": {"uz": "Boshqa model so'radi", "ru": "Спросил другую модель"},
+        "boshqa_joydan_xarid_qilgan": {"uz": "Boshqa joydan xarid qilgan", "ru": "Купил в другом месте"},
+        "ishonchdan_olgan": {"uz": "Ishonchdan olgan", "ru": "Взял в Ishonch"},
+        "waiting_salary": {"uz": "Oyliguni kutyapti", "ru": "Ждёт зарплаты"},
+        "dokonga_keladi": {"uz": "Do'konga keladi", "ru": "Придёт в магазин"},
+        "soaragan_telefoniga_limit_yetmadi": {"uz": "So'ragan telefoniga limit yetmadi", "ru": "Лимит не хватил"},
+        "harid_qildi": {"uz": "Xarid qildi", "ru": "Купил"},
+        "won": {"uz": "Sotildi (won)", "ru": "Выиграли"},
+        "lost": {"uz": "Yo'qoldi", "ru": "Потерян"},
+        "needs_review": {"uz": "Tekshirish kerak", "ru": "Нужна проверка"},
+        "archived": {"uz": "Arxiv", "ru": "Архив"},
+    }
 
     # Status catalog (code → label+emoji) is on the snapshot's by_status list;
     # rebuild a fast lookup so we can render per-operator breakdown below.
@@ -138,10 +169,18 @@ def _build_report(
     for s in snapshot.get("by_status") or []:
         code = s.get("code") or ""
         if code:
+            db_label = (s.get("label_uz") if lang == "uz" else s.get("label_ru")) or ""
+            fallback = _HARDCODED_LABELS.get(code, {}).get(lang, code)
             status_meta[code] = {
-                "label": (s.get("label_uz") if lang == "uz" else s.get("label_ru")) or code,
+                "label": db_label or fallback,
                 "emoji": (s.get("emoji") or "").strip(),
             }
+    # Если в status_meta нет кода (операторская сводка показывает код,
+    # которого нет в by_status) — тоже заполним из hardcoded, чтоб per-op
+    # breakdown рендерил человекочитаемо.
+    for code, pair in _HARDCODED_LABELS.items():
+        if code not in status_meta:
+            status_meta[code] = {"label": pair.get(lang, code), "emoji": ""}
 
     lines = [header, subhdr, "", top_label]
     if not active_rows:
@@ -175,7 +214,9 @@ def _build_report(
     if status_rows:
         lines.append(statuses_label)
         for s in status_rows:
-            label = (s.get("label_uz") if lang == "uz" else s.get("label_ru")) or s.get("code") or "—"
+            code = s.get("code") or ""
+            db_label = (s.get("label_uz") if lang == "uz" else s.get("label_ru")) or ""
+            label = db_label or _HARDCODED_LABELS.get(code, {}).get(lang, code) or "—"
             emoji = (s.get("emoji") or "").strip()
             prefix = f"{emoji} " if emoji else "• "
             lines.append(f"{prefix}{label}: <b>{int(s.get('count', 0) or 0)}</b>")
