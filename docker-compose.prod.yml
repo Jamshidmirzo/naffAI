@@ -107,29 +107,6 @@ services:
       - /var/www/naffai-media:/app/media
     command: ["/app/scripts/entrypoint.sh"]
 
-  # Demo backend — same image, но с БД naffai_demo (`.env.demo` override).
-  # Отдельный порт 8001, nginx для demo.naff.flek.uz проксирует сюда.
-  # Не имеет workers (bot, watchers) — они запускаются только у prod-web.
-  # Deploy с ветки `demo`: git worktree в /opt/naffAI-demo.
-  demo-web:
-    build:
-      context: /opt/naffAI-demo/backend
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    env_file:
-      - .env
-      - .env.demo
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    ports:
-      - "127.0.0.1:8001:8000"
-    volumes:
-      - /var/www/naffai-media:/app/media
-    command: ["/app/scripts/entrypoint.sh"]
-
   bot:
     image: naffai-backend:latest
     pull_policy: never
