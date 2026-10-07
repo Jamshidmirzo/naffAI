@@ -41,8 +41,10 @@ scp -i ~/.ssh/naffai-lightsail.pem \
 ssh -i ~/.ssh/naffai-lightsail.pem ubuntu@63.186.179.240 '
   sudo cp /tmp/<files...> /opt/naffAI-demo/backend/apps/<app>/
   cd /opt/naffAI && sudo docker compose -f docker-compose.prod.yml build demo-web
-  sudo docker compose -f docker-compose.prod.yml up -d demo-web
+  # demo-web + все demo-* воркеры на одном образе naffai-demo-backend
+  sudo docker compose -f docker-compose.prod.yml up -d demo-web demo-apply-day-offs demo-attendance-auto-close demo-hot-leads-watch
   sudo docker exec naffai-demo-web-1 python manage.py migrate <app>
+  sudo docker image prune -f && sudo docker builder prune -f --filter until=72h
 '
 ```
 
@@ -52,10 +54,19 @@ ssh -i ~/.ssh/naffai-lightsail.pem ubuntu@63.186.179.240 '
 ssh -i ~/.ssh/naffai-lightsail.pem ubuntu@63.186.179.240 '
   sudo cp /tmp/<files...> /opt/naffAI/backend/apps/<app>/
   cd /opt/naffAI && sudo docker compose -f docker-compose.prod.yml build web
-  sudo docker compose -f docker-compose.prod.yml up -d web
+  # web и все воркеры на одном образе naffai-backend — пересоздаём всех,
+  # иначе воркеры останутся на старом коде
+  sudo docker compose -f docker-compose.prod.yml --profile bot up -d
   sudo docker exec naffai-web-1 python manage.py migrate <app>
+  sudo docker image prune -f && sudo docker builder prune -f --filter until=72h
 '
 ```
+
+> Образы: собираются только `web` (→ `naffai-backend`) и `demo-web` (→ `naffai-demo-backend`),
+> остальные сервисы берут готовый образ (`pull_policy: never`). Старые слои чистит `prune` выше —
+> без него диск забивается (до 2026-10 у каждого сервиса был свой 3-ГБ образ, 58 ГБ мусора).
+> Бэкапы фронта `/var/www/naff-*.bak.*`: держим последние 5 —
+> `ls -dt /var/www/naff-v2.bak.* | tail -n +6 | xargs -r sudo rm -rf` (то же для `naff-demo`).
 
 > Note: `deploy.sh` в репо делает `git reset --hard` — опасно, поэтому в этом runbook’е ручной scp-flow.
 
