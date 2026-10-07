@@ -58,16 +58,22 @@ def _is_muted() -> bool:
 # ---------------------------------------------------------------------------
 # Morning briefing (07:00 Tashkent)
 # ---------------------------------------------------------------------------
-def run_morning_briefing(*, dry_run: bool = False) -> dict[str, Any]:
+def run_morning_briefing(*, dry_run: bool = False, force: bool = False) -> dict[str, Any]:
+    """
+    Daily 07:00 briefing. Idempotent for the scheduler — the ``force=True``
+    knob is only for on-demand owner commands (``/rop_brifing``) that need to
+    re-generate for the day. When forced, the existing row for today is
+    replaced in-place so there's never more than one briefing per date.
+    """
     if not getattr(settings, "ROP_ENABLED", False):
         logger.info("ROP_ENABLED=False — skipping morning briefing")
         return {"skipped": "disabled"}
-    if _is_muted():
+    if _is_muted() and not force:
         logger.info("ROP muted — skipping morning briefing")
         return {"skipped": "muted"}
 
     today = selectors.today_tz()
-    if DailyBriefing.objects.filter(date=today).exists() and not dry_run:
+    if DailyBriefing.objects.filter(date=today).exists() and not dry_run and not force:
         logger.info("Morning briefing for %s already sent — skipping", today)
         return {"skipped": "already_sent"}
 
@@ -90,6 +96,8 @@ def run_morning_briefing(*, dry_run: bool = False) -> dict[str, Any]:
                     result["model"], result["tokens_in"], result["tokens_out"])
         return {"dry_run": True, "preview": full[:500], "model": result["model"]}
 
+    if force:
+        DailyBriefing.objects.filter(date=today).delete()
     briefing = DailyBriefing.objects.create(
         date=today,
         kpi_snapshot=kpi,
