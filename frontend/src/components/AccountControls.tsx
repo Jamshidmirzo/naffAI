@@ -132,6 +132,8 @@ export default function AccountControls({
   const [phoneInput, setPhoneInput] = useState("");
   const [issued, setIssued] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
+  // 2026-10-07: обязательный comment-причина для AuditLog при soft-delete.
+  const [deleteComment, setDeleteComment] = useState("");
 
   useEffect(() => {
     if (modal === "create") setPhoneInput(operatorPhone || "");
@@ -142,6 +144,7 @@ export default function AccountControls({
       setPassword("");
       setIssued(null);
       setError("");
+      setDeleteComment("");
     }
   }, [modal]);
 
@@ -211,11 +214,13 @@ export default function AccountControls({
   });
 
   const deleteMut = useMutation({
-    mutationFn: () => api.delete(`/operators/${operatorId}/account/delete/`),
+    mutationFn: (comment: string) =>
+      api.delete(`/operators/${operatorId}/account/delete/`, { data: { comment } }),
     onSuccess: () => {
       invalidate();
       setModal(null);
     },
+    onError: (err: unknown) => setError(apiErrorMessage(err)),
   });
 
   if (!canManage) {
@@ -485,22 +490,56 @@ export default function AccountControls({
         </div>
       )}
 
-      {/* Confirm delete */}
+      {/* Confirm delete — обязательный comment-причина для AuditLog. */}
       {modal === "confirm-delete" && (
         <div className="fixed inset-0 bg-black/30 dark:bg-black/60 flex items-center justify-center z-50">
-          <div className="card p-6 w-full max-w-sm space-y-4">
+          <div className="card p-6 w-full max-w-md space-y-4">
             <h2 className="text-lg font-semibold">{t("account.delete_account")}</h2>
             <p className="text-sm text-gray-600 dark:text-slate-400">
               {t("account.delete_confirm", { name: operatorName })}
             </p>
+            <div>
+              <div className="text-xs text-gray-500 mb-1">
+                {t("op_detail.delete_comment_label")}
+              </div>
+              <textarea
+                className="input"
+                style={{ minHeight: 80, resize: "vertical", width: "100%" }}
+                value={deleteComment}
+                onChange={(e) => setDeleteComment(e.target.value)}
+                placeholder={t("op_detail.delete_comment_placeholder")}
+                autoFocus
+              />
+              <div
+                className="text-[11.5px] mt-1 tabular-nums"
+                style={{
+                  color:
+                    deleteComment.trim().length < 10
+                      ? "var(--danger, #d04c3a)"
+                      : "var(--muted, #6b7280)",
+                }}
+              >
+                {deleteComment.trim().length < 10
+                  ? t("op_detail.delete_comment_too_short").replace(
+                      "{n}",
+                      String(10 - deleteComment.trim().length),
+                    )
+                  : `${deleteComment.trim().length} ${t("op_detail.delete_comment_chars")}`}
+              </div>
+            </div>
+            {error && (
+              <div className="text-sm text-red-600 dark:text-red-400 rounded-md bg-red-50 dark:bg-red-500/20 px-3 py-2">
+                {error}
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <button className="btn-ghost" onClick={() => setModal(null)}>
                 {t("common.cancel")}
               </button>
               <button
-                className="btn-primary bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700"
-                onClick={() => deleteMut.mutate()}
-                disabled={deleteMut.isPending}
+                className="btn-primary bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700 disabled:opacity-60"
+                onClick={() => deleteMut.mutate(deleteComment.trim())}
+                disabled={deleteMut.isPending || deleteComment.trim().length < 10}
               >
                 {deleteMut.isPending ? "…" : t("common.delete")}
               </button>

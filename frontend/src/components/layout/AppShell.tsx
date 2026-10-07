@@ -119,13 +119,14 @@ function useManagerGroups(
 function useSuperManagerGroups(t: (k: string) => string): SidebarGroup[] {
   // Super_manager navigation — чистая «моя ветка» без доступа к общим
   // менеджерским экранам (/users, /settings, bot config и т.д.). Три
-  // главных пункта + leaderboard / lessons / profile.
+  // главных пункта + leaderboard / lessons / profile + журнал удалений.
   return [
     {
       items: [
         { to: "/team/sales", label: t("nav.my_team_sales"), end: true },
         { to: "/team/operators", label: t("nav.my_team_operators") },
         { to: "/team/managers", label: t("nav.my_managers") },
+        { to: "/team/deleted-operators", label: t("nav.deleted_operators") },
       ],
     },
     {
