@@ -326,3 +326,54 @@ def test_delete_operator_with_historic_calls_and_assignments(operator):
     assert counts["lead_assignments_detached"] == 1
     assert counts["call_attempts_detached"] == 1
     assert counts["callback_reminders_detached"] == 1
+
+
+@pytest.mark.django_db
+def test_operator_delete_persists_note_in_audit_comment(operator):
+    """
+    `note=...` kwarg уходит в AuditLog.comment. Нужно для разбора
+    «кто зачем удалил» — пустой audit после 14 ноябрьских удалений
+    дал нам ровно эту задачу.
+    """
+    op_id = operator.id
+    operator_delete(operator=operator, user=None, note="Тест — массовое удаление для аудита")
+    entry = AuditLog.objects.get(
+        entity="operators.Operator", entity_id=str(op_id), action="delete"
+    )
+    assert entry.comment == "Тест — массовое удаление для аудита"
+
+
+@pytest.mark.django_db
+def test_operator_delete_without_note_leaves_comment_empty(operator):
+    """
+    Старые вызовы без `note` (management-команды, backfill-скрипты,
+    legacy тесты) должны продолжать работать — service принимает
+    пустую строку по умолчанию.
+    """
+    op_id = operator.id
+    operator_delete(operator=operator, user=None)
+    entry = AuditLog.objects.get(
+        entity="operators.Operator", entity_id=str(op_id), action="delete"
+    )
+    assert entry.comment == ""
+
+
+@pytest.mark.django_db
+def test_deleted_operators_history_selector_returns_recent_deletes(operator):
+    """
+    Селектор `deleted_operators_history` читает audit и собирает
+    строки для страницы «Удалённые операторы». Проверяем базовый
+    формат payload'а.
+    """
+    from apps.operators.selectors import deleted_operators_history
+
+    op_id = operator.id
+    operator_delete(operator=operator, user=None, note="Увольнение по собственному желанию")
+    rows = deleted_operators_history(limit=10)
+    assert any(r["operator_id"] == op_id for r in rows)
+    row = next(r for r in rows if r["operator_id"] == op_id)
+    assert row["snapshot"]["full_name"] == "Мадина Иванова"
+    assert row["comment"] == "Увольнение по собственному желанию"
+    assert row["deleted_by_username"] == "system"  # user=None → "system"
+    assert row["sales_count"] == 0  # у fixture нет продаж
+    assert row["restored_sales_count"] == 0

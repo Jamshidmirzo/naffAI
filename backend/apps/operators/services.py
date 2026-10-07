@@ -603,7 +603,7 @@ def operator_reactivate(*, operator: Operator, user=None) -> Operator:
 
 
 @transaction.atomic
-def operator_delete(*, operator: Operator, user=None) -> dict:
+def operator_delete(*, operator: Operator, user=None, note: str = "") -> dict:
     """
     Hard-delete an operator, cleaning up their attached sales:
 
@@ -621,6 +621,15 @@ def operator_delete(*, operator: Operator, user=None) -> dict:
         `Σ partner.amount == sale.amount`. A note is appended to
         `sale.comment` recording the operator + subtracted share so the
         manager can trace the change later.
+
+    `note` — обязательная (с точки зрения API) причина удаления,
+    которую записываем в `AuditLog.comment`. Нужна для разбора «кто
+    зачем удалил»: один super_manager за октябрь спрятал 14
+    операторов и 21 продажу на 133М из отчётов, с пустыми audit-
+    комментариями мы не могли реконструировать мотив. Минимальную
+    длину валидирует вьюха; сервис принимает любую строку (включая
+    пустую — для shell-скриптов, management-команд, тестов и
+    обратной совместимости со старыми вызовами).
 
     Math for the multi-op branch (money is `Decimal(14, 2)`):
         gross         = sale.amount
@@ -805,6 +814,7 @@ def operator_delete(*, operator: Operator, user=None) -> dict:
             "snapshot": snapshot,
             "deleted_related": deleted_related,
         },
+        comment=note or "",
     )
     return deleted_related
 

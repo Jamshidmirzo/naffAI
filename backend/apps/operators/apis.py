@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.analytics.selectors import resolve_period
-from apps.users.permissions import IsTeamLead, IsTeamLeadOrManagerReadOnly
+from apps.users.permissions import IsManager, IsTeamLead, IsTeamLeadOrManagerReadOnly
 from apps.users.selectors import (
     account_state,
     user_by_operator,
@@ -20,6 +20,7 @@ from apps.users.selectors import (
 from .models import DayOffStatus, Operator, OperatorDayOff
 from .permissions import IsDestructiveActionPinVerified
 from .selectors import (
+    deleted_operators_history,
     operator_achievements,
     operator_get,
     operator_list,
@@ -364,14 +365,77 @@ class OperatorPauseApi(APIView):
 
 
 class OperatorDeleteApi(APIView):
+    """
+    Hard-delete оператора с обязательным комментарием-причиной.
+
+    `comment` обязателен (min 10 символов) и записывается в
+    `AuditLog.comment` вместе со snapshot'ом. Нужно для разбора «кто
+    зачем удалил»: за октябрь 2026 один super_manager тихо снёс 14
+    операторов + 21 продажу на 133М из отчётов, с пустыми audit-
+    комментариями мы восстановили только по snapshot'у, без мотива.
+
+    Принимаем и в body DELETE-запроса, и в query-string, т.к. не все
+    HTTP-клиенты шлют body с DELETE (у axios это OK, но FileSystemError
+    или curl без `-d` упадут). Фронт передаёт в теле.
+    """
+
     permission_classes = [IsTeamLead]
+
+    MIN_COMMENT_LEN = 10
 
     def delete(self, request, operator_id: int):
         op = operator_get(operator_id)
         if not op:
             return Response({"detail": "Not found"}, status=404)
-        deleted_related = operator_delete(operator=op, user=request.user)
+
+        # Тело DELETE доступно через request.data (DRF parses it), fallback
+        # на query-string для нестандартных клиентов.
+        raw_comment = request.data.get("comment") if hasattr(request, "data") else None
+        if raw_comment is None:
+            raw_comment = request.query_params.get("comment", "")
+        comment = (raw_comment or "").strip()
+        if len(comment) < self.MIN_COMMENT_LEN:
+            return Response(
+                {
+                    "detail": (
+                        "Укажите причину удаления (минимум "
+                        f"{self.MIN_COMMENT_LEN} символов) — она попадёт в audit."
+                    ),
+                    "field": "comment",
+                },
+                status=400,
+            )
+
+        deleted_related = operator_delete(operator=op, user=request.user, note=comment)
         return Response({"deleted_related": deleted_related}, status=200)
+
+
+class DeletedOperatorsListApi(APIView):
+    """
+    GET /api/operators/deleted/ — история hard-удалённых операторов.
+
+    Читается из `AuditLog` (entity='operators.Operator', action='delete').
+    Для каждого удаления возвращаем snapshot, кто/когда/зачем удалил,
+    сколько sales этот оператор создал за 90 дней до удаления, и
+    сколько из них уже восстановлены (по пометке `[RESTORED after
+    operator delete]` в sale.comment).
+
+    Permission: senior-role (IsManager = team_lead/manager/super_manager/
+    superadmin). На фронте маршрут завёрнут в RoleGate allow=["super_manager"]
+    с superadmin-bypass'ом — но API пускает всех senior, т.к. это ТОЛЬКО
+    чтение audit'a, никаких write-side effects.
+    """
+
+    permission_classes = [IsManager]
+
+    def get(self, request):
+        limit_raw = request.query_params.get("limit", "500")
+        try:
+            limit = max(1, min(1000, int(limit_raw)))
+        except (TypeError, ValueError):
+            limit = 500
+        rows = deleted_operators_history(limit=limit)
+        return Response({"results": rows, "count": len(rows)})
 
 
 class OperatorPlanApi(APIView):
