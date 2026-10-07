@@ -380,17 +380,49 @@ class OperatorAccountActivateApi(APIView):
 
 
 class OperatorAccountDeleteApi(APIView):
-    """DELETE /operators/{id}/account/ — soft delete."""
+    """
+    POST /operators/{id}/account/delete/ — soft-delete учётки оператора.
+
+    Требует `comment` (min 10 символов) в теле запроса — пишется в
+    `AuditLog.comment`. Нужно для разбора «кто и зачем заблокировал
+    учётку».
+    """
 
     permission_classes = [IsManager]
+    MIN_COMMENT_LEN = 10
 
-    def delete(self, request, operator_id: int):
+    def _handle(self, request, operator_id: int):
         operator = _operator_or_404(operator_id)
         user = user_by_operator(operator)
         if user is None:
             raise NotFound("У оператора нет аккаунта")
-        account_soft_delete(user=user, actor=request.user)
+
+        raw_comment = request.data.get("comment") if hasattr(request, "data") else None
+        if raw_comment is None:
+            raw_comment = request.query_params.get("comment", "")
+        comment = (raw_comment or "").strip()
+        if len(comment) < self.MIN_COMMENT_LEN:
+            return Response(
+                {
+                    "detail": (
+                        "Укажите причину удаления (минимум "
+                        f"{self.MIN_COMMENT_LEN} символов) — она попадёт в audit."
+                    ),
+                    "field": "comment",
+                },
+                status=400,
+            )
+
+        account_soft_delete(user=user, actor=request.user, note=comment)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def delete(self, request, operator_id: int):
+        return self._handle(request, operator_id)
+
+    def post(self, request, operator_id: int):
+        # Фронтенд иногда ходит POST'ом (axios.post в OperatorDetail.tsx) —
+        # поддерживаем оба метода.
+        return self._handle(request, operator_id)
 
 
 # ---------------------------------------------------------------------------

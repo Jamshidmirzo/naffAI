@@ -441,6 +441,114 @@ def operators_with_birthday_today_public(*, today: dt.date | None = None) -> lis
     return out
 
 
+def deleted_operators_history(*, limit: int = 500) -> list[dict]:
+    """
+    Собирает историю удалённых операторов из `AuditLog` (entity='operators.Operator',
+    action='delete'). Для каждой записи:
+      - `snapshot` (full_name, phone, status, hired_at) из `audit.changes`.
+      - `deleted_at` = audit.created_at.
+      - `deleted_by_user_id` + `deleted_by_username` — кто удалил.
+      - `comment` — причина (пусто для исторических записей до 2026-10-07).
+      - `sales_count` / `sales_total` — продажи этого оператора (находим
+        по username в созданных им Sale.created_by за последние 90 дней
+        до удаления, т.к. при hard-delete FK obnuled и прямой связи нет).
+      - `restored_sales_count` — сколько уже восстановлено после удаления
+        (помечены в sale.comment как `[RESTORED after operator delete]`).
+      - `deleted_related` — счётчики из audit (sales_soft_deleted_count,
+        sales_shrunk_count и т.д.) — что сервис тронул при удалении.
+
+    Используется страницей `/team/deleted-operators` для super_manager /
+    superadmin — чтобы можно было увидеть и аудитировать «кто кого спрятал».
+    """
+    from django.contrib.auth import get_user_model
+    from apps.audit.models import AuditLog
+    from apps.sales.models import Sale
+
+    User = get_user_model()
+
+    audits = (
+        AuditLog.objects.filter(
+            entity__iexact="operators.Operator",
+            action="delete",
+        )
+        .order_by("-created_at")[:limit]
+    )
+
+    # Prefetch всех users одним запросом, не per-row.
+    actor_ids = {a.user_id for a in audits if a.user_id}
+    actors_map: dict[int, str] = {}
+    if actor_ids:
+        for u in User.objects.filter(id__in=actor_ids).only("id", "username"):
+            actors_map[u.id] = u.username or f"user#{u.id}"
+
+    out: list[dict] = []
+    for audit in audits:
+        snapshot = (audit.changes or {}).get("snapshot") or {}
+        deleted_related = (audit.changes or {}).get("deleted_related") or {}
+
+        full_name = snapshot.get("full_name") or ""
+        phone = snapshot.get("phone") or ""
+
+        # Продажи, которые этот удалённый оператор создавал от своего
+        # имени за последние 90 дней до удаления. При hard-delete FK
+        # `sale.operator` обнуляется, прямой связи нет — ловим через
+        # created_by.username = phone (у оператора username = phone).
+        sales_qs = Sale.objects.none()
+        if phone:
+            window_start = audit.created_at - dt.timedelta(days=90)
+            sales_qs = Sale.objects.filter(
+                created_by__username=phone,
+                sold_at__gte=window_start,
+                sold_at__lt=audit.created_at + dt.timedelta(hours=1),
+            )
+        agg = sales_qs.aggregate(
+            count=Count("id"),
+            total=Coalesce(
+                Sum("amount"),
+                Value(0, output_field=DecimalField(max_digits=16, decimal_places=2)),
+            ),
+        )
+
+        # Восстановленные (хотя бы часть) sales — считаем по пометке в comment.
+        restored_count = (
+            sales_qs.filter(comment__contains="[RESTORED after operator delete]").count()
+            if phone else 0
+        )
+
+        actor_name = (
+            actors_map.get(audit.user_id, "system") if audit.user_id else "system"
+        )
+        op_id_num = int(audit.entity_id) if str(audit.entity_id).isdigit() else None
+        dr = deleted_related  # short alias for the dict below
+        out.append(
+            {
+                "audit_id": audit.id,
+                "operator_id": op_id_num,
+                "snapshot": {
+                    "full_name": full_name,
+                    "phone": phone,
+                    "status": snapshot.get("status") or "",
+                    "hired_at": snapshot.get("hired_at"),
+                },
+                "deleted_at": audit.created_at.isoformat(),
+                "deleted_by_user_id": audit.user_id,
+                "deleted_by_username": actor_name,
+                "comment": audit.comment or "",
+                "sales_count": int(agg["count"] or 0),
+                "sales_total": str(agg["total"] or 0),
+                "restored_sales_count": int(restored_count),
+                "deleted_related": {
+                    "sales_soft_deleted_count": int(dr.get("sales_soft_deleted_count") or 0),
+                    "sales_shrunk_count": int(dr.get("sales_shrunk_count") or 0),
+                    "sales_unlinked": int(dr.get("sales_unlinked") or 0),
+                    "lead_assignments_detached": int(dr.get("lead_assignments_detached") or 0),
+                    "call_attempts_detached": int(dr.get("call_attempts_detached") or 0),
+                },
+            }
+        )
+    return out
+
+
 def _age_years(birth_date: dt.date, today: dt.date) -> int:
     """
     Полное число лет на сегодня. Для 29-февральских именинников в

@@ -147,6 +147,9 @@ export default function OperatorDetail() {
     password: string;
   } | null>(null);
   const [confirmDeleteAcc, setConfirmDeleteAcc] = useState(false);
+  // 2026-10-07: обязательный comment (min 10) для audit-а при soft-delete учётки.
+  const [deleteAccComment, setDeleteAccComment] = useState("");
+  const [deleteAccError, setDeleteAccError] = useState("");
   const [qrOpen, setQrOpen] = useState(false);
   const [qrVer, setQrVer] = useState(0); // cache-buster on rotate
   const [editPhones, setEditPhones] = useState(false);
@@ -283,13 +286,20 @@ export default function OperatorDetail() {
   });
 
   const deleteAccountMut = useMutation({
-    mutationFn: () => api.post(`/operators/${id}/account/delete/`),
+    mutationFn: (comment: string) =>
+      api.post(`/operators/${id}/account/delete/`, { comment }),
     onSuccess: () => {
       invalidateAccount();
       setConfirmDeleteAcc(false);
+      setDeleteAccComment("");
+      setDeleteAccError("");
       toast.success(t("op_detail.account_deleted"));
     },
-    onError: () => toast.error(t("op_detail.account_delete_failed")),
+    onError: (err: unknown) => {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      const msg = typeof detail === "string" ? detail : t("op_detail.account_delete_failed");
+      setDeleteAccError(msg);
+    },
   });
 
   const changeLanguageMut = useMutation({
@@ -1851,11 +1861,15 @@ export default function OperatorDetail() {
         </div>
       </Modal>
 
-      {/* --- Delete-account confirm --- */}
+      {/* --- Delete-account confirm --- обязательный comment-причина для AuditLog. */}
       <Modal
         open={confirmDeleteAcc}
-        onClose={() => setConfirmDeleteAcc(false)}
-        width={420}
+        onClose={() => {
+          setConfirmDeleteAcc(false);
+          setDeleteAccComment("");
+          setDeleteAccError("");
+        }}
+        width={520}
       >
         <div className="p-7">
           <div className="text-[18px] font-semibold tracking-tight">
@@ -1864,18 +1878,60 @@ export default function OperatorDetail() {
           <div className="text-[13px] text-muted mt-2">
             {t("op_detail.delete_acc_confirm_body")}
           </div>
+          <div className="mt-5">
+            <div className="nf-col mb-1.5">{t("op_detail.delete_comment_label")}</div>
+            <textarea
+              className="nf-input"
+              style={{ minHeight: 86, resize: "vertical" }}
+              value={deleteAccComment}
+              onChange={(e) => setDeleteAccComment(e.target.value)}
+              placeholder={t("op_detail.delete_comment_placeholder")}
+              autoFocus
+            />
+            <div
+              className="text-[11.5px] mt-1 tabular-nums"
+              style={{
+                color: deleteAccComment.trim().length < 10 ? "var(--danger)" : "var(--muted)",
+              }}
+            >
+              {deleteAccComment.trim().length < 10
+                ? t("op_detail.delete_comment_too_short").replace(
+                    "{n}",
+                    String(10 - deleteAccComment.trim().length),
+                  )
+                : `${deleteAccComment.trim().length} ${t("op_detail.delete_comment_chars")}`}
+            </div>
+          </div>
+          {deleteAccError && (
+            <div
+              className="mt-3 text-[13px] rounded-xl px-3.5 py-2.5"
+              style={{
+                background: "rgba(220,60,40,.08)",
+                color: "var(--danger)",
+                border: "1px solid rgba(220,60,40,.2)",
+              }}
+            >
+              {deleteAccError}
+            </div>
+          )}
           <div className="mt-6 flex gap-2 justify-end">
             <Button
               variant="ghost"
-              onClick={() => setConfirmDeleteAcc(false)}
+              onClick={() => {
+                setConfirmDeleteAcc(false);
+                setDeleteAccComment("");
+                setDeleteAccError("");
+              }}
               disabled={deleteAccountMut.isPending}
             >
               {t("common.cancel")}
             </Button>
             <Button
               variant="danger"
-              onClick={() => deleteAccountMut.mutate()}
-              disabled={deleteAccountMut.isPending}
+              onClick={() => deleteAccountMut.mutate(deleteAccComment.trim())}
+              disabled={
+                deleteAccountMut.isPending || deleteAccComment.trim().length < 10
+              }
             >
               {deleteAccountMut.isPending ? t("op_detail.deleting") : t("common.delete")}
             </Button>

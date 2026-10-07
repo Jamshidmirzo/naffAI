@@ -48,6 +48,7 @@ import TgQueue from "./pages/TgQueue";
 import Users from "./pages/Users";
 import MyManagers from "./pages/MyManagers";
 import MyTeamSales from "./pages/MyTeamSales";
+import DeletedOperators from "./pages/DeletedOperators";
 import Settings from "./pages/Settings";
 import OrphanLeads from "./pages/OrphanLeads";
 import SystemLostLeads from "./pages/SystemLostLeads";
@@ -144,6 +145,7 @@ export default function App() {
           <Route path="/team/managers" element={<RoleGate allow={["super_manager"]}><MyManagers /></RoleGate>} />
           <Route path="/team/operators" element={<RoleGate allow={["super_manager"]}><Operators /></RoleGate>} />
           <Route path="/team/sales" element={<RoleGate allow={["super_manager"]}><MyTeamSales /></RoleGate>} />
+          <Route path="/team/deleted-operators" element={<RoleGate allow={["super_manager"]}><DeletedOperators /></RoleGate>} />
           <Route path="/sales-today" element={<RoleGate allow={["manager"]}><SalesToday /></RoleGate>} />
           <Route path="/tg-queue" element={<RoleGate allow={["manager"]}><TgQueue /></RoleGate>} />
           <Route path="/sheet-sources" element={<RoleGate allow={["manager"]}><SheetSources /></RoleGate>} />

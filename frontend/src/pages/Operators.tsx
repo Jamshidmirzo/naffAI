@@ -278,13 +278,18 @@ export default function Operators() {
     onError: () => toast.error(t("operators.status_update_failed") || "Не удалось обновить статус"),
   });
 
+  // 2026-10-07: delete-with-comment. API требует `comment` (min 10 chars)
+  // в body — пишется в AuditLog для разбора «кто зачем удалил».
+  const [deleteComment, setDeleteComment] = useState("");
   const remove = useMutation({
-    mutationFn: (id: number) => api.delete(`/operators/${id}/delete/`),
+    mutationFn: ({ id, comment }: { id: number; comment: string }) =>
+      api.delete(`/operators/${id}/delete/`, { data: { comment } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["operators"] });
       qc.invalidateQueries({ queryKey: ["operators-list-all"] });
       setConfirmDelete(null);
       setDeleteError("");
+      setDeleteComment("");
       toast.success(t("op_detail.delete_done"));
     },
     onError: (err: unknown) => {
@@ -1188,13 +1193,42 @@ export default function Operators() {
         )}
       </Modal>
 
-      {/* Delete confirm */}
-      <Modal open={!!confirmDelete} onClose={() => { setConfirmDelete(null); setDeleteError(""); }} width={460}>
+      {/* Delete confirm — обязательный comment-причина (min 10 chars),
+          уходит в AuditLog для разбора «кто зачем удалил». */}
+      <Modal
+        open={!!confirmDelete}
+        onClose={() => { setConfirmDelete(null); setDeleteError(""); setDeleteComment(""); }}
+        width={520}
+      >
         {confirmDelete && (
           <div className="p-7">
             <div className="text-[18px] font-semibold tracking-tight">{t("op_detail.delete")}</div>
             <div className="text-[13px] text-muted mt-2">
               {t("operators.delete_hint_prefix")} <span className="text-text font-medium">{confirmDelete.name}</span>{t("operators.delete_hint_suffix")}
+            </div>
+            <div className="mt-5">
+              <div className="nf-col mb-1.5">{t("op_detail.delete_comment_label")}</div>
+              <textarea
+                className="nf-input"
+                style={{ minHeight: 86, resize: "vertical" }}
+                value={deleteComment}
+                onChange={(e) => setDeleteComment(e.target.value)}
+                placeholder={t("op_detail.delete_comment_placeholder")}
+                autoFocus
+              />
+              <div
+                className="text-[11.5px] mt-1 tabular-nums"
+                style={{
+                  color: deleteComment.trim().length < 10 ? "var(--danger)" : "var(--muted)",
+                }}
+              >
+                {deleteComment.trim().length < 10
+                  ? t("op_detail.delete_comment_too_short").replace(
+                      "{n}",
+                      String(10 - deleteComment.trim().length),
+                    )
+                  : `${deleteComment.trim().length} ${t("op_detail.delete_comment_chars")}`}
+              </div>
             </div>
             {deleteError && (
               <div
@@ -1211,15 +1245,17 @@ export default function Operators() {
             <div className="mt-6 flex gap-2 justify-end">
               <Button
                 variant="ghost"
-                onClick={() => { setConfirmDelete(null); setDeleteError(""); }}
+                onClick={() => { setConfirmDelete(null); setDeleteError(""); setDeleteComment(""); }}
                 disabled={remove.isPending}
               >
                 {t("common.cancel")}
               </Button>
               <Button
                 variant="danger"
-                onClick={() => remove.mutate(confirmDelete.id)}
-                disabled={remove.isPending}
+                onClick={() =>
+                  remove.mutate({ id: confirmDelete.id, comment: deleteComment.trim() })
+                }
+                disabled={remove.isPending || deleteComment.trim().length < 10}
               >
                 {remove.isPending ? t("common.deleting") : t("common.delete")}
               </Button>

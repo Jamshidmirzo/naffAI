@@ -185,10 +185,14 @@ def account_activate(*, user: User, actor: User | None) -> None:
 
 
 @transaction.atomic
-def account_soft_delete(*, user: User, actor: User | None) -> None:
+def account_soft_delete(*, user: User, actor: User | None, note: str = "") -> None:
     """
     Soft-delete: block login, wipe the reversible ciphertext, keep the
     Django user + audit history intact so we can still trace who did what.
+
+    `note` — опциональный на уровне сервиса (view-слой валидирует
+    min-length), пишется в `AuditLog.comment`. Нужен для разбора «кто
+    зачем заблокировал учётку».
     """
     user.is_active = False
     user.save(update_fields=["is_active"])
@@ -209,6 +213,7 @@ def account_soft_delete(*, user: User, actor: User | None) -> None:
             "kind": AccountAction.DELETED,
             "target_user_id": user.id,
         },
+        comment=note or "",
     )
 
 

@@ -6,6 +6,7 @@ from .apis import (
     DayOffCreateApi,
     DayOffPendingListApi,
     DayOffRejectApi,
+    DeletedOperatorsListApi,
     MePreferencesApi,
     MyDayOffListApi,
     OperatorDeactivateApi,
@@ -24,6 +25,7 @@ urlpatterns = [
     # NB: конкретные пути ДОЛЖНЫ идти ДО `<int:pk>/`, иначе Django/DRF
     # съест «birthdays-today» как pk и упадёт с 404.
     path("birthdays-today/", OperatorsBirthdayTodayApi.as_view()),
+    path("deleted/", DeletedOperatorsListApi.as_view()),
     # Day-off requests — static paths ДО <int:pk>/.
     path("day-off/", DayOffCreateApi.as_view()),
     path("day-off/pending/", DayOffPendingListApi.as_view()),
