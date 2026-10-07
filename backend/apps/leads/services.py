@@ -377,6 +377,56 @@ def _schedule_writeback(lead_id: int, comment: str = "") -> None:
     transaction.on_commit(lambda: _writeback_async(lead_id, comment))
 
 
+def _writeback_batch_async(
+    lead_ids: list[int], comment: str = "", sleep_s: float = 0.5
+) -> None:
+    """
+    Serial writeback for a batch of leads from a single thread.
+
+    Used by morning_distribute / refill paths which can assign dozens of
+    leads at once — thread-per-lead would hammer Google Sheets quota
+    (soft 60 writes/min, hard 300/min per spreadsheet) and risk 429 storms.
+    Serialising with a short sleep keeps the morning split within quota
+    even for 50+ leads and takes ~25s wall-clock for 50 writes, which is
+    fine for an async writeback path.
+
+    Failures are logged per lead but never raised.
+    """
+    import time as _time
+
+    def _run() -> None:
+        from .models import Lead
+
+        for lead_id in lead_ids:
+            try:
+                lead = Lead.objects.select_related("sheet_source", "operator").get(pk=lead_id)
+                lead_writeback_to_sheet(lead, comment=comment)
+            except Exception:
+                logger.exception(
+                    "_writeback_batch_async: write failed for lead=%s", lead_id
+                )
+            if sleep_s > 0:
+                _time.sleep(sleep_s)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _schedule_writeback_batch(
+    lead_ids: list[int], comment: str = "", sleep_s: float = 0.5
+) -> None:
+    """
+    Schedule a serial batch writeback once the surrounding transaction
+    commits. Preserves on_commit semantics (DB is durable before we
+    reflect state in Google) while using a single thread for the whole
+    batch to control throughput.
+    """
+    if not lead_ids:
+        return
+    transaction.on_commit(
+        lambda: _writeback_batch_async(list(lead_ids), comment=comment, sleep_s=sleep_s)
+    )
+
+
 # ---- lead lifecycle ------------------------------------------------------
 
 
@@ -827,6 +877,10 @@ def lead_auto_assign(
         },
         comment="Авто-распределение",
     )
+    # Reflect the assignment in Google Sheets so the manager sees the
+    # operator name in column E immediately (not just on next status
+    # change). Fires after this transaction commits.
+    _schedule_writeback(lead.id)
     return assignment
 
 
@@ -978,6 +1032,11 @@ def refill_operator_leads(
         },
         comment=f"Автопополнение пачки → {operator.full_name}",
     )
+    # Reflect new operator in Google Sheets for every refilled lead.
+    # Serial batch to stay within Google's 60 writes/min quota — refill
+    # size defaults to 5, but if several operators refill back-to-back
+    # the thread-per-lead pattern could burst past the quota.
+    _schedule_writeback_batch([lead.id for lead in pool])
     return pool
 
 
@@ -1126,6 +1185,11 @@ def morning_distribute_leads(
         },
         comment="Утренняя раздача лидов",
     )
+    # Reflect new operator in Google Sheets for every lead that landed
+    # on an operator. Serial batch because morning split can assign
+    # 50+ leads in one go — thread-per-lead would blow past Google's
+    # 60 writes/min soft quota and trigger 429 retries.
+    _schedule_writeback_batch([lead.id for lead in assigned])
     return counts
 
 
