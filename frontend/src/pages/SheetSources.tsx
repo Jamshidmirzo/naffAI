@@ -353,7 +353,13 @@ function SheetSourceForm({
   const [allowedOperatorIds, setAllowedOperatorIds] = useState<number[]>(
     value?.allowed_operator_ids || [],
   );
-  const poolAll = allowedOperatorIds.length === 0;
+  // User-controlled "показать выбор операторов" (разделяем intent и state,
+  // иначе чекбокс «всем» не отпускается — пустой список = `poolAll=true`
+  // = checkbox stays checked = user can't open operator list to pick).
+  const [showPool, setShowPool] = useState<boolean>(
+    (value?.allowed_operator_ids?.length ?? 0) > 0,
+  );
+  const poolAll = !showPool;
   const [isHot, setIsHot] = useState<boolean>(value?.is_hot ?? false);
   const [hotSlaMinutes, setHotSlaMinutes] = useState<number>(
     value?.hot_sla_minutes ?? 10,
@@ -551,7 +557,14 @@ function SheetSourceForm({
                 type="checkbox"
                 checked={poolAll}
                 onChange={(e) => {
-                  if (e.target.checked) setAllowedOperatorIds([]);
+                  if (e.target.checked) {
+                    // "всем" → очищаем список и прячем выбор
+                    setAllowedOperatorIds([]);
+                    setShowPool(false);
+                  } else {
+                    // открываем выбор операторов
+                    setShowPool(true);
+                  }
                 }}
               />
               {t("sheet_src.wizard.allowed_operators.all")}
