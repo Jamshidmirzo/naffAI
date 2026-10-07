@@ -34,5 +34,5 @@ if [ "${DJANGO_DEBUG:-0}" = "1" ]; then
   exec python manage.py runserver 0.0.0.0:8000
 else
   echo "[entrypoint] starting gunicorn on :8000"
-  exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --access-logfile -
+  exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 90 --max-requests 500 --max-requests-jitter 50 --access-logfile -
 fi

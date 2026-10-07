@@ -1,6 +1,19 @@
+# Один образ на окружение: `web` собирает naffai-backend, `demo-web` —
+# naffai-demo-backend; все воркеры переиспользуют готовый образ
+# (pull_policy: never), поэтому `docker compose build` = 2 сборки, а не 20,
+# и на диске 2 образа вместо копии на каждый сервис.
+# Деплой: `docker compose -f docker-compose.prod.yml up -d --build`,
+# затем `docker image prune -f && docker builder prune -f --filter until=72h`.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     image: postgres:16-alpine
+    logging: *default-logging
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -20,6 +33,7 @@ services:
   # ключей, до килобайта каждый) — no-persistence, restart сбрасывает всё.
   redis:
     image: redis:7-alpine
+    logging: *default-logging
     restart: unless-stopped
     command:
       - "redis-server"
@@ -41,6 +55,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: naffai-backend:latest
+    logging: *default-logging
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -54,6 +70,40 @@ services:
       # Host bind so nginx (www-data) can serve /media/* directly.
       # `/var/lib/docker/volumes/` has mode 710 root:root and blocks www-data
       # even with the intermediate mode 701 dirs — hence the direct host path.
+      - /var/www/naffai-media:/app/media
+    # Без seed/superuser из entrypoint.sh — prod-база уже наполнена.
+    command:
+      - "bash"
+      - "-c"
+      - |
+        set -e
+        cd /app
+        python manage.py migrate --noinput
+        python manage.py collectstatic --noinput --clear || true
+        exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --preload --timeout 120 --max-requests 500 --max-requests-jitter 50 --access-logfile -
+
+  # Demo backend — same image, но с БД naffai_demo (`.env.demo` override).
+  # Отдельный порт 8001, nginx для demo.naff.flek.uz проксирует сюда.
+  # Не имеет workers (bot, watchers) — они запускаются только у prod-web.
+  # Deploy с ветки `demo`: git worktree в /opt/naffAI-demo.
+  demo-web:
+    build:
+      context: /opt/naffAI-demo/backend
+      dockerfile: Dockerfile
+    image: naffai-demo-backend:latest
+    logging: *default-logging
+    restart: unless-stopped
+    env_file:
+      - .env
+      - .env.demo
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8001:8000"
+    volumes:
       - /var/www/naffai-media:/app/media
     command: ["/app/scripts/entrypoint.sh"]
 
@@ -81,9 +131,9 @@ services:
     command: ["/app/scripts/entrypoint.sh"]
 
   bot:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -99,6 +149,7 @@ services:
   # Внешних портов нет — только compose-network. См. apps/tg_bot/docker_client.py.
   docker-proxy:
     image: tecnativa/docker-socket-proxy:latest
+    logging: *default-logging
     restart: unless-stopped
     environment:
       CONTAINERS: 1
@@ -129,9 +180,9 @@ services:
   # One long-lived asyncio loop; StringSession lives in Postgres so no
   # extra volume needed.
   userclient:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -141,9 +192,9 @@ services:
 
   # Scheduler — drives the TG dialog analyzer every 15 min.
   scheduler:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -153,6 +204,7 @@ services:
       - "bash"
       - "-c"
       - |
+        sleep $$((RANDOM % 60))
         while :; do
           echo "[$(date +%FT%T%z)] analyze_tg_dialogs start"
           python manage.py analyze_tg_dialogs || echo "analyze_tg_dialogs failed rc=$?"
@@ -165,9 +217,9 @@ services:
   # day; scheduled at 23:30 local Tashkent (UTC+5) so it fires after
   # the CRM day ends.
   ops-nightly:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -202,9 +254,9 @@ services:
   # force-closed AND auto-paused so overnight RR doesn't dump leads on
   # them. Command is `attendance_auto_close` (backend/apps/attendance).
   attendance-auto-close:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -234,9 +286,9 @@ services:
   # OperatorDayOff на сегодня. На следующий check-in пауза снимется
   # автоматически (если не занят другим day-off). Идемпотентно.
   apply-day-offs:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -263,9 +315,9 @@ services:
 
   # Demo-mirror
   demo-apply-day-offs:
-    build:
-      context: /opt/naffAI-demo/backend
-      dockerfile: Dockerfile
+    image: naffai-demo-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file:
       - .env
@@ -296,9 +348,9 @@ services:
   # via .env.demo override. Build context is /opt/naffAI-demo/backend
   # (git worktree of the `demo` branch), matching the demo-web pattern.
   demo-attendance-auto-close:
-    build:
-      context: /opt/naffAI-demo/backend
-      dockerfile: Dockerfile
+    image: naffai-demo-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file:
       - .env
@@ -330,9 +382,9 @@ services:
   # itself is idempotent — skips operators that already have a lesson
   # for the target date).
   lesson-generator:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -355,9 +407,9 @@ services:
   # sheet-sync параллельно продолжает крутиться каждые 5 минут — если он
   # уже подтянул нужное, повторный вызов из morning-splitter идемпотентен.
   morning-splitter:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -389,9 +441,9 @@ services:
   # Идемпотентно (guard в scheduler.report_should_fire) — при рестарте
   # контейнера в течение того же дня повторной рассылки не будет.
   reports-scheduler:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -401,9 +453,10 @@ services:
       - "bash"
       - "-c"
       - |
+        sleep $$((RANDOM % 60))
         while :; do
           python manage.py send_scheduled_reports || echo "send_scheduled_reports rc=$$?"
-          sleep 60
+          sleep 180
         done
 
   # Distribute-watcher — раз в минуту проходит по активным операторам,
@@ -413,9 +466,9 @@ services:
   # притащил новые — оператор получит их без ожидания следующего close.
   # Уважает SystemSetting.auto_distribution_enabled (killswitch в UI).
   distribute-watcher:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -425,6 +478,7 @@ services:
       - "bash"
       - "-c"
       - |
+        sleep $$((RANDOM % 60))
         while :; do
           python manage.py refill_idle_operators || echo "refill_idle rc=$$?"
           sleep 300
@@ -476,9 +530,9 @@ services:
   # Kept separate from `scheduler` so an analyze/LLM stall never blocks
   # inbound leads (or vice versa). Every iteration logs via docker logs.
   sheet-sync:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -488,6 +542,7 @@ services:
       - "bash"
       - "-c"
       - |
+        sleep $$((RANDOM % 60))
         while :; do
           echo "[$(date +%FT%T%z)] sync_sheets_leads start"
           python manage.py sync_sheets_leads || echo "sync_sheets_leads failed rc=$?"
@@ -500,9 +555,9 @@ services:
   # mismatch). Запуск в 22:00 UTC (03:00 Tashkent) чтобы не мешать
   # дневной активности.
   writeback-reconcile:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -531,9 +586,9 @@ services:
   # чтобы ТЕЗ10 лиды попадали в систему быстро (до истечения 10-мин SLA).
   # Обычный sheet-sync продолжает тикать по всем шитам раз в 5 мин.
   hot-sheet-sync:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -551,9 +606,9 @@ services:
   # In-app уведомление оператору «ты опоздал» — 1 раз за смену
   # (idempotent через AttendanceLog.late_notified_at). Тик каждые 5 мин.
   attendance-late-watch:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -563,6 +618,7 @@ services:
       - "bash"
       - "-c"
       - |
+        sleep $$((RANDOM % 60))
         while :; do
           python manage.py attendance_late_notification || echo "att_late rc=$$?"
           sleep 300
@@ -572,9 +628,9 @@ services:
   # (default 9). Игнорирует смены старше вчерашнего дня — иначе на первом
   # старте разошлёт всем недоделанным логам за месяц. Тик каждые 15 мин.
   attendance-nine-hour-watch:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -584,6 +640,7 @@ services:
       - "bash"
       - "-c"
       - |
+        sleep $$((RANDOM % 60))
         while :; do
           python manage.py attendance_nine_hour_notification || echo "att_9h rc=$$?"
           sleep 900
@@ -595,9 +652,9 @@ services:
   # Метка лежит в Lead.metadata["qimmatlik_retry_at"]; watcher тикает
   # каждые 10 минут.
   qimmatlik-retry-watch:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -607,6 +664,7 @@ services:
       - "bash"
       - "-c"
       - |
+        sleep $$((RANDOM % 60))
         while :; do
           python manage.py qimmatlik_retry_due || echo "qimmatlik_retry rc=$$?"
           sleep 600
@@ -619,9 +677,9 @@ services:
   # Prod-сервис hot-leads-watch НЕ добавляем — prod не трогаем до явной
   # команды пользователя. См. commit ad5f732 для прод-варианта.
   demo-hot-leads-watch:
-    build:
-      context: /opt/naffAI-demo/backend
-      dockerfile: Dockerfile
+    image: naffai-demo-backend:latest
+    pull_policy: never
+    logging: *default-logging
     restart: unless-stopped
     env_file:
       - .env
