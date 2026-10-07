@@ -73,6 +73,8 @@ fi
 echo "[deploy] pulling images and starting stack..."
 docker compose -f docker-compose.prod.yml pull || true
 docker compose -f docker-compose.prod.yml up -d --build
+docker image prune -f
+docker builder prune -f --filter until=72h
 
 echo "[deploy] installing systemd service for Telegram User-Client..."
 mkdir -p /var/log/naffAI
