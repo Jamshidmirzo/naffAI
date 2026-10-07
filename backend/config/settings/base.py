@@ -73,6 +73,10 @@ LOCAL_APPS = [
     # via JWT (rest_framework_simplejwt). See apps/mobile/README.md-ish
     # comments in apps.py.
     "apps.mobile",
+    # 2026-10-07: autonomous ROP (Head of Sales) agent — morning briefing,
+    # alert watcher, operator coaching skeleton. Pushes to owner on
+    # chat 88938071. LLM via OpenAI-compatible endpoint (GLM / Zhipu).
+    "apps.rop_agent",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -423,6 +427,24 @@ AI_CHAT_LLM_MODEL = config("AI_CHAT_LLM_MODEL", default="")
 MARKETING_LLM_BASE_URL = config("MARKETING_LLM_BASE_URL", default="")
 MARKETING_LLM_API_KEY = config("MARKETING_LLM_API_KEY", default="")
 MARKETING_LLM_MODEL = config("MARKETING_LLM_MODEL", default="")
+
+# --- ROP Agent (autonomous Head-of-Sales) ---
+# Feature flag; keep False until deployed to demo first.
+ROP_ENABLED = config("ROP_ENABLED", default=False, cast=bool)
+# Owner's Telegram chat where briefings/alerts/approvals land.
+ROP_OWNER_TG_CHAT_ID = config("ROP_OWNER_TG_CHAT_ID", default=88938071, cast=int)
+# In prod — every write-action goes through inline-button approval.
+# In demo — set False to let the agent execute immediately for faster iteration.
+ROP_APPROVAL_REQUIRED = config("ROP_APPROVAL_REQUIRED", default=True, cast=bool)
+# LLM provider (OpenAI-compatible endpoint — GLM / Zhipu / Z.ai / anything /chat/completions).
+# When ROP_LLM_API_KEY is empty, the module falls back to a deterministic stub so
+# smoke tests and TG push keep working without a real key.
+ROP_LLM_BASE_URL = config("ROP_LLM_BASE_URL", default="")
+ROP_LLM_API_KEY = config("ROP_LLM_API_KEY", default="")
+ROP_LLM_MODEL = config("ROP_LLM_MODEL", default="glm-4-plus")
+ROP_LLM_MODEL_WEEKLY = config("ROP_LLM_MODEL_WEEKLY", default="")
+ROP_LLM_MODEL_ALERT = config("ROP_LLM_MODEL_ALERT", default="")
+ROP_LLM_TIMEOUT_SECONDS = config("ROP_LLM_TIMEOUT_SECONDS", default=45, cast=int)
 
 # --- Logging ---
 LOG_DIR = config("LOG_DIR", default="")

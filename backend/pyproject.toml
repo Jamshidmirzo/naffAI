@@ -21,6 +21,8 @@ dependencies = [
   "telethon>=1.36",
   "asgiref>=3.8",
   "google-genai>=1.0",
+  # 2026-10-07 ROP agent: OpenAI-compatible endpoint client (GLM / Zhipu / Z.ai).
+  "openai>=1.50.0",
   "sentry-sdk[django]>=2.0",
   "qrcode[pil]>=8.0",
   # 2026-08-14 attendance photo redesign.

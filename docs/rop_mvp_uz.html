@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<title>NAFF — Avtonom ROP Agent — MVP (3 hafta)</title>
+<style>
+  @page { size: A4; margin: 1.8cm 1.6cm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: Georgia, "Charter", "Noto Serif", serif;
+    font-size: 10.5pt;
+    line-height: 1.5;
+    color: #1a1a1a;
+    margin: 0;
+  }
+  h1 {
+    font-size: 24pt;
+    color: #0b4f8a;
+    border-bottom: 3px solid #0b4f8a;
+    padding-bottom: 6px;
+    margin-top: 0;
+  }
+  h1 .sub {
+    display: block;
+    font-size: 11pt;
+    color: #666;
+    font-weight: normal;
+    margin-top: 4px;
+  }
+  h2 {
+    color: #0b4f8a;
+    font-size: 15pt;
+    margin-top: 28px;
+    border-left: 4px solid #0b4f8a;
+    padding-left: 10px;
+    page-break-after: avoid;
+  }
+  h3 {
+    color: #333;
+    font-size: 12pt;
+    margin-top: 18px;
+    page-break-after: avoid;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10px 0 16px;
+    font-size: 9.5pt;
+    page-break-inside: avoid;
+  }
+  th, td {
+    border: 1px solid #ccc;
+    padding: 5px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: #e9f0f7;
+    color: #0b4f8a;
+    font-weight: bold;
+  }
+  tr:nth-child(even) td { background: #f8f9fa; }
+  code {
+    background: #f4f4f4;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 9.5pt;
+    color: #c7254e;
+  }
+  pre {
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-left: 4px solid #0b4f8a;
+    padding: 10px 14px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 9pt;
+    overflow-x: auto;
+    page-break-inside: avoid;
+    white-space: pre-wrap;
+  }
+  ul, ol { margin: 6px 0 12px 22px; }
+  li { margin: 3px 0; }
+  blockquote {
+    border-left: 3px solid #c9a227;
+    background: #fffbe6;
+    margin: 10px 0;
+    padding: 8px 14px;
+    font-style: italic;
+    color: #4a4a4a;
+  }
+  .badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 8.5pt;
+    font-weight: bold;
+    color: #fff;
+    vertical-align: middle;
+  }
+  .badge-red { background: #d9534f; }
+  .badge-yellow { background: #f0ad4e; }
+  .badge-green { background: #5cb85c; }
+  .badge-info { background: #5bc0de; }
+  .toc {
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    padding: 12px 20px;
+    margin-bottom: 20px;
+  }
+  .toc ol { margin: 6px 0 0 18px; }
+  .footer {
+    margin-top: 40px;
+    padding-top: 10px;
+    border-top: 1px solid #ccc;
+    font-size: 9pt;
+    color: #666;
+    text-align: center;
+  }
+  .pagebreak { page-break-before: always; }
+  .fig {
+    background: #fafafa;
+    border: 1px solid #ddd;
+    padding: 14px;
+    margin: 14px 0;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 9pt;
+    white-space: pre;
+    page-break-inside: avoid;
+  }
+</style>
+</head>
+<body>
+
+<h1>NAFF — Avtonom ROP Agent
+  <span class="sub">MVP spetsifikatsiya · 3 hafta · 2026-10-07 · owner chat 88938071</span>
+</h1>
+
+<div class="toc">
+  <strong>Mundarija</strong>
+  <ol>
+    <li>Loyihaning maqsadi</li>
+    <li>ROP Agent nima — va u chatbotdan nima bilan farq qiladi</li>
+    <li>MVP qamrovi (nima bor va nima yo'q)</li>
+    <li>Arxitektura — bitta rasm</li>
+    <li>10 ta KPI (nimalarni o'lchaymiz)</li>
+    <li>10 ta Alert trigger (qachon push qilamiz)</li>
+    <li>Avtonomlik mexanizmlari (scheduler, OODA, state, approval)</li>
+    <li>Ertalabki brifing namunasi (real matn)</li>
+    <li>Operator coaching namunasi (DB-based)</li>
+    <li>3-haftalik roadmap (kun bo'yicha)</li>
+    <li>Guardrails va risklar</li>
+    <li>V2 preview (nima davom etadi)</li>
+  </ol>
+</div>
+
+<h2>1. Loyihaning maqsadi</h2>
+
+<p>
+Siz NAFF (phone-shop call-center) uchun 24/7 ishlaydigan avtonom Head-of-Sales (ROP) agentini qurayapsiz.
+U chatbot EMAS — siz "qanday ish?" deb so'rashingizni kutmaydi. Har kuni ertalab 07:00 da Telegramga brifing yuboradi;
+qimmatli lead 2 soat kutib qolsa yoki operator conv 20% tushsa — darhol push qiladi;
+har kuni 11:00/15:00/19:00 da sizga eslatma yuboradi; yakshanba 09:00 da haftalik scorecard beradi.
+</p>
+
+<p><b>Natija 3 haftadan keyin:</b> siz telefonni ochganda agent allaqachon aytib qo'ygan bo'ladi:
+"Kecha Oybek'ning 3 ta qimmatli lead'i 8 soat ushlab turildi; bugun 10:00 da u bilan narx-e'tirozi mavzusida 20 daq coaching qiling, mana skript."</p>
+
+<h2>2. ROP Agent nima — va u chatbotdan nima bilan farq qiladi</h2>
+
+<table>
+  <tr><th>O'lcham</th><th>Chatbot</th><th>Avtonom ROP agent</th></tr>
+  <tr><td>Boshlash</td><td>Siz savol berasiz</td><td>Vaqt / hodisa o'zi uyg'otadi</td></tr>
+  <tr><td>Hodisa manbai</td><td>Chat xabar</td><td>Celery-beat yo'q — docker-compose cron + Django signal (post_save Lead/Sale/CallAttempt)</td></tr>
+  <tr><td>Xotira</td><td>Session</td><td>Postgres + Redis — kecha nima aytganini biladi, takrorlamaydi</td></tr>
+  <tr><td>Harakat</td><td>Faqat javob</td><td>Push + Reminders + Approval button + DB write (prod'da tasdiq orqali)</td></tr>
+  <tr><td>Rate-limit</td><td>Yo'q</td><td>Alert dedup 4h window; har alert_type uchun 10 min Redis SETNX</td></tr>
+</table>
+
+<h2>3. MVP qamrovi</h2>
+
+<p><b>MVP (3 hafta) ichida:</b></p>
+<table>
+  <tr><th>Modul</th><th>Status</th><th>Vazifa</th></tr>
+  <tr><td>Sales Analyst</td><td style="color:#5cb85c"><b>MVP</b></td><td>NAFF DB'dan 10 ta KPI puller (lead/call/sale/conv/AOV/partner)</td></tr>
+  <tr><td>Alert Agent</td><td style="color:#5cb85c"><b>MVP</b></td><td>10 ta threshold trigger + 4h dedup via <code>AlertLog.dedup_key</code></td></tr>
+  <tr><td>ROP Brain</td><td style="color:#5cb85c"><b>MVP</b></td><td>Synthesizer — GLM LLM orqali KPI va alert'larni brifingga aylantirish</td></tr>
+  <tr><td>Scheduler</td><td style="color:#5cb85c"><b>MVP</b></td><td>Bitta <code>rop-scheduler</code> docker-compose service, har 60s <code>rop_tick</code> ni chaqiradi</td></tr>
+  <tr><td>Ertalabki brifing 07:00</td><td style="color:#5cb85c"><b>MVP</b></td><td>Har kuni 07:00 Toshkentda avtomatik</td></tr>
+  <tr><td>Tushlik pulse 14:00 / Kechki yakun 21:00</td><td style="color:#5cb85c"><b>MVP</b></td><td>O'z soatida avtomatik</td></tr>
+  <tr><td>Reminder 11/15/19</td><td style="color:#5cb85c"><b>MVP</b></td><td>Qisqa 1-2 qatorli pulse ownerga</td></tr>
+  <tr><td>Approval flow (prod)</td><td style="color:#5cb85c"><b>MVP</b></td><td>Inline button [✅ Tasdiqlayman / ❌ Yo'q], 24h expire, demo'da bypass</td></tr>
+  <tr><td>Weekly scorecard</td><td style="color:#5cb85c"><b>MVP</b></td><td>Skelet yakshanba 09:00 (chuqur analitika V2'da)</td></tr>
+  <tr><td>YouTube Expert Watcher</td><td style="color:#f0ad4e"><b>V2</b></td><td>Keyingi faza</td></tr>
+  <tr><td>News Monitor UZ+xorij</td><td style="color:#f0ad4e"><b>V2</b></td><td>Keyingi faza</td></tr>
+  <tr><td>Learning Coach (kitob/kurs)</td><td style="color:#f0ad4e"><b>V2</b></td><td>Keyingi faza</td></tr>
+  <tr><td>Operator Coach (chuqur)</td><td style="color:#f0ad4e"><b>V2</b></td><td>MVP'da faqat conv-drop alert + basic weakness detect</td></tr>
+  <tr><td>Call Audio AI (Asterisk + Whisper)</td><td style="color:#d9534f"><b>Butunlay o'chirilgan</b></td><td>Pipeline qurilmaydi — foydalanuvchi qarori</td></tr>
+</table>
+
+<h2>4. Arxitektura — bitta rasm</h2>
+
+<div class="fig">┌───────────────────────────────────────────────────────────────────┐
+│                 naffAI (Lightsail 63.186.179.240)                 │
+│                                                                   │
+│  ┌─────────────┐  ┌───────────────┐  ┌────────────────────────┐   │
+│  │  Django     │  │  rop-scheduler│  │  aiogram-bot            │   │
+│  │  5.2 + DRF  │  │  (new service)│  │   runner.py +           │   │
+│  │  apps/      │  │  while :; do  │  │   rop_handlers.py (new)│   │
+│  │   rop_agent │◄─│   rop_tick    │─►│  approval callbacks     │   │
+│  │   (new app) │  │   sleep 60    │  │  rop_approve / reject   │   │
+│  └──────┬──────┘  └───────┬───────┘  └───────────┬─────────────┘   │
+│         │                 │                      │                 │
+│         ▼                 ▼                      ▼                 │
+│  ┌───────────────────────────────────────────────────────────┐    │
+│  │  Postgres                 Redis (db 1)                    │    │
+│  │  Lead, Sale, SalePartner, DailyBriefing, AlertLog, …      │    │
+│  └───────────────────────────────────────────────────────────┘    │
+└───────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+                   ┌───────────────────────────┐
+                   │  LLM (GLM / Zhipu / Z.ai) │
+                   │  OpenAI-compatible API    │
+                   │  (ROP_LLM_BASE_URL)       │
+                   └───────────────────────────┘</div>
+
+<p><b>Kalit qarorlar:</b></p>
+<ul>
+  <li><b>Celery YO'Q</b> — naffAI'da hali Celery sozlanmagan. Ishlatmaymiz. Buning o'rniga mavjud docker-compose cron pattern (<code>hot-leads-watch</code>, <code>morning-splitter</code>).</li>
+  <li>Bitta <code>rop-scheduler</code> service — oltitta cron o'rniga. <code>rop_tick</code> har daqiqa Toshkent-local soatni tekshiradi va kerakli sub-task'ni chaqiradi.</li>
+  <li><code>apps.rop_agent</code> — alohida microservice emas, mavjud Django ichida. Postgres/Redis/aiogram-bot allaqachon shu yerda — tekshirish, debug oson.</li>
+  <li>HackSoft layering: <code>models</code> → <code>selectors</code> → <code>services</code> → <code>apis</code>. ORM query faqat <code>selectors.py</code>da. LLM/TG chaqiruvlari faqat <code>services.py</code>da. Management command'lar <code>services.run_*()</code> ni chaqiradi, boshqa hech narsa.</li>
+</ul>
+
+<h2>5. 10 ta KPI</h2>
+
+<table>
+  <tr><th>#</th><th>KPI</th><th>Formula</th><th>Qayerdan</th></tr>
+  <tr><td>1</td><td>leads_created</td><td>Count(Lead, created_at window)</td><td>Lead</td></tr>
+  <tr><td>2</td><td>leads_contacted</td><td>Count(distinct Lead with ≥1 CallAttempt)</td><td>CallAttempt</td></tr>
+  <tr><td>3</td><td>sales_count / amount / avg</td><td>Count+Sum(Sale, confirmed only)</td><td>Sale</td></tr>
+  <tr><td>4</td><td>conversion_rate</td><td>sales / leads_contacted</td><td>Sale, CallAttempt</td></tr>
+  <tr><td>5</td><td>partner_split (payment channel)</td><td>SalePartner groupby channel</td><td>SalePartner, Channel</td></tr>
+  <tr><td>6</td><td>qimmatli_waiting_now</td><td>Lead.hot_until &amp; status in NEW/ASSIGNED &amp; wait &gt; N min</td><td>Lead</td></tr>
+  <tr><td>7</td><td>followup_rate_today</td><td>CallbackReminder done / total (bugun)</td><td>CallbackReminder</td></tr>
+  <tr><td>8</td><td>per_operator_conv_7d</td><td>Per-op: this_7d vs prev_7d</td><td>CallAttempt, Sale</td></tr>
+  <tr><td>9</td><td>operator_calls_today</td><td>Count(CallAttempt, operator)</td><td>CallAttempt</td></tr>
+  <tr><td>10</td><td>silent_operators_now</td><td>Active op &amp; 0 call after 11:00 Tashkent</td><td>Operator, CallAttempt</td></tr>
+</table>
+
+<blockquote>
+Barcha selector'lar <b>pure read</b> — ORM query faqat shu yerda. HackSoft qoidasi: service'lar SQL yozmaydi, management command'lar ORM'ga tegmaydi.
+</blockquote>
+
+<h2>6. 10 ta Alert trigger</h2>
+
+<table>
+  <tr><th>#</th><th>Alert</th><th>Shart</th><th>Priority</th><th>Dedup</th></tr>
+  <tr><td>1</td><td>qimmatli_long_wait</td><td>hot_until aktiv + kutish &gt; 2h, aloqa yo'q</td><td><span class="badge badge-red">RED</span></td><td>lead_id · 4h</td></tr>
+  <tr><td>2</td><td>leads_queue_overflow</td><td>leads_waiting_30min &gt; 50</td><td><span class="badge badge-red">RED</span></td><td>global · 1h</td></tr>
+  <tr><td>3</td><td>operator_conv_drop</td><td>per_op delta_pp &lt; -20</td><td><span class="badge badge-red">RED</span></td><td>op_id · 1d</td></tr>
+  <tr><td>4</td><td>followup_rate_low</td><td>followup_rate &lt; 0.75</td><td><span class="badge badge-yellow">YELLOW</span></td><td>daily · 24h</td></tr>
+  <tr><td>5</td><td>partner_share_shift</td><td>share_delta &gt; 15pp vs 7d avg</td><td><span class="badge badge-yellow">YELLOW</span></td><td>channel · 1d</td></tr>
+  <tr><td>6</td><td>big_sale_celebrate</td><td>Sale.amount ≥ 15M so'm</td><td><span class="badge badge-info">INFO</span></td><td>sale_id · bir martalik</td></tr>
+  <tr><td>7</td><td>operator_silent</td><td>0 CallAttempt soat 11:00 dan keyin</td><td><span class="badge badge-red">RED</span></td><td>op_id · 1d</td></tr>
+  <tr><td>8</td><td>missed_qimmatli_call</td><td>no_answer + lead.hot_until</td><td><span class="badge badge-red">RED</span></td><td>lead_id · 2h</td></tr>
+  <tr><td>9</td><td>conv_today_slump</td><td>today_conv vs 7d_avg: delta_pp &lt; -20</td><td><span class="badge badge-red">RED</span></td><td>daily · 1d</td></tr>
+  <tr><td>10</td><td>reminder_overdue_spike</td><td>CallbackReminder overdue &gt; 30</td><td><span class="badge badge-yellow">YELLOW</span></td><td>daily · 4h</td></tr>
+</table>
+
+<h2>7. Avtonomlik mexanizmlari</h2>
+
+<h3>7.1 OODA loop — har sub-task shu bosqichlarni bosib o'tadi</h3>
+<div class="fig">OBSERVE  →  ANALYZE  →  DECIDE  →  ACT  →  LEARN
+DB pull  → LLM summ. → rule+LLM → TG push → state save</div>
+
+<h3>7.2 Scheduler (docker-compose, Celery YO'Q)</h3>
+<pre>rop-scheduler:
+  build: ./backend
+  env_file: .env
+  depends_on: [db]
+  command: bash -c '
+    while :; do
+      python manage.py rop_tick 2>&amp;1 | tee -a /tmp/rop.log || echo "rop_tick rc=$$?"
+      sleep 60
+    done'</pre>
+
+<p><code>rop_tick</code> har daqiqa Toshkent-local soatni tekshiradi:</p>
+<ul>
+  <li><b>07:00</b> → <code>rop_morning_briefing</code></li>
+  <li><b>14:00</b> → <code>rop_midday_pulse</code></li>
+  <li><b>21:00</b> → <code>rop_evening_wrap</code></li>
+  <li><b>11:00 / 15:00 / 19:00</b> → <code>rop_reminder</code></li>
+  <li><b>yakshanba 09:00</b> → <code>rop_weekly_scorecard</code></li>
+  <li><b>Har 10 daq (minute % 10 == 0)</b> → <code>rop_alert_check</code></li>
+  <li><b>Har 15 daq (minute % 15 == 0)</b> → <code>rop_cleanup_approvals</code></li>
+</ul>
+
+<h3>7.3 State va memory</h3>
+<p>Takrorlanmaslik — avtonom agent uchun eng muhim xususiyat.</p>
+<ul>
+  <li><b>Postgres</b> (uzoq xotira): <code>DailyBriefing</code> (90 kun oxirgi brifing), <code>AlertLog</code> (barcha alert history), <code>OperatorCoachingLog</code> (per-op coaching), <code>PendingApproval</code> (24h expire).</li>
+  <li><b>Redis</b> (qisqa xotira): <code>alert:&lt;code&gt;</code> SETNX bilan rate-limit, <code>rop:briefing_sent:today</code> ikki marta yuborishni to'xtatadi.</li>
+  <li><b>ROPState singleton</b>: <code>muted_until</code>, <code>last_briefing_at</code>, <code>last_pulse_at</code>, <code>last_evening_at</code>, <code>last_weekly_at</code>.</li>
+</ul>
+
+<h3>7.4 Approval flow (faqat prod)</h3>
+<ul>
+  <li><code>ROP_APPROVAL_REQUIRED=true</code> (prod default) → har write-action <code>PendingApproval</code> yaratadi + inline button bilan push.</li>
+  <li>Owner tasdiqlaganda: aiogram <code>rop_handlers.cb_rop_approve</code> → <code>services.execute_pending_approval</code>.</li>
+  <li>24h ichida javob kelmasa → <code>EXPIRED</code> (har 15 daq <code>rop_cleanup_approvals</code> ko'rib chiqadi).</li>
+  <li>Demo (<code>demo.naff.flek.uz</code>) → <code>ROP_APPROVAL_REQUIRED=false</code>, agent avtomatik bajaradi.</li>
+</ul>
+
+<h3>7.5 Mute (sukut)</h3>
+<p>Inline-button [⏸ Sukut 2h] → <code>services.mute()</code> → <code>ROPState.muted_until = now + 2h</code>. Har sub-task <code>_is_muted()</code> tekshiradi. 🔴 RED alert'lar sukutni buzadi, qolgani pauza.</p>
+
+<h2>8. Ertalabki brifing namunasi</h2>
+
+<pre>🌅 &lt;b&gt;Xayrli tong!&lt;/b&gt;
+📅 2026-10-08
+
+┌─ &lt;b&gt;KECHAGI NATIJA&lt;/b&gt;
+│ Leads: &lt;b&gt;342&lt;/b&gt; | Contact: &lt;b&gt;198&lt;/b&gt; | Sale: &lt;b&gt;47&lt;/b&gt;
+│ Conv: &lt;b&gt;23.7%&lt;/b&gt; | Revenue: &lt;b&gt;197,400,000 so'm&lt;/b&gt;
+│ Top partner: &lt;b&gt;Alif&lt;/b&gt;
+└─
+
+[LLM synthesis — Uzbek, 200-350 so'z]
+
+┌ OPERATOR DIQQATI
+│ 🔴 Oybek: conv -24% kecha — ehtimol narx e'tirozida chegirma gapiryapti
+│ 🟢 Nilufar: 12 sale/kun — jamoada eng yaxshi
+└
+
+┌ ALERT'LAR (TOP 3)
+│ 🚨 Qimmatli lead #4821 — Oybek'da 2h 15 min kutib turibdi
+│ 🚨 followup_rate: 68% (ostonadan past)
+│ 💡 Katta sale 18.5M — Sanjar
+└
+
+┌ BUGUNGI 3 USTUVOR
+│ 🔴 10:00 Oybek bilan narx e'tirozi coaching (20 daq)
+│ 🟡 Qimmatli 7 lead'ni eng tajribali 3 operatorga qol-qo'l
+│ 🟢 Alif commission sync 15:00
+└
+
+Jahd o'z joyida bo'lsin — kun qisqa.
+
+[✅ Reja qabul] [🔄 Qayta tuz] [⏸ Sukut 2h]</pre>
+
+<p>LLM-qism — Claude Sonnet emas, <b>GLM / Zhipu glm-4-plus</b>. Sarlavha ("KECHAGI NATIJA" blok, "ALERT'LAR" blok) — <code>services._render_briefing_header()</code>da rule-based (raqamlar DB'dan), LLM faqat o'rtadagi 2-3 qism uchun synthesis beradi.</p>
+
+<h2>9. Operator coaching namunasi (DB-based, audio YO'Q)</h2>
+
+<p>MVP'da Call AI yo'q. Lekin DB-based coaching baribir ishlaydi:</p>
+<pre>👤 Oybek Toshmatov — 2026-10-08
+
+Kuchli tomoni (7 kun):
+✅ Partner tanlashda Alif'ni to'g'ri taklif (18 sale / 20 sales)
+✅ Ertalabki smena'da conv 28% (jamoa avg 22%)
+
+Zaif tomoni (7 kun):
+❌ Umumiy conv: 14% ← -24pp vs oldingi hafta
+❌ Tushdan keyingi smena'da sotuv 2 marta kam (DB CallAttempt vaqti analizi)
+❌ Qimmatli lead'lar bilan ishlashda — 3 ta "no_answer" oxirgi 3 kun
+
+🎯 Ertaga 10:00 coaching rejasi:
+1. Oxirgi 3 qimmatli no_answer sabablarini birga aniqlash
+2. SPIN "Need-Payoff" savollari — 3 ta aniq variant
+3. Rolik: Oybek operator, men mijoz, 3 raund
+4. Vazifa: ertaga tushdan keyin 5 qo'ng'iroqda narx aytmasdan qiymat ko'rsatish
+5. Yakuni 19:00 — natija
+
+Keyingi check: 2026-10-11 (3 kun), maqsad conv ≥ 20%</pre>
+
+<p><b>Qanday ishlaydi:</b> <code>operator_conv_drop</code> alert'i ishga tushgach, <code>services.generate_coaching_plan(operator_id)</code> → selectors'dan 7 kunlik raqamlar + LLM synthesis → <code>OperatorCoachingLog</code>ga saqlanadi + ownerga push (prod'da approval orqali).</p>
+
+<h2>10. 3-haftalik roadmap</h2>
+
+<h3>Hafta 1 — foundations (dush-juma)</h3>
+<ol>
+  <li>Dush: <code>apps.rop_agent</code> skelet + 5 model + migratsiya (local SQLite'da test)</li>
+  <li>Sesh: Settings/env — <code>ROP_*</code> block + <code>pyproject.toml</code> openai dep</li>
+  <li>Chor: 10 ta KPI selector + 3 unit test</li>
+  <li>Pay: 10 ta alert trigger + dedup via <code>AlertLog.dedup_key</code> + 3 unit test</li>
+  <li>Jum: <code>rop_tick</code> scheduler + 7 ta management command (skelet)</li>
+</ol>
+
+<h3>Hafta 2 — services, LLM, TG, approval</h3>
+<ol>
+  <li>Dush: <code>llm.py</code> (GLM / OpenAI-compatible) + stub fallback + routing</li>
+  <li>Sesh: <code>telegram.py</code> — <code>send_to_owner</code> httpx sync + inline keyboards</li>
+  <li>Chor: <code>services.py</code> — morning/midday/evening/reminder/alert_check</li>
+  <li>Pay: <code>PendingApproval</code> flow + aiogram <code>rop_handlers.py</code></li>
+  <li>Jum: Prompts (NAFF context, "hamkor = payment channel" qoidasi) + integration test</li>
+</ol>
+
+<h3>Hafta 3 — demo deploy, tune, prod cutover</h3>
+<ol>
+  <li>Dush: <code>docker-compose.prod.yml</code> + <code>rop-scheduler</code> + <code>demo-rop-scheduler</code> + <code>.env.example</code></li>
+  <li>Sesh: Deploy <code>feat/rop-agent</code> → demo.naff.flek.uz, <code>ROP_ENABLED=true</code>, <code>ROP_APPROVAL_REQUIRED=false</code></li>
+  <li>Chor-Pay: Live kuzatish demo'da — brifinglar, alert'lar, dedup to'g'ri ishlayaptimi</li>
+  <li>Jum: Prompt tune (brifing uzunligi, UZ tilining aniqligi), model routing (glm-4 vs glm-4-plus)</li>
+  <li>Keyingi dushanba: Prod cutover — <code>ROP_ENABLED=true</code>, <code>ROP_APPROVAL_REQUIRED=true</code></li>
+</ol>
+
+<h2>11. Guardrails va risklar</h2>
+
+<table>
+  <tr><th>Risk</th><th>Mitigation</th></tr>
+  <tr><td>LLM galyusinatsiyasi (raqam to'qib qo'yish)</td><td>Prompt'da qattiq qoida: raqamlar faqat payload'dan. Header rule-based, LLM faqat narrative.</td></tr>
+  <tr><td>Alert spam (storm)</td><td>Ikki qavatli dedup: AlertLog.dedup_key + 4h window; Redis SETNX 10 min</td></tr>
+  <tr><td>Prod DB'ga tasodifiy yozuv</td><td><code>ROP_APPROVAL_REQUIRED=true</code> + <code>PendingApproval</code> har write uchun</td></tr>
+  <tr><td>LLM kaliti yo'q</td><td><code>synthesize_stub</code> fallback — smoke test va TG push baribir ishlaydi</td></tr>
+  <tr><td>Scheduler Tashkent-time edge-case 07:00:30</td><td>07:00 ≤ hhmm &lt; 07:01 window + <code>DailyBriefing.date</code> unique → idempotent</td></tr>
+  <tr><td>Owner ta'tilda</td><td><code>services.mute(duration)</code> — faqat RED alert'lar sukutni buzadi</td></tr>
+  <tr><td>Postgres down</td><td>Services <code>try/except</code> + log; <code>alert_owner</code> helper Redis down ham fallback</td></tr>
+  <tr><td>Telegram API down</td><td><code>send_to_owner</code> swallow + log; AlertLog yozilgandan keyin push bo'ladi (keyingi tick qayta urinmaydi — qasddan)</td></tr>
+</table>
+
+<h2>12. V2 preview (keyingi davom)</h2>
+
+<ol>
+  <li><b>YouTube Expert Watcher</b> — Grant Cardone, Chris Voss, UZ/RU savdo kanallari. YouTube Data API v3, har 6 soatda scan, LLM 5-3-2-1 summary.</li>
+  <li><b>News Monitor</b> — UZ (Uzum/retail/telecom) + xorij (TR/UAE/US) kanallari. Google News API + RSS + Telegram scraper.</li>
+  <li><b>Learning Coach</b> — zaiflik (operator_conv_drop) → kitob/bob tanlab 7 kunlik reading plan.</li>
+  <li><b>Operator Coach deep</b> — har hafta per-op scorecard, 6 dimension; conv-pattern analytics.</li>
+  <li><b>Call AI — chetlab o'tiladi</b> (Asterisk integration foydalanuvchi tomonidan rad etilgan). Pipeline qurilmaydi.</li>
+  <li><b>UI/Dashboard</b> — Django admin'dan tashqari, DRF endpoint + React page (DailyBriefing history, AlertLog, PendingApproval).</li>
+</ol>
+
+<div class="footer">
+  NAFF ROP Agent · MVP spec · 2026-10-07 · branch <code>feat/rop-agent</code> · owner <code>chat 88938071</code>
+</div>
+
+</body>
+</html>

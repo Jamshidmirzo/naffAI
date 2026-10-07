@@ -592,6 +592,53 @@ services:
   # ТЕЗ-эскалация. SheetSource с is_hot=True взводит на Lead.hot_until
   # дедлайн (default 10 мин) при импорте. Если оператор не тронул лид
   # до истечения — команда `hot_leads_escalation` соберёт остывших и
+  # 2026-10-07: Autonomous ROP (Head of Sales) agent scheduler.
+  # One service, not six — rop_tick decides each minute what to run based
+  # on Tashkent-local clock. Idempotent (every sub-task self-gates via
+  # ROPState / DailyBriefing.date uniqueness). Honours ROP_ENABLED env flag:
+  # with ROP_ENABLED=false the service runs but every sub-task returns
+  # {"skipped": "disabled"} — safe to leave running in prod before cutover.
+  rop-scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          python manage.py rop_tick 2>&1 | tee -a /tmp/rop.log || echo "rop_tick rc=$$?"
+          sleep 60
+        done
+
+  # Demo-mirror for rop-scheduler. Writes into the demo DB via .env.demo
+  # override. Keep ROP_APPROVAL_REQUIRED=false in .env.demo so the agent
+  # auto-executes write-actions for faster iteration.
+  demo-rop-scheduler:
+    build:
+      context: /opt/naffAI-demo/backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+      - .env.demo
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          python manage.py rop_tick 2>&1 | tee -a /tmp/rop.log || echo "rop_tick rc=$$?"
+          sleep 60
+        done
+
   # отправит один групповой TG владельцу (chat 88938071) с id-ами +
   # операторами. Тик 60с: быстрее реагировать на тёплых клиентов, чем
   # qimmatlik-retry (600с).
