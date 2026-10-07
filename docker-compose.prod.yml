@@ -472,6 +472,27 @@ services:
           sleep 300
         done
 
+  # Hot-sheets sync — SheetSource(is_hot=True) синк каждую минуту,
+  # чтобы ТЕЗ10 лиды попадали в систему быстро (до истечения 10-мин SLA).
+  # Обычный sheet-sync продолжает тикать по всем шитам раз в 5 мин.
+  hot-sheet-sync:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - "bash"
+      - "-c"
+      - |
+        while :; do
+          python manage.py sync_sheets_leads --hot-only || echo "hot-sheet-sync rc=$?"
+          sleep 60
+        done
+
   # In-app уведомление оператору «ты опоздал» — 1 раз за смену
   # (idempotent через AttendanceLog.late_notified_at). Тик каждые 5 мин.
   attendance-late-watch:

@@ -197,10 +197,11 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
               <div
                 key={src.id}
                 className="nf-row animate-nfFadeUp"
+                onClick={() => setEdit(src)}
                 style={{
                   gridTemplateColumns: gridCols,
                   animationDelay: `${0.02 + i * 0.035}s`,
-                  cursor: "default",
+                  cursor: "pointer",
                 }}
               >
                 <div className="flex items-center gap-2 min-w-0">
