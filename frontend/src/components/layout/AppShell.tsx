@@ -185,11 +185,9 @@ export default function AppShell() {
   // dedicated 3-item «my branch» nav, superadmin → super_manager-nav
   // PRE-pended to full manager nav (owner sees everything), остальные
   // (manager/team_lead) — full manager nav.
-  const groups = isSuperManager(rawRole)
-    ? superManagerGroups
-    : role === "operator"
+  const groups = role === "operator"
     ? operatorGroups
-    : isSuperadmin(rawRole)
+    : isSuperadmin(rawRole) || isSuperManager(rawRole)
     ? [...superManagerGroups, ...managerGroups]
     : managerGroups;
 
