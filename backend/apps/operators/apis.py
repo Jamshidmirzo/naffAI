@@ -9,11 +9,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.analytics.selectors import resolve_period
+from apps.common.exceptions import ApplicationError
 from apps.users.permissions import IsManager, IsTeamLead, IsTeamLeadOrManagerReadOnly
 from apps.users.selectors import (
     account_state,
     user_by_operator,
-    visible_manager_user_ids,
     visible_operator_ids,
 )
 
@@ -42,7 +42,6 @@ from .services import (
     operator_set_paused,
     operator_update,
 )
-from apps.common.exceptions import ApplicationError
 
 
 class OperatorSerializer(serializers.ModelSerializer):
@@ -74,6 +73,8 @@ class OperatorSerializer(serializers.ModelSerializer):
             "note",
             "blocking_gate_enabled",
             "require_checkin_enabled",
+            # 2026-10-08: opt-in флаг для WebRTC-живого стрима (apps.livestream).
+            "livestream_enabled",
             "is_paused",
             "paused_at",
             "birth_date",
@@ -119,6 +120,7 @@ class OperatorSerializer(serializers.ModelSerializer):
             # `operator_update` его применит.
             "blocking_gate_enabled": {"required": False},
             "require_checkin_enabled": {"required": False},
+            "livestream_enabled": {"required": False},
             "birth_date": {"required": False, "allow_null": True},
             "salary_uzs": {"required": False, "allow_null": True},
             "shift_start": {"required": False, "allow_null": True},
@@ -151,7 +153,8 @@ class OperatorSerializer(serializers.ModelSerializer):
             return attrs
 
         actor = self.context["request"].user
-        from apps.users.models import Role as _Role, Profile as _Profile
+        from apps.users.models import Profile as _Profile
+        from apps.users.models import Role as _Role
 
         profile = getattr(actor, "profile", None)
         role = profile.role if profile else None

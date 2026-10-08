@@ -4,9 +4,8 @@ from rest_framework.authtoken.models import Token
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.views import APIView
-
 from rest_framework.throttling import AnonRateThrottle
+from rest_framework.views import APIView
 
 from apps.common.validators import normalize_uz_phone
 from apps.operators.selectors import operator_get
@@ -90,6 +89,12 @@ class MeApi(APIView):
         # менеджер видит год через /operators/<id>/ (карточка).
         birth_date = operator.birth_date.isoformat() if operator and operator.birth_date else None
         is_birthday_today = bool(operator and operator.is_birthday_today())
+        # 2026-10-08 — expose livestream flag so the frontend's
+        # LiveStreamPublisher can decide whether to auto-connect without
+        # a second request. Operators that aren't opted in see `False`
+        # here; managers (no operator FK) see `False` as well — their
+        # subscribe-only UI uses /live/live-now/ instead.
+        livestream_enabled = bool(operator and operator.livestream_enabled)
         return Response(
             {
                 "username": user.username,
@@ -102,6 +107,7 @@ class MeApi(APIView):
                 "preferred_language": preferred_language,
                 "birth_date": birth_date,
                 "is_birthday_today": is_birthday_today,
+                "livestream_enabled": livestream_enabled,
             }
         )
 
@@ -228,10 +234,10 @@ class TelegramLinkCodeApi(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        import datetime as _dt
         import secrets as _secrets
 
         from django.utils import timezone
-        import datetime as _dt
 
         from apps.users.models import Profile
 
@@ -253,7 +259,6 @@ class TelegramLinkCodeApi(APIView):
         )
 
     def delete(self, request):
-        from apps.users.models import Profile
 
         profile = getattr(request.user, "profile", None)
         if profile is None:
@@ -431,10 +436,10 @@ class OperatorAccountDeleteApi(APIView):
 # ---------------------------------------------------------------------------
 
 from django.utils import timezone
+
 from .models import Profile, Role
-from .services import AuditAction, audit_log_create
+from .services import AuditAction, audit_log_create, user_password_set
 from .utils import generate_temp_password
-from .services import user_password_set
 
 
 class UserListCreateApi(APIView):
