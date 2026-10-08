@@ -1,0 +1,37 @@
+# LiveKit Egress worker config — writes TrackComposite mp4 straight to
+# S3. Shares the API key / secret with the SFU so it can authenticate.
+#
+# Env overrides (set in `.env` on the demo host):
+#   LIVEKIT_API_KEY, LIVEKIT_API_SECRET
+#   S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET, S3_REGION
+
+log_level: info
+
+api_key: ${LIVEKIT_API_KEY:-}
+api_secret: ${LIVEKIT_API_SECRET:-}
+# WS URL to the local LiveKit container (not the public one).
+ws_url: ws://naffai-demo-livekit:7880
+
+health_port: 7980
+# Redis is optional — egress can use it to coordinate across replicas.
+# We only run a single egress worker on demo, so leave it off and let
+# the worker keep state in-process.
+redis:
+  address: ""
+
+# S3 destination for recordings. All upload goes through the IAM user
+# `naffai-livestream-egress-demo` whose only permission is PutObject on
+# this bucket.
+s3:
+  access_key: ${LIVEKIT_S3_ACCESS_KEY:-}
+  secret: ${LIVEKIT_S3_SECRET_KEY:-}
+  region: ${LIVEKIT_S3_REGION:-eu-central-1}
+  bucket: ${LIVEKIT_S3_BUCKET:-}
+
+# Enable only the track-composite path (one mp4 per publisher) —
+# simplest option for 40 publishers.
+enable_room_composite_egress: false
+enable_track_composite_egress: true
+enable_participant_egress: true
+enable_track_egress: false
+enable_web_egress: false
