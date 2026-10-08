@@ -125,10 +125,11 @@ export default function Sales() {
   const statusVal = (searchParams.get("status_filter") || "") as StatusFilter;
   const partnerIds = searchParams.getAll("partner_ids").map(Number).filter(Boolean);
   const operatorIds = searchParams.getAll("operator_ids").map(Number).filter(Boolean);
+  const sheetSourceId = searchParams.get("sheet_source_id") || "";
 
   const anyFilterActive = useMemo(
-    () => Boolean(dateFrom || dateTo || partnerIds.length || operatorIds.length),
-    [dateFrom, dateTo, partnerIds.length, operatorIds.length],
+    () => Boolean(dateFrom || dateTo || partnerIds.length || operatorIds.length || sheetSourceId),
+    [dateFrom, dateTo, partnerIds.length, operatorIds.length, sheetSourceId],
   );
 
   useEffect(() => {
@@ -212,6 +213,10 @@ export default function Sales() {
     queryKey: ["operators-list"],
     queryFn: () => api.get("/operators/", { params: { limit: 200 } }).then((r) => r.data),
   });
+  const sheetSourcesQ = useQuery<Paginated<Option> | Option[]>({
+    queryKey: ["sheet-sources-list"],
+    queryFn: () => api.get("/sheet-sources/", { params: { limit: 200 } }).then((r) => r.data),
+  });
 
   const partnerOptions = useMemo<Option[]>(
     () => (partnersQ.data?.results || []).map((p) => ({ id: p.id, name: p.name })),
@@ -224,6 +229,16 @@ export default function Sales() {
       return arr.map((o) => ({ id: o.id, name: o.full_name }));
     },
     [operatorsQ.data],
+  );
+  const sheetSourceOptions = useMemo<Option[]>(
+    () => {
+      const raw = sheetSourcesQ.data as any;
+      const arr: any[] = Array.isArray(raw) ? raw : (raw?.results || []);
+      return arr
+        .filter((s) => s.active !== false)
+        .map((s) => ({ id: s.id, name: s.name }));
+    },
+    [sheetSourcesQ.data],
   );
 
   const downloadExcel = async () => {
@@ -369,6 +384,21 @@ export default function Sales() {
             selectedIds={operatorIds}
             onChange={(ids) => update({ operator_ids: ids.map(String) })}
           />
+          <div>
+            <div className="nf-col mb-1.5">Источник</div>
+            <Select
+              value={sheetSourceId}
+              onChange={(v) => update({ sheet_source_id: v || null })}
+              searchable={sheetSourceOptions.length >= 6}
+              options={[
+                { value: "", label: "Все источники" },
+                ...sheetSourceOptions.map((s) => ({
+                  value: String(s.id),
+                  label: s.name,
+                })),
+              ]}
+            />
+          </div>
           {anyFilterActive && (
             <button type="button" className="nf-btn nf-btn--ghost" onClick={resetFilters}>
               <RotateCcw className="w-3.5 h-3.5" /> Сбросить
@@ -438,10 +468,11 @@ export default function Sales() {
       <section className="nf-card overflow-hidden">
         <div
           className="grid gap-2 px-6 pt-5 pb-3 nf-col"
-          style={{ gridTemplateColumns: "90px 1.1fr .9fr 1.2fr .9fr .9fr .8fr" }}
+          style={{ gridTemplateColumns: "90px 1.1fr .9fr .9fr 1.2fr .9fr .9fr .8fr" }}
         >
           <div>Время</div>
           <div>Оператор</div>
+          <div>Источник</div>
           <div>Канал</div>
           <div>Модель</div>
           <div>IMEI</div>
@@ -463,7 +494,7 @@ export default function Sales() {
                 onClick={() => nav(`/sales/${s.id}`)}
                 className="nf-row animate-nfFadeUp"
                 style={{
-                  gridTemplateColumns: "90px 1.1fr .9fr 1.2fr .9fr .9fr .8fr",
+                  gridTemplateColumns: "90px 1.1fr .9fr .9fr 1.2fr .9fr .9fr .8fr",
                   animationDelay: `${0.03 + i * 0.045}s`,
                 }}
               >
@@ -476,6 +507,7 @@ export default function Sales() {
                     </span>
                   )}
                 </div>
+                <div className="text-muted truncate">{s.sheet_source_name || "—"}</div>
                 <div className="text-muted truncate">{s.channel_name || "—"}</div>
                 <div className="truncate">{s.phone_model || "—"}</div>
                 <div className="text-muted font-mono text-[12px] truncate">{s.imei || "—"}</div>
