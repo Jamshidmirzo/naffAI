@@ -56,11 +56,14 @@ class RoomTokenApi(APIView):
     permission_classes = [IsAuthenticated, IsAuthenticatedAnyRole]
 
     def post(self, request):
+        user = request.user
+        role = _role(user)
         # Global killswitch — SystemSetting.livestream_global_enabled.
-        # Клиенты (LiveStreamPublisher) опрашивают GET /global-status/
-        # каждые 10 сек; этот guard — защита на случай race'а между
-        # отключением и запросом нового токена.
-        if not livestream_globally_enabled():
+        # Касается ТОЛЬКО операторов (publishers). Менеджер / super_manager /
+        # superadmin всё равно получают subscribe-токен, чтобы могли открыть
+        # /live/wall и нажать «включить обратно». Без этого исключения
+        # сервер становится недоступен для управления kill-switch'ем.
+        if role == Role.OPERATOR and not livestream_globally_enabled():
             return Response(
                 {
                     "detail": "Live-эфир временно отключён менеджером",
@@ -68,8 +71,6 @@ class RoomTokenApi(APIView):
                 },
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        user = request.user
-        role = _role(user)
         if role == Role.OPERATOR:
             profile = getattr(user, "profile", None)
             operator = getattr(profile, "operator", None) if profile else None
