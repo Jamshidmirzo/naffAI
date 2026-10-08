@@ -62,6 +62,8 @@ import Calculator from "./pages/Calculator";
 import Calls from "./pages/Calls";
 import MarketingSettingsPage from "./pages/MarketingSettingsPage";
 import InstallmentTiersPage from "./pages/InstallmentTiersPage";
+import LiveWall from "./pages/LiveWall";
+import LiveArchive from "./pages/LiveArchive";
 import { useAuth } from "./store/auth";
 import { RoleGate, SuperadminGate, normaliseRole } from "./components/RoleGate";
 import PinGate from "./components/PinGate";
@@ -181,6 +183,9 @@ export default function App() {
           <Route path="/my/day-off" element={<RoleGate allow={["operator"]}><MyDayOff /></RoleGate>} />
           <Route path="/operators/day-off" element={<RoleGate allow={["manager"]}><DayOffRequests /></RoleGate>} />
           <Route path="/settings/attendance" element={<RoleGate allow={["manager"]}><PinGate><AttendanceSettings /></PinGate></RoleGate>} />
+          {/* 2026-10-08 — WebRTC live-эфир. Manager-only. */}
+          <Route path="/live/wall" element={<RoleGate allow={["manager"]}><LiveWall /></RoleGate>} />
+          <Route path="/live/archive" element={<RoleGate allow={["manager"]}><LiveArchive /></RoleGate>} />
         </Route>
       </Routes>
     </>

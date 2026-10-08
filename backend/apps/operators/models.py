@@ -216,6 +216,23 @@ class Operator(TimestampedModel):
         help_text="Когда оператора поставили на паузу (для аудита/отчётов).",
     )
 
+    # 2026-10-08: opt-in флаг для WebRTC-живого стрима (apps.livestream).
+    # По умолчанию False — новые операторы не стримят, пока менеджер
+    # явно не включит флаг (через OperatorDetailApi PATCH). Backend
+    # не блокирует запросы токенов для disabled-операторов — обязательна
+    # проверка на фронте в LiveStreamPublisher. Backend-проверка в
+    # `livestream.services.room_token_issue` всё равно рефузит, если
+    # флаг False — так что отключение гарантировано.
+    livestream_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Opt-in: включает веб-камеру оператора при логине "
+            "и начинает публиковать поток в LiveKit SFU. По "
+            "умолчанию False — оператор не стримит, пока "
+            "менеджер явно не включит флаг."
+        ),
+    )
+
     # 2026-10-06: ownership-FK для 3-уровневой иерархии (см. Role.SUPER_MANAGER
     # в apps.users.models). Указывает на User, который напрямую владеет
     # этим оператором:

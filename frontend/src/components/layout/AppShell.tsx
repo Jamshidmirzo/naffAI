@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import { useAuth } from "../../store/auth";
 import { normaliseRole, isSuperadmin, isSuperManager } from "../RoleGate";
@@ -10,6 +11,7 @@ import CheckoutBackfillGate from "../CheckoutBackfillGate";
 import CheckoutReminderBanner from "../CheckoutReminderBanner";
 import BirthdayCelebration from "../BirthdayCelebration";
 import SaleCelebration from "../SaleCelebration";
+import LiveStreamPublisher from "../LiveStreamPublisher";
 import { useT } from "../../lib/i18n";
 import { useMe } from "../../hooks/useMe";
 
@@ -57,6 +59,11 @@ function useManagerGroups(
         ...(showPhotos
           ? [{ to: "/attendance/photos", label: t("nav.attendance_photos") }]
           : []),
+        // 2026-10-08 live-эфир — опциональный модуль. Пункты
+        // показываем всегда, если бэкенд не настроен (503) — внутренние
+        // страницы покажут понятный fallback.
+        { to: "/live/wall", label: t("nav.live_wall") },
+        { to: "/live/archive", label: t("nav.live_archive") },
       ],
     },
     {
@@ -184,11 +191,9 @@ export default function AppShell() {
   // dedicated 3-item «my branch» nav, superadmin → super_manager-nav
   // PRE-pended to full manager nav (owner sees everything), остальные
   // (manager/team_lead) — full manager nav.
-  const groups = isSuperManager(rawRole)
-    ? superManagerGroups
-    : role === "operator"
+  const groups = role === "operator"
     ? operatorGroups
-    : isSuperadmin(rawRole)
+    : isSuperadmin(rawRole) || isSuperManager(rawRole)
     ? [...superManagerGroups, ...managerGroups]
     : managerGroups;
 
@@ -198,6 +203,19 @@ export default function AppShell() {
   // to 'ru' via /operators/{id}/account/language/.
   const me = useMe();
   const greetingLang = (me.data?.preferred_language ?? "uz") as "ru" | "uz";
+
+  // Авто-sync роли из /auth/me/ в localStorage. Role попадает в
+  // localStorage только при login; если пользователя повысили в
+  // super_manager (как +998944586810 07.10) — старая сессия продолжает
+  // отображать прежнюю роль, пункты меню урезаны. Сверяем с бэком и
+  // обновляем, если расходится.
+  const auth = useAuth();
+  useEffect(() => {
+    if (!me.data || !auth.token || !auth.username) return;
+    if (me.data.role && me.data.role !== auth.role) {
+      auth.setAuth(auth.token, auth.username, me.data.role);
+    }
+  }, [me.data?.role, auth.role, auth.token, auth.username]);
 
   // Sidebar expects a 2-value role (manager|operator) for badge logic.
   // Super_manager → treat as manager at the sidebar-chrome layer; the
@@ -248,6 +266,13 @@ export default function AppShell() {
       {/* Floating helper — оператор-only. Manager/team_lead виджет не видят
           (у них своя админка + и так знают систему; клат-нить в углу лишний). */}
       {role === "operator" && <HelperButton />}
+      {/* 2026-10-08 — WebRTC live publisher. Mounts ТОЛЬКО для operator'ов
+          с livestream_enabled=true (opt-in). Manager flips the flag through
+          OperatorDetail. If `/auth/me` says false → component returns null
+          and nothing is mounted (no camera prompt, no network). */}
+      {role === "operator" && (
+        <LiveStreamPublisher enabled={!!me.data?.livestream_enabled} />
+      )}
     </div>
   );
 }

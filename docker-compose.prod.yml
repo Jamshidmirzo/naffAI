@@ -677,5 +677,91 @@ services:
           python manage.py hot_leads_escalation || echo "hot_leads_escalation rc=$$?"
           sleep 60
         done
+
+  # ========================================================================
+  # 2026-10-08 — Live WebRTC stack (apps.livestream). ВСЕ сервисы ниже
+  # ПРЕФИКСНЫ `naffai-demo-` и запускаются ТОЛЬКО через явный
+  # `docker compose up -d naffai-demo-livekit naffai-demo-coturn naffai-demo-egress`.
+  # Prod web/bot/ops их не слышит, LIVEKIT_WS_URL не прописан в prod .env.
+  # ========================================================================
+
+  # LiveKit SFU — принимает публикаторов (операторов) и подписчиков
+  # (менеджер live-wall). Порты:
+  #   7880 TCP — HTTP signaling, nginx проксирует как `/livekit/`
+  #   7881 TCP — RTC fallback (TCP) если UDP блокирован
+  #   7882 UDP — primary RTC
+  #   49160-49200 UDP — RTC media (small range, ~40 клиентов хватит)
+  # Config: deploy/livekit/livekit.yaml + env override LIVEKIT_*.
+  naffai-demo-livekit:
+    image: livekit/livekit-server:v1.8.4
+    container_name: naffai-demo-livekit
+    logging: *default-logging
+    restart: unless-stopped
+    env_file:
+      - .env
+      - .env.demo
+    environment:
+      # Эти LIVEKIT_* ключи соответствуют YAML-путям — SFU override'ит
+      # livekit.yaml из env на старте.
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+    ports:
+      - "127.0.0.1:7880:7880"      # HTTP signaling — только за nginx
+      - "127.0.0.1:7881:7881"      # TCP fallback
+      - "7882:7882/udp"            # UDP RTC primary
+      - "49160-49200:49160-49200/udp"
+    volumes:
+      - ./deploy/livekit/livekit.yaml:/etc/livekit.yaml:ro
+    command: ["--config", "/etc/livekit.yaml"]
+    profiles: ["demo-live"]
+
+  # coturn — TURN/STUN relay для клиентов за симметричным NAT (офис).
+  # Порты 3478 UDP + 50000-50200 UDP (relay range). TLS-порт 5349
+  # оставлен выключенным — пока не поднимаем Letsencrypt для TURN.
+  naffai-demo-coturn:
+    image: coturn/coturn:4.6
+    container_name: naffai-demo-coturn
+    logging: *default-logging
+    restart: unless-stopped
+    env_file:
+      - .env
+      - .env.demo
+    environment:
+      TURN_SHARED_SECRET: "${LIVEKIT_API_SECRET}"
+    ports:
+      - "3478:3478/udp"
+      - "50000-50200:50000-50200/udp"
+    volumes:
+      - ./deploy/livekit/coturn.conf:/etc/coturn/turnserver.conf:ro
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+    profiles: ["demo-live"]
+
+  # Egress worker — пишет TrackComposite mp4 напрямую в S3
+  # (bucket `naffai-livestream-recordings-demo`). IAM user с правом
+  # `s3:PutObject` только на этот bucket. Один инстанс, redis не нужен.
+  # Опциональный профиль — поднять через `--profile demo-live`.
+  naffai-demo-egress:
+    image: livekit/egress:v1.8.4
+    container_name: naffai-demo-egress
+    logging: *default-logging
+    restart: unless-stopped
+    env_file:
+      - .env
+      - .env.demo
+    depends_on:
+      - naffai-demo-livekit
+    volumes:
+      - ./deploy/livekit/egress.yaml:/etc/egress.yaml:ro
+      # Egress пишет промежуточные chunks в /tmp перед аплоадом в S3
+      # — убеждаемся, что это shared volume (не tmpfs) чтобы не упасть
+      # на длинных сессиях > 1 ГБ.
+      - naffai-demo-egress-tmp:/tmp
+    command: ["--config", "/etc/egress.yaml"]
+    # Нужны /dev/shm и Chrome-окружение для TrackComposite transcode,
+    # но pure track-composite режим в последней версии egress этого не
+    # требует — поэтому ограничиваемся privileged=false.
+    shm_size: 1gb
+    profiles: ["demo-live"]
+
 volumes:
   postgres-data:
+  naffai-demo-egress-tmp:

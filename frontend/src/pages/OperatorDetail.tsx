@@ -106,6 +106,7 @@ interface OperatorDetail {
   note?: string;
   account: AccountState;
   blocking_gate_enabled?: boolean;
+  livestream_enabled?: boolean;
   managed_by_id?: number | null;
 }
 
@@ -163,6 +164,7 @@ export default function OperatorDetail() {
     status: OperatorStatusChoice;
     note: string;
     blocking_gate_enabled: boolean;
+    livestream_enabled: boolean;
     // null = не трогать, "" (строка пустая) = выставить NULL (unassign).
     // Числовое id = выставить конкретного владельца. Отделяем null от ""
     // чтобы managed_by не слал PATCH когда поле не поменяли.
@@ -173,6 +175,7 @@ export default function OperatorDetail() {
     status: "active",
     note: "",
     blocking_gate_enabled: false,
+    livestream_enabled: false,
     managed_by_id: null,
   });
 
@@ -348,6 +351,7 @@ export default function OperatorDetail() {
       status: OperatorStatusChoice;
       note: string;
       blocking_gate_enabled: boolean;
+      livestream_enabled: boolean;
       managed_by_id?: number | null;
     }) => api.patch(`/operators/${id}/`, payload),
     onSuccess: () => {
@@ -381,6 +385,7 @@ export default function OperatorDetail() {
       status,
       note: d?.note || "",
       blocking_gate_enabled: !!d?.blocking_gate_enabled,
+      livestream_enabled: !!d?.livestream_enabled,
       // Загружаем текущего owner'а в форму. null → поле выставлено в
       // «не назначен», числовое id — текущий владелец (его можно
       // поменять или сбросить).
@@ -1706,6 +1711,41 @@ export default function OperatorDetail() {
             </div>
           </label>
 
+          {/* 2026-10-08: WebRTC live-stream opt-in. По умолчанию OFF;
+              при ON — браузер запросит доступ к камере сразу после
+              логина оператора. Поток идёт в LiveKit SFU (демо-окружение),
+              менеджер видит live-wall на /live/wall. */}
+          <label
+            className="flex items-start gap-3 rounded-xl px-3 py-3 cursor-pointer"
+            style={{
+              border: "1.5px solid var(--border)",
+              background: profileForm.livestream_enabled
+                ? "rgba(220,38,38,0.05)"
+                : "var(--bg-card)",
+            }}
+          >
+            <input
+              type="checkbox"
+              className="mt-0.5 shrink-0 h-4 w-4 accent-red-600"
+              checked={profileForm.livestream_enabled}
+              onChange={(e) =>
+                setProfileForm({
+                  ...profileForm,
+                  livestream_enabled: e.target.checked,
+                })
+              }
+            />
+            <div className="flex-1 min-w-0">
+              <div className="text-[13.5px] font-semibold">Live-эфир</div>
+              <div className="text-[12px] text-muted mt-0.5 leading-snug">
+                При включении браузер оператора запросит камеру и начнёт
+                стримить видео (без звука) в live-эфир. Менеджер видит
+                всех в сетке на «Live-эфир» в разделе Посещаемости.
+                Opt-in: включайте точечно после разговора с оператором.
+              </div>
+            </div>
+          </label>
+
           {/* managed_by dropdown — 3-level hierarchy ownership
               (2026-10-06). Options фильтруются frontend'ом: показываем
               только senior-роли (manager/team_lead/super_manager/
@@ -1763,6 +1803,7 @@ export default function OperatorDetail() {
                   status: OperatorStatusChoice;
                   note: string;
                   blocking_gate_enabled: boolean;
+                  livestream_enabled: boolean;
                   managed_by_id?: number | null;
                 } = {
                   full_name: profileForm.full_name.trim(),
@@ -1770,6 +1811,7 @@ export default function OperatorDetail() {
                   status: profileForm.status,
                   note: profileForm.note,
                   blocking_gate_enabled: profileForm.blocking_gate_enabled,
+                  livestream_enabled: profileForm.livestream_enabled,
                 };
                 // Отправляем managed_by_id только если пользователь
                 // явно трогал поле: "" = unassign (null), number = id.

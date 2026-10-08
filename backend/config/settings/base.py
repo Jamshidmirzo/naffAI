@@ -73,6 +73,10 @@ LOCAL_APPS = [
     # via JWT (rest_framework_simplejwt). See apps/mobile/README.md-ish
     # comments in apps.py.
     "apps.mobile",
+    # 2026-10-08: live WebRTC — operators publish, managers subscribe +
+    # egress-recording to S3. Backed by self-hosted LiveKit SFU (see
+    # docker-compose services livekit / coturn / livekit-egress).
+    "apps.livestream",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -423,6 +427,29 @@ AI_CHAT_LLM_MODEL = config("AI_CHAT_LLM_MODEL", default="")
 MARKETING_LLM_BASE_URL = config("MARKETING_LLM_BASE_URL", default="")
 MARKETING_LLM_API_KEY = config("MARKETING_LLM_API_KEY", default="")
 MARKETING_LLM_MODEL = config("MARKETING_LLM_MODEL", default="")
+
+# --- LiveKit SFU (apps.livestream) ---
+# API key / secret are shared with the LiveKit server config
+# (livekit.yaml) so our backend-signed AccessTokens are trusted. When
+# empty the livestream endpoints respond 503 (not 500) — the rest of the
+# app keeps working. Demo deploys use LIVEKIT_* via `.env.demo`.
+LIVEKIT_API_KEY = config("LIVEKIT_API_KEY", default="")
+LIVEKIT_API_SECRET = config("LIVEKIT_API_SECRET", default="")
+# ws:// / wss:// URL the browser connects to. In nginx we proxy
+# `/livekit/` → livekit container, so the public value is
+# `wss://demo.naff.flek.uz/livekit/` on demo.
+LIVEKIT_WS_URL = config("LIVEKIT_WS_URL", default="")
+
+# S3 for egress recordings. All optional — if omitted, recording simply
+# won't be configured on the LiveKit side and the Archive page shows an
+# empty list. Keep bucket name `naffai-livestream-recordings-demo` on
+# demo so prod stays untouched.
+LIVEKIT_S3_BUCKET = config("LIVEKIT_S3_BUCKET", default="")
+LIVEKIT_S3_REGION = config("LIVEKIT_S3_REGION", default="eu-central-1")
+LIVEKIT_S3_ACCESS_KEY = config("LIVEKIT_S3_ACCESS_KEY", default="")
+LIVEKIT_S3_SECRET_KEY = config("LIVEKIT_S3_SECRET_KEY", default="")
+# Only set for S3-compatible stores (DO Spaces / MinIO). Empty = AWS.
+LIVEKIT_S3_ENDPOINT = config("LIVEKIT_S3_ENDPOINT", default="")
 
 # --- Logging ---
 LOG_DIR = config("LOG_DIR", default="")

@@ -94,4 +94,7 @@ urlpatterns = [
     path("settings/", include("apps.system_settings.urls")),
     # In-app operator helper (floating widget): rule-based auto suggestions + FAQ.
     path("helper/", include("apps.helper.urls")),
+    # 2026-10-08: operator live WebRTC + egress recording archive.
+    # Token issue + webhooks + recording list — see apps.livestream.
+    path("live/", include("apps.livestream.urls")),
 ]

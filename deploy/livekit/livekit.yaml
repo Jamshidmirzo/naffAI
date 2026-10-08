@@ -1,0 +1,50 @@
+# LiveKit SFU server config — demo-only.
+#
+# Values are mostly substituted via LIVEKIT__* env vars at container
+# start-up (LiveKit supports env override for every key — e.g.
+# `LIVEKIT_KEYS__APIkey12345=secret` → `keys.APIkey12345=secret`).
+#
+# This file is a fallback / minimum config. Keys are provided via env,
+# so they are not duplicated in source control.
+
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  # UDP port range for direct RTC — small (40 slots) because the shop is
+  # 40 operators + 1-5 managers. Grow the range if you add more clients.
+  port_range_start: 49160
+  port_range_end: 49200
+  # Public IP is auto-detected at startup. Override LIVEKIT_RTC__NODE_IP
+  # via env to force a specific value (e.g. the Lightsail elastic IP).
+  use_external_ip: true
+
+# Webhook back into Django. The URL below works because nginx forwards
+# `/api/live/webhooks/livekit/` to the demo-web container. If the
+# deployment ever moves off localhost, override via LIVEKIT_WEBHOOK__URLS__0
+# so we don't commit the host here.
+webhook:
+  api_key: ${LIVEKIT_API_KEY:-}
+  urls:
+    - https://demo.naff.flek.uz/api/live/webhooks/livekit/
+
+# TURN server (coturn) connection details. LiveKit tells the client about
+# them at JOIN time; shared secret is also used server-side for ICE.
+turn:
+  enabled: true
+  # External TURN (coturn container). Internal address inside the
+  # compose network — not reachable publicly.
+  external_tls: false
+  udp_port: 3478
+
+# Audio+video defaults — 480p / 15fps / h264 ~150 kbps per publisher.
+# These are soft limits; the browser SDK picks final params.
+room:
+  auto_create: true
+  empty_timeout: 300  # seconds — tear down after 5 min idle
+  departure_timeout: 20
+  max_participants: 100
+
+logging:
+  json: true
+  level: info

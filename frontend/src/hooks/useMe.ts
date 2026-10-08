@@ -14,6 +14,8 @@ export interface Me {
   birth_date: string | null;
   /** True если сегодня совпадает с day/month у birth_date (год игнор). */
   is_birthday_today: boolean;
+  /** True если оператор включён в WebRTC-живой стрим (manager тоггл). */
+  livestream_enabled: boolean;
 }
 
 /**
