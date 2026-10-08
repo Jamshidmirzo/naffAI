@@ -479,12 +479,25 @@ class UserListCreateApi(APIView):
                 if c in allowed_roles:
                     role_filter.add(c)
 
+        # Historically /users excluded operator-linked accounts entirely
+        # (those were edited via /operators/{id}/). But super_manager /
+        # superadmin asked to see them here too so they can grep by phone
+        # and understand "кто этот +998… логин". We keep the exclude for
+        # middle-tier managers to not flood their list with ops.
+        actor_profile = getattr(request.user, "profile", None)
+        actor_role = actor_profile.role if actor_profile else None
+        actor_sees_operators = bool(
+            request.user.is_superuser
+            or actor_role in {Role.SUPERADMIN, Role.SUPER_MANAGER}
+        )
+
         qs = (
             User.objects.filter(is_active=True)
-            .exclude(profile__operator__isnull=False)
-            .select_related("profile")
+            .select_related("profile", "profile__operator")
             .order_by("username")
         )
+        if not actor_sees_operators:
+            qs = qs.exclude(profile__operator__isnull=False)
         if role_filter:
             qs = qs.filter(profile__role__in=role_filter)
 
@@ -501,6 +514,7 @@ class UserListCreateApi(APIView):
         rows = []
         for user in qs:
             profile = getattr(user, "profile", None)
+            operator = getattr(profile, "operator", None) if profile else None
             rows.append({
                 "id": user.id,
                 "username": user.username,
@@ -512,6 +526,14 @@ class UserListCreateApi(APIView):
                 "last_login": user.last_login.isoformat() if user.last_login else None,
                 "preferred_language": getattr(profile, "preferred_language", None) or "uz",
                 "reports_to_id": getattr(profile, "reports_to_id", None),
+                "telegram_linked": bool(getattr(profile, "telegram_user_id", None)),
+                # Operator link — populated only when this user signs in as a
+                # specific operator (phone / full_name are the real-world
+                # identity behind the login). Super_manager uses this to
+                # grep «кто это за +998… логин».
+                "operator_id": operator.id if operator else None,
+                "operator_name": operator.full_name if operator else None,
+                "operator_phone": operator.phone if operator else None,
             })
         return Response(rows)
 

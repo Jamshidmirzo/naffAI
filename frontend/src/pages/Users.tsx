@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, KeyRound, Pencil, Plus, ShieldOff, Trash2, UserCog } from "lucide-react";
+import { Copy, KeyRound, Pencil, Plus, Search, Send, ShieldOff, Trash2, UserCog } from "lucide-react";
 import { api } from "../lib/api";
 import {
   Button,
@@ -21,6 +21,7 @@ type Language = "ru" | "uz";
 interface UserRow {
   id: number;
   username: string;
+  full_name?: string;
   role: Role | string;
   is_active: boolean;
   is_superuser: boolean;
@@ -28,6 +29,10 @@ interface UserRow {
   last_login: string | null;
   preferred_language?: Language;
   reports_to_id?: number | null;
+  telegram_linked?: boolean;
+  operator_id?: number | null;
+  operator_name?: string | null;
+  operator_phone?: string | null;
 }
 
 interface Creds {
@@ -63,6 +68,7 @@ export default function Users() {
     superadmin: t("role.manager"),
   };
 
+  const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [newRole, setNewRole] = useState<Role>("manager");
@@ -183,14 +189,44 @@ export default function Users() {
     onError: (err: unknown) => toast.error(apiErrorMessage(err)),
   });
 
-  const rows = usersQ.data ?? [];
+  const allRows = usersQ.data ?? [];
+  const rows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return allRows;
+    return allRows.filter((u) => {
+      const haystack = [
+        u.username,
+        u.full_name || "",
+        u.operator_name || "",
+        u.operator_phone || "",
+        u.role || "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [allRows, search]);
 
   return (
     <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
       {/* Toolbar */}
-      <section className="flex items-center justify-between animate-nfFadeUp">
-        <div className="text-[13px] text-muted">
-          {t("users.subtitle")}
+      <section className="flex items-center justify-between gap-3 animate-nfFadeUp flex-wrap">
+        <div className="flex items-center gap-3 flex-1 min-w-[220px]">
+          <div className="relative flex-1 max-w-[380px]">
+            <Search
+              className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none"
+            />
+            <input
+              className="nf-input"
+              style={{ paddingLeft: 32 }}
+              placeholder={t("users.search_ph") || "Поиск: имя, логин, телефон, оператор…"}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="text-[12px] text-muted whitespace-nowrap">
+            {rows.length} / {allRows.length}
+          </div>
         </div>
         <Button onClick={() => { setCreateOpen(true); setCreateError(""); }}>
           <Plus className="w-3.5 h-3.5" /> {t("users.add_manager")}
@@ -201,7 +237,7 @@ export default function Users() {
       <section className="nf-card overflow-hidden">
         <div
           className="grid gap-2 px-6 pt-5 pb-3 nf-col"
-          style={{ gridTemplateColumns: "1.4fr .8fr .7fr .8fr .8fr auto" }}
+          style={{ gridTemplateColumns: "1.8fr .8fr .7fr .8fr .8fr auto" }}
         >
           <div>{t("common.login")}</div>
           <div>{t("common.role")}</div>
@@ -224,12 +260,12 @@ export default function Users() {
                   key={u.id}
                   className="nf-row animate-nfFadeUp"
                   style={{
-                    gridTemplateColumns: "1.4fr .8fr .7fr .8fr .8fr auto",
+                    gridTemplateColumns: "1.8fr .8fr .7fr .8fr .8fr auto",
                     animationDelay: `${0.02 + i * 0.035}s`,
                     cursor: "default",
                   }}
                 >
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0">
                     <div
                       className="grid place-items-center text-white text-[11px] font-semibold shrink-0"
                       style={{
@@ -239,10 +275,24 @@ export default function Users() {
                         background: "var(--accent-grad)",
                       }}
                     >
-                      {u.username.slice(0, 2).toUpperCase()}
+                      {(u.full_name || u.username).slice(0, 2).toUpperCase()}
                     </div>
-                    <div>
-                      <div className="font-medium">{u.username}</div>
+                    <div className="min-w-0">
+                      <div className="font-medium truncate flex items-center gap-1.5">
+                        {u.operator_name || u.full_name || u.username}
+                        {u.telegram_linked && (
+                          <Send
+                            className="w-3 h-3 shrink-0 opacity-60"
+                            style={{ color: "var(--accent)" }}
+                          />
+                        )}
+                      </div>
+                      <div className="text-[11px] text-muted font-mono tabular-nums truncate">
+                        {u.operator_phone || u.username}
+                        {u.operator_id && u.operator_name && u.operator_phone !== u.username && (
+                          <span className="ml-1.5 opacity-70">· {u.username}</span>
+                        )}
+                      </div>
                       {isMe && (
                         <div className="text-[10.5px] text-muted">{t("users.this_is_you")}</div>
                       )}
