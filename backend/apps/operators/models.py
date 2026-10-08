@@ -224,12 +224,13 @@ class Operator(TimestampedModel):
     # `livestream.services.room_token_issue` всё равно рефузит, если
     # флаг False — так что отключение гарантировано.
     livestream_enabled = models.BooleanField(
-        default=False,
+        default=True,
         help_text=(
-            "Opt-in: включает веб-камеру оператора при логине "
-            "и начинает публиковать поток в LiveKit SFU. По "
-            "умолчанию False — оператор не стримит, пока "
-            "менеджер явно не включит флаг."
+            "Если True — браузер оператора при логине авто-"
+            "публикует webcam в LiveKit (видно менеджеру на "
+            "/live/wall). По умолчанию ВКЛ, чтобы не возиться "
+            "с per-operator opt-in; экстренный глобальный "
+            "killswitch — SystemSetting.livestream_global_enabled."
         ),
     )
 

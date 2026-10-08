@@ -9,8 +9,9 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchLiveNow, fetchRoomToken } from "../lib/liveRoom";
+import { api } from "../lib/api";
 
 type LivekitSDK = typeof import("livekit-client");
 
@@ -44,6 +45,24 @@ export default function LiveWall() {
     refetchInterval: 5000,
     staleTime: 2000,
   });
+
+  const qc = useQueryClient();
+  // Global killswitch state + mutation.
+  const globalQuery = useQuery({
+    queryKey: ["live-global-status"],
+    queryFn: () => api.get<{ enabled: boolean }>("/live/global-status/").then((r) => r.data),
+    refetchInterval: 5000,
+    staleTime: 2000,
+  });
+  const killMut = useMutation({
+    mutationFn: (enabled: boolean) =>
+      api.patch<{ enabled: boolean }>("/live/global-status/", { enabled }).then((r) => r.data),
+    onSuccess: (d) => {
+      qc.setQueryData(["live-global-status"], d);
+      qc.invalidateQueries({ queryKey: ["live-now"] });
+    },
+  });
+  const globalOn = globalQuery.data?.enabled !== false;
 
   // Lazy-load the LiveKit SDK on first mount.
   useEffect(() => {
@@ -202,6 +221,29 @@ export default function LiveWall() {
           </div>
         )}
       </header>
+
+      {/* Global killswitch — one big button. */}
+      <button
+        type="button"
+        disabled={killMut.isPending}
+        onClick={() => killMut.mutate(!globalOn)}
+        className={`w-full rounded-xl px-6 py-5 text-lg font-bold tracking-tight shadow-sm transition-all ${
+          globalOn
+            ? "bg-emerald-500 text-white hover:bg-emerald-600 border border-emerald-600"
+            : "bg-rose-600 text-white hover:bg-rose-700 border border-rose-700"
+        } ${killMut.isPending ? "opacity-60 cursor-wait" : "cursor-pointer"}`}
+      >
+        {killMut.isPending
+          ? "…"
+          : globalOn
+          ? "🟢 Live-эфир ВКЛЮЧЁН — нажми чтобы ВЫКЛЮЧИТЬ всех"
+          : "🔴 Live-эфир ВЫКЛЮЧЕН — нажми чтобы ВКЛЮЧИТЬ"}
+      </button>
+      <p className="text-xs text-slate-500">
+        При выключении все 40 webcam-стримов остановятся в течение 10 секунд,
+        SFU-сервер разгрузится. Включение — обратно (операторы автоматически
+        подхватят на следующий tick).
+      </p>
 
       {focused && (
         <div className="rounded-xl border border-slate-200 bg-black overflow-hidden">

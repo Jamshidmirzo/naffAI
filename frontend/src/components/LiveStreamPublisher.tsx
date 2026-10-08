@@ -20,6 +20,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { fetchRoomToken } from "../lib/liveRoom";
+import { api } from "../lib/api";
 
 // LiveKit SDK is heavy — load it dynamically on first mount.
 type LivekitSDK = typeof import("livekit-client");
@@ -42,15 +43,39 @@ export default function LiveStreamPublisher({ enabled }: Props) {
   const [status, setStatus] = useState<Status>("idle");
   const [errText, setErrText] = useState<string>("");
   const [sdkReady, setSdkReady] = useState(false);
+  // Global killswitch: start as true, poll every 10s. If backend reports
+  // enabled=false — publisher stops. Re-enable spins up again on next tick.
+  const [globalOn, setGlobalOn] = useState<boolean>(true);
   const sdkRef = useRef<LivekitSDK | null>(null);
   // Hold a reference to the active Room so cleanup can gracefully
   // disconnect; `any` because LivekitSDK isn't loaded at mount.
   const roomRef = useRef<unknown>(null);
   const cancelledRef = useRef(false);
 
+  // Polling: /api/live/global-status/ every 10s.
+  useEffect(() => {
+    if (!enabled) return;
+    let stopped = false;
+    const check = async () => {
+      try {
+        const r = await api.get<{ enabled: boolean }>("/live/global-status/");
+        if (!stopped) setGlobalOn(!!r.data?.enabled);
+      } catch {
+        // network / 503 — предполагаем выключено (fail-closed)
+        if (!stopped) setGlobalOn(false);
+      }
+    };
+    check();
+    const id = window.setInterval(check, 10_000);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+  }, [enabled]);
+
   useEffect(() => {
     cancelledRef.current = false;
-    if (!enabled) {
+    if (!enabled || !globalOn) {
       setStatus("disabled");
       return;
     }
@@ -73,10 +98,18 @@ export default function LiveStreamPublisher({ enabled }: Props) {
       aborted = true;
       cancelledRef.current = true;
     };
-  }, [enabled]);
+  }, [enabled, globalOn]);
 
   useEffect(() => {
-    if (!enabled || !sdkReady || !sdkRef.current) return;
+    if (!enabled || !globalOn || !sdkReady || !sdkRef.current) {
+      // Killswitch disabled mid-session — stop any active room immediately.
+      const room = roomRef.current as { disconnect?: () => Promise<void> } | null;
+      if (room?.disconnect) {
+        room.disconnect().catch(() => {});
+        roomRef.current = null;
+      }
+      return;
+    }
     const sdk = sdkRef.current;
     let cancelled = false;
 
@@ -161,7 +194,7 @@ export default function LiveStreamPublisher({ enabled }: Props) {
       }
       roomRef.current = null;
     };
-  }, [enabled, sdkReady]);
+  }, [enabled, globalOn, sdkReady]);
 
   const handleCloseClick = async () => {
     const room = roomRef.current as { disconnect?: () => Promise<void> } | null;

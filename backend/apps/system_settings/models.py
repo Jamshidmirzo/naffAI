@@ -75,6 +75,15 @@ class SystemSetting(models.Model):
             "no_answer, no_answer_2). Меняется через /api/settings/retry-export/."
         ),
     )
+    livestream_global_enabled = models.BooleanField(
+        default=True,
+        help_text=(
+            "Глобальный killswitch Live-эфира: если False — RoomTokenApi "
+            "возвращает 503, операторские publisher'ы останавливаются в "
+            "течение следующего polling-tick (10 сек). Удобно одной "
+            "кнопкой снять нагрузку SFU/bandwidth с 40 webcam'ов сразу."
+        ),
+    )
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
