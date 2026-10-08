@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import { useAuth } from "../../store/auth";
+import { isSuperManager, isSuperadmin } from "../RoleGate";
 import { cn } from "../ui/cn";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api";
@@ -275,7 +276,17 @@ export function Sidebar({ groups, role }: Props) {
   });
 
   const initials = (auth.username || "?").slice(0, 2).toUpperCase();
-  const roleLabel = role === "manager" ? t("role.manager") : t("role.operator");
+  // Sidebar прошёл collapse из AppShell (super_manager → "manager"), поэтому
+  // лейбл роли берём по raw role, иначе super_manager видит "Menejer"
+  // вместо "Super-menejer".
+  const rawRole = auth.role;
+  const roleLabel = isSuperadmin(rawRole)
+    ? t("role.manager")
+    : isSuperManager(rawRole)
+      ? t("role.super_manager")
+      : role === "manager"
+        ? t("role.manager")
+        : t("role.operator");
   const displayName = (me.data?.display_name ?? me.data?.operator_name)?.trim();
   const roleWithName = displayName ? `${roleLabel} ${displayName}` : roleLabel;
 

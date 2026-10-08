@@ -48,7 +48,16 @@ export function RoleGate({ allow, children }: Props) {
   if (isSuperadmin(rawRole)) return <>{children}</>;
   const role = normaliseRole(rawRole);
   if (!role) return <Navigate to="/login" replace />;
-  if (!allow.includes(role)) {
+  // Super_manager — супермножество manager-прав: у него прав БОЛЬШЕ, а не
+  // меньше. Все страницы, доступные manager, должны быть доступны и ему
+  // (sales/operators/users/leads/analytics/payroll/…). Без этого расширения
+  // super_manager редиректился на "/" на каждом нашем allow={["manager"]} —
+  // видел только свои /team/* страницы и жаловался «пункты не доступны».
+  const effectiveAllow =
+    allow.includes("manager") && !allow.includes("super_manager")
+      ? [...allow, "super_manager" as Role]
+      : allow;
+  if (!effectiveAllow.includes(role)) {
     // Role-aware fallback: operator → /my, остальные (manager /
     // super_manager) → /. Super_manager не отправляем на /my, у него
     // нет operator-FK, страница пустая.
