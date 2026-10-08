@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import { useAuth } from "../../store/auth";
 import { normaliseRole, isSuperadmin, isSuperManager } from "../RoleGate";
@@ -198,6 +199,19 @@ export default function AppShell() {
   // to 'ru' via /operators/{id}/account/language/.
   const me = useMe();
   const greetingLang = (me.data?.preferred_language ?? "uz") as "ru" | "uz";
+
+  // Авто-sync роли из /auth/me/ в localStorage. Role попадает в
+  // localStorage только при login; если пользователя повысили в
+  // super_manager (как +998944586810 07.10) — старая сессия продолжает
+  // отображать прежнюю роль, пункты меню урезаны. Сверяем с бэком и
+  // обновляем, если расходится.
+  const auth = useAuth();
+  useEffect(() => {
+    if (!me.data || !auth.token || !auth.username) return;
+    if (me.data.role && me.data.role !== auth.role) {
+      auth.setAuth(auth.token, auth.username, me.data.role);
+    }
+  }, [me.data?.role, auth.role, auth.token, auth.username]);
 
   // Sidebar expects a 2-value role (manager|operator) for badge logic.
   // Super_manager → treat as manager at the sidebar-chrome layer; the
