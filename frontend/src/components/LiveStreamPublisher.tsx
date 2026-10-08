@@ -53,16 +53,21 @@ export default function LiveStreamPublisher({ enabled }: Props) {
   const cancelledRef = useRef(false);
 
   // Polling: /api/live/global-status/ every 10s.
+  // Fail-OPEN: при network error / 404 оставляем publisher работать.
+  // RoomTokenApi сам отдаст 503 если killswitch действительно выключен —
+  // лишняя блокировка на клиенте только мешает (одна сетевая икота ×
+  // paranoid shut-down = оператор никогда не публикует).
   useEffect(() => {
     if (!enabled) return;
     let stopped = false;
     const check = async () => {
       try {
         const r = await api.get<{ enabled: boolean }>("/live/global-status/");
-        if (!stopped) setGlobalOn(!!r.data?.enabled);
+        if (!stopped && typeof r.data?.enabled === "boolean") {
+          setGlobalOn(r.data.enabled);
+        }
       } catch {
-        // network / 503 — предполагаем выключено (fail-closed)
-        if (!stopped) setGlobalOn(false);
+        // network/404/5xx — не меняем globalOn, пусть RoomTokenApi решает.
       }
     };
     check();
