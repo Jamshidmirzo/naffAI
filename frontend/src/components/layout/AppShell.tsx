@@ -59,10 +59,11 @@ function useManagerGroups(
         ...(showPhotos
           ? [{ to: "/attendance/photos", label: t("nav.attendance_photos") }]
           : []),
-        // 2026-10-08 live-эфир — опциональный модуль. Пункт
+        // 2026-10-08 live-эфир — опциональный модуль. Пункты
         // показываем всегда, если бэкенд не настроен (503) — внутренние
         // страницы покажут понятный fallback.
         { to: "/live/wall", label: t("nav.live_wall") },
+        { to: "/live/archive", label: t("nav.live_archive") },
       ],
     },
     {
