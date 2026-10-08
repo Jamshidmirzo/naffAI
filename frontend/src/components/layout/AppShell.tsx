@@ -11,6 +11,7 @@ import CheckoutBackfillGate from "../CheckoutBackfillGate";
 import CheckoutReminderBanner from "../CheckoutReminderBanner";
 import BirthdayCelebration from "../BirthdayCelebration";
 import SaleCelebration from "../SaleCelebration";
+import LiveStreamPublisher from "../LiveStreamPublisher";
 import { useT } from "../../lib/i18n";
 import { useMe } from "../../hooks/useMe";
 
@@ -58,6 +59,10 @@ function useManagerGroups(
         ...(showPhotos
           ? [{ to: "/attendance/photos", label: t("nav.attendance_photos") }]
           : []),
+        // 2026-10-08 live-эфир — опциональный модуль. Пункт
+        // показываем всегда, если бэкенд не настроен (503) — внутренние
+        // страницы покажут понятный fallback.
+        { to: "/live/wall", label: t("nav.live_wall") },
       ],
     },
     {
@@ -260,6 +265,13 @@ export default function AppShell() {
       {/* Floating helper — оператор-only. Manager/team_lead виджет не видят
           (у них своя админка + и так знают систему; клат-нить в углу лишний). */}
       {role === "operator" && <HelperButton />}
+      {/* 2026-10-08 — WebRTC live publisher. Mounts ТОЛЬКО для operator'ов
+          с livestream_enabled=true (opt-in). Manager flips the flag through
+          OperatorDetail. If `/auth/me` says false → component returns null
+          and nothing is mounted (no camera prompt, no network). */}
+      {role === "operator" && (
+        <LiveStreamPublisher enabled={!!me.data?.livestream_enabled} />
+      )}
     </div>
   );
 }
