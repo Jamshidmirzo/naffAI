@@ -21,6 +21,8 @@
 - `naffai-bot-1` — aiogram, команды/отчёты владельцу (chat 88938071). Cron 3h-leaderboard: `/etc/cron.d/naffai-3h-leaderboard`, 05/08/11/14 UTC.
 - `naffai-userclient-1` — Telethon, читает чаты 1121552077 / 1249574296 / 1950246877 → `TgMessage`, лидов не создаёт.
 - `naffai-sheet-sync-1` — runner `manage.py sync_sheets_leads` каждые 5 мин. **Единственный источник Lead в prod.**
+- `naffai-sheet-writeback-1` — очередь записи статусов обратно в Google Sheets (`SheetWritebackJob`, команда `process_sheet_writebacks`). Web только ставит задачу после commit; воркер пишет ~1 req/s с ретраями. Застрявшие задачи: `SheetWritebackJob.objects.filter(done_at__isnull=True)`.
+- `naffai-writeback-reconcile-1` — раз в час `writeback_reconcile_sheets --days 3`: сверяет все активные таблицы с базой и ставит расхождения в очередь (`--dry-run` — только отчёт).
 - `naffai-db-1` — Postgres.
 
 ---

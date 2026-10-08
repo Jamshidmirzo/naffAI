@@ -453,6 +453,37 @@ class Lead(TimestampedModel):
         return f"Lead#{self.pk} {self.full_name or self.phone or 'без имени'}"
 
 
+class SheetWritebackJob(models.Model):
+    """
+    Durable queue for pushing a lead's state back into its Google sheet row.
+
+    Until 2026-10 writeback ran in a daemon thread inside the gunicorn
+    worker, so every worker restart (timeout, OOM, max-requests) silently
+    dropped in-flight writes. Now callers enqueue a row here on commit and
+    the `sheet-writeback` service (`process_sheet_writebacks`) drains it
+    with retries. The job carries no payload — the worker always writes the
+    lead's *current* state, so duplicate jobs for one lead collapse.
+    """
+
+    lead = models.ForeignKey(
+        Lead, on_delete=models.CASCADE, related_name="sheet_writeback_jobs"
+    )
+    comment = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    next_try_at = models.DateTimeField(db_index=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    done_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default="")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["done_at", "next_try_at"], name="sheet_wb_job_due_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"SheetWritebackJob#{self.pk} lead={self.lead_id}"
+
+
 class LeadAssignmentSource(models.TextChoices):
     SHEET_MANUAL = "sheet_manual", "Из таблицы (alias)"
     AUTO_ROUND_ROBIN = "auto_round_robin", "Автоматически (RR)"

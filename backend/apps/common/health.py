@@ -62,8 +62,10 @@ EXPECTED_INTERVALS: dict[str, int] = {
     "hot_leads_watch": 3 * 60,
     # qimmatlik_qildi retry — every 10 min.
     "qimmatlik_retry_watch": 15 * 60,
-    # Nightly writeback reconcile — 22:00 UTC. Allow 26h slack.
-    "writeback_reconcile": 26 * 3600,
+    # Sheets writeback queue worker — ticks every ~2s.
+    "sheet_writeback": 5 * 60,
+    # Hourly writeback reconcile across all active sheets. Allow 2h slack.
+    "writeback_reconcile": 2 * 3600,
     # Late-arrival in-app watcher — every 5 min.
     "attendance_late_watch": 10 * 60,
     # 9-hour shift reminder — every 15 min.

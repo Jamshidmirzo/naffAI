@@ -80,7 +80,7 @@ services:
         cd /app
         python manage.py migrate --noinput
         python manage.py collectstatic --noinput --clear || true
-        exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --preload --timeout 120 --max-requests 500 --max-requests-jitter 50 --access-logfile -
+        exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --preload --timeout 120 --access-logfile -
 
   # Demo backend — same image, но с БД naffai_demo (`.env.demo` override).
   # Отдельный порт 8001, nginx для demo.naff.flek.uz проксирует сюда.
@@ -527,10 +527,24 @@ services:
           sleep 300
         done
 
-  # Nightly writeback reconcile — читает D-колонку srm, сравнивает с
-  # Lead.status за 30 дней, перезаписывает все расхождения (empty /
-  # mismatch). Запуск в 22:00 UTC (03:00 Tashkent) чтобы не мешать
-  # дневной активности.
+  # Google Sheets writeback queue (SheetWritebackJob). Web only enqueues
+  # on commit; this worker writes to Google with retries, ~1 req/s
+  # (Sheets quota), so a gunicorn restart can no longer drop a write.
+  sheet-writeback:
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "manage.py", "process_sheet_writebacks"]
+
+  # Hourly reconcile — compares every active sheet with Lead.status for
+  # leads touched in the last 3 days and enqueues writebacks for drift
+  # (safety net for the queue). Replaced the nightly srm-only reconcile
+  # after srm was retired on 2026-10-07.
   writeback-reconcile:
     image: naffai-backend:latest
     pull_policy: never
@@ -544,19 +558,10 @@ services:
       - "bash"
       - "-c"
       - |
+        sleep $$((RANDOM % 300))
         while :; do
-          now_epoch=$$(date -u +%s)
-          today_target=$$(date -u -d 'today 22:00' +%s 2>/dev/null || python -c "import datetime,calendar; d=datetime.datetime.utcnow().replace(hour=22,minute=0,second=0,microsecond=0); print(calendar.timegm(d.timetuple()))")
-          if [ "$$now_epoch" -ge "$$today_target" ]; then
-            tomorrow_target=$$((today_target + 86400))
-            sleep_sec=$$((tomorrow_target - now_epoch))
-          else
-            sleep_sec=$$((today_target - now_epoch))
-          fi
-          echo "[$$(date +%FT%T%z)] writeback-reconcile sleep $$sleep_sec s (until 22:00 UTC)"
-          sleep "$$sleep_sec"
-          echo "[$$(date +%FT%T%z)] writeback_reconcile_srm --days 30"
-          python manage.py writeback_reconcile_srm --days 30 || echo "writeback_reconcile_srm rc=$$?"
+          python manage.py writeback_reconcile_sheets --days 3 || echo "writeback_reconcile_sheets rc=$$?"
+          sleep 3600
         done
 
   # Hot-sheets sync — SheetSource(is_hot=True) синк каждую минуту,

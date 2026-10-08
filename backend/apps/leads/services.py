@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
-import threading
 from datetime import timedelta
 from typing import Any
 
@@ -247,11 +246,13 @@ def _cols_between(lo: str, hi: str) -> list[str]:
     return [_idx_to_col(i) for i in range(_col_to_idx(lo), _col_to_idx(hi) + 1)]
 
 
-def lead_writeback_to_sheet(lead, comment: str = "") -> None:
+def lead_writeback_to_sheet(lead, comment: str = "", raise_errors: bool = False) -> None:
     """
     Push the lead's current state (status label, operator, timestamp,
     optional comment) into the source Google sheet row it came from.
-    Fails silent-with-log — never let a writeback error break the caller.
+    Fails silent-with-log — never let a writeback error break the caller —
+    unless `raise_errors` is set: the writeback queue worker needs the
+    failure to schedule a retry.
     """
     sheet_source = lead.sheet_source
     if sheet_source is None or lead.sheet_row_index is None:
@@ -284,6 +285,8 @@ def lead_writeback_to_sheet(lead, comment: str = "") -> None:
         client = GoogleSheetsClient()
     except GoogleSheetsUnavailable as exc:
         logger.warning("writeback disabled: %s", exc)
+        if raise_errors:
+            raise
         return
 
     ws_name = sheet_source.worksheet_name or client.worksheet_name_by_gid(
@@ -352,24 +355,20 @@ def lead_writeback_to_sheet(lead, comment: str = "") -> None:
         logger.exception(
             "writeback failed lead=%s range=%s", lead.id, sheet_range
         )
+        if raise_errors:
+            raise
 
 
 def _writeback_async(lead_id: int, comment: str = "") -> None:
     """
-    Fire a daemon thread to write the lead's state back into the sheet.
-    Callers should schedule this via `transaction.on_commit` so the DB
-    change is durable before we try to reflect it in Google.
+    Enqueue a writeback of the lead's state into its sheet row.
+
+    Called from `transaction.on_commit` (see `_schedule_writeback`), so the
+    DB change is durable first. The actual Google call happens in the
+    `sheet-writeback` service (`process_sheet_writebacks`) — a daemon thread
+    here died with every gunicorn worker restart and lost the write.
     """
-    def _run() -> None:
-        try:
-            from .models import Lead
-
-            lead = Lead.objects.select_related("sheet_source", "operator").get(pk=lead_id)
-            lead_writeback_to_sheet(lead, comment=comment)
-        except Exception:
-            logger.exception("_writeback_async: fetch/write failed for lead=%s", lead_id)
-
-    threading.Thread(target=_run, daemon=True).start()
+    _writeback_batch_async([lead_id], comment=comment)
 
 
 def _schedule_writeback(lead_id: int, comment: str = "") -> None:
@@ -381,44 +380,36 @@ def _writeback_batch_async(
     lead_ids: list[int], comment: str = "", sleep_s: float = 0.5
 ) -> None:
     """
-    Serial writeback for a batch of leads from a single thread.
+    Enqueue writebacks for a batch of leads (morning_distribute / refill
+    assign dozens at once). Throughput towards Google — the Sheets quota is
+    ~60 writes/min per spreadsheet — is paced by the queue worker, so
+    `sleep_s` is kept only for call-site compatibility.
 
-    Used by morning_distribute / refill paths which can assign dozens of
-    leads at once — thread-per-lead would hammer Google Sheets quota
-    (soft 60 writes/min, hard 300/min per spreadsheet) and risk 429 storms.
-    Serialising with a short sleep keeps the morning split within quota
-    even for 50+ leads and takes ~25s wall-clock for 50 writes, which is
-    fine for an async writeback path.
-
-    Failures are logged per lead but never raised.
+    Never raises: a queue insert failure is logged and the nightly
+    reconcile picks the drift up.
     """
-    import time as _time
+    from .models import SheetWritebackJob
 
-    def _run() -> None:
-        from .models import Lead
-
-        for lead_id in lead_ids:
-            try:
-                lead = Lead.objects.select_related("sheet_source", "operator").get(pk=lead_id)
-                lead_writeback_to_sheet(lead, comment=comment)
-            except Exception:
-                logger.exception(
-                    "_writeback_batch_async: write failed for lead=%s", lead_id
-                )
-            if sleep_s > 0:
-                _time.sleep(sleep_s)
-
-    threading.Thread(target=_run, daemon=True).start()
+    if not lead_ids:
+        return
+    now = timezone.now()
+    try:
+        SheetWritebackJob.objects.bulk_create(
+            [
+                SheetWritebackJob(lead_id=lead_id, comment=comment or "", next_try_at=now)
+                for lead_id in dict.fromkeys(lead_ids)
+            ]
+        )
+    except Exception:
+        logger.exception("writeback enqueue failed for leads=%s", list(lead_ids)[:20])
 
 
 def _schedule_writeback_batch(
     lead_ids: list[int], comment: str = "", sleep_s: float = 0.5
 ) -> None:
     """
-    Schedule a serial batch writeback once the surrounding transaction
-    commits. Preserves on_commit semantics (DB is durable before we
-    reflect state in Google) while using a single thread for the whole
-    batch to control throughput.
+    Schedule a batch writeback once the surrounding transaction commits —
+    the DB is durable before we reflect state in Google.
     """
     if not lead_ids:
         return
