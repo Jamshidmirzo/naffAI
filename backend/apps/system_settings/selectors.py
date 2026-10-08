@@ -66,5 +66,11 @@ def get_retry_export_statuses() -> list[str]:
     return codes
 
 
+def livestream_globally_enabled() -> bool:
+    """Global killswitch — если False, RoomTokenApi отдаёт 503 и
+    LiveStreamPublisher.tsx (на polling tick) снимает публикацию."""
+    return SystemSetting.get_solo().livestream_global_enabled
+
+
 def system_setting_get() -> SystemSetting:
     return SystemSetting.get_solo()

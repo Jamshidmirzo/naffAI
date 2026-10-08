@@ -5,6 +5,7 @@ from . import apis
 urlpatterns = [
     path("room-token/", apis.RoomTokenApi.as_view(), name="live-room-token"),
     path("live-now/", apis.LiveNowApi.as_view(), name="live-now"),
+    path("global-status/", apis.GlobalStatusApi.as_view(), name="live-global-status"),
     path("recordings/", apis.RecordingListApi.as_view(), name="live-recordings"),
     path(
         "recordings/<int:pk>/url/",

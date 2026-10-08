@@ -12,6 +12,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.system_settings.models import SystemSetting
+from apps.system_settings.selectors import livestream_globally_enabled
 from apps.users.models import Role
 from apps.users.permissions import (
     IsAuthenticatedAnyRole,
@@ -54,6 +56,18 @@ class RoomTokenApi(APIView):
     permission_classes = [IsAuthenticated, IsAuthenticatedAnyRole]
 
     def post(self, request):
+        # Global killswitch — SystemSetting.livestream_global_enabled.
+        # Клиенты (LiveStreamPublisher) опрашивают GET /global-status/
+        # каждые 10 сек; этот guard — защита на случай race'а между
+        # отключением и запросом нового токена.
+        if not livestream_globally_enabled():
+            return Response(
+                {
+                    "detail": "Live-эфир временно отключён менеджером",
+                    "code": "livestream_global_disabled",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         user = request.user
         role = _role(user)
         if role == Role.OPERATOR:
@@ -262,3 +276,42 @@ class LiveKitWebhookApi(APIView):
 
         result = webhook_ingest(payload=payload)
         return Response(result)
+
+
+# ---------------------------------------------------------------------------
+# GET / PATCH /live/global-status/  — killswitch
+# ---------------------------------------------------------------------------
+
+
+class GlobalStatusApi(APIView):
+    """
+    GET  — любой залогиненный (operator читает чтобы знать публиковать ли).
+    PATCH — только superadmin / super_manager / manager (toggle).
+
+    Шлётся из:
+    - LiveStreamPublisher.tsx — poll каждые 10с чтобы остановить публикацию.
+    - LiveWall.tsx — большая кнопка toggle сверху у менеджера.
+    """
+
+    permission_classes = [IsAuthenticated, IsAuthenticatedAnyRole]
+
+    def get(self, request):
+        return Response({"enabled": livestream_globally_enabled()})
+
+    def patch(self, request):
+        role = _role(request.user)
+        allowed = {Role.SUPERADMIN, Role.SUPER_MANAGER, Role.MANAGER, Role.TEAM_LEAD}
+        if not request.user.is_superuser and role not in allowed:
+            return Response(
+                {"detail": "Только менеджер может переключать killswitch"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        enabled = bool(request.data.get("enabled"))
+        s = SystemSetting.get_solo()
+        s.livestream_global_enabled = enabled
+        s.updated_by = request.user
+        s.save(update_fields=["livestream_global_enabled", "updated_by", "updated_at"])
+        logger.info(
+            "live global killswitch set to %s by %s", enabled, request.user.username
+        )
+        return Response({"enabled": enabled})
