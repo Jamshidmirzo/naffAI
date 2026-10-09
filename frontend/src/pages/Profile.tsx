@@ -40,6 +40,7 @@ type Preferences = {
 
 function roleLabel(t: (k: string) => string, role: string): string {
   if (role === "operator") return t("profile.role_operator");
+  if (role === "super_manager") return t("role.super_manager");
   if (role === "manager" || role === "team_lead") return t("profile.role_manager");
   return role;
 }

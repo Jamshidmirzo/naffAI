@@ -1,9 +1,24 @@
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Moon, Sun } from "lucide-react";
+import { ArrowLeft, Moon, Sun, Volume2, VolumeX } from "lucide-react";
 import { useTheme } from "../../store/theme";
 import { useLang } from "../../store/lang";
 import { usePageStore } from "../../store/page";
 import { useT } from "../../lib/i18n";
+import { useAuth } from "../../store/auth";
+import { useSaleSound } from "../../store/saleSound";
+import { normaliseRole } from "../RoleGate";
+
+/**
+ * Mute-toggle видимость: доступна любой аутентифицированной роли
+ * (operator / manager / super_manager / superadmin) на всех средах,
+ * включая prod — оператор должен иметь возможность приглушить
+ * аплодисменты коллег, менеджер — на случай live-демо.
+ */
+function useSaleSoundToggleVisible(): boolean {
+  const rawRole = useAuth((s) => s.role);
+  const role = normaliseRole(rawRole);
+  return role !== null;
+}
 
 export function Header() {
   const nav = useNavigate();
@@ -11,6 +26,9 @@ export function Header() {
   const lang = useLang();
   const t = useT();
   const { title, subtitle, back } = usePageStore();
+  const showSoundToggle = useSaleSoundToggleVisible();
+  const soundMuted = useSaleSound((s) => s.muted);
+  const toggleSound = useSaleSound((s) => s.toggle);
 
   const onBack = () => {
     if (!back) return;
@@ -54,6 +72,31 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-2">
+        {showSoundToggle && (
+          <button
+            type="button"
+            onClick={toggleSound}
+            className="nf-btn nf-btn--ghost"
+            style={{ padding: "9px 10px" }}
+            title={
+              soundMuted
+                ? "Звук продаж выключен — включить"
+                : "Звук продаж включён — выключить"
+            }
+            aria-label={
+              soundMuted
+                ? "Включить звук аплодисментов"
+                : "Выключить звук аплодисментов"
+            }
+            aria-pressed={soundMuted}
+          >
+            {soundMuted ? (
+              <VolumeX className="w-3.5 h-3.5" />
+            ) : (
+              <Volume2 className="w-3.5 h-3.5" />
+            )}
+          </button>
+        )}
         <div className="nf-tabs" role="tablist" aria-label={t("common.language")}>
           <button
             type="button"

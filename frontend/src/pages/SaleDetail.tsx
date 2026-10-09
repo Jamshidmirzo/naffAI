@@ -14,7 +14,7 @@ import {
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
 import { useAuth } from "../store/auth";
-import { normaliseRole } from "../components/RoleGate";
+import { normaliseRole, isManagerLevel } from "../components/RoleGate";
 
 interface OperatorLine {
   operator: number;
@@ -193,8 +193,9 @@ export default function SaleDetail() {
   const nav = useNavigate();
   const qc = useQueryClient();
 
-  const role = normaliseRole(useAuth((s) => s.role));
-  const isManager = role === "manager";
+  const rawRole = useAuth((s) => s.role);
+  const role = normaliseRole(rawRole);
+  const isManager = isManagerLevel(rawRole);
   const [returnReason, setReturnReason] = useState("");
   const [showReturn, setShowReturn] = useState(false);
   const [showDelete, setShowDelete] = useState(false);

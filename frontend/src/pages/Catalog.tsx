@@ -19,7 +19,7 @@ import { usePageHeader } from "../store/page";
 import { Modal } from "../components/ui";
 import PhoneEditor, { type PhoneDraft } from "../components/PhoneEditor";
 import { useAuth } from "../store/auth";
-import { normaliseRole } from "../components/RoleGate";
+import { normaliseRole, isManagerLevel } from "../components/RoleGate";
 import {
   copyPhoneTextOnly,
   copyPhoneImageOnly,
@@ -175,7 +175,7 @@ export default function Catalog() {
   const t = useT();
   const qc = useQueryClient();
   const rawRole = useAuth((s) => s.role);
-  const canEdit = normaliseRole(rawRole) === "manager";
+  const canEdit = isManagerLevel(rawRole);
   usePageHeader({ title: t("catalog.title"), subtitle: t("catalog.subtitle") }, [
     t("catalog.title"),
   ]);

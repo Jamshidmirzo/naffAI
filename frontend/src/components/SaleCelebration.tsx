@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import confetti from "canvas-confetti";
 import { api } from "../lib/api";
 import { useT } from "../lib/i18n";
+import { isSaleSoundMuted } from "../store/saleSound";
 
 /**
  * Peer-operator celebration overlay.
@@ -65,6 +66,60 @@ function isFresh(createdAt: string): boolean {
   return Date.now() - ts <= FRESH_WINDOW_MS;
 }
 
+/**
+ * Единственный финальный вариант аплодисментов — «office» (небольшая
+ * группа коллег, умеренная громкость). Выбран пользователем после
+ * A/B-прослушивания stadium/office/short на demo. Файл royalty-free
+ * Mixkit, нормализован к ≈-14 LUFS, лежит в `public/sounds/`.
+ */
+const APPLAUSE_SRC = "/sounds/applause-office.mp3";
+const APPLAUSE_VOLUME = 0.6;
+
+/**
+ * Проигрывает аплодисменты через Audio-элемент. Browsers блокируют
+ * autoplay без user-gesture — на polling-ветке .play() может реджектнуть
+ * с NotAllowedError; тихо проглатываем, без ошибки в консоли.
+ * Возвращаем Audio, чтобы caller мог остановить трек при досрочном
+ * закрытии overlay. Если пользователь нажал mute в Header — возвращаем
+ * null и не создаём Audio.
+ */
+function playApplause(): HTMLAudioElement | null {
+  if (typeof window === "undefined") return null;
+  if (isSaleSoundMuted()) return null;
+  try {
+    const audio = new Audio(APPLAUSE_SRC);
+    audio.volume = APPLAUSE_VOLUME;
+    audio.preload = "auto";
+    const p = audio.play();
+    if (p && typeof p.catch === "function") {
+      p.catch((err: unknown) => {
+        // autoplay-блокировка (NotAllowedError) — ожидаемо на polling-ветке
+        // без user-gesture. Любая другая причина тоже не повод шуметь.
+        if (typeof console !== "undefined") {
+          console.debug("[SaleCelebration] applause autoplay blocked:", err);
+        }
+      });
+    }
+    return audio;
+  } catch (err) {
+    if (typeof console !== "undefined") {
+      console.debug("[SaleCelebration] applause init failed:", err);
+    }
+    return null;
+  }
+}
+
+function stopApplause(audio: HTMLAudioElement | null) {
+  if (!audio) return;
+  try {
+    audio.pause();
+    audio.currentTime = 0;
+    audio.src = "";
+  } catch {
+    /* ignore */
+  }
+}
+
 function fireConfetti() {
   const shoot = (originX: number) => {
     confetti({
@@ -88,6 +143,9 @@ export function SaleCelebration() {
   const qc = useQueryClient();
   const shownIds = useRef<Set<number>>(new Set());
   const [current, setCurrent] = useState<QueueItem | null>(null);
+  // Текущий играющий Audio — чтобы вручную остановить при dismiss (×)
+  // или при истечении OVERLAY_MS, если файл длиннее.
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const q = useQuery<NotifResponse>({
     queryKey: ["notifications", "sale-celebration"],
@@ -137,8 +195,12 @@ export function SaleCelebration() {
       if (!current) {
         setCurrent(item);
         fireConfetti();
+        stopApplause(audioRef.current);
+        audioRef.current = playApplause();
         window.setTimeout(() => {
           setCurrent(null);
+          stopApplause(audioRef.current);
+          audioRef.current = null;
           markRead.mutate(item.id);
         }, OVERLAY_MS);
       } else {
@@ -194,6 +256,8 @@ export function SaleCelebration() {
           onClick={() => {
             const id = current.id;
             setCurrent(null);
+            stopApplause(audioRef.current);
+            audioRef.current = null;
             markRead.mutate(id);
           }}
           aria-label={t("sale_celebration.dismiss")}

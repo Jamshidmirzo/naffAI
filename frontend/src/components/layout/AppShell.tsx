@@ -131,6 +131,7 @@ function useSuperManagerGroups(t: (k: string) => string): SidebarGroup[] {
     {
       items: [
         { to: "/team/sales", label: t("nav.my_team_sales"), end: true },
+        { to: "/sales/pending", label: t("nav.sales_pending"), badgeKey: "salesPending" },
         { to: "/team/operators", label: t("nav.my_team_operators") },
         { to: "/team/managers", label: t("nav.my_managers") },
         { to: "/team/deleted-operators", label: t("nav.deleted_operators") },

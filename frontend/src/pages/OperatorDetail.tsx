@@ -4,7 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { AlertTriangle, ChevronRight, Copy, Download, Eye, EyeOff, History, KeyRound, MessageCircle, Pencil, QrCode, RefreshCw, ShieldOff, ShieldCheck, Target, Trash2, UserPlus } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../store/auth";
-import { normaliseRole } from "../components/RoleGate";
+import { normaliseRole, isManagerLevel } from "../components/RoleGate";
 import AttendanceStatsCard from "../components/AttendanceStatsCard";
 import { formatNumber, formatUZS } from "../lib/format";
 import {
@@ -132,7 +132,7 @@ export default function OperatorDetail() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const role = useAuth((s) => s.role);
-  const isManager = normaliseRole(role) === "manager";
+  const isManager = isManagerLevel(role);
   const PERIOD_TABS = usePeriodTabs(t);
 
   const [period, setPeriod] = useState<Period>("month");

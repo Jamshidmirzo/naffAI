@@ -42,6 +42,17 @@ export function isSuperManager(raw: string | null | undefined): boolean {
   return raw === "super_manager";
 }
 
+/**
+ * True если нормализованная роль ≥ manager (manager | super_manager).
+ * Используется вместо `normaliseRole(raw) === "manager"` в страницах,
+ * где super_manager должен иметь те же права что и manager (добавление
+ * операторов, подтверждение продаж, редактирование и т.д.).
+ */
+export function isManagerLevel(raw: string | null | undefined): boolean {
+  const role = normaliseRole(raw);
+  return role === "manager" || role === "super_manager";
+}
+
 export function RoleGate({ allow, children }: Props) {
   const rawRole = useAuth((s) => s.role);
   // Superadmin bypass: owner sees everything, incl. super_manager-only pages.
