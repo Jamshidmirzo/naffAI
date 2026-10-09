@@ -167,6 +167,33 @@ def test_fetch_sheet_preview_basic():
     assert len(r["sample_rows"]) == 2
 
 
+def test_fetch_sheet_preview_headerless():
+    # Sheet starts with raw lead data immediately on Row 1 (e.g. SRM OPER)
+    fake = _FakeClient(
+        worksheet="Aziz aka shetts",
+        rows=[
+            ["26 ultra", "Abror Axmedov", "+998933339495"],
+            ["14 pro", "Jahongir", "+998946669926"],
+        ],
+    )
+    with patch(
+        "apps.leads.integrations.google_sheets.preview.GoogleSheetsClient",
+        return_value=fake,
+    ):
+        r = fetch_sheet_preview("SID", 0)
+    assert r["sheet_title"] == "Aziz aka shetts"
+    assert r["headers"] == ["A", "B", "C"]
+    assert r["total_rows"] == 2
+    assert len(r["sample_rows"]) == 2
+    assert r["sample_rows"][0] == ["26 ultra", "Abror Axmedov", "+998933339495"]
+
+    # Verify suggest_column_map also automatically maps A/B/C
+    m = suggest_column_map(r["headers"])
+    assert m["product_hint"] == "A"
+    assert m["full_name"] == "B"
+    assert m["phone"] == "C"
+
+
 def test_fetch_sheet_preview_worksheet_not_found():
     fake = _FakeClient(worksheet=None)
     with patch(
