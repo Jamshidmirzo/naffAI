@@ -135,10 +135,14 @@ def sync_one(
                 if row_index > max_row:
                     max_row = row_index
 
-            if max_row > sheet_source.last_synced_row:
-                sheet_source_bump_watermark(
-                    sheet_source=sheet_source, last_row=max_row, synced_at=timezone.now()
-                )
+            actual_highest_row = max((int(r.get("__row__") or 0) for r in rows), default=0)
+            if actual_highest_row > 0 and actual_highest_row < max_row:
+                max_row = actual_highest_row
+
+            if max_row != sheet_source.last_synced_row:
+                sheet_source.last_synced_row = max_row
+                sheet_source.last_synced_at = timezone.now()
+                sheet_source.save(update_fields=["last_synced_row", "last_synced_at", "updated_at"])
 
             if sheet_source.last_sync_error:
                 sheet_source.last_sync_error = ""

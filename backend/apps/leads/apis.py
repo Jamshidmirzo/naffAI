@@ -1308,8 +1308,13 @@ class SheetSourceSyncNowApi(APIView):
                     status=429,
                 )
 
+        force = bool(
+            request.query_params.get("force") in ("1", "true", "True")
+            or request.data.get("force") in (True, "true", "1")
+        )
+
         try:
-            result = sync_single_source(src)
+            result = sync_single_source(src, force_full_scan=force)
         except GoogleSheetsUnavailable as exc:
             return Response(
                 {"detail": f"Google Sheets недоступен: {exc}"}, status=502

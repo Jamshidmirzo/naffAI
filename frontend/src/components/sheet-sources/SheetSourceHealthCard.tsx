@@ -45,13 +45,23 @@ export function SheetSourceHealthCard({ sourceId, fallbackName, onConfigure }: P
   });
 
   const sync = useMutation({
-    mutationFn: () => api.post(`/sheet-sources/${sourceId}/sync-now/`),
+    mutationFn: (force?: boolean) =>
+      api.post(`/sheet-sources/${sourceId}/sync-now/`, { force }),
     onSuccess: (r) => {
-      const d = r.data as { imported?: number; created?: number; error?: string };
+      const d = r.data as {
+        read?: number;
+        imported?: number;
+        created?: number;
+        merged?: number;
+        resynced?: number;
+        skipped?: number;
+      };
       toast.success(
-        t("sheet_src.health.sync_ok", {
-          n: String(d.created ?? d.imported ?? 0),
-        }),
+        t("sheet_src.health.sync_ok_detailed", {
+          created: String(d.created ?? 0),
+          read: String(d.read ?? 0),
+          merged: String(d.merged ?? 0),
+        }) || t("sheet_src.health.sync_ok", { n: String(d.created ?? d.imported ?? 0) }),
       );
       qc.invalidateQueries({ queryKey: ["sheet-source-stats", sourceId] });
       qc.invalidateQueries({ queryKey: ["sheet-sources"] });
@@ -62,11 +72,7 @@ export function SheetSourceHealthCard({ sourceId, fallbackName, onConfigure }: P
       };
       const detail =
         e?.response?.data?.detail || t("sheet_src.health.sync_failed");
-      if (e?.response?.status === 429) {
-        toast.error(detail);
-      } else {
-        toast.error(detail);
-      }
+      toast.error(detail);
     },
   });
 
@@ -150,19 +156,34 @@ export function SheetSourceHealthCard({ sourceId, fallbackName, onConfigure }: P
           <div>{t("sheet_src.health.leads_total", { n: String(s?.leads_total ?? 0) })}</div>
         </div>
       </div>
-      <button
-        className="nf-btn nf-btn--ghost text-[12px] flex items-center justify-center gap-1.5"
-        style={{ padding: "7px 10px" }}
-        onClick={() => sync.mutate()}
-        disabled={sync.isPending}
-      >
-        <RefreshCw
-          className={"w-3.5 h-3.5 " + (sync.isPending ? "animate-spin" : "")}
-        />
-        {sync.isPending
-          ? t("sheet_src.health.syncing")
-          : t("sheet_src.health.sync_now")}
-      </button>
+      <div className="flex items-center gap-1.5">
+        <button
+          className="nf-btn nf-btn--ghost flex-1 text-[12px] flex items-center justify-center gap-1.5"
+          style={{ padding: "7px 10px" }}
+          onClick={() => sync.mutate(false)}
+          disabled={sync.isPending}
+          title={t("sheet_src.health.sync_now_hint")}
+        >
+          <RefreshCw
+            className={"w-3.5 h-3.5 " + (sync.isPending ? "animate-spin" : "")}
+          />
+          {sync.isPending
+            ? t("sheet_src.health.syncing")
+            : t("sheet_src.health.sync_now")}
+        </button>
+        <button
+          className="nf-btn nf-btn--ghost text-[11px] px-2 py-1.5 text-muted hover:text-[color:var(--accent)]"
+          onClick={() => {
+            if (window.confirm(t("sheet_src.health.full_rescan_confirm"))) {
+              sync.mutate(true);
+            }
+          }}
+          disabled={sync.isPending}
+          title={t("sheet_src.health.full_rescan_title")}
+        >
+          {t("sheet_src.health.full_rescan_btn")}
+        </button>
+      </div>
       {status === "bad" && s?.last_sync_error && (
         <div>
           <button
