@@ -90,9 +90,8 @@ function SettingsRow() {
       <button className="btn btn-ghost btn-sq btn-sm" type="button" onClick={sound.toggle} aria-label={t("v2.nav.sound")} title={t("v2.nav.sound")}>
         {sound.muted ? <VolumeX className="ic" /> : <Volume2 className="ic" />}
       </button>
-      <button className="btn btn-ghost btn-sm" type="button" onClick={() => design.set("v1")} title={t("v2.nav.design.toOld")}>
+      <button className="btn btn-ghost btn-sq btn-sm" type="button" onClick={() => design.set("v1")} aria-label={t("v2.nav.design.toOld")} title={t("v2.nav.design.toOld")}>
         <Palette className="ic" />
-        <span className="xs">{t("v2.nav.design.toOld")}</span>
       </button>
     </div>
   );
