@@ -10,7 +10,8 @@ import { useNotificationStream } from "../../hooks/useNotificationStream";
 import { useT2 } from "../i18n";
 import { SideNav } from "./SideNav";
 import { OperatorOverlays } from "./OperatorOverlays";
-import CheckoutReminderBanner from "../../components/CheckoutReminderBanner";
+import CheckoutReminderBannerV2 from "../overlays/CheckoutReminderBannerV2";
+import BirthdayCelebrationV2 from "../overlays/BirthdayCelebrationV2";
 import { CommandPalette } from "./CommandPalette";
 
 /**
@@ -81,7 +82,8 @@ export function V2Shell() {
         <SideNav />
       </div>
       <div className="main-col">
-        {isOperator ? <CheckoutReminderBanner /> : null}
+        {isOperator ? <CheckoutReminderBannerV2 /> : null}
+        {isOperator ? <BirthdayCelebrationV2 /> : null}
         <CompatHeader />
         <Outlet />
       </div>

@@ -19,7 +19,7 @@ import {
   Search,
 } from "lucide-react";
 import { toast } from "../../components/ui";
-import AttendanceStatusWidget from "../../components/AttendanceStatusWidget";
+import AttendanceStatusV2 from "../overlays/AttendanceStatusV2";
 import { useCallbackWatcher } from "../../hooks/useCallbackWatcher";
 import { useLang } from "../../store/lang";
 import { useT2 } from "../i18n";
@@ -732,7 +732,7 @@ export default function MyLeads() {
                         </p>
                       </section>
                     ) : null}
-                    <AttendanceStatusWidget />
+                    <AttendanceStatusV2 />
                   </aside>
                 </div>
               ) : (
@@ -748,7 +748,7 @@ export default function MyLeads() {
                       setMode("list");
                     }}
                   />
-                  <AttendanceStatusWidget />
+                  <AttendanceStatusV2 />
                 </>
               )}
             </>
@@ -1604,7 +1604,7 @@ function BlockedView({
             </div>
           </section>
         ) : null}
-        <AttendanceStatusWidget />
+        <AttendanceStatusV2 />
       </aside>
     </div>
   );
@@ -1875,7 +1875,7 @@ function ListView(p: ListProps) {
       ) : null}
 
       <div style={{ maxWidth: 460 }}>
-        <AttendanceStatusWidget />
+        <AttendanceStatusV2 />
       </div>
     </>
   );
