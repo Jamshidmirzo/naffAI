@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Коллега продал</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="height: 900px; position: relative; overflow: hidden">
+<div aria-hidden="true"><dc-import name="OpMy" hint-size="100%,960px"></dc-import></div>
+<div class="scrim"></div>
+
+<div aria-hidden="true">
+<i style="position: absolute; left: 44%; top: 150px; width: 12px; height: 20px; border-radius: 2px; background: var(--brand); transform: rotate(24deg)"></i>
+<i style="position: absolute; left: 50%; top: 110px; width: 10px; height: 16px; border-radius: 2px; background: var(--warn-solid); transform: rotate(-30deg)"></i>
+<i style="position: absolute; left: 56%; top: 160px; width: 12px; height: 12px; border-radius: 50%; background: var(--ok-solid)"></i>
+<i style="position: absolute; left: 62%; top: 120px; width: 10px; height: 18px; border-radius: 2px; background: var(--hot-solid); transform: rotate(48deg)"></i>
+<i style="position: absolute; left: 68%; top: 200px; width: 12px; height: 20px; border-radius: 2px; background: var(--brand); transform: rotate(-12deg)"></i>
+<i style="position: absolute; left: 38%; top: 230px; width: 10px; height: 10px; border-radius: 50%; background: var(--hot-solid)"></i>
+<i style="position: absolute; left: 74%; top: 270px; width: 10px; height: 16px; border-radius: 2px; background: var(--ok-solid); transform: rotate(70deg)"></i>
+</div>
+
+<div style="position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; padding: 24px">
+<section class="card col g12" role="status" style="width: 460px; max-width: 100%; padding: 32px 28px 24px; align-items: center; text-align: center; box-shadow: var(--shadow); border: 0">
+<i class="ikat" style="height: 12px; align-self: stretch; margin: -32px -28px 8px; border-radius: 14px 14px 0 0" aria-hidden="true"></i>
+<span class="ava ava-xl" style="background: var(--ok-bg); color: var(--ok)">JT</span>
+<span class="lbl" style="color: var(--ok)">Новая продажа в команде</span>
+<h2 class="h1">Jasur Toshmatov продал</h2>
+<p class="c2" style="font-size: 16px">iPhone 15 Pro 256 GB</p>
+<span class="badge">Третья продажа Jasur сегодня</span>
+<div class="row g8" style="margin-top: 8px; width: 100%">
+<button class="btn" type="button" aria-label="Выключить аплодисменты"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h3l5 4V6L7 10zM16 9a4 4 0 0 1 0 6"></path></svg>Звук</button>
+<button class="btn btn-pri grow" type="button">Отлично</button>
+</div>
+<p class="xs c3">Окно закроется само через 4 секунды. Сумму продажи коллеги не видят.</p>
+</section>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light' };
+}
+}
+</script>
+</body>
+</html>

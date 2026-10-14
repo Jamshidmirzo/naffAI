@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Подписчики бота</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 960px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="botsubs" hint-size="248px,960px"></dc-import></div>
+<div class="main-col">
+<header class="top"><a class="btn btn-ghost btn-sq" href="MgBot.dc.html" aria-label="Назад к боту"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a><div class="col"><h1 class="h1">Подписчики бота</h1><span class="xs c3">Кто получает автоматические рассылки менеджера</span></div><span class="grow"></span><span class="s c3"><span class="num">46</span> чатов · <span class="num">2</span> заблокировали бота</span></header>
+<main class="page">
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: 1.4fr 150px 1.2fr 80px 110px 140px"><span>Чат</span><span>Телефон</span><span>Кто это</span><span>Язык</span><span>Слушает бот</span><span>Последняя активность</span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+<div class="tr" style="grid-template-columns: 1.4fr 150px 1.2fr 80px 110px 140px">
+<span class="row g6" style="min-width: 0"><span class="s w6 trunc">{{r.chat}}</span><sc-if value="{{r.badge}}" hint-placeholder-val="{{ false }}"><span class="badge {{r.bTone}}">{{r.badge}}</span></sc-if></span>
+<span class="num s c2">{{r.phone}}</span>
+<span class="s">{{r.who}}</span>
+<span class="s c3">{{r.lang}}</span>
+<button class="switch {{r.on}}" type="button" aria-label="Получает рассылку"><i></i></button>
+<span class="s c3">{{r.seen}}</span>
+</div>
+</sc-for>
+</section>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start">
+<div class="col g8"><span class="when">Пока никто не подписан</span>
+<section class="card"><div class="empty"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20a6.5 6.5 0 0 1 13 0"></path></svg><span class="s w6" style="color: var(--ink)">Пока никто не подписан</span><span class="s">Дайте менеджерам и операторам ссылку на @naffai_bot и попросите нажать /start — они появятся в этой таблице автоматически.</span></div></section></div>
+<div class="col g8"><span class="when">Переключатель «Слушает бот»</span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Сохранено</span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: #FF8FA9"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg>Не удалось сохранить: Forbidden</span></div>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+const r = (chat, phone, who, lang, on, seen, badge) => ({ chat: chat, phone: phone, who: who, lang: lang, on: on ? 'is-on' : '', seen: seen, badge: badge, bTone: badge === 'Заблокирован' ? 'b-bad' : '' });
+return {
+theme: this.props.theme ?? 'light',
+rows: [
+r('@gulnoza_k', '+998 90 777 11 00', 'Gulnoza Karimova · Оператор', 'UZ', true, '5 мин назад', ''),
+r('@jasur_t', '+998 97 210 33 44', 'Jasur Toshmatov · Оператор', 'UZ', true, '12 мин назад', ''),
+r('@kamola_a', '+998 93 555 33 11', 'Kamola Ahmedova · Менеджер', 'RU', true, '1 ч назад', ''),
+r('@nilufar_s', '+998 93 707 70 07', 'Nilufar Saidova · Оператор', 'RU', true, '3 ч назад', ''),
+r('@shahlo_k', '+998 99 140 41 41', 'Shahlo Komilova · Оператор', 'UZ', false, '3 дн назад', 'Отписан'),
+r('@bahodir_m', '+998 97 400 18 18', '—', 'UZ', false, '14 дн назад', 'Заблокирован'),
+r('@otabek_e', '+998 91 300 22 11', 'Otabek Ergashev · Оператор', 'UZ', true, '1 дн назад', ''),
+r('@bobur_x', '+998 90 100 10 10', 'Bobur Xolmatov · Менеджер', 'RU', true, '2 ч назад', '')
+]
+};
+}
+}
+</script>
+</body>
+</html>

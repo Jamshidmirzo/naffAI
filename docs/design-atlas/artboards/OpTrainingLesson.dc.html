@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Урок курса</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1000px">
+<div class="rail-wrap"><dc-import name="SideNav" who="operator" at="training" hint-size="84px,1000px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<a class="btn btn-ghost btn-sq" href="OpTraining.dc.html" aria-label="Назад к курсам"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
+<h1 class="h1">Возражение «дорого»</h1>
+<span class="badge">Не пройден</span>
+</header>
+
+<main class="page">
+<div class="split">
+<div class="list col g16">
+<div class="ph" style="aspect-ratio: 16 / 9; border-radius: 14px"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM10 9l5 3-5 3z"></path></svg><span class="s w6" style="color: var(--ink-2)">Видео 7 мин</span><span>Если видео не открылось, откройте его в новой вкладке</span></div>
+<div class="well row between"><span class="row g8 s"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5"></path></svg>Скрипт ответа на «дорого».pdf · 1,2 МБ</span><button class="btn btn-sm" type="button">Скачать</button></div>
+<section class="card col">
+<div class="card-h"><span class="h3">Комментарии</span><span class="xs c3">3</span></div>
+<div class="li"><span class="ava ava-s">NS</span><span class="s grow">Пример со скидкой на чехол очень помог, спасибо</span><span class="xs c3">вчера</span></div>
+<div class="row g8" style="padding: 12px 16px"><input class="input grow" type="text" placeholder="Ваш комментарий" aria-label="Ваш комментарий"><button class="btn" type="button">Отправить</button></div>
+</section>
+</div>
+
+<aside class="panel card col">
+<div class="card-h"><span class="h3">Тест</span><span class="xs c3">отвечено <span class="num">2</span> из <span class="num">3</span></span></div>
+<div class="col g16" style="padding: 16px 20px">
+<sc-for list="{{qs}}" as="q" hint-placeholder-count="3">
+<fieldset class="col g8" style="border: 0; margin: 0; padding: 0">
+<legend class="s w6" style="margin-bottom: 8px">{{q.n}}. {{q.text}}</legend>
+<sc-for list="{{q.opts}}" as="o" hint-placeholder-count="3">
+<label class="row g8 s" style="padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line)"><input type="radio" name="{{q.name}}" checked="{{o.on}}">{{o.text}}</label>
+</sc-for>
+</fieldset>
+</sc-for>
+</div>
+<hr class="hr">
+<div class="col g8" style="padding: 14px 20px 18px">
+<button class="btn btn-pri" type="button" disabled="{{yes}}">Отправить ответы</button>
+<span class="xs c3">Кнопка станет активной, когда вы ответите на все вопросы. Не отвечен вопрос 3.</span>
+</div>
+</aside>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+const q = (n, text, opts, picked) => ({ n: n, name: 'q' + n, text: text, opts: opts.map((t, i) => ({ text: t, on: i === picked })) });
+return {
+theme: this.props.theme ?? 'light',
+yes: true,
+qs: [
+q(1, 'Клиент говорит «дорого». С чего начать ответ?', ['Сразу дать скидку', 'Назвать ежемесячный платёж', 'Предложить другую модель'], 1),
+q(2, 'Какой срок рассрочки предлагать первым?', ['3 месяца', '12 месяцев', '24 месяца'], 1),
+q(3, 'Когда отправлять фото договора?', ['В конце смены', 'Сразу после продажи', 'Когда попросит менеджер'], -1)
+]
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Общие состояния</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1500px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="row between" style="align-items: flex-end"><div class="col g6"><h1 class="h1">Общие состояния</h1><p class="c3">Одинаковые на всех страницах и для всех ролей. Внизу каждой карточки — как это работает сейчас.</p></div></div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: stretch">
+<section class="card col">
+<div class="card-h"><span class="h3">Загрузка</span><span class="xs c3">скелет по форме страницы</span></div>
+<div class="col g12" style="padding: 16px 20px">
+<div class="row g12"><i class="sk" style="display: block; height: 64px; flex: 1 1 0"></i><i class="sk" style="display: block; height: 64px; flex: 1 1 0"></i><i class="sk" style="display: block; height: 64px; flex: 1 1 0"></i></div>
+<div class="row g12"><i class="sk" style="display: block; width: 32px; height: 32px; border-radius: 50%"></i><i class="sk" style="display: block; height: 12px; width: 170px"></i><i class="sk" style="display: block; height: 12px; flex: 1 1 0"></i><i class="sk" style="display: block; height: 22px; width: 80px"></i></div><div class="row g12"><i class="sk" style="display: block; width: 32px; height: 32px; border-radius: 50%"></i><i class="sk" style="display: block; height: 12px; width: 170px"></i><i class="sk" style="display: block; height: 12px; flex: 1 1 0"></i><i class="sk" style="display: block; height: 22px; width: 80px"></i></div><div class="row g12"><i class="sk" style="display: block; width: 32px; height: 32px; border-radius: 50%"></i><i class="sk" style="display: block; height: 12px; width: 170px"></i><i class="sk" style="display: block; height: 12px; flex: 1 1 0"></i><i class="sk" style="display: block; height: 22px; width: 80px"></i></div>
+</div>
+<div class="row g8" style="padding: 10px 20px; border-top: 1px solid var(--line); margin-top: auto"><span class="lbl">Сейчас в коде</span><span class="xs c3">«Загрузка…» или нули в карточках</span></div>
+</section>
+<section class="card col">
+<div class="card-h"><span class="h3">Загрузка дольше 10 секунд</span><span class="xs c3">не оставляем человека ждать вслепую</span></div>
+<div class="col g12" style="padding: 16px 20px">
+<div class="row g12"><i class="sk" style="display: block; width: 32px; height: 32px; border-radius: 50%"></i><i class="sk" style="display: block; height: 12px; width: 170px"></i><i class="sk" style="display: block; height: 12px; flex: 1 1 0"></i><i class="sk" style="display: block; height: 22px; width: 80px"></i></div><div class="row g12"><i class="sk" style="display: block; width: 32px; height: 32px; border-radius: 50%"></i><i class="sk" style="display: block; height: 12px; width: 170px"></i><i class="sk" style="display: block; height: 12px; flex: 1 1 0"></i><i class="sk" style="display: block; height: 22px; width: 80px"></i></div>
+<div class="banner b-info"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"></path></svg><span class="col g4"><span class="w6">Всё ещё загружаем</span><span>Сервер отвечает медленнее обычного.</span></span></div>
+<div class="row g8"><button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4M4 13a8 8 0 0 0 14 5l2-2M20 20v-4h-4"></path></svg>Повторить</button></div>
+</div>
+<div class="row g8" style="padding: 10px 20px; border-top: 1px solid var(--line); margin-top: auto"><span class="lbl">Сейчас в коде</span><span class="xs c3">«Загрузка…» висит навсегда, если запрос упал</span></div>
+</section>
+<section class="card col">
+<div class="card-h"><span class="h3">Пусто</span><span class="xs c3">почему пусто и что сделать</span></div>
+<div class="empty" style="flex: 1 1 0; justify-content: center">
+<span class="icon-tile" style="width: 56px; height: 56px; border-radius: 14px"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"></path></svg></span>
+<span class="h3" style="color: var(--ink)">За 13 октября продаж нет</span>
+<span class="s" style="max-width: 340px">Фильтр: партнёр «TBC», оператор Aziz Qodirov. Попробуйте другой день или сбросьте фильтры.</span>
+<button class="btn" type="button">Сбросить фильтры</button>
+</div>
+<div class="row g8" style="padding: 10px 20px; border-top: 1px solid var(--line); margin-top: auto"><span class="lbl">Сейчас в коде</span><span class="xs c3">пустое состояние мелькает до загрузки</span></div>
+</section>
+<section class="card col">
+<div class="card-h"><span class="h3">Ошибка загрузки</span><span class="xs c3">что случилось и как исправить</span></div>
+<div class="col g12" style="padding: 20px">
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span class="col g4"><span class="w6">Не удалось загрузить лиды</span><span>Сервер не ответил за 30 секунд. Ваши лиды на месте, повторите через минуту.</span></span></div>
+<div class="row g8"><button class="btn btn-pri" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4M4 13a8 8 0 0 0 14 5l2-2M20 20v-4h-4"></path></svg>Повторить</button><span class="s c3">Если ошибка повторяется, напишите менеджеру.</span></div>
+</div>
+<div class="row g8" style="padding: 10px 20px; border-top: 1px solid var(--line); margin-top: auto"><span class="lbl">Сейчас в коде</span><span class="xs c3">общий текст «Ошибка» или тишина</span></div>
+</section>
+<section class="card col">
+<div class="card-h"><span class="h3">Нет доступа</span><span class="xs c3">раздел есть, но не для этой роли</span></div>
+<div class="empty" style="flex: 1 1 0; justify-content: center">
+<span class="icon-tile t-warn" style="width: 56px; height: 56px; border-radius: 14px"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5zM12 15v2"></path></svg></span>
+<span class="h3" style="color: var(--ink)">Этот раздел только для менеджера</span>
+<span class="s" style="max-width: 360px">«Продажи» видят менеджеры и супер-менеджер. Ваши продажи — в разделе «Мои продажи».</span>
+<div class="row g8"><a class="btn btn-pri" href="OpSales.dc.html">Мои продажи</a><a class="btn" href="OpMy.dc.html">К моим лидам</a></div>
+</div>
+<div class="row g8" style="padding: 10px 20px; border-top: 1px solid var(--line); margin-top: auto"><span class="lbl">Сейчас в коде</span><span class="xs c3">молча возвращает на главную или короткий тост «Доступ запрещён»</span></div>
+</section>
+<section class="card col">
+<div class="card-h"><span class="h3">Сессия истекла</span><span class="xs c3">объясняем, почему снова вход</span></div>
+<div class="col g12" style="padding: 20px">
+<div class="row g12" style="align-items: flex-start"><span class="icon-tile t-info" style="width: 48px; height: 48px; border-radius: 12px; flex: none"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"></path></svg></span><span class="col g4"><span class="h3">Сессия истекла</span><span class="s c2">Вы давно не заходили или вошли с другого устройства. Войдите снова — откроется та же страница.</span></span></div>
+<div class="field"><label for="ss1">Телефон</label><div class="row g8"><span class="pfx" style="height: 40px; font-size: 14px; border-radius: 9px" aria-hidden="true">+998</span><input class="input num grow" id="ss1" type="tel" value="90 123 45 67"></div></div>
+<div class="row g8"><button class="btn btn-pri" type="button">Войти снова</button><span class="xs c3">вернём на /sales/pending</span></div>
+</div>
+<div class="row g8" style="padding: 10px 20px; border-top: 1px solid var(--line); margin-top: auto"><span class="lbl">Сейчас в коде</span><span class="xs c3">выкидывает на /login без сообщения</span></div>
+</section>
+<section class="card col">
+<div class="card-h"><span class="h3">Нет связи с сервером</span><span class="xs c3">полоса сверху, работа не теряется</span></div>
+<div class="col g12" style="padding: 20px">
+<div class="banner b-warn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0M12 19h.01M3 3l18 18"></path></svg><span class="col g4"><span class="w6">Нет связи с сервером</span><span>Пробуем снова через 5 секунд. Форма продажи сохранена в черновике.</span></span></div>
+<div class="row g12" style="align-items: center"><span class="icon-tile" style="width: 48px; height: 48px; border-radius: 12px"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0M12 19h.01M3 3l18 18"></path></svg></span><span class="col g4"><span class="s w6">Итог звонка не отправлен</span><span class="xs c3">отправим сам, когда связь вернётся</span></span><span class="grow"></span><span class="badge b-warn">в очереди · 1</span></div>
+<div class="row g8"><button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4M4 13a8 8 0 0 0 14 5l2-2M20 20v-4h-4"></path></svg>Проверить сейчас</button></div>
+</div>
+<div class="row g8" style="padding: 10px 20px; border-top: 1px solid var(--line); margin-top: auto"><span class="lbl">Сейчас в коде</span><span class="xs c3">запросы падают с общим текстом ошибки</span></div>
+</section>
+<section class="card col">
+<div class="card-h"><span class="h3">Нет такой страницы</span><span class="xs c3">вместо пустого экрана</span></div>
+<div class="empty" style="flex: 1 1 0; justify-content: center">
+<span class="display" style="font-size: 44px; line-height: 52px; color: var(--ink-4)">404</span>
+<span class="h3" style="color: var(--ink)">Такой страницы нет</span>
+<span class="s" style="max-width: 360px">Ссылка устарела или раздел переехал. Табло теперь в меню «Инструменты».</span>
+<div class="row g8"><a class="btn btn-pri" href="OpMy.dc.html">К моим лидам</a><a class="btn" href="OpBoard.dc.html">Открыть табло</a></div>
+</div>
+<div class="row g8" style="padding: 10px 20px; border-top: 1px solid var(--line); margin-top: auto"><span class="lbl">Сейчас в коде</span><span class="xs c3">маршрута 404 нет, страница пустая</span></div>
+</section>
+<section class="card col">
+<div class="card-h"><span class="h3">Уведомления</span><span class="xs c3">снизу справа, 4 секунды, у части есть действие</span></div>
+<div class="col g8" style="padding: 20px; align-items: flex-start">
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Продажа отправлена на подтверждение<span class="t-act">Открыть</span></span>
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--bad-solid)"><path d="M6 6l12 12M18 6L6 18"></path></svg>Не удалось скачать Excel<span class="t-act">Повторить</span></span>
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--warn-solid)"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg>Нет прав на это действие: обратитесь к менеджеру</span>
+</div>
+<div class="row g8" style="padding: 10px 20px; border-top: 1px solid var(--line); margin-top: auto"><span class="lbl">Сейчас в коде</span><span class="xs c3">тёмная пилюля снизу по центру, 2,4 секунды</span></div>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light' };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Каталог: телефоны</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1280px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="catalog" hint-size="248px,1280px"></dc-import></div>
+<div class="main-col">
+<header class="top">
+<h1 class="h1">Каталог и рассрочка</h1>
+<div class="seg"><a class="is-on" href="MgCatalog.dc.html" aria-current="page">Телефоны</a><a href="MgCatalogMore.dc.html">Тарифы, банки, тексты</a></div>
+<span class="grow"></span>
+<div class="inwrap" style="width: 240px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg><input class="input" type="search" placeholder="Поиск по бренду или модели" aria-label="Поиск по каталогу"></div>
+<button class="btn btn-pri" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Новый телефон</button>
+</header>
+<main class="page">
+<div class="row g8"><button class="chip is-on" type="button">Все <span class="n">24</span></button><button class="chip" type="button">В наличии <span class="n">15</span></button><button class="chip" type="button">Под заказ <span class="n">6</span></button><button class="chip" type="button">Нет <span class="n">3</span></button><button class="chip" type="button">Скрыты от операторов <span class="n">2</span></button><span class="badge b-info" style="height: 20px">новое</span></div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+<sc-for list="{{phones}}" as="p" hint-placeholder-count="8">
+<section class="card col" style="overflow: hidden; opacity: {{p.op}}">
+<div class="ph" style="height: 140px; border-radius: 0; border: 0; border-bottom: 1px solid var(--line); position: relative" title="Кликните — скопируется в буфер">{{p.cover}}<span class="row g4" style="position: absolute; bottom: 8px; left: 0; right: 0; justify-content: center"><sc-for list="{{p.dots}}" as="d" hint-placeholder-count="4"><i style="display: block; width: 6px; height: 6px; border-radius: 50%; background: {{d}}"></i></sc-for></span><span class="num xs" style="position: absolute; top: 8px; right: 8px; padding: 1px 6px; border-radius: 5px; background: var(--surface)">{{p.cnt}}</span></div>
+<div class="col g8" style="padding: 12px 14px 14px">
+<div class="row between g8" style="align-items: flex-start"><span class="col" style="min-width: 0"><span class="h3 trunc">{{p.name}}</span><span class="xs c3 num">{{p.mem}}</span></span><span class="badge {{p.tone}}">{{p.stock}}</span></div>
+<div class="row g4 wrap"><sc-for list="{{p.colors}}" as="c" hint-placeholder-count="3"><span class="row g4 xs" style="padding: 1px 7px; border-radius: 99px; background: var(--surface-3)"><i style="display: block; width: 9px; height: 9px; border-radius: 50%; background: {{c.hex}}; border: 1px solid var(--line-2)"></i>{{c.n}}</span></sc-for></div>
+<span class="num w6" style="font-size: 17px">{{p.price}} <span class="xs c3">сум</span></span>
+<div class="col g4"><span class="lbl" style="font-size: 10px">Рассрочка</span><div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px"><sc-for list="{{p.inst}}" as="i" hint-placeholder-count="3"><span class="col" style="padding: 5px 4px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); text-align: center"><span class="xs w6">{{i.m}} мес</span><span class="num" style="font-size: 11px">{{i.v}}</span><span class="c3" style="font-size: 10px">сум/мес</span></span></sc-for></div></div>
+<sc-if value="{{p.hidden}}" hint-placeholder-val="{{ false }}"><span class="badge" style="align-self: flex-start">скрыт от операторов</span></sc-if>
+<div class="row g4"><button class="btn btn-sm grow" type="button">Текст</button><button class="btn btn-sm grow" type="button" disabled="{{p.noPhoto}}">Фото</button><button class="btn btn-sm grow" type="button">Marketing</button></div>
+<div class="row g4" style="border-top: 1px solid var(--line); padding-top: 8px"><a class="btn btn-sm btn-ghost grow" href="MgSheetCatalogBot.dc.html">Изменить</a><button class="btn btn-sm btn-ghost" type="button" title="{{p.toggleT}}">{{p.toggle}}</button><button class="btn btn-sm btn-ghost btn-sq" type="button" aria-label="Удалить {{p.name}}" style="color: var(--bad)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13"></path></svg></button></div>
+</div>
+</section>
+</sc-for>
+</div>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start">
+<div class="col g8"><span class="when">Каталог пуст</span><section class="card"><div class="empty"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18H7zM11 18h2"></path></svg><span class="s w6" style="color: var(--ink)">Каталог пуст</span><span class="s">Добавьте первый телефон — модель, цвета, цена, обложка.</span></div></section></div>
+<div class="col g8"><span class="when">Копирование</span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Marketing-текст скопирован в буфер</span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: #FF8FA9"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg>Нет фото</span>
+<span class="xs c3">«Удалить» спрашивает «Удалить Honor X9b?», затем тост «Удалено».</span></div>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1280}}'>
+class Component extends DCLogic {
+renderVals() {
+const sp = (n) => String(Math.round(n / 1000) * 1000).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const tiers = [[3, 7], [6, 14], [12, 28]];
+const C = { blk: { n: 'Black Titanium', hex: '#2B2B2E' }, nat: { n: 'Natural', hex: '#C9C2B6' }, blue: { n: 'Blue', hex: '#3A4E7A' }, wh: { n: 'White', hex: '#F4F4F2' }, vio: { n: 'Violet', hex: '#7D6BB0' }, grn: { n: 'Mint', hex: '#A9D8C2' }, gold: { n: 'Gold', hex: '#D8B66A' } };
+const p = (name, mem, price, stock, hidden, colors, photos) => ({ name: name, mem: mem, price: sp(price), stock: stock, tone: stock === 'В наличии' ? 'b-ok' : stock === 'Под заказ' ? 'b-warn' : '', hidden: hidden, op: hidden ? '.6' : '1', toggle: hidden ? 'Показать' : 'Скрыть', toggleT: hidden ? 'Показать операторам' : 'Скрыть от операторов', cnt: photos ? '1 / ' + photos : '0 фото', cover: photos ? 'Обложка' : 'Нет фото', photos: photos || 0, noPhoto: !photos, dots: Array.from({ length: Math.min(photos || 1, 5) }, (x, i) => i === 0 ? 'var(--brand)' : 'var(--line-2)'), colors: colors.map((k) => C[k]), inst: tiers.map((t) => ({ m: t[0], v: sp(price * (1 + t[1] / 100) / t[0]) })) });
+return {
+theme: this.props.theme ?? 'light',
+phones: [
+p('Apple iPhone 15 Pro', '256GB / 8GB RAM', 14500000, 'В наличии', false, ['blk', 'nat', 'blue'], 5),
+p('Apple iPhone 15', '128GB / 6GB RAM', 12700000, 'В наличии', false, ['blk', 'blue'], 4),
+p('Samsung Galaxy S24', '256GB / 8GB RAM', 11900000, 'В наличии', false, ['vio', 'blk'], 3),
+p('Samsung Galaxy A55', '128GB / 8GB RAM', 5200000, 'Под заказ', false, ['blue', 'wh'], 2),
+p('Xiaomi Redmi Note 13 Pro', '256GB / 8GB RAM', 4100000, 'В наличии', false, ['blk', 'grn'], 3),
+p('Honor X9b', '256GB / 12GB RAM', 3900000, 'Под заказ', false, ['blk'], 0),
+p('Apple iPhone 12', '64GB / 4GB RAM', 6900000, 'Нет', true, ['wh'], 1),
+p('Samsung Galaxy A34', '128GB / 6GB RAM', 3600000, 'Нет', true, ['gold', 'blk'], 2)
+]
+};
+}
+}
+</script>
+</body>
+</html>

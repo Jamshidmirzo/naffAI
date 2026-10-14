@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Мои лиды · список</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 960px">
+<div class="rail-wrap"><dc-import name="SideNav" who="operator" at="my" hint-size="84px,960px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Мои лиды</h1>
+<div class="seg"><a href="OpMy.dc.html">Фокус</a><a class="is-on" href="OpMyList.dc.html" aria-current="page">Список</a></div>
+<span class="badge b-ok" style="height: 28px"><i class="dot"></i>На смене <span class="num">02:15:08</span></span>
+<span class="grow"></span>
+<div class="inwrap" style="width: 280px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg><input class="input" type="search" placeholder="Имя, телефон или модель" aria-label="Поиск лидов"></div>
+<a class="btn btn-pri" href="OpSale.dc.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Новая продажа</a>
+</header>
+
+<main class="page" style="gap: 14px">
+<div class="row between wrap g12">
+<div class="tabs" style="border-bottom: 0">
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="3"><button class="tab {{t.cls}}" type="button" onClick="{{t.pick}}">{{t.label}} <span class="cnt cnt-mute">{{t.n}}</span></button></sc-for>
+</div>
+<div class="row g8 wrap">
+<button class="chip is-on" type="button">Все дни <span class="n">6</span></button>
+<button class="chip" type="button">Сегодня <span class="n">3</span></button>
+<button class="chip" type="button">Вчера <span class="n">2</span></button>
+<button class="chip" type="button">12.10 <span class="n">1</span></button>
+<select class="input" aria-label="Статус" style="width: 180px; height: 32px; font-size: 13px; border-radius: 99px"><option>Все статусы</option><option>Новый</option><option>Callback</option></select>
+</div>
+</div>
+
+<sc-if value="{{closed}}" hint-placeholder-val="{{ false }}">
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: 1.4fr 1.2fr 1fr 1fr"><span>Лид</span><span>Товар</span><span>Итог</span><span>Закрыт</span></div>
+<sc-for list="{{closedRows}}" as="r" hint-placeholder-count="5">
+<div class="tr" style="grid-template-columns: 1.4fr 1.2fr 1fr 1fr; color: var(--ink-2)">
+<span class="col" style="min-width: 0"><span class="w6 trunc">{{r.name}}</span><span class="num xs c3">{{r.phone}}</span></span>
+<span class="trunc">{{r.product}}</span>
+<span><span class="badge {{r.tone}}"><i class="dot"></i>{{r.status}}</span></span>
+<span class="s c3">{{r.at}}</span>
+</div>
+</sc-for>
+</section>
+</sc-if>
+
+<sc-if value="{{open}}" hint-placeholder-val="{{ true }}">
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+<section class="card tbl">
+<div class="card-h" style="min-height: 44px"><span class="h3">{{g.title}}</span><span class="xs c3">{{g.note}}</span></div>
+<sc-for list="{{g.rows}}" as="r" hint-placeholder-count="3">
+<div class="tr" style="grid-template-columns: 1.4fr 1.2fr 160px 1.5fr 52px; min-height: 60px">
+<a class="col" href="OpMy.dc.html" style="min-width: 0"><span class="w6 trunc">{{r.name}}</span><span class="num xs c3">{{r.phone}}</span></a>
+<span class="trunc">{{r.product}}</span>
+<span class="row g4 wrap"><span class="badge {{r.tone}}"><i class="dot"></i>{{r.status}}</span><sc-if value="{{r.hot}}" hint-placeholder-val="{{ false }}"><span class="badge b-hot">{{r.hot}}</span></sc-if></span>
+<span class="s c3 trunc">{{r.meta}}</span>
+<a class="btn btn-ok btn-sq" href="OpMy.dc.html" aria-label="Позвонить: {{r.name}}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"></path></svg></a>
+</div>
+</sc-for>
+</section>
+</sc-for>
+</sc-if>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+const tab = (this.state && this.state.tab) || 'active';
+const r = (name, phone, product, status, tone, hot, meta) => ({ name: name, phone: phone, product: product, status: status, tone: tone, hot: hot, meta: meta });
+const tabs = [['active', 'Активные', 6], ['postponed', 'Отложенные', 2], ['closed', 'Закрытые', 14]].map((t) => ({ label: t[1], n: t[2], cls: t[0] === tab ? 'is-on' : '', pick: () => this.setState({ tab: t[0] }) }));
+return {
+theme: this.props.theme ?? 'light',
+tabs: tabs,
+open: tab !== 'closed',
+closed: tab === 'closed',
+groups: tab === 'postponed' ? [
+{ title: 'Отложенные', note: 'вернутся по кнопке «Вернуть»', rows: [
+r('Otabek Ergashev', '+998 94 300 40 50', 'Samsung Galaxy A35', 'Отложен', '', '', 'причина: «после обеда»'),
+r('Feruza Hamidova', '+998 97 515 30 30', 'iPhone 13 128 GB', 'Отложен', '', '', 'причина: «ждёт зарплату»')
+] }
+] : [
+{ title: 'Сегодня · 3', note: 'новые и назначенные сегодня', rows: [
+r('Sardor Aliyev', '+998 90 123 45 67', 'iPhone 15 Pro 256 GB', 'Новый', 'b-info', 'ТЕЗ 12:40', 'пришёл в 14:02 из Instagram'),
+r('Dilnoza Yusupova', '+998 93 456 78 90', 'Samsung Galaxy S24', 'Callback', 'b-info', '', 'перезвонить в 16:30 · звонков 2'),
+r('Jasur Toshmatov', '+998 97 111 22 33', 'Redmi Note 13', 'Не ответил 1', '', '', 'гудки в 11:40')
+] },
+{ title: 'Вчера · 2', note: 'звонили вчера, итог ещё не финальный', rows: [
+r('Madina Rahimova', '+998 99 555 01 02', 'iPhone 13 128 GB', 'Показалось дорого', 'b-hot', '', 'вернулась в работу в 09:30'),
+r('Bekzod Nazarov', '+998 91 700 00 11', 'Honor X9b', 'Телефон включён', 'b-info', '', 'вчера 18:05 не ответил')
+] },
+{ title: '12.10 · 1', note: 'старше двух дней', rows: [
+r('Без имени', '+998 95 010 20 30', 'Модель не указана', 'Callback', 'b-bad', '', 'перезвон просрочен на 2 дня')
+] }
+],
+closedRows: [
+{ name: 'Aziz Qodirov', phone: '+998 90 404 55 66', product: 'iPhone 14 128 GB', status: 'Продажа', tone: 'b-ok', at: 'сегодня 12:30' },
+{ name: 'Lola Karimova', phone: '+998 95 120 90 90', product: 'Samsung Galaxy S24', status: 'Купил в другом месте', tone: 'b-bad', at: 'сегодня 11:05' },
+{ name: 'Sanjar Pulatov', phone: '+998 94 610 23 23', product: 'Honor X9b', status: 'Неверный номер', tone: 'b-bad', at: 'вчера 18:40' },
+{ name: 'Nilufar Saidova', phone: '+998 93 707 70 07', product: 'Samsung Galaxy A55', status: 'Продажа', tone: 'b-ok', at: 'вчера 17:05' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

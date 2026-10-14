@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Набор окон</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1600px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+
+<div class="col g6">
+<h1 class="h1">Набор окон</h1>
+<p class="c3">Одинаковые для всех разделов. Заменяют системные окна браузера: у каждого заголовок, крестик, кнопки внизу справа и ошибка внутри окна.</p>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; align-items: start">
+
+<div class="col g8">
+<span class="when">Обычное подтверждение · массовые действия</span>
+<section class="dlg" role="dialog" aria-labelledby="d1">
+<div class="dlg-h"><h2 class="h2" id="d1">Раздать 7 лидов поровну?</h2><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b"><p class="s c2">Лиды получат 9 операторов на смене без паузы и без просроченных перезвонов. Каждому достанется 0–1 лид.</p></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Раздать 7 лидов</button></div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Опасное действие с причиной</span>
+<section class="dlg" role="dialog" aria-labelledby="d2">
+<div class="dlg-h"><h2 class="h2" id="d2" style="color: var(--bad)">Удалить Javlon Sobirov?</h2><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b">
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>14 продаж будут помечены удалёнными, у 3 общих продаж вычтется его доля. Если он может вернуться, лучше деактивировать.</span></div>
+<div class="field"><label for="d2r">Причина удаления</label><textarea class="input is-bad" id="d2r" rows="2">Уволился</textarea><span class="err">Нужно ещё 2 символа: минимум 10</span></div>
+</div>
+<div class="dlg-f"><button class="btn btn-ghost" type="button">Деактивировать вместо этого</button><span class="grow"></span><button class="btn" type="button">Отмена</button><button class="btn btn-danger" type="button" disabled="{{yes}}">Удалить</button></div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Пароль показывается один раз</span>
+<section class="dlg" role="dialog" aria-labelledby="d3">
+<div class="dlg-h"><div class="col g4"><h2 class="h2" id="d3">Учётная запись создана</h2><span class="s c3">Gulnoza Karimova · оператор</span></div></div>
+<div class="dlg-b">
+<div class="banner b-warn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3"></path></svg><span>Сохраните пароль сейчас. Позже его можно будет только сбросить.</span></div>
+<div class="well row between"><span class="col"><span class="xs c3">Логин</span><span class="num w6">+998907771100</span></span><button class="btn btn-sm" type="button">Скопировать</button></div>
+<div class="well row between"><span class="col"><span class="xs c3">Пароль</span><span class="num w6" style="font-size: 17px">Kq7-4xT-92m</span></span><button class="btn btn-sm" type="button">Скопировать</button></div>
+<label class="row g8 s"><input class="check" type="checkbox">Я сохранил пароль</label>
+</div>
+<div class="dlg-f"><span class="xs c3 grow">Окно не закроется кликом мимо</span><button class="btn btn-pri" type="button" disabled="{{yes}}">Готово</button></div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Вход в раздел под PIN</span>
+<section class="dlg" role="dialog" aria-labelledby="d4">
+<div class="dlg-h"><div class="col g4"><h2 class="h2" id="d4">Введите PIN</h2><span class="s c3">Раздел «Посещаемость» защищён общим 4-значным PIN</span></div></div>
+<div class="dlg-b">
+<div class="row g8" style="justify-content: center">
+<span class="input-lg input num is-bad" style="width: 56px; display: flex; align-items: center; justify-content: center">•</span>
+<span class="input-lg input num is-bad" style="width: 56px; display: flex; align-items: center; justify-content: center">•</span>
+<span class="input-lg input num is-bad" style="width: 56px; display: flex; align-items: center; justify-content: center">•</span>
+<span class="input-lg input num is-bad" style="width: 56px; display: flex; align-items: center; justify-content: center">•</span>
+</div>
+<span class="err" style="justify-content: center">Неверный PIN. Попробуйте ещё раз</span>
+<p class="xs c3" style="text-align: center">Забыли PIN? Его сбрасывает супер-админ в «Настройках».</p>
+</div>
+<div class="dlg-f"><button class="btn btn-pri btn-block" type="button">Войти</button></div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Форма с ошибкой сервера</span>
+<section class="dlg" role="dialog" aria-labelledby="d5">
+<div class="dlg-h"><div class="col g4"><h2 class="h2" id="d5">Назначить оператора</h2><span class="s c3">3 лида будут переназначены</span></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b">
+<div class="field"><label for="d5o">Оператор</label><select class="input" id="d5o"><option>Выберите оператора</option><option>Shahlo Komilova · на паузе</option></select></div>
+<div class="field"><label for="d5r">Причина (необязательно)</label><input class="input" id="d5r" type="text" placeholder="Например: псевдоним «Sevara» в таблице"></div>
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>Shahlo Komilova на паузе, ей нельзя назначать лиды. Выберите другого оператора.</span></div>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Назначить</button></div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Сохраняем · кнопки заблокированы</span>
+<section class="dlg" role="dialog" aria-labelledby="d6">
+<div class="dlg-h"><h2 class="h2" id="d6">Отклонить продажу №1 482</h2></div>
+<div class="dlg-b">
+<div class="field"><label for="d6r">Причина</label><textarea class="input" id="d6r" rows="2">IMEI не совпадает с фото договора</textarea><span class="hint">Оператор увидит причину в уведомлении и на карточке продажи.</span></div>
+</div>
+<div class="dlg-f"><button class="btn" type="button" disabled="{{yes}}">Отмена</button><button class="btn btn-danger" type="button" disabled="{{yes}}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4"></path></svg>Отклоняем…</button></div>
+</section>
+</div>
+
+<div class="col g8" style="grid-column: span 3">
+<span class="when">Вместо системного window.confirm · один вид окна, своя формулировка</span>
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: 180px 1.1fr 1.6fr 120px"><span>Где</span><span>Заголовок окна</span><span>Что произойдёт</span><span>Кнопка</span></div>
+<div class="tr" style="grid-template-columns: 180px 1.1fr 1.6fr 120px; min-height: 52px"><span class="xs c3">Статусы лидов</span><span class="s w6">Удалить статус «Дорого»?</span><span class="s c2">Лиды с этим статусом останутся, но статус нельзя будет выбрать.</span><span><span class="badge b-bad">Удалить</span></span></div><div class="tr" style="grid-template-columns: 180px 1.1fr 1.6fr 120px; min-height: 52px"><span class="xs c3">Google-таблицы</span><span class="s w6">Перечитать таблицу с 1-й строки?</span><span class="s c2">Новые строки добавятся, уже загруженные лиды не задвоятся. Займёт до 2 минут.</span><span><span class="badge b-bad">Перечитать</span></span></div><div class="tr" style="grid-template-columns: 180px 1.1fr 1.6fr 120px; min-height: 52px"><span class="xs c3">Системно потерянные</span><span class="s w6">Вернуть лид в свободные?</span><span class="s c2">Отметка о закрытии удалится, лид увидят при раздаче.</span><span><span class="badge b-bad">Вернуть</span></span></div><div class="tr" style="grid-template-columns: 180px 1.1fr 1.6fr 120px; min-height: 52px"><span class="xs c3">Каталог</span><span class="s w6">Удалить Galaxy A55 8/256?</span><span class="s c2">Операторы перестанут видеть его в каталоге. Лучше скрыть, если он вернётся.</span><span><span class="badge b-bad">Удалить</span></span></div><div class="tr" style="grid-template-columns: 180px 1.1fr 1.6fr 120px; min-height: 52px"><span class="xs c3">Банки и тарифы</span><span class="s w6">Удалить банк Anor и все его планы?</span><span class="s c2">Калькулятор перестанет считать рассрочку через этот банк.</span><span><span class="badge b-bad">Удалить</span></span></div><div class="tr" style="grid-template-columns: 180px 1.1fr 1.6fr 120px; min-height: 52px"><span class="xs c3">Маркетинг · затраты</span><span class="s w6">Удалить расход 1 200 000 сум от 10.10?</span><span class="s c2">Затраты за октябрь пересчитаются.</span><span><span class="badge b-bad">Удалить</span></span></div><div class="tr" style="grid-template-columns: 180px 1.1fr 1.6fr 120px; min-height: 52px"><span class="xs c3">Telegram-бот</span><span class="s w6">Удалить отчёт «Итоги дня»?</span><span class="s c2">Он перестанет приходить в 3 чата.</span><span><span class="badge b-bad">Удалить</span></span></div>
+</section>
+</div>
+
+<div class="col g8" style="grid-column: span 3">
+<span class="when">Уведомления внизу справа · 4 секунды, с действием дольше</span>
+<div class="row g12 wrap">
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Продажа подтверждена</span>
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: #FF8FA9"><path d="M6 6l12 12M18 6L6 18"></path></svg>Не удалось сохранить: сервер не ответил<span class="t-act">Повторить</span></span>
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"></path></svg>Retry-лист готов: 214 лидов<span class="t-act">Открыть</span></span>
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--warn-solid)"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"></path></svg>PIN-сессия закончится через минуту</span>
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: #FF8FA9"><path d="M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3"></path></svg>Нет доступа к этому разделу</span>
+</div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1600}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light', yes: true };
+}
+}
+</script>
+</body>
+</html>

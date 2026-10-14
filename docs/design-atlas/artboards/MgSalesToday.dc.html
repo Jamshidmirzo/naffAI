@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Продажи сегодня</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1450px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="sales" hint-size="248px,1450px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Продажи сегодня</h1>
+<span class="s c3">с <span class="num">09:00</span> · обновлено в <span class="num">14:22</span></span>
+<span class="grow"></span>
+<a class="btn" href="MgSales.dc.html">Все продажи</a>
+</header>
+
+<main class="page">
+<div class="row g20" style="align-items: stretch">
+<section class="card col g20 between" style="flex: 3 1 0; padding: 22px 24px">
+<div class="col g4"><span class="lbl">Выручка сегодня</span><span class="display" style="font-size: 40px; line-height: 48px">{{total}}</span><span class="s c3">сум · <span class="num">{{cnt}}</span> продаж · <span class="c-bad"><span class="num">{{nret}}</span> возврат</span></span></div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px">
+<div class="col g4"><span class="lbl">Штук</span><span class="kpi" style="font-size: 22px">{{cnt}}</span></div>
+<div class="col g4"><span class="lbl">Средний чек</span><span class="kpi" style="font-size: 22px">10,5 млн</span></div>
+<div class="col g4"><span class="lbl">Операторов</span><span class="kpi" style="font-size: 22px">14</span></div>
+<div class="col g4"><span class="lbl">К плану дня</span><span class="kpi" style="font-size: 22px; color: var(--warn)">77%</span></div>
+</div>
+</section>
+<aside class="card col" style="flex: 2 1 0">
+<div class="card-h"><span class="h3">Партнёры сегодня</span><span class="xs c3">доля в выручке</span></div>
+<div class="col g12" style="padding: 14px 20px">
+<sc-for list="{{partners}}" as="p" hint-placeholder-count="5">
+<div class="col g4"><div class="row between s"><span>{{p.n}}</span><span><span class="num w6">{{p.v}}%</span> <span class="num xs c3">{{p.sum}}</span></span></div><div class="bar"><i style="width: {{p.v}}%"></i></div></div>
+</sc-for>
+</div>
+</aside>
+</div>
+
+<section class="card tbl">
+<div class="card-h"><span class="h3">Что продали сегодня</span><span class="xs c3"><span class="num">{{rowsN}}</span> продаж · клик открывает карточку · до 30 последних</span></div>
+<div class="tr th" style="grid-template-columns: 90px 1.6fr 1.4fr 160px 150px 130px"><span>Время</span><span>Модель</span><span>Оператор</span><span>Партнёр</span><span class="r">Сумма</span><span>Статус</span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="23">
+<a class="tr" href="MgSaleDetail.dc.html" style="grid-template-columns: 90px 1.6fr 1.4fr 160px 150px 130px; min-height: 40px">
+<span class="num s c2">{{r.t}}</span><span class="w6 trunc">{{r.m}}</span><span class="trunc">{{r.o}}</span><span class="c2">{{r.p}}</span><span class="r num w6 {{r.sc}}">{{r.s}}</span><span><span class="badge {{r.tone}}"><i class="dot"></i>{{r.st}}</span></span>
+</a>
+</sc-for>
+<div class="row between xs c3" style="padding: 10px 16px; border-top: 1px solid var(--line)"><span>Показаны все за сегодня · если продаж больше 30, видны последние 30</span><a class="c-brand w6" href="MgSales.dc.html">Все продажи за день</a></div>
+</section>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1450}}'>
+class Component extends DCLogic {
+renderVals() {
+const ok = ['оплачено', 'b-ok'], w = ['ожидает', 'b-hot'], ret = ['возврат', 'b-bad'];
+const fmt = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const raw = [
+['14:20', 'iPhone 15 Pro 256 GB', 'Gulnoza Karimova', 'Alif + Uzum', 14500000, w],
+['13:52', 'iPhone 15 128 GB', 'Jasur Toshmatov', 'Uzum', 12700000, ok],
+['13:10', 'Samsung Galaxy S24', 'Nilufar Saidova', 'Alif', 11900000, ok],
+['12:58', 'iPhone 15 Pro 256 GB', 'Sanjar Po\u2018latov', 'Anor', 14300000, ok],
+['12:41', 'Redmi Note 13 Pro', 'Jasur Toshmatov', 'Hamroh', 4100000, ok],
+['12:20', 'iPhone 13 128 GB', 'Kamron Islomov', 'Alif', 8700000, ok],
+['12:05', 'Samsung Galaxy A55', 'Shahlo Komilova', 'Cash', 5200000, w],
+['11:51', 'iPhone 15 128 GB', 'Feruza Hasanova', 'TBC + Alif', 12600000, ok],
+['11:38', 'iPhone 14 128 GB', 'Otabek Ergashev', 'TBC', 10800000, ok],
+['11:24', 'Samsung Galaxy A35', 'Malika Tursunova', 'Uzum', 3600000, ok],
+['11:15', 'iPhone 15 Pro 256 GB', 'Jasur Toshmatov', 'Alif', 14500000, ok],
+['11:02', 'Honor X9b', 'Malika Tursunova', 'Alif', 3900000, ok],
+['10:44', 'iPhone 13 128 GB', 'Nilufar Saidova', 'Uzum', 8900000, ret],
+['10:31', 'iPhone 15 Pro Max 256 GB', 'Aziz Qodirov', 'Alif', 17400000, ok],
+['10:22', 'Samsung Galaxy S24', 'Shahlo Komilova', 'Birzum', 11900000, ok],
+['10:12', 'Samsung Galaxy A35', 'Jasur Toshmatov', 'Cash', 3600000, ok],
+['10:03', 'iPhone 15 128 GB', 'Nilufar Saidova', 'Alif', 12700000, ok],
+['09:55', 'Redmi Note 13 Pro', 'Gulnoza Karimova', 'Hamroh', 4100000, ok],
+['09:48', 'iPhone 15 Pro 256 GB', 'Otabek Ergashev', 'Uzum', 14500000, ok],
+['09:40', 'Samsung Galaxy A55', 'Lola Karimova', 'Anor', 5200000, ok],
+['09:31', 'iPhone 14 128 GB', 'Shahlo Komilova', 'TBC', 10800000, ok],
+['09:22', 'iPhone 15 Pro 256 GB', 'Jasur Toshmatov', 'Alif + Uzum', 14500000, ok],
+['09:12', 'Honor X9b', 'Sanjar Po\u2018latov', 'Alif', 3900000, ok]
+];
+const rows = raw.map((x) => ({ t: x[0], m: x[1], o: x[2], p: x[3], s: (x[5] === ret ? '−' : '') + fmt(x[4]), sc: x[5] === ret ? 'c-bad' : '', st: x[5][0], tone: x[5][1] }));
+const total = raw.reduce((a, x) => a + (x[5] === ret ? -x[4] : x[4]), 0);
+const nret = raw.filter((x) => x[5] === ret).length;
+return {
+theme: this.props.theme ?? 'light',
+rows: rows,
+rowsN: raw.length,
+cnt: raw.length - nret,
+nret: nret,
+total: fmt(total),
+partners: [
+{ n: 'Alif', v: 41, sum: '99,1 млн' }, { n: 'Uzum', v: 26, sum: '62,8 млн' }, { n: 'Hamroh', v: 13, sum: '31,4 млн' }, { n: 'TBC', v: 11, sum: '26,6 млн' }, { n: 'Cash', v: 9, sum: '21,7 млн' }
+]
+};
+}
+}
+</script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1450px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="sales" hint-size="248px,1450px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Продажи сегодня</h1>
+<span class="s c3">с <span class="num">09:00</span> · обновлено в <span class="num">14:22</span></span>
+<span class="grow"></span>
+<a class="btn" href="MgSales.dc.html">Все продажи</a>
+</header>
+
+<main class="page">
+<section class="card row g24 wrap" style="padding: 22px 24px; align-items: flex-end">
+<div class="col g4 grow"><span class="lbl">Выручка сегодня</span><span class="display" style="font-size: 40px; line-height: 48px">{{total}}</span><span class="s c3">сум · <span class="num">{{cnt}}</span> продаж · <span class="c-bad"><span class="num">{{nret}}</span> возврат</span></span></div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px">
+<div class="col g4"><span class="lbl">Штук</span><span class="kpi" style="font-size: 22px">24</span></div>
+<div class="col g4"><span class="lbl">Средний чек</span><span class="kpi" style="font-size: 22px">10,5 млн</span></div>
+<div class="col g4"><span class="lbl">Операторов</span><span class="kpi" style="font-size: 22px">14</span></div>
+<div class="col g4"><span class="lbl">К плану дня</span><span class="kpi" style="font-size: 22px; color: var(--warn)">77%</span></div>
+</div>
+</section>
+
+<div class="split">
+<section class="list card tbl">
+<div class="card-h"><span class="h3">Что продали сегодня</span><span class="xs c3"><span class="num">{{rowsN}}</span> продаж · клик открывает карточку · до 30 последних</span></div>
+<div class="tr th" style="grid-template-columns: 80px 1.4fr 1.2fr 110px 140px 120px"><span>Время</span><span>Модель</span><span>Оператор</span><span>Партнёр</span><span class="r">Сумма</span><span>Статус</span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="23">
+<a class="tr" href="MgSaleDetail.dc.html" style="grid-template-columns: 80px 1.4fr 1.2fr 110px 140px 120px; min-height: 40px">
+<span class="num s c2">{{r.t}}</span><span class="w6 trunc">{{r.m}}</span><span class="trunc">{{r.o}}</span><span class="c2">{{r.p}}</span><span class="r num w6 {{r.sc}}">{{r.s}}</span><span><span class="badge {{r.tone}}"><i class="dot"></i>{{r.st}}</span></span>
+</a>
+</sc-for>
+<div class="row between xs c3" style="padding: 10px 16px; border-top: 1px solid var(--line)"><span>Показаны все за сегодня · если продаж больше 30, видны последние 30</span><a class="c-brand w6" href="MgSales.dc.html">Все продажи за день</a></div>
+</section>
+
+<aside class="panel card col">
+<div class="card-h"><span class="h3">Партнёры сегодня</span><span class="xs c3">доля в выручке</span></div>
+<div class="col g12" style="padding: 16px 20px">
+<sc-for list="{{partners}}" as="p" hint-placeholder-count="5">
+<div class="col g4"><div class="row between s"><span>{{p.n}}</span><span><span class="num w6">{{p.v}}%</span> <span class="num xs c3">{{p.sum}}</span></span></div><div class="bar"><i style="width: {{p.v}}%"></i></div></div>
+</sc-for>
+</div>
+</aside>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1450}}'>
+class Component extends DCLogic {
+renderVals() {
+const ok = ['Подтверждена', 'b-ok'], w = ['Ждёт', 'b-warn'], ret = ['Возврат', 'b-bad'];
+const r = (t, m, o, p, s, st) => ({ t: t, m: m, o: o, p: p, s: s, st: st[0], tone: st[1] });
+return {
+theme: this.props.theme ?? 'light',
+rows: [
+r('14:20', 'iPhone 15 Pro 256 GB', 'Gulnoza Karimova', 'Alif + Uzum', '14 500 000', w),
+r('13:52', 'iPhone 15 128 GB', 'Jasur Toshmatov', 'Uzum', '12 700 000', ok),
+r('13:10', 'Samsung Galaxy S24', 'Nilufar Saidova', 'Alif', '11 900 000', ok),
+r('12:41', 'Redmi Note 13 Pro', 'Jasur Toshmatov', 'Hamroh', '4 100 000', ok),
+r('12:05', 'Samsung Galaxy A55', 'Shahlo Komilova', 'Cash', '5 200 000', w),
+r('11:38', 'iPhone 14 128 GB', 'Otabek Ergashev', 'TBC', '10 800 000', ok),
+r('10:44', 'iPhone 13 128 GB', 'Nilufar Saidova', 'Uzum', '8 900 000', ret),
+r('10:31', 'iPhone 15 Pro Max 256 GB', 'Aziz Qodirov', 'Alif', '17 400 000', ok)
+],
+partners: [
+{ n: 'Alif', v: 41, sum: '99,1 млн' }, { n: 'Uzum', v: 26, sum: '62,8 млн' }, { n: 'Hamroh', v: 13, sum: '31,4 млн' }, { n: 'TBC', v: 11, sum: '26,6 млн' }, { n: 'Cash', v: 9, sum: '21,7 млн' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

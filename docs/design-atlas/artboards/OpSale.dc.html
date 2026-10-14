@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Новая продажа</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1000px">
+<div class="rail-wrap"><dc-import name="SideNav" who="operator" at="sale" hint-size="84px,1000px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<a class="btn btn-ghost btn-sq" href="OpMy.dc.html" aria-label="Назад к лидам"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
+<h1 class="h1">Новая продажа</h1>
+<span class="badge">по лиду Sardor Aliyev</span>
+<span class="grow"></span>
+<span class="xs c3">Черновик сохранён в <span class="num">14:20</span></span>
+<a class="btn btn-ghost" href="OpMy.dc.html">Отменить</a>
+</header>
+
+<main class="page">
+<div class="split">
+
+<form class="list col g16">
+
+<section class="card">
+<div class="card-h"><span class="h3">1 · Товар</span><span class="xs c3">модель подставится по IMEI</span></div>
+<div class="pad" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+<div class="field" style="grid-column: 1 / -1">
+<label for="f-imei">IMEI</label>
+<input class="input num is-ok" id="f-imei" type="text" value="35 693108 123456 7" style="font-size: 16px">
+<span class="hint row g6" style="color: var(--ok)"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>IMEI верный, 15 цифр. По коду определили Apple iPhone 15 Pro.</span>
+</div>
+<div class="field">
+<label for="f-model">Модель</label>
+<select class="input" id="f-model"><option>iPhone 15 Pro 256 GB</option><option>iPhone 15 Pro 128 GB</option><option>iPhone 15 Pro Max 256 GB</option></select>
+</div>
+<div class="field">
+<label for="f-sum">Сумма продажи, сум</label>
+<input class="input num" id="f-sum" type="text" value="14 500 000">
+<span class="hint">Цена в каталоге <span class="num">14 500 000</span></span>
+</div>
+</div>
+</section>
+
+<section class="card">
+<div class="card-h"><span class="h3">2 · Клиент</span><span class="badge b-ok"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Привязан к лиду</span></div>
+<div class="pad" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+<div class="field"><label for="f-name">Имя клиента</label><input class="input" id="f-name" type="text" value="Sardor Aliyev"></div>
+<div class="field">
+<label for="f-phone">Телефон клиента</label>
+<div class="row g8"><span class="pfx" style="height: 40px; font-size: 14px; border-radius: 8px" aria-hidden="true">+998</span><input class="input num grow" id="f-phone" type="tel" value="90 123 45 67"></div>
+</div>
+</div>
+</section>
+
+<section class="card">
+<div class="card-h"><span class="h3">3 · Оплата и договор</span>
+<div class="seg"><button class="{{oneCls}}" type="button" onClick="{{pickOne}}">Один партнёр</button><button class="{{twoCls}}" type="button" onClick="{{pickTwo}}">Два партнёра</button></div>
+</div>
+<div class="pad col g16">
+<div class="col g8">
+<div class="row g8">
+<select class="input" aria-label="Партнёр 1" style="width: 200px"><option>Alif</option><option>Uzum</option><option>Hamroh</option><option>TBC</option><option>Cash</option></select>
+<input class="input num grow" type="text" value="{{first}}" aria-label="Сумма через партнёра 1">
+</div>
+<sc-if value="{{two}}" hint-placeholder-val="{{ true }}">
+<div class="row g8">
+<select class="input" aria-label="Партнёр 2" style="width: 200px"><option>Uzum</option><option>Alif</option><option>Hamroh</option><option>TBC</option><option>Cash</option></select>
+<input class="input num grow" type="text" value="4 500 000" aria-label="Сумма через партнёра 2">
+</div>
+</sc-if>
+<span class="hint row g6" style="color: var(--ok)"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Распределено <span class="num">14 500 000</span> из <span class="num">14 500 000</span></span>
+</div>
+<div class="col g8">
+<div class="row between"><span class="flabel">Фото договора</span><span class="xs c3"><span class="num">2</span> из 5 · перетащите файлы или снимите камерой</span></div>
+<div class="row g8">
+<div class="ph" style="width: 120px; height: 88px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01"></path></svg>Стр. 1</div>
+<div class="ph" style="width: 120px; height: 88px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01"></path></svg>Стр. 2</div>
+<button class="btn" type="button" style="width: 120px; height: 88px; flex-direction: column; gap: 4px; border-style: dashed"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V9M7 13l5-5 5 5M5 4h14"></path></svg><span class="xs">Добавить</span></button>
+</div>
+</div>
+<div class="field">
+<label for="f-note">Комментарий</label>
+<textarea class="input" id="f-note" rows="2">Доставка завтра до 12:00</textarea>
+<div class="row g6 wrap"><button class="chip" type="button">Доставка завтра</button><button class="chip" type="button">Заберёт сам</button><button class="chip" type="button">Первый взнос оплачен</button></div>
+</div>
+</div>
+</section>
+
+</form>
+
+<aside class="panel card col">
+<div class="card-h"><span class="h3">Итог</span><span class="badge b-warn"><i class="dot"></i>уйдёт на подтверждение</span></div>
+<div class="col g8" style="padding: 16px 20px">
+<div class="row between"><span class="s c3">Товар</span><span class="s w6">iPhone 15 Pro 256 GB</span></div>
+<div class="row between"><span class="s c3">IMEI</span><span class="num s">35 693108 123456 7</span></div>
+<div class="row between"><span class="s c3">Клиент</span><span class="s w6">Sardor Aliyev</span></div>
+<div class="row between"><span class="s c3">Партнёры</span><span class="s">{{partners}}</span></div>
+<div class="row between"><span class="s c3">Фото договора</span><span class="num s">2</span></div>
+<hr class="hr" style="margin: 6px 0">
+<div class="row between" style="align-items: baseline"><span class="s w6">Сумма</span><span class="kpi" style="font-size: 24px">14 500 000</span></div>
+</div>
+<hr class="hr">
+<div class="col g12" style="padding: 16px 20px 20px">
+<div class="col g6">
+<div class="row g8 s"><svg class="ic c-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>IMEI проверен</div>
+<div class="row g8 s"><svg class="ic c-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Сумма распределена по партнёрам</div>
+<div class="row g8 s"><svg class="ic c-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Есть фото договора</div>
+</div>
+<a class="btn btn-pri btn-lg btn-block" href="OpMy.dc.html">Отправить на подтверждение</a>
+<p class="xs c3">Менеджер проверит продажу. В зарплату она попадёт после подтверждения, лид закроется со статусом «Продажа».</p>
+</div>
+</aside>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+const two = !(this.state && this.state.one);
+return {
+theme: this.props.theme ?? 'light',
+two: two,
+first: two ? '10 000 000' : '14 500 000',
+partners: two ? 'Alif + Uzum' : 'Alif',
+oneCls: two ? '' : 'is-on', twoCls: two ? 'is-on' : '',
+pickOne: () => this.setState({ one: true }), pickTwo: () => this.setState({ one: false })
+};
+}
+}
+</script>
+</body>
+</html>

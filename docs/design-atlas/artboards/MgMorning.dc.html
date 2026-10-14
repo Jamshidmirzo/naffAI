@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Утро менеджера</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="height: 1120px; position: relative; overflow: hidden">
+<div aria-hidden="true"><dc-import name="MgDashboard" scope="{{scopeName}}" hint-size="100%,1120px"></dc-import></div>
+<div class="scrim"></div>
+<div style="position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; padding: 24px">
+<section class="dlg" role="dialog" aria-labelledby="mm-t" style="width: 640px; overflow: hidden">
+<i class="ikat" style="height: 12px" aria-hidden="true"></i>
+<div class="col g16" style="padding: 28px">
+<div class="row between"><span class="lbl" style="color: var(--brand-text)">Вторник, 14 октября · 09:05</span><span class="badge b-info" style="height: 20px">новое</span></div>
+<h2 class="display" id="mm-t" style="font-size: 26px; line-height: 34px">{{hello}}</h2>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{kpis}}" as="k" hint-placeholder-count="3">
+<div class="well col g4"><span class="lbl">{{k.label}}</span><span class="kpi">{{k.value}}</span><span class="xs {{k.cls}}">{{k.note}}</span></div>
+</sc-for>
+</div>
+<div class="col">
+<span class="lbl" style="margin-bottom: 6px">С чего начать</span>
+<sc-for list="{{todo}}" as="t" hint-placeholder-count="4">
+<a class="li" href="{{t.href}}" style="min-height: 48px"><span class="icon-tile {{t.tile}}" style="width: 30px; height: 30px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="{{t.d}}"></path></svg></span><span class="s grow">{{t.text}}</span><span class="num w6">{{t.n}}</span></a>
+</sc-for>
+</div>
+<button class="btn btn-pri btn-lg btn-block" type="button">{{cta}}</button>
+<span class="xs c3" style="text-align: center">Один раз в день, при первом входе после 07:00. У оператора своё утреннее окно (OpMorning).</span>
+</div>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"scope":{"editor":"enum","options":["manager","super"],"default":"manager"},"$preview":{"width":1440,"height":1120}}'>
+class Component extends DCLogic {
+renderVals() {
+const sup = (this.props.scope ?? 'manager') === 'super';
+const I = {
+check: 'M5 12.5l4.5 4.5L19 7.5',
+clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
+coffee: 'M5 9h12v5a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5zM17 10h2a2 2 0 0 1 0 4h-2M8 3v3M12 3v3',
+gift: 'M4 10h16v10H4zM3 7h18v3H3zM12 7v13M12 7c-2-4-6-3-5 0M12 7c2-4 6-3 5 0',
+users: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 6.5M18 14.5a6 6 0 0 1 3.5 5.5',
+chart: 'M4 20V10M10 20V4M16 20v-7M22 20H2'
+};
+const t = (tile, d, text, n, href) => ({ tile: tile, d: d, text: text, n: n, href: href });
+return {
+theme: this.props.theme ?? 'light',
+scopeName: sup ? 'super' : 'manager',
+hello: sup ? 'Доброе утро, Bobur! Ветка вчера сделала 31 продажу' : 'Доброе утро, Kamola! Вчера команда сделала 9 продаж',
+kpis: sup ? [ { label: 'Вчера', value: '31', note: '+4 к позавчера', cls: 'c-ok' }, { label: 'План октября', value: '74%', note: 'ожидалось 70%', cls: 'c-ok' }, { label: 'Отстаёт', value: '1', note: 'команда Rustam Yuldashev', cls: 'c-bad' } ] : [ { label: 'Вчера', value: '9', note: '2 ещё ждут подтверждения', cls: 'c3' }, { label: 'План октября', value: '82%', note: 'ожидалось 70%', cls: 'c-ok' }, { label: 'Отметились', value: '3/14', note: 'смена с 10:00', cls: 'c3' } ],
+todo: sup ? [ t('t-bad', I.chart, 'Команда Rustam Yuldashev: 64% плана', '−6%', 'SmTeamSales.dc.html'), t('t-warn', I.users, 'Операторы без менеджера', '2', 'SmBoard.dc.html'), t('t-warn', I.check, 'Продажи ждут подтверждения во всей ветке', '7', 'MgPending.dc.html'), t('t-hot', I.gift, 'Дни рождения сегодня', '1', 'SmOperators.dc.html') ] : [ t('t-warn', I.check, 'Вчерашние продажи ждут подтверждения', '2', 'MgPending.dc.html'), t('t-bad', I.clock, 'Просроченные перезвоны у операторов', '5', 'MgLeadsAll.dc.html'), t('t-info', I.coffee, 'Заявки на выходной', '2', 'MgDayOff.dc.html'), t('t-hot', I.gift, 'День рождения: Malika Tursunova', '24', 'MgOperatorDetail.dc.html') ],
+cta: sup ? 'Открыть пульт ветки' : 'Открыть пульт'
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<title>Mening lidlarim</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 960px">
+<div class="rail-wrap"><dc-import name="SideNav" who="operator" at="my" lang="uz" hint-size="84px,960px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Mening lidlarim</h1>
+<span class="badge b-ok" style="height: 28px"><i class="dot"></i>Smenada <span class="num">02:15:08</span></span>
+<span class="grow"></span>
+<div class="col g4" style="width: 150px">
+<div class="row between xs"><span class="c3">Ishda</span><span class="num w6">4 / 5</span></div>
+<div class="row g4" aria-hidden="true"><i class="bar grow" style="height: 6px"><i class="ok" style="width: 100%"></i></i><i class="bar grow" style="height: 6px"><i class="ok" style="width: 100%"></i></i><i class="bar grow" style="height: 6px"><i class="ok" style="width: 100%"></i></i><i class="bar grow" style="height: 6px"><i class="ok" style="width: 100%"></i></i><i class="bar grow" style="height: 6px"></i></div>
+</div>
+<div class="col g4" style="width: 150px">
+<div class="row between xs"><span class="c3">Kunlik reja</span><span class="num w6">70%</span></div>
+<div class="bar" style="height: 6px" aria-hidden="true"><i style="width: 70%"></i></div>
+</div>
+<a class="btn btn-pri" href="OpSale.dc.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Yangi sotuv</a>
+</header>
+
+<main class="page">
+<div class="split">
+
+<section class="list col g12">
+<div class="row between wrap g12">
+<div class="seg"><button class="is-on" type="button">Faol <span class="num xs">6</span></button><button type="button">Kechiktirilgan <span class="num xs">2</span></button><button type="button">Yopilgan</button></div>
+<div class="inwrap" style="width: 280px; max-width: 100%"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg><input class="input" type="search" placeholder="Ism, telefon yoki model" aria-label="Lidlarni qidirish"></div>
+</div>
+<div class="row g8 wrap">
+<button class="chip is-on" type="button">Barcha kunlar <span class="n">6</span></button>
+<button class="chip" type="button">Bugun <span class="n">3</span></button>
+<button class="chip" type="button">Kecha <span class="n">2</span></button>
+<button class="chip" type="button">12.10 <span class="n">1</span></button>
+</div>
+<div class="card">
+<sc-for list="{{leads}}" as="l" hint-placeholder-count="5">
+<div class="row-item {{l.cls}}">
+<div class="col" style="width: 210px; flex: none; gap: 2px"><span class="h3 trunc">{{l.name}}</span><span class="num s c2">{{l.phone}}</span></div>
+<div class="col grow" style="gap: 2px"><span class="s trunc">{{l.product}}</span><span class="xs c3 trunc">{{l.meta}}</span></div>
+<div class="row g6" style="width: 260px; flex: none; justify-content: flex-end">
+<sc-if value="{{l.hot}}" hint-placeholder-val="{{ false }}"><span class="badge b-hot">{{l.hot}}</span></sc-if>
+<span class="badge {{l.tone}}"><i class="dot"></i>{{l.status}}</span>
+</div>
+<button class="btn btn-ok btn-sq" type="button" aria-label="Qo'ng'iroq qilish: {{l.name}}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"></path></svg></button>
+</div>
+</sc-for>
+</div>
+<p class="xs c3">5 tadan 1 slot bo'sh. Istalgan lidni yoping, avtotarqatish darhol yangisini beradi.</p>
+</section>
+
+<aside class="panel card col">
+<div class="col g12" style="padding: 20px">
+<div class="row between g12" style="align-items: flex-start">
+<div class="col g4"><h2 class="h1" style="font-size: 22px; line-height: 28px">Sardor Aliyev</h2><span class="num" style="font-size: 17px; font-weight: 600">+998 90 123 45 67</span></div>
+<span class="badge b-info"><i class="dot"></i>Yangi</span>
+</div>
+<p class="s c3">iPhone 15 Pro 256 GB · Instagram, «Oktyabr» jadvali</p>
+<button class="btn btn-ok btn-lg btn-block" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"></path></svg>Qo'ng'iroq qilish</button>
+</div>
+<hr class="hr">
+<div class="col g8" style="padding: 16px 20px">
+<div class="row between"><span class="lbl">Qo'ng'iroq natijasi</span><span class="xs c3">natijasiz lid yopilmaydi</span></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<a class="out is-ok" href="OpSale.dc.html"><b>Sotuv</b><span>Sotuvni rasmiylashtirish</span></a>
+<a class="out" href="OpCallback.dc.html"><b>Qayta qo'ng'iroq</b><span>Vaqt tanlash</span></a>
+<button class="out" type="button"><b>Javob bermadi</b><span>Signal yoki o'chirilgan</span></button>
+<button class="out" type="button"><b>Sotib olmaydi</b><span>Sababini ko'rsatish</span></button>
+</div>
+<div class="row g8"><button class="btn grow" type="button">Telegramda yozdim</button><button class="btn grow" type="button">Kechiktirish</button></div>
+</div>
+<hr class="hr">
+<div class="col g8" style="padding: 16px 20px 20px">
+<span class="lbl">Tarix</span>
+<div class="row between g12"><span class="s">Avtotarqatish orqali tayinlandi</span><span class="num xs c3">bugun 14:02</span></div>
+<div class="row between g12"><span class="s">Google-jadvaldan ariza</span><span class="num xs c3">bugun 14:01</span></div>
+</div>
+</aside>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+theme: this.props.theme ?? 'light',
+leads: [
+{ cls: 'is-sel', name: 'Sardor Aliyev', phone: '+998 90 123 45 67', product: 'iPhone 15 Pro 256 GB', meta: "14:02 da keldi. Hali qo'ng'iroq qilinmagan.", hot: 'Issiq · 12 daq', status: 'Yangi', tone: 'b-info' },
+{ cls: '', name: 'Dilnoza Yusupova', phone: '+998 93 456 78 90', product: 'Samsung Galaxy S24', meta: "16:30 da qayta qo'ng'iroq. 2 marta gaplashilgan.", hot: '', status: 'Callback', tone: 'b-info' },
+{ cls: '', name: 'Jasur Toshmatov', phone: '+998 97 111 22 33', product: 'Redmi Note 13', meta: "11:40 da javob bermadi.", hot: '', status: 'Javob bermadi 1', tone: '' },
+{ cls: '', name: 'Madina Rahimova', phone: '+998 99 555 01 02', product: 'iPhone 13 128 GB', meta: '09:30 da yana ishga qaytdi.', hot: '', status: 'Qimmatlik qildi', tone: 'b-hot' },
+{ cls: '', name: 'Bekzod Nazarov', phone: '+998 91 700 00 11', product: 'Honor X9b', meta: 'Telefoni ochiq, javob bermadi. 3 marta.', hot: '', status: 'Telfoni ochiq', tone: 'b-info' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

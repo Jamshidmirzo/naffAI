@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Маркетинг</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 2020px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="marketing" hint-size="248px,2020px"></dc-import></div>
+<div class="main-col">
+<header class="top">
+<div class="col"><h1 class="h1">Маркетинг</h1><span class="xs c3">Аналитика источников, воронок и AI-советов</span></div>
+<span class="grow"></span>
+<button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4M4 13a8 8 0 0 0 14 5l2-2M20 20v-4h-4"></path></svg>Обновить AI-анализ</button>
+<button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"></path></svg>Экспорт</button>
+</header>
+<main class="page">
+<div class="row g12 wrap">
+<div class="seg"><button type="button">7 дн</button><button type="button">14 дн</button><button class="is-on" type="button">30 дн</button><button type="button">90 дн</button></div>
+<div class="row g8"><input class="input num" type="text" value="15.09.2026" aria-label="Дата с" style="width: 130px; height: 36px"><span class="c3">—</span><input class="input num" type="text" value="14.10.2026" aria-label="Дата по" style="width: 130px; height: 36px"></div>
+<span class="xs c3">свои даты переключают пресет на «свой период»</span>
+</div>
+
+<div class="tabs">
+<a class="tab is-on" href="MgMarketing.dc.html" aria-current="page">Обзор</a>
+<a class="tab" href="MgMarketingSource.dc.html">Источники <span class="num xs c3">8</span></a>
+<a class="tab" href="#patterns">Паттерны</a>
+<a class="tab" href="MgMarketing2.dc.html">Динамика</a>
+<a class="tab" href="#ai">AI-советы</a>
+<a class="tab" href="MgMarketing2.dc.html">Затраты</a>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{kpis}}" as="k" hint-placeholder-count="4">
+<section class="card col g6" style="padding: 16px 18px">
+<span class="lbl">{{k.label}}</span>
+<span class="kpi" style="font-size: 24px">{{k.value}}</span>
+<span class="row g8 xs"><span class="num w6 {{k.dCls}}">{{k.delta}}</span><span class="c3 trunc">{{k.sub}}</span></span>
+</section>
+</sc-for>
+</div>
+
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: 1.6fr 80px 80px 80px 140px 120px 80px 24px"><span>Источник</span><button class="th-s is-on r" type="button">Лиды ▼</button><button class="th-s r" type="button">Продажи</button><button class="th-s r" type="button">Конв.</button><button class="th-s r" type="button">Выручка</button><button class="th-s r" type="button">Ср. чек</button><button class="th-s r" type="button">Δ pp</button><span></span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+<a class="tr" href="MgMarketingSource.dc.html" style="grid-template-columns: 1.6fr 80px 80px 80px 140px 120px 80px 24px">
+<span class="row g8" style="min-width: 0"><span class="badge {{r.kCls}}" style="height: 20px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em">{{r.kind}}</span><span class="w6 trunc">{{r.n}}</span></span>
+<span class="r num">{{r.l}}</span><span class="r num">{{r.s}}</span><span class="r num w6 {{r.cCls}}">{{r.c}}%</span><span class="r num">{{r.rev}}</span><span class="r num c3">{{r.avg}}</span><span class="r num w6 {{r.dCls}}">{{r.d}}</span>
+<svg class="ic ic-s c3" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+</a>
+</sc-for>
+<div class="row" style="justify-content: center; padding: 12px; border-top: 1px solid var(--line)"><a class="s w6 c-brand" href="MgMarketingSource.dc.html">Показать все источники →</a></div>
+</section>
+
+<span class="when" id="patterns">Вкладка «Паттерны»</span>
+<section class="card col">
+<div class="card-h"><div class="col"><span class="h3">Часовой паттерн</span><span class="xs c3">Когда лиды приходят и когда конвертятся</span></div>
+<div class="row g8"><select class="input" aria-label="Источник" style="width: 200px; height: 34px"><option>Instagram октябрь</option><option>Facebook октябрь</option><option>Telegram-бот</option></select><div class="seg"><button class="is-on" type="button">Лиды</button><button type="button">Продажи</button></div></div></div>
+<div class="col" style="padding: 16px 20px 18px; gap: 4px">
+<div class="row" style="gap: 3px"><span style="width: 60px; flex: none"></span><sc-for list="{{hours}}" as="h" hint-placeholder-count="24"><span class="grow num xs c3" style="text-align: center">{{h}}</span></sc-for></div>
+<div class="row" style="gap: 3px"><span class="xs c3" style="width: 60px; flex: none">Лиды</span><sc-for list="{{pattern}}" as="c" hint-placeholder-count="24"><span class="grow num" style="height: 30px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; background: {{c.bg}}; color: {{c.fg}}">{{c.v}}</span></sc-for></div>
+<div class="row g8 xs c3" style="margin-top: 8px; padding-left: 63px">Легенда: 0<span class="row" style="gap: 2px"><i style="display: block; width: 14px; height: 14px; border-radius: 4px; background: var(--surface-3)"></i><i style="display: block; width: 14px; height: 14px; border-radius: 4px; background: color-mix(in srgb, var(--brand) 35%, var(--surface-3))"></i><i style="display: block; width: 14px; height: 14px; border-radius: 4px; background: color-mix(in srgb, var(--brand) 65%, var(--surface-3))"></i><i style="display: block; width: 14px; height: 14px; border-radius: 4px; background: var(--brand)"></i></span>max · Instagram октябрь, 30 дней, 2 140 лидов</div>
+</div>
+</section>
+
+<span class="when" id="ai">Вкладка «AI-советы»</span>
+<section class="card col">
+<div class="card-h"><div class="col"><span class="h3">Резюме периода</span><span class="xs c3 num">gemini-2.5-flash-lite · 14.10.2026 09:10 · 30 дней</span></div></div>
+<div class="col g16" style="padding: 16px 20px 20px">
+<p class="s c2" style="max-width: 900px">Лидов стало на 12% больше, продаж — на 4%: рост дал в основном Facebook, но конвертирует он хуже остальных. Telegram-бот приносит меньше лидов, зато с лучшей конверсией (5,3%). Instagram остаётся главным источником выручки — 47% оборота.</p>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{highlights}}" as="h" hint-placeholder-count="3">
+<div class="well col g6" style="border-color: {{h.bd}}; background: {{h.bg}}">
+<span class="row g6 xs w7 {{h.cls}}" style="letter-spacing: .06em"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="{{h.d}}"></path></svg>{{h.label}}</span>
+<span class="s w6">{{h.title}}</span>
+<span class="xs c2">{{h.body}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</section>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Рекомендации (4)</span><span class="xs c3">отметка «выполнено» сохраняется на сервере</span></div>
+<sc-for list="{{recs}}" as="r" hint-placeholder-count="4">
+<div class="row g12" style="align-items: flex-start; padding: 14px 20px; border-bottom: 1px solid var(--line); opacity: {{r.op}}">
+<button class="btn btn-sq btn-sm {{r.btnCls}}" type="button" aria-label="{{r.doneLabel}}" title="{{r.doneLabel}}" style="border-radius: 50%; margin-top: 2px"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></button>
+<span class="col g6 grow">
+<span class="row g8 wrap"><span class="badge {{r.tone}}" style="height: 20px; font-size: 10.5px; letter-spacing: .06em">{{r.prio}}</span><span class="xs c2 w6">→ {{r.src}}</span><span class="xs c3">Уверенность: {{r.conf}}</span></span>
+<span class="s w6" style="text-decoration: {{r.strike}}">{{r.title}}</span>
+<span class="xs c3"><span class="w6 c2">Обоснование:</span> {{r.why}}</span>
+<span class="badge b-ok" style="align-self: flex-start; height: 22px"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17l6-6 4 4 6-7M14 8h6v6"></path></svg>{{r.impact}}</span>
+</span>
+</div>
+</sc-for>
+</section>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Вопросы к владельцу</span></div>
+<ol class="col g8 s c2" style="padding: 14px 20px 16px 38px">
+<li>Сколько стоит лид из TikTok? Расход по нему не внесён, поэтому CAC и ROI не считаются.</li>
+<li>Есть ли на складе Samsung Galaxy S24? Из Facebook его спрашивают втрое чаще, чем покупают.</li>
+<li>Можно ли перенести часть бюджета Facebook на вечернюю рекламу Telegram-бота?</li>
+</ol>
+</section>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":2020}}'>
+class Component extends DCLogic {
+renderVals() {
+const sp = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const K = { sheet: ['Sheet', 'b-info'], bot: ['Bot', 'b-hot'], manual: ['Ручной', 'b-warn'], other: ['Другое', ''] };
+const row = (kind, n, l, s, rev, d) => { const c = Math.round(s / l * 1000) / 10; return { kind: K[kind][0], kCls: K[kind][1], n: n, l: sp(l), s: s, c: String(c).replace('.', ','), cCls: c >= 5 ? 'c-brand' : '', rev: sp(rev), avg: sp(Math.round(rev / s / 1000) * 1000), d: (d > 0 ? '+' : '') + d.toFixed(1).replace('.', ','), dCls: d > 0 ? 'c-ok' : d < 0 ? 'c-bad' : 'c3' }; };
+const hours = [];
+for (let h = 0; h < 24; h++) hours.push(String(h).padStart(2, '0'));
+const leads = [6, 3, 1, 0, 0, 1, 4, 12, 38, 96, 154, 171, 162, 140, 133, 128, 141, 158, 176, 189, 164, 121, 79, 28];
+const mx = Math.max(...leads);
+const pattern = leads.map((v) => { const k = v / mx; return { v: v, bg: v ? 'color-mix(in srgb, var(--brand) ' + Math.round(12 + k * 88) + '%, var(--surface-3))' : 'var(--surface-3)', fg: k > .42 ? '#FFFFFF' : 'var(--ink-3)' }; });
+const rec = (prio, tone, src, conf, title, why, impact, done) => ({ prio: prio, tone: tone, src: src, conf: conf, title: title, why: why, impact: impact, op: done ? '.55' : '1', strike: done ? 'line-through' : 'none', btnCls: done ? 'btn-ok' : '', doneLabel: done ? 'Отменить отметку' : 'Отметить как выполненное' });
+return {
+theme: this.props.theme ?? 'light',
+kpis: [
+{ label: 'Лиды', value: '4 812', delta: '▲ 12%', dCls: 'c-ok', sub: 'было: 4 296' },
+{ label: 'Конверсии', value: '214', delta: '▲ 4%', dCls: 'c-ok', sub: 'Конверсия: 4,4%' },
+{ label: 'Выручка', value: '2 249 000 000', delta: '▲ 9%', dCls: 'c-ok', sub: 'Средний чек: 10 509 000' },
+{ label: 'Расход рекламы', value: '68 000 000', delta: 'ROI: 3 207%', dCls: 'c-ok', sub: 'CAC: 317 757' }
+],
+rows: [
+row('sheet', 'Instagram октябрь', 2140, 101, 1061400000, .6),
+row('sheet', 'Facebook октябрь', 1320, 48, 497300000, -1.4),
+row('bot', 'Telegram-бот', 780, 41, 432000000, .9),
+row('sheet', 'Сайт · заявки', 412, 18, 184200000, 0),
+row('sheet', 'TikTok · Aziz', 96, 2, 21800000, -.7),
+row('manual', 'Звонок в магазин', 64, 3, 37500000, .3)
+],
+hours: hours,
+pattern: pattern,
+highlights: [
+{ label: 'WIN', cls: 'c-ok', bd: 'var(--ok-bg)', bg: 'var(--surface)', d: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3', title: 'Telegram-бот: конверсия 5,3%', body: 'Лучший результат среди источников третью неделю подряд.' },
+{ label: 'WARN', cls: 'c-bad', bd: 'var(--bad-bg)', bg: 'var(--surface)', d: 'M12 4l9 16H3zM12 10v4M12 17h.01', title: 'Facebook дорожает', body: 'Цена лида выросла с 9 000 до 14 000 сум, конверсия упала на 1,4 п.п.' },
+{ label: 'INSIGHT', cls: 'c-brand', bd: 'var(--brand-soft)', bg: 'var(--surface)', d: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z', title: 'Вечерние лиды конвертятся лучше', body: 'С 18:00 до 21:00 приходит 31% лидов Instagram и 38% его продаж.' }
+],
+recs: [
+rec('HIGH', 'b-bad', 'Facebook октябрь', '82%', 'Сократить бюджет Facebook на 30% и перенести его в Instagram', 'цена лида выросла на 55% за 3 недели, а продаж столько же.', '+6–8 продаж в месяц при том же бюджете', false),
+rec('MED', 'b-warn', 'Telegram-бот', '74%', 'Поднять ставки на рекламу бота с 18:00 до 21:00', 'после 18:00 бот приносит лиды с конверсией 6,1%.', '+4 продажи в месяц', false),
+rec('LOW', '', 'Сайт · заявки', '61%', 'Добавить на сайт кнопку «Рассчитать рассрочку»', 'треть отказов по сайту — «дорого», хотя рассрочка доступна.', '−10% отказов «дорого»', false),
+rec('MED', 'b-warn', 'Instagram октябрь', '68%', 'Добавить рассрочку в текст объявлений', 'отказов «дорого» стало меньше на 12% после теста.', '+3% к конверсии', true)
+]
+};
+}
+}
+</script>
+</body>
+</html>

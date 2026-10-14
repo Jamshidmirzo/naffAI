@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Пульт зала</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1770px">
+<div class="side-wrap"><dc-import name="SideNav" who="{{who}}" at="{{navAt}}" hint-size="248px,1770px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<div class="col" style="gap: 0"><h1 class="h1">{{title}}</h1><span class="xs c3">вторник, 14 октября · <span class="num">14:22</span> · обновляется сам</span></div>
+<span class="grow"></span>
+<sc-if value="{{isSuper}}" hint-placeholder-val="{{ false }}">
+<span class="row g6"><select class="input" aria-label="Ветка" style="width: 170px; height: 36px"><option>Вся ветка</option><option>Kamola Ahmedova</option><option>Rustam Yuldashev</option><option>Мои прямые операторы</option></select><span class="badge b-info" style="height: 20px">новое</span></span>
+</sc-if>
+<div class="seg"><button class="is-on" type="button">Сегодня</button><button type="button">Неделя</button><button type="button">Месяц</button></div>
+<span class="row g4">
+<select class="input" aria-label="Конкретный месяц" style="width: 230px; height: 36px"><option>Выбрать конкретный месяц</option><option>Октябрь 2026</option><option>Сентябрь 2026</option><option>Август 2026</option><option>Июль 2026</option><option>… ещё 20 месяцев</option></select>
+<button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Сбросить месяц" title="Сбросить месяц"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</span>
+<sc-if value="{{notSuper}}" hint-placeholder-val="{{ true }}"><button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z"></path></svg>Спросить AI</button></sc-if>
+<sc-if value="{{isSuper}}" hint-placeholder-val="{{ false }}"><button class="btn btn-sq" type="button" aria-label="Спросить AI" title="Спросить AI"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z"></path></svg></button></sc-if>
+</header>
+
+<main class="page">
+
+<section class="card row wrap" style="padding: 0; overflow: hidden" aria-label="Табло дня">
+<sc-for list="{{tablo}}" as="k" hint-placeholder-count="5">
+<a class="col g4" href="{{k.href}}" style="flex: 1 1 180px; padding: 16px 20px; border-right: 1px solid var(--line)">
+<span class="lbl">{{k.label}}</span>
+<span class="kpi">{{k.value}}</span>
+<span class="row g6 xs"><span class="badge {{k.tone}}" style="height: 20px">{{k.delta}}</span><span class="c3">{{k.note}}</span></span>
+</a>
+</sc-for>
+</section>
+
+<div class="row g20" style="align-items: stretch; flex-wrap: wrap">
+
+<section class="card col" style="flex: 999 1 640px; min-width: 0" aria-label="Зал">
+<div class="card-h">
+<div class="col"><span class="row g8"><span class="h3">Зал</span><sc-if value="{{isSuper}}" hint-placeholder-val="{{ false }}"><span class="badge b-info" style="height: 20px">новое · фильтр по менеджерам</span></sc-if></span><span class="xs c3">38 мест · плитка обновляется каждые 10 секунд</span></div>
+<div class="row g12 xs c2 wrap" style="justify-content: flex-end">
+<span class="row g6"><i class="dot" style="color: var(--brand)"></i>на звонке <span class="num w6">18</span></span>
+<span class="row g6"><i class="dot" style="color: var(--ok-solid)"></i>ждёт лид <span class="num w6">9</span></span>
+<span class="row g6"><i class="dot" style="color: var(--warn-solid)"></i>пауза <span class="num w6">2</span></span>
+<span class="row g6"><i class="dot" style="color: var(--bad-solid)"></i>опоздал <span class="num w6">4</span></span>
+<span class="row g6"><i class="dot" style="color: var(--ink-4)"></i>не пришёл <span class="num w6">3</span></span>
+</div>
+</div>
+<sc-if value="{{isSuper}}" hint-placeholder-val="{{ false }}">
+<div class="row g8 wrap" style="padding: 12px 16px 0">
+<button class="chip is-on" type="button">Все <span class="n">38</span></button>
+<button class="chip" type="button">Kamola Ahmedova <span class="n">14</span></button>
+<button class="chip" type="button">Rustam Yuldashev <span class="n">11</span></button>
+<button class="chip" type="button">Мои прямые <span class="n">6</span></button>
+<button class="chip" type="button">Без менеджера <span class="n">7</span></button>
+</div>
+</sc-if>
+<div class="floor" style="padding: 16px; flex: 1 1 auto; grid-auto-rows: 1fr">
+<sc-for list="{{seats}}" as="s" hint-placeholder-count="24">
+<a class="seat {{s.cls}}" href="MgOperators.dc.html">
+<span class="row g6" style="min-width: 0"><span class="s w6 trunc">{{s.name}}</span></span>
+<span class="xs {{s.stateCls}}">{{s.state}}</span>
+<span class="row between" style="margin-top: auto; align-items: baseline"><span class="sales">{{s.sales}}</span><span class="num xs c3">{{s.slots}}</span></span>
+</a>
+</sc-for>
+</div>
+</section>
+
+<aside class="col g16" style="flex: 1 1 360px; min-width: 0">
+<section class="card col" aria-label="Очередь дел">
+<div class="card-h"><span class="h3">Очередь дел</span><span class="badge b-bad"><span class="num">4</span></span></div>
+<sc-for list="{{todo}}" as="a" hint-placeholder-count="4">
+<div class="row-item" style="align-items: flex-start; min-height: 0; padding: 12px 16px">
+<span class="icon-tile {{a.tile}}" style="width: 32px; height: 32px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="{{a.d}}"></path></svg></span>
+<span class="col grow" style="gap: 6px">
+<span class="col" style="gap: 1px"><span class="s w6">{{a.title}}</span><span class="xs c3">{{a.note}}</span></span>
+<span class="row g6"><sc-if value="{{a.main}}" hint-placeholder-val="{{ true }}"><button class="btn btn-sm {{a.mainCls}}" type="button">{{a.main}}</button></sc-if><a class="btn btn-ghost btn-sm" href="{{a.href}}">{{a.second}}</a></span>
+</span>
+</div>
+</sc-for>
+</section>
+
+<section class="card col" aria-label="Сегодня день рождения" style="border-color: var(--hot-solid)">
+<div class="card-h"><span class="row g8"><span class="icon-tile t-hot" style="width: 30px; height: 30px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21h16M5 21v-7h14v7M5 17c2 1 3-1 4.7 0s3 1 4.6 0 3-1 4.7 0M12 14v-3M12 8a1.5 1.5 0 0 0 1.5-1.5C13.5 5 12 3 12 3s-1.5 2-1.5 3.5A1.5 1.5 0 0 0 12 8z"></path></svg></span><span class="h3">Сегодня день рождения</span></span><span class="badge"><span class="num">2</span></span></div>
+<sc-for list="{{bdays}}" as="b" hint-placeholder-count="2">
+<div class="li" style="min-height: 46px"><span class="s grow trunc"><span class="w6">{{b.name}}</span> <span class="c3 num">· {{b.age}} лет</span></span><a class="num xs c2" href="tel:{{b.tel}}">{{b.phone}}</a></div>
+</sc-for>
+</section>
+</aside>
+
+</div>
+
+<section class="col g12" aria-label="Здоровье воронки">
+<div class="row between"><span class="lbl">Здоровье воронки · Google-таблицы</span><a class="btn btn-ghost btn-sm" href="MgSheets.dc.html">Все таблицы</a></div>
+<div class="row g12" style="align-items: flex-start">
+<sc-for list="{{sheets}}" as="t" hint-placeholder-count="4">
+<div class="card col g12" style="flex: 1 1 0; padding: 14px 16px">
+<div class="row between" style="align-items: flex-start">
+<span class="col" style="gap: 3px; min-width: 0"><span class="s w6 trunc">{{t.name}}</span><span class="row g6 xs c3"><i class="dot" style="color: {{t.color}}; width: 8px; height: 8px"></i>{{t.state}}</span></span>
+<a class="btn btn-ghost btn-sq btn-sm" href="MgSheets.dc.html" aria-label="Настроить" title="Настроить"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8M16 5v4M10 15v4"></path></svg></a>
+</div>
+<div class="row between" style="align-items: flex-end">
+<span class="col"><span class="display" style="font-size: 22px; line-height: 26px">{{t.n24}}</span><span class="xs c3">лидов за 24 ч</span></span>
+<span class="col xs c3" style="text-align: right"><span>sync: <span class="num">{{t.last}}</span></span><span>всего: <span class="num">{{t.total}}</span></span></span>
+</div>
+<div class="row g6">
+<button class="btn btn-sm grow" type="button" style="padding: 0 8px">Синхронизировать</button>
+<button class="btn btn-ghost btn-sm" type="button" title="Полный перескан таблицы с 1-й строки" style="padding: 0 8px">Перескан</button>
+</div>
+<sc-if value="{{t.err}}" hint-placeholder-val="{{ false }}">
+<button class="xs c-bad w6" type="button" title="{{t.err}}" style="padding: 0; border: 0; background: none; text-align: left; text-decoration: underline">Показать ошибку</button>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</section>
+
+<div class="row g20" style="align-items: stretch">
+
+<section class="card col" style="flex: 1 1 0" aria-label="Утечки">
+<div class="card-h"><span class="row g8"><svg class="ic c-bad" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span class="h3">Утечки</span></span><span class="xs c3">24 ч</span></div>
+<sc-for list="{{leaks}}" as="l" hint-placeholder-count="4">
+<a class="li" href="{{l.href}}" style="min-height: 52px"><span class="col grow" style="min-width: 0"><span class="s c2">{{l.label}}</span><span class="xs trunc {{l.hintCls}}">{{l.hint}}</span></span><span class="num w6 {{l.cls}}" style="font-size: 15px">{{l.n}}</span><svg class="ic ic-s c3" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></a>
+</sc-for>
+</section>
+
+<section class="card col" style="flex: 1 1 0" aria-label="Где застревает воронка">
+<div class="card-h"><span class="row g8"><svg class="ic c-brand" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg><span class="h3">Где застревает воронка</span></span><span class="xs c3">7 дней · топ-3</span></div>
+<sc-for list="{{stuck}}" as="f" hint-placeholder-count="3">
+<a class="li" href="MgLeadsAll.dc.html" style="min-height: 64px"><span class="col grow"><span class="s w6">{{f.label}}</span><span class="xs c3">средний срок: {{f.days}} дней</span></span><span class="col" style="width: 90px; gap: 4px"><span class="bar"><i class="warn" style="width: {{f.w}}"></i></span></span><span class="num w6" style="font-size: 15px; width: 28px; text-align: right">{{f.n}}</span><svg class="ic ic-s c3" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></a>
+</sc-for>
+</section>
+
+<section class="card col" style="flex: 1 1 0" aria-label="Требует решения">
+<div class="card-h"><span class="h3">Требует решения</span><span class="xs c3">клик — отфильтрованный список</span></div>
+<sc-for list="{{attention}}" as="q" hint-placeholder-count="4">
+<a class="li" href="{{q.href}}" style="min-height: 48px; {{q.bg}}"><span class="s grow {{q.lblCls}}">{{q.label}}</span><span class="num w6 {{q.cls}}" style="font-size: 15px">{{q.n}}</span><svg class="ic ic-s c3" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></a>
+</sc-for>
+</section>
+
+</div>
+
+<div class="row g20" style="align-items: stretch">
+
+<section class="card col" style="flex: 2 1 0; min-width: 0" aria-label="Продажи за 14 дней">
+<div class="card-h">
+<div class="col"><span class="h3">Продажи · 14 дней, шт. в день</span><span class="xs c3">Динамика по дням, план и рекорд подсвечены</span></div>
+<div class="row g12 xs c2"><span class="row g6"><i style="display: inline-block; width: 16px; border-top: 2px dashed var(--hot-solid)"></i>план 22 шт./день</span><span class="row g6"><i class="dot" style="color: var(--ok-solid)"></i>рекорд</span><span class="row g6"><i class="dot" style="color: var(--brand)"></i>сегодня</span></div>
+</div>
+<div style="padding: 18px 20px 14px">
+<div class="row" style="align-items: stretch; gap: 8px">
+<div class="col between num xs c3" style="height: 170px; width: 22px; text-align: right"><span>30</span><span>20</span><span>10</span><span>0</span></div>
+<div class="grow" style="position: relative; height: 170px; border-bottom: 1px solid var(--line-2)">
+<span style="position: absolute; left: 0; right: 0; top: 0; border-top: 1px solid var(--line)"></span>
+<span style="position: absolute; left: 0; right: 0; top: 33.3%; border-top: 1px solid var(--line)"></span>
+<span style="position: absolute; left: 0; right: 0; top: 66.6%; border-top: 1px solid var(--line)"></span>
+<div class="row" style="position: absolute; left: 0; right: 0; top: 0; bottom: 0; gap: 10px; align-items: flex-end; padding: 0 6px">
+<sc-for list="{{bars}}" as="b" hint-placeholder-count="14">
+<span class="col" style="flex: 1 1 0; height: 100%; justify-content: flex-end; align-items: center; gap: 3px; min-width: 0">
+<span class="num xs w6 {{b.vcls}}" style="position: relative; z-index: 2; background: var(--surface); padding: 0 3px; border-radius: 4px">{{b.v}}</span>
+<i style="display: block; width: 100%; max-width: 34px; height: {{b.h}}; border-radius: 5px 5px 0 0; background: {{b.c}}"></i>
+</span>
+</sc-for>
+</div>
+<span style="position: absolute; left: 0; right: 0; top: 26.7%; border-top: 2px dashed var(--hot-solid); z-index: 1"></span>
+</div>
+</div>
+<div class="row" style="gap: 10px; padding: 6px 6px 0 36px">
+<sc-for list="{{bars}}" as="b" hint-placeholder-count="14">
+<span class="num xs c3" style="flex: 1 1 0; text-align: center">{{b.d}}</span>
+</sc-for>
+</div>
+</div>
+</section>
+
+<section class="card col" style="flex: 1 1 0; min-width: 0" aria-label="Топ операторов">
+<div class="card-h"><span class="h3">Топ операторов</span><span class="xs c3">сегодня · по сумме</span></div>
+<div class="col g16" style="padding: 16px">
+<sc-for list="{{top}}" as="o" hint-placeholder-count="5">
+<a class="row g12" href="MgOperatorDetail.dc.html">
+<span class="rank {{o.rk}}">{{o.i}}</span>
+<span class="col grow" style="gap: 6px; min-width: 0"><span class="row between"><span class="s w6 trunc">{{o.name}}</span><span class="xs c3 num">{{o.cnt}} шт</span></span><span class="bar" style="height: 6px"><i style="width: {{o.w}}"></i></span></span>
+<span class="num s w6" style="width: 104px; text-align: right">{{o.sum}}</span>
+</a>
+</sc-for>
+</div>
+</section>
+
+</div>
+
+<div class="row between xs c3"><span>Пульт · данные за сегодня</span><span>автообновление каждую минуту · <span class="num">241 600 000</span> сум</span></div>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"scope":{"editor":"enum","options":["manager","super"],"default":"manager"},"$preview":{"width":1440,"height":1770}}'>
+class Component extends DCLogic {
+renderVals() {
+const isSuper = (this.props.scope ?? 'manager') === 'super';
+const I = {
+check: 'M5 12.5l4.5 4.5L19 7.5',
+inbox: 'M4 13l3-8h10l3 8v6H4zM4 13h5l1 2h4l1-2h5',
+clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
+alert: 'M12 4l9 16H3zM12 10v4M12 17h.01',
+sheet: 'M4 5h16v14H4zM4 10h16M4 15h16M10 5v14'
+};
+const S = {
+call: ['st-call', 'на звонке', 'c-brand'],
+wait: ['st-wait', 'ждёт лид', 'c-ok'],
+pause: ['st-pause', 'пауза', 'c-warn'],
+late: ['st-late', 'опоздал', 'c-bad'],
+off: ['st-off', 'не пришёл', 'c3']
+};
+const seat = (name, st, extra, sales, slots) => ({ name: name, cls: S[st][0], state: S[st][1] + (extra ? ' · ' + extra : ''), stateCls: S[st][2], sales: sales, slots: slots });
+const seats = [
+seat('Jasur T.', 'call', '03:12', 6, '5/5'), seat('Nilufar S.', 'call', '01:40', 5, '5/5'), seat('Gulnoza K.', 'wait', '', 3, '4/5'), seat('Shahlo K.', 'pause', '12 мин', 4, '2/5'), seat('Otabek E.', 'call', '00:48', 3, '5/5'), seat('Javlon S.', 'late', '33 мин', 1, '3/5'),
+seat('Malika T.', 'call', '04:05', 2, '5/5'), seat('Aziz Q.', 'wait', '', 1, '4/5'), seat('Madina R.', 'late', '19 мин', 2, '4/5'), seat('Dilshod Y.', 'off', '', 0, '—'), seat('Sevara P.', 'off', '', 0, '—'), seat('Bahodir M.', 'off', '', 0, '—'),
+seat('Kamron I.', 'call', '02:20', 2, '5/5'), seat('Feruza H.', 'call', '00:35', 2, '5/5'), seat('Lola K.', 'wait', '', 1, '3/5'), seat('Sanjar P.', 'call', '05:10', 3, '5/5'), seat('Gavhar N.', 'call', '01:02', 1, '5/5'), seat('Ulugbek R.', 'pause', '4 мин', 0, '1/5'),
+seat('Nodira A.', 'call', '02:44', 2, '5/5'), seat('Rustam B.', 'wait', '', 1, '4/5'), seat('Zilola M.', 'call', '00:19', 1, '5/5'), seat('Akmal S.', 'late', '41 мин', 0, '2/5'), seat('Iroda T.', 'call', '03:33', 2, '5/5'), seat('Timur X.', 'wait', '', 0, '4/5')
+];
+const days = [['01.10', 19], ['02.10', 22], ['03.10', 25], ['04.10', 17], ['05.10', 8], ['06.10', 21], ['07.10', 24], ['08.10', 27], ['09.10', 23], ['10.10', 29], ['11.10', 18], ['12.10', 7], ['13.10', 20], ['14.10', 23]];
+const rec = Math.max.apply(null, days.map((x) => x[1]));
+const bars = days.map((x, i) => {
+const today = i === days.length - 1;
+const isRec = x[1] === rec;
+return { d: x[0], v: x[1], h: (x[1] / 30 * 100).toFixed(1) + '%', c: today ? 'var(--brand)' : (isRec ? 'var(--ok-solid)' : 'var(--line-2)'), vcls: today ? 'c-brand' : (isRec ? 'c-ok' : 'c2') };
+});
+const tops = [['Jasur Toshmatov', 6, 64300000], ['Nilufar Saidova', 5, 52800000], ['Shahlo Komilova', 4, 41200000], ['Gulnoza Karimova', 3, 31900000], ['Sanjar Po‘latov', 3, 29600000]];
+const fmt = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const top = tops.map((o, i) => ({ i: i + 1, rk: i === 0 ? 'r1' : '', name: o[0], cnt: o[1], sum: fmt(o[2]), w: (o[2] / tops[0][2] * 100).toFixed(0) + '%' }));
+const att = (label, n, href, urgent) => ({ label: label, n: n, href: href, cls: urgent && n > 0 ? 'c-hot' : (n > 0 ? '' : 'c3'), lblCls: urgent && n > 0 ? 'w6' : 'c2', bg: urgent && n > 0 ? 'background: var(--hot-bg)' : '' });
+return {
+theme: this.props.theme ?? 'light',
+isSuper: isSuper,
+notSuper: !isSuper,
+who: isSuper ? 'super' : 'manager',
+navAt: isSuper ? 'sdash' : 'dash',
+title: isSuper ? 'Пульт ветки' : 'Пульт зала',
+tablo: [
+{ label: 'Проведено сегодня', value: '23', delta: '+3', tone: 'b-ok', note: '3 ждут проверки', href: 'MgSalesToday.dc.html' },
+{ label: 'Оборот, сум', value: '241,6 млн', delta: '+12%', tone: 'b-ok', note: 'план 300 млн', href: 'MgSales.dc.html' },
+{ label: 'Конверсия лидов', value: '12,4%', delta: '−0,8 п.п.', tone: 'b-bad', note: 'vs прошлый период', href: 'MgLeadsStats.dc.html' },
+{ label: 'На смене', value: '31 / 38', delta: '4 опоздали', tone: 'b-warn', note: '3 не пришли', href: 'MgAttendance.dc.html' },
+{ label: 'Звонков сегодня', value: '486', delta: '2:14', tone: '', note: 'средний разговор', href: 'MgCalls.dc.html' }
+],
+seats: seats,
+todo: [
+{ tile: 't-warn', d: I.check, title: 'Продажа ждёт: iPhone 15 Pro · 14 500 000', note: 'Gulnoza Karimova · Alif + Uzum · 2 фото договора · 8 мин назад', main: 'Одобрить', mainCls: 'btn-ok', second: 'Открыть', href: 'MgPending.dc.html' },
+{ tile: 't-info', d: I.inbox, title: '7 лидов без оператора', note: 'у всех на смене заняты слоты', main: 'Раздать поровну', mainCls: 'btn-pri', second: 'Список', href: 'MgLeads.dc.html' },
+{ tile: 't-bad', d: I.clock, title: 'Перезвон просрочен у Dilnoza Yusupova', note: '2 ч 10 мин · новые лиды ей не идут', main: 'Напомнить', mainCls: '', second: 'Лид', href: 'MgLeadsAll.dc.html' },
+{ tile: 't-hot', d: I.sheet, title: 'Таблица «Facebook октябрь» молчит 2 часа', note: 'последняя строка в 12:14', main: 'Синхронизировать', mainCls: '', second: 'Таблицы', href: 'MgSheets.dc.html' }
+],
+bdays: [
+{ name: 'Malika Tursunova', age: 23, phone: '+998 90 123 45 67', tel: '+998901234567' },
+{ name: 'Sanjar Po‘latov', age: 27, phone: '+998 93 557 10 42', tel: '+998935571042' }
+],
+sheets: [
+{ color: 'var(--ok-solid)', state: 'работает', name: 'Instagram октябрь', n24: '124', last: '14.10 14:20', total: '3 412', err: '' },
+{ color: 'var(--ok-solid)', state: 'работает', name: 'Telegram-бот', n24: '38', last: '14.10 14:21', total: '1 087', err: '' },
+{ color: 'var(--warn-solid)', state: 'давно не синкался', name: 'Facebook октябрь', n24: '6', last: '14.10 12:14', total: '2 260', err: '' },
+{ color: 'var(--bad-solid)', state: 'ошибка sync', name: 'Сайт · заявки', n24: '0', last: '13.10 22:40', total: '512', err: 'APIError 403: нет доступа к таблице. Дайте сервисному аккаунту права читателя.' }
+],
+leaks: [
+{ label: 'Потеряно системой за 24 ч', hint: 'среднее за 7 дней: 4/день', hintCls: 'c3', n: '11', cls: 'c-bad', href: 'MgSystemLost.dc.html' },
+{ label: '«Не ответил» без движения >48 ч', hint: 'у 9 операторов', hintCls: 'c3', n: '41', cls: '', href: 'MgLeadsAll.dc.html' },
+{ label: 'Операторы с высоким % потерь', hint: 'Akmal Saidov (52%), Ulugbek Rahimov (44%)', hintCls: 'c-bad', n: '2', cls: '', href: 'MgLeadsStats.dc.html' },
+{ label: 'Ошибки синка таблиц', hint: 'Сайт · заявки', hintCls: 'c-bad', n: '1', cls: 'c-bad', href: 'MgSheets.dc.html' }
+],
+stuck: [
+{ label: 'Не ответил (1)', days: '2,6', n: 41, w: '100%' },
+{ label: 'Дорого', days: '3,1', n: 18, w: '44%' },
+{ label: 'Ждёт зарплату', days: '5,4', n: 12, w: '29%' }
+],
+attention: [
+att('Требуют проверки', 3, 'MgPending.dc.html', true),
+att('Сироты не назначены', 7, 'MgLeads.dc.html', true),
+att('Продажи на проверке', 2, 'MgPending.dc.html', false),
+att('Опоздали сегодня', 4, 'MgAttendance.dc.html', false)
+],
+bars: bars,
+top: top
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Профиль: окна</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1160px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6">
+<h1 class="h1">Профиль: пароль, фото, Telegram</h1>
+<p class="c3">Кнопка «Пароль» теперь называется «Сменить пароль» и делает именно это. Telegram сам обновляется после привязки, перезагружать страницу не нужно.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; align-items: start">
+
+<div class="col g8">
+<span class="when">Смена пароля · ошибки</span>
+<section class="dlg" role="dialog" aria-labelledby="p1">
+<div class="dlg-h"><div class="col g4"><h2 class="h2" id="p1">Сменить пароль</h2><span class="s c3">Минимум 8 символов</span></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b">
+<div class="field"><label for="p1a">Текущий пароль</label><input class="input is-bad" id="p1a" type="password" value="12345678"><span class="err">Текущий пароль неверный</span></div>
+<div class="field"><label for="p1b">Новый пароль</label><input class="input is-bad" id="p1b" type="password" value="naff12"><span class="err">Нужно ещё 2 символа: минимум 8</span></div>
+<div class="field"><label for="p1c">Повторите новый пароль</label><input class="input is-bad" id="p1c" type="password" value="naff123"><span class="err">Пароли не совпадают</span></div>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button" disabled="{{yes}}">Сменить</button></div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Фото профиля · с камеры или файлом</span>
+<section class="dlg" role="dialog" aria-labelledby="p2">
+<div class="dlg-h"><div class="col g4"><h2 class="h2" id="p2">Фото профиля</h2><span class="s c3">Коллеги увидят его, когда вы продадите</span></div></div>
+<div class="dlg-b">
+<div class="row g16"><div class="ph" style="width: 132px; height: 132px; border-radius: 50%">Снимок</div><div class="col g8 grow"><button class="btn" type="button">Переснять</button><button class="btn" type="button">Выбрать файл</button></div></div>
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>Не удалось загрузить фото. Проверьте интернет и попробуйте ещё раз.</span></div>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Сохранить фото</button></div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Telegram-бот · ждём код · привязано</span>
+<div class="col g12">
+<section class="card col g12" style="padding: 18px 20px">
+<div class="row between"><span class="h3">Уведомления в Telegram</span><span class="badge b-warn"><i class="dot"></i>ждём код</span></div>
+<div class="well row between g12"><div class="col g4"><span class="num" style="font-size: 20px; font-weight: 600">/link 204920</span><span class="xs c3">отправьте боту <span class="num">@naffai_bot</span></span></div><button class="btn btn-sm" type="button">Скопировать</button></div>
+<div class="row between xs c3"><span class="row g6"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4"></path></svg>Ждём сообщение от бота…</span><span>код действует ещё <span class="num">09:12</span></span></div>
+</section>
+<section class="card col g8" style="padding: 18px 20px">
+<div class="row between"><span class="h3">Уведомления в Telegram</span><span class="badge b-ok"><i class="dot"></i>привязано</span></div>
+<span class="s c2">Аккаунт <span class="num">@gulnoza_k</span> · с 14 октября</span>
+<button class="btn btn-bad btn-sm" type="button" style="align-self: flex-start">Отвязать</button>
+</section>
+<section class="dlg" role="dialog" aria-labelledby="p3">
+<div class="dlg-h"><h2 class="h2" id="p3">Отвязать Telegram?</h2></div>
+<div class="dlg-b"><p class="s c2">Бот перестанет присылать новые лиды и напоминания о перезвонах.</p></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-danger" type="button">Отвязать</button></div>
+</section>
+</div>
+</div>
+
+<div class="col g8" style="grid-column: span 2">
+<span class="when">Подключить Telegram-аккаунт · 3 шага</span>
+<div class="row g16" style="align-items: flex-start">
+<section class="dlg" style="flex: 1 1 0">
+<div class="dlg-h"><div class="col g4"><span class="xs c3">Шаг 1 из 3</span><h2 class="h2">Номер телефона</h2></div></div>
+<div class="dlg-b">
+<div class="field"><label for="p4a">Номер в Telegram</label><div class="row g8"><span class="pfx" style="height: 40px; font-size: 14px; border-radius: 9px" aria-hidden="true">+998</span><input class="input num grow" id="p4a" type="tel" value="90 777 11 00"></div></div>
+<label class="row g8 s" style="align-items: flex-start"><input class="check" type="checkbox" checked="{{yes}}" style="margin-top: 2px">Разрешаю читать мои переписки с клиентами, чтобы менеджер видел разговоры</label>
+</div>
+<div class="dlg-f"><button class="btn btn-pri" type="button">Отправить код</button></div>
+</section>
+<section class="dlg" style="flex: 1 1 0">
+<div class="dlg-h"><div class="col g4"><span class="xs c3">Шаг 2 из 3</span><h2 class="h2">Код из Telegram</h2></div></div>
+<div class="dlg-b">
+<div class="field"><label for="p4b">Код</label><input class="input num is-bad" id="p4b" type="text" value="40213"><span class="err">Код неверный или устарел</span></div>
+<button class="btn btn-ghost btn-sm" type="button" style="align-self: flex-start">Отправить новый код · через 0:42</button>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Назад</button><button class="btn btn-pri" type="button">Проверить</button></div>
+</section>
+<section class="dlg" style="flex: 1 1 0">
+<div class="dlg-h"><div class="col g4"><span class="xs c3">Шаг 3 из 3 · если включена защита</span><h2 class="h2">Облачный пароль</h2></div></div>
+<div class="dlg-b"><div class="field"><label for="p4c">Пароль двухфакторной защиты</label><input class="input" id="p4c" type="password" value="password"></div><span class="hint">Если защиты нет, этот шаг пропускается и показывается «Шаг 2 из 2».</span></div>
+<div class="dlg-f"><button class="btn" type="button">Назад</button><button class="btn btn-pri" type="button">Подключить</button></div>
+</section>
+</div>
+</div>
+
+<div class="col g8">
+<span class="when">Мой стикер</span>
+<section class="dlg">
+<div class="dlg-h"><h2 class="h2">Мой стикер</h2></div>
+<div class="dlg-b">
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px">
+<sc-for list="{{stickers}}" as="s" hint-placeholder-count="12"><button class="btn {{s.cls}}" type="button" disabled="{{s.taken}}" style="height: 44px; padding: 0" title="{{s.tip}}">{{s.ch}}</button></sc-for>
+</div>
+<span class="hint">Серые заняты коллегами. Наведите, чтобы увидеть кем.</span>
+</div>
+<div class="dlg-f"><button class="btn btn-ghost" type="button">Убрать стикер</button><button class="btn btn-pri" type="button">Выбрать</button></div>
+</section>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1160}}'>
+class Component extends DCLogic {
+renderVals() {
+const chars = ['★', '◆', '●', '▲', '♥', '♣', '☀', '☾', '✦', '❖', '✿', '♞'];
+return {
+theme: this.props.theme ?? 'light',
+yes: true,
+stickers: chars.map((ch, i) => ({ ch: ch, cls: i === 4 ? 'pick-on' : '', taken: i === 1 || i === 7, tip: i === 1 ? 'Занят: Jasur Toshmatov' : i === 7 ? 'Занят: Nilufar Saidova' : 'Свободен' }))
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Архив эфиров</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 960px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="archive" hint-size="248px,960px"></dc-import></div>
+<div class="main-col">
+<header class="top">
+<h1 class="h1">Архив live-эфира</h1>
+<div class="seg"><a href="MgLive.dc.html">Сейчас</a><a class="is-on" href="MgLiveArchive.dc.html" aria-current="page">Архив</a></div>
+<span class="grow"></span>
+<span class="s c3">Записи хранятся 30 дней, затем автоматически удаляются.</span>
+</header>
+<main class="page">
+<section class="card row g12 wrap" style="padding: 12px 16px; align-items: flex-end">
+<div class="field" style="width: 240px"><label for="la1">Оператор</label><select class="input" id="la1"><option>Все</option><option>Gulnoza Karimova</option></select></div>
+<div class="field" style="width: 170px"><label for="la2">С даты</label><input class="input num" id="la2" type="text" value="13.10.2026"></div>
+<div class="field" style="width: 170px"><label for="la3">По дату</label><input class="input num" id="la3" type="text" value="14.10.2026"></div>
+<button class="btn" type="button">Сбросить фильтр</button>
+</section>
+<div class="split">
+<section class="list card tbl">
+<div class="tr th" style="grid-template-columns: minmax(0, 1fr) 168px 92px 84px 96px"><span>Оператор</span><span>Начало</span><span class="r">Длительность</span><span class="r">Размер</span><span class="r">Действия</span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+<div class="tr {{r.cls}}" style="grid-template-columns: minmax(0, 1fr) 168px 92px 84px 96px"><span class="row g8" style="min-width: 0"><span class="ava ava-s">{{r.ini}}</span><span class="trunc">{{r.name}}</span></span><span class="num s c2">{{r.start}}</span><span class="r num">{{r.dur}}</span><span class="r num c3">{{r.size}}</span><span class="r"><button class="btn btn-sm {{r.btn}}" type="button">{{r.act}}</button></span></div>
+</sc-for>
+</section>
+<aside class="panel card col" style="flex: 0 0 380px; overflow: hidden">
+<div class="row between" style="padding: 8px 14px; background: #15132B; color: #FFFFFF"><span class="s w6">Запись #1284 · Gulnoza Karimova</span><button class="btn btn-sm" type="button" style="background: transparent; border-color: rgba(255,255,255,.25); color: #FFFFFF">Закрыть</button></div>
+<div class="ph" style="aspect-ratio: 16 / 9; border: 0; border-radius: 0; background: #0E0D1A; color: #66637F"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7z"></path></svg>Запись эфира</div>
+<div class="row g8" style="padding: 10px 14px; background: #15132B"><span class="num xs" style="color: #A09DB2">1:12:40</span><div class="bar grow" style="background: #2C2A47"><i style="width: 27%"></i></div><span class="num xs" style="color: #A09DB2">4:24:10</span></div>
+<div class="col g8" style="padding: 14px 16px 16px">
+<span class="when">Ссылка не получена</span>
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>Не удалось получить ссылку</span></div>
+<span class="when">По фильтру пусто</span>
+<div class="empty" style="padding: 16px; border: 1px dashed var(--line-2); border-radius: 11px"><span class="s">Записей не найдено.</span><button class="btn btn-sm" type="button">Сбросить фильтр</button></div>
+</div>
+</aside>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+const r = (cls, ini, name, start, dur, size, loading) => ({ cls: cls, ini: ini, name: name, start: start, dur: dur, size: size, act: loading ? '...' : 'Смотреть', btn: '' });
+return {
+theme: this.props.theme ?? 'light',
+rows: [
+r('is-sel', 'GK', 'Gulnoza Karimova', '14.10.2026, 09:58:12', '4:24:10', '1.21 GB'),
+r('', 'JT', 'Jasur Toshmatov', '13.10.2026, 10:22:40', '8:42:05', '2.38 GB', true),
+r('', 'NS', 'Nilufar Saidova', '13.10.2026, 19:05:11', '12:30', '58.4 MB'),
+r('', 'GK', 'Gulnoza Karimova', '11.10.2026, 09:56:03', '9:58:47', '2.71 GB'),
+r('', 'OE', 'Otabek Ergashev', '10.10.2026, 10:01:20', '3:12:00', '902.6 MB'),
+r('', 'JS', 'Javlon Sobirov', '09.10.2026, 10:31:44', '9:29:16', '2.60 GB'),
+r('', 'MT', 'Malika Tursunova', '08.10.2026, 09:58:30', '10:06:51', '2.77 GB'),
+r('', 'AQ', 'Aziz Qodirov', '07.10.2026, 09:57:02', '41:09', '186.3 MB')
+]
+};
+}
+}
+</script>
+</body>
+</html>

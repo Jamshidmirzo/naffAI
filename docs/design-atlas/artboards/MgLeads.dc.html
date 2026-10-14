@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Лиды</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1400px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="orphans" hint-size="248px,1400px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<div class="col"><h1 class="h1">Свободные лиды</h1><span class="xs c3">Пул без оператора — раздайте вручную</span></div>
+<span class="grow"></span>
+<div class="inwrap" style="width: 300px; max-width: 100%"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg><input class="input" type="search" placeholder="Имя, телефон или модель" aria-label="Поиск лидов"></div>
+<span class="badge b-info" style="height: 20px">новое</span>
+</header>
+
+<main class="page" style="gap: 16px">
+
+<div class="tabs">
+<a class="tab" href="MgLeadsAll.dc.html">Все лиды <span class="num xs c3">4 812</span></a>
+<a class="tab" href="MgLeadsAll.dc.html">Нужна проверка <span class="cnt cnt-mute">12</span></a>
+<button class="tab is-on" type="button">Без оператора <span class="cnt">7</span></button>
+</div>
+
+<section class="card col" aria-label="Статус распределения">
+<div class="card-h" style="align-items: flex-start; padding: 14px 16px">
+<div class="col g4" style="min-width: 0">
+<span class="h3">Статус распределения</span>
+<span class="s c3">пачка = <span class="num c2 w6">5</span> · авто-раздача <b class="c-ok">ВКЛ</b> · получают сейчас: <span class="num c2 w6">2/6</span></span>
+</div>
+<button class="btn" type="button" title="Раздать всех сирот поровну активным операторам"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h11l-3-3M20 17H9l3 3M4 17h2M18 7h2"></path></svg>Раздать все 7 сейчас поровну</button>
+</div>
+<div class="tr th" style="grid-template-columns: minmax(0, 1.3fr) 90px 90px 110px minmax(0, 2fr)"><span>Оператор</span><span class="r">Работает</span><span class="r">Отложено</span><span>Статус</span><span>Почему</span></div>
+<sc-for list="{{ops}}" as="o" hint-placeholder-count="6">
+<div class="tr" style="grid-template-columns: minmax(0, 1.3fr) 90px 90px 110px minmax(0, 2fr); min-height: 44px; {{o.bg}}">
+<span class="row g8" style="min-width: 0"><span class="ava ava-s" data-s="{{o.s}}">{{o.ini}}</span><span class="s w6 trunc">{{o.name}}</span></span>
+<span class="r num s">{{o.work}}</span>
+<span class="r num s {{o.postCls}}">{{o.post}}</span>
+<span><span class="badge {{o.tone}}">{{o.badge}}</span></span>
+<span class="s trunc {{o.whyCls}}">{{o.why}}</span>
+</div>
+</sc-for>
+</section>
+
+<section class="card row g24 wrap" style="padding: 14px 20px; align-items: flex-end">
+<div class="col g4"><span class="lbl">Всего сирот</span><span class="kpi">7</span></div>
+<div class="col g6 grow"><span class="lbl">По источникам</span><div class="row g16 wrap s"><span class="c3">Instagram <span class="num w6" style="color: var(--ink)">4</span></span><span class="c3">Facebook <span class="num w6" style="color: var(--ink)">2</span></span><span class="c3">Telegram-бот <span class="num w6" style="color: var(--ink)">1</span></span></div></div>
+</section>
+
+<div class="row g8 wrap">
+<button class="chip is-on" type="button">Все источники</button>
+<button class="chip" type="button">Instagram</button>
+<button class="chip" type="button">Facebook</button>
+<button class="chip" type="button">Telegram-бот</button>
+</div>
+
+<div class="card row g8 wrap" style="padding: 10px 16px; background: var(--ink); color: var(--surface); border-color: var(--ink)">
+<span class="s w6 grow">Выбрано: 3 из 7</span>
+<button class="btn btn-sm btn-pri" type="button" style="color: var(--brand-ink)"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h11l-3-3M20 17H9l3 3M4 17h2M18 7h2"></path></svg>Раздать поровну</button>
+<button class="btn btn-sm" type="button" style="color: var(--ink)"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg>Назначить оператору…</button>
+<button class="btn btn-sm btn-ghost" type="button" style="color: var(--surface)">Снять выбор</button>
+</div>
+
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: 28px minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr) 130px"><input class="check" type="checkbox" aria-label="Выбрать все"><span>Лид</span><span>Источник</span><span>Товар</span><span>Статус</span><span class="r">Создан</span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+<div class="tr {{r.cls}}" style="grid-template-columns: 28px minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr) 130px">
+<input class="check" type="checkbox" checked="{{r.on}}" aria-label="Выбрать: {{r.name}}">
+<span class="col" style="min-width: 0"><span class="w6 trunc">{{r.name}}</span><span class="num xs {{r.phoneCls}}">{{r.phone}}</span></span>
+<span class="c2 trunc">{{r.src}}</span>
+<span class="trunc">{{r.product}}</span>
+<span><span class="badge {{r.tone}}"><i class="dot"></i>{{r.status}}</span></span>
+<span class="r num s c2">{{r.at}}</span>
+</div>
+</sc-for>
+</section>
+<div class="row between"><span class="s c3">Всего: <span class="num c2 w6">7</span></span><div class="row g8"><span class="s c3">Показано <span class="num">1–7</span> из <span class="num">7</span></span><button class="btn btn-sm" type="button" disabled="{{yes}}">Назад</button><button class="btn btn-sm btn-pri btn-sq" type="button" style="color: var(--brand-ink)" aria-current="page">1</button><button class="btn btn-sm" type="button" disabled="{{yes}}">Вперёд</button></div></div>
+
+<div class="row g24" style="align-items: flex-start; margin-top: 8px">
+<div class="col g8 grow">
+<span class="when">Если авто-раздача выключена в настройках</span>
+<div class="banner b-bad" style="background: var(--bad-bg); color: var(--bad)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>Авто-раздача выключена в настройках. Пока не включите — новые лиды не будут уходить операторам автоматически.</span></div>
+<span class="s c3">В строке статуса: авто-раздача <b class="c-bad">ВЫКЛ</b>, кнопка «Раздать все сейчас поровну» неактивна с подсказкой «Сначала включите авто-распределение в настройках».</span>
+</div>
+<div class="col g8" style="flex: 0 0 420px">
+<span class="when">Пул пуст</span>
+<section class="card empty" style="padding: 24px 20px"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13l3-8h10l3 8v6H4zM4 13h5l1 2h4l1-2h5"></path></svg><span class="h3" style="color: var(--ink)">Свободных лидов нет.</span><span class="s">Все лиды у операторов</span></section>
+</div>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1400}}'>
+class Component extends DCLogic {
+renderVals() {
+const r = (on, name, phone, src, product, status, tone, at) => ({ cls: on ? 'is-sel' : '', on: on, name: name, phone: phone || 'нет телефона', phoneCls: phone ? 'c3' : 'c-bad w6', src: src, product: product, status: status, tone: tone, at: at });
+const o = (s, ini, name, work, post, badge, why) => ({ s: s, ini: ini, name: name, work: work, post: post || '—', postCls: post ? '' : 'c3', badge: badge, tone: badge === 'ок' ? 'b-hot' : (badge === 'gate' ? 'b-bad' : ''), why: why, whyCls: badge === 'ок' ? 'c3' : '', bg: badge === 'ок' ? '' : 'background: var(--surface-2)' });
+return {
+theme: this.props.theme ?? 'light',
+yes: true,
+rows: [
+r(true, 'Kamron Ibragimov', '+998 93 220 14 70', 'Instagram', 'iPhone 15 128 GB', 'Новый', 'b-info', '14 окт, 14:18'),
+r(true, 'Feruza Hamidova', '+998 97 515 30 30', 'Instagram', 'Samsung Galaxy A55', 'Новый', 'b-info', '14 окт, 14:11'),
+r(true, '—', '', 'Facebook', 'Модель не указана', 'Новый', 'b-info', '14 окт, 14:05'),
+r(false, 'Ulug‘bek Rahmatov', '+998 99 818 77 66', 'Instagram', 'Redmi Note 13', 'Новый', 'b-info', '14 окт, 13:58'),
+r(false, 'Gavhar Nurmatova', '+998 91 302 45 45', 'Telegram-бот', 'iPhone 13 128 GB', 'Новый', 'b-info', '14 окт, 13:40'),
+r(false, 'Sanjar Pulatov', '+998 94 610 23 23', 'Facebook', 'Honor X9b', 'Не ответил 1', '', '13 окт, 17:02'),
+r(false, 'Lola Karimova', '+998 95 120 90 90', 'Instagram', 'Samsung Galaxy S24', 'Новый', 'b-info', '14 окт, 13:22')
+],
+ops: [
+o('on', 'NS', 'Nilufar Saidova', 3, 1, 'ок', 'ок — участвует в RR'),
+o('on', 'OE', 'Otabek Ergashev', 4, 0, 'ок', 'ок — участвует в RR'),
+o('on', 'GK', 'Gulnoza Karimova', 5, 2, 'квота', 'Квота: 5/5 — освободите слот, закрыв лид'),
+o('on', 'JT', 'Jasur Toshmatov', 5, 0, 'квота', 'Квота: 5/5 — освободите слот, закрыв лид'),
+o('late', 'DY', 'Dilnoza Yusupova', 3, 1, 'gate', 'morning-gate: есть просроченный callback'),
+o('pause', 'SK', 'Shahlo Komilova', 2, 0, '—', 'Оператор на паузе (новых лидов не получает)')
+]
+};
+}
+}
+</script>
+</body>
+</html>

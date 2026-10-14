@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Пользователи</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 960px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="users" hint-size="248px,960px"></dc-import></div>
+<div class="main-col">
+<header class="top"><div class="col"><h1 class="h1">Пользователи</h1><span class="xs c3">Веб-аккаунты менеджеров. Учётки операторов — в карточке оператора.</span></div><span class="grow"></span><div class="inwrap" style="width: 300px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg><input class="input" type="search" placeholder="Имя, логин, телефон или роль" aria-label="Поиск пользователей"></div><span class="num s c3" title="показано / всего">9 / 44</span><button class="btn btn-pri" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Добавить менеджера</button></header>
+<main class="page">
+<div class="row g8 wrap"><button class="chip is-on" type="button">Все <span class="n">44</span></button><button class="chip" type="button">Менеджеры <span class="n">3</span></button><button class="chip" type="button">Супер-менеджер <span class="n">1</span></button><button class="chip" type="button">Операторы <span class="n">37</span></button><button class="chip" type="button">Суперадмин <span class="n">1</span></button><span class="badge b-info" style="height: 20px">новое</span></div>
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: minmax(0, 1.7fr) 130px minmax(0, 1fr) 96px 96px 130px 150px"><span>Логин</span><span>Роль</span><span class="row g6">Подчинён <span class="badge b-info" style="height: 18px; text-transform: none; letter-spacing: 0">новое</span></span><span>Язык</span><span>Создан</span><span>Последний вход</span><span class="r">Действия</span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="9">
+<div class="tr" style="grid-template-columns: minmax(0, 1.7fr) 130px minmax(0, 1fr) 96px 96px 130px 150px; min-height: 58px">
+<span class="row g8" style="min-width: 0"><span class="ava ava-s">{{r.ini}}</span><span class="col" style="min-width: 0"><span class="row g6" style="min-width: 0"><span class="w6 trunc">{{r.name}}</span><sc-if value="{{r.tg}}" hint-placeholder-val="{{ false }}"><svg class="ic ic-s c-brand" viewBox="0 0 24 24" aria-label="Telegram привязан"><path d="M21 4L3 11l6 2.5M21 4l-3 16-9-6.5M21 4L9 13.5V19l3-3.5"></path></svg></sc-if><sc-if value="{{r.me}}" hint-placeholder-val="{{ false }}"><span class="badge b-info" style="height: 20px">это вы</span></sc-if></span><span class="num xs c3 trunc">{{r.login}}</span></span></span>
+<span class="col g4" style="align-items: flex-start"><span class="badge {{r.tone}}">{{r.role}}</span><sc-if value="{{r.su}}" hint-placeholder-val="{{ false }}"><span class="xs c3">superuser</span></sc-if></span>
+<span class="s c2 trunc">{{r.boss}}</span>
+<span class="row g4"><button class="chip {{r.uz}}" type="button" style="height: 24px; padding: 0 8px; font-size: 12px">UZ</button><button class="chip {{r.ru}}" type="button" style="height: 24px; padding: 0 8px; font-size: 12px">RU</button></span>
+<span class="num s c3">{{r.created}}</span>
+<span class="num s c3">{{r.last}}</span>
+<span class="row g6" style="justify-content: flex-end"><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Редактировать роль"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"></path></svg></button><button class="btn btn-sm" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7a4 4 0 1 1-3.9 4.9L4 19v2h3v-2h2v-2h2l1.1-1.1A4 4 0 0 1 15 7zM16 10h.01"></path></svg>Пароль</button><sc-if value="{{r.canEdit}}" hint-placeholder-val="{{ true }}"><button class="btn btn-ghost btn-sq btn-sm c-bad" type="button" aria-label="Деактивировать {{r.name}}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg></button></sc-if></span>
+</div>
+</sc-for>
+</section>
+<div class="row g16 wrap">
+<p class="s c3 grow">Язык UZ / RU — для AI-контента (утренняя цитата, урок); сохраняется сразу. Свою строку удалить нельзя. Свою роль и пароль менять здесь не стоит — для этого «Профиль».</p>
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Язык сохранён</span>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+const r = (ini, name, login, role, tone, boss, lang, created, last, f) => ({ ini: ini, name: name, login: login, role: role, tone: tone, boss: boss, uz: lang === 'uz' ? 'is-on' : '', ru: lang === 'ru' ? 'is-on' : '', created: created, last: last, me: !!f.me, tg: !!f.tg, su: !!f.su, canEdit: !f.me });
+return {
+theme: this.props.theme ?? 'light',
+rows: [
+r('KA', 'Kamola Ahmedova', 'kamola', 'Менеджер', 'b-hot', 'bobur', 'ru', '12.03.2026', '14.10.2026', { me: 1, tg: 1 }),
+r('BX', 'Bobur Xolmatov', 'bobur', 'Супер-менеджер', '', '—', 'ru', '01.02.2026', '14.10.2026', { tg: 1 }),
+r('RY', 'Rustam Yuldashev', 'rustam', 'Менеджер', 'b-hot', 'bobur', 'uz', '15.04.2026', '14.10.2026', { tg: 1 }),
+r('SN', 'Sherzod Nazarov', 'sherzod', 'Менеджер', '', '—', 'uz', '02.06.2026', '13.10.2026', {}),
+r('ZM', 'Zarina Mahmudova', 'zarina', 'Менеджер', 'b-hot', 'bobur', 'uz', '13.10.2026', '—', {}),
+r('AD', 'Admin', 'admin', 'Суперадмин', '', '—', 'ru', '10.01.2026', '13.10.2026', { su: 1 }),
+r('GK', 'Gulnoza Karimova', '+998907771100', 'Оператор', '', 'kamola', 'uz', '12.03.2026', '14.10.2026', { tg: 1 }),
+r('JT', 'Jasur Toshmatov', '+998901124567 · jasur.t', 'Оператор', '', 'kamola', 'uz', '04.02.2025', '14.10.2026', { tg: 1 }),
+r('OE', 'Otabek Ergashev', '+998998450316', 'Оператор', '', 'rustam', 'ru', '20.11.2025', '13.10.2026', {})
+]
+};
+}
+}
+</script>
+</body>
+</html>

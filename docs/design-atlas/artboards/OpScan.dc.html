@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Отметка по QR</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="min-height: 900px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6">
+<h1 class="h1">Отметка по QR · /scan</h1>
+<p class="c3">Открывается на телефоне сотрудника, когда он сканирует QR на входе или на экране смены. Вход в систему не нужен. Три состояния страницы.</p>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: start">
+
+<div class="col g8">
+<span class="when">Сделать селфи</span>
+<section class="card col" style="overflow: hidden; max-width: 420px">
+<i class="ikat" style="height: 10px" aria-hidden="true"></i>
+<div class="col g16" style="padding: 24px">
+<span class="lbl" style="color: var(--brand-text)">Приход на смену</span>
+<h2 class="display" style="font-size: 22px; line-height: 30px">Gulnoza Karimova</h2>
+<p class="s c2">Сделайте селфи, чтобы отметить приход. Лицо должно быть хорошо видно. Одно и то же фото дважды использовать нельзя.</p>
+<div class="ph" style="aspect-ratio: 3 / 4"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4zM12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg>Здесь откроется камера</div>
+<button class="btn btn-ok btn-lg btn-block" type="button">Открыть камеру</button>
+<a class="btn btn-ghost btn-block" href="OpLogin.dc.html">Войти по паролю</a>
+</div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Смена отмечена</span>
+<section class="card col" style="overflow: hidden; max-width: 420px">
+<i class="ikat" style="height: 10px" aria-hidden="true"></i>
+<div class="col g16" style="padding: 24px; align-items: center; text-align: center">
+<span class="icon-tile t-ok" style="width: 64px; height: 64px; border-radius: 18px"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span>
+<span class="lbl" style="color: var(--ok)">Смена начата</span>
+<h2 class="display" style="font-size: 22px; line-height: 30px">Приход в <span class="num">09:58</span></h2>
+<span class="badge b-ok">вовремя</span>
+<div class="ph" style="width: 120px; height: 150px">Ваше селфи</div>
+<p class="s c3">Можно убрать телефон. Рабочий экран на компьютере откроется сам через пару секунд.</p>
+<button class="btn btn-block" type="button">Готово</button>
+</div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">QR не прочитан</span>
+<section class="card col" style="overflow: hidden; max-width: 420px">
+<i class="ikat" style="height: 10px" aria-hidden="true"></i>
+<div class="col g16" style="padding: 24px; align-items: center; text-align: center">
+<span class="icon-tile t-bad" style="width: 64px; height: 64px; border-radius: 18px"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></span>
+<h2 class="display" style="font-size: 20px; line-height: 28px">Не удалось прочитать QR</h2>
+<p class="s c2">Код устарел или повреждён. Отсканируйте QR на экране смены ещё раз или попросите менеджера показать новый.</p>
+<a class="btn btn-pri btn-block" href="OpLogin.dc.html">Войти по паролю</a>
+</div>
+</section>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light' };
+}
+}
+</script>
+</body>
+</html>

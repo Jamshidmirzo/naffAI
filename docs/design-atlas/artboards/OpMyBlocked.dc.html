@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Мои лиды: блокирующие</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 960px">
+<div class="rail-wrap"><dc-import name="SideNav" who="operator" at="my" hint-size="84px,960px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Мои лиды</h1>
+<span class="badge b-ok" style="height: 28px"><i class="dot"></i>На смене <span class="num">01:05:40</span></span>
+<span class="grow"></span>
+<span class="badge b-bad" style="height: 28px"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3"></path></svg>Новые лиды на паузе</span>
+<a class="btn btn-pri" href="OpSale.dc.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Новая продажа</a>
+</header>
+
+<main class="page">
+<div class="split">
+
+<section class="list col g16">
+<div class="card col" style="border-color: var(--bad-solid)">
+<div class="row g16 wrap" style="padding: 18px 20px; align-items: flex-start">
+<div class="col g4 grow" style="min-width: 280px">
+<h2 class="h2">Закрой эти 3 лида, чтобы получать новые</h2>
+<p class="s c3">Пока по ним нет итога (продажа, отказ или новое время перезвона), автораздача тебя пропускает. Старые сверху: начни с них.</p>
+</div>
+<div class="col g6" style="width: 220px">
+<div class="row between"><span class="s w6">Закрыто</span><span class="num s w6">1 / 3</span></div>
+<div class="bar"><i class="bad" style="width: 33%"></i></div>
+</div>
+</div>
+<hr class="hr">
+<sc-for list="{{blocking}}" as="b" hint-placeholder-count="3">
+<div class="row-item {{b.cls}}">
+<div class="col" style="width: 210px; flex: none; gap: 2px"><span class="h3 trunc">{{b.name}}</span><span class="num s c2">{{b.phone}}</span></div>
+<span class="s c-bad w6 grow">{{b.reason}}</span>
+<span class="badge {{b.tone}}"><i class="dot"></i>{{b.status}}</span>
+<button class="btn" type="button">{{b.action}}</button>
+</div>
+</sc-for>
+</div>
+
+<div class="row between"><span class="lbl">Остальные лиды · 4</span><span class="xs c3">с ними можно работать, новые не приходят</span></div>
+<div class="card" style="opacity: .72">
+<sc-for list="{{rest}}" as="l" hint-placeholder-count="2">
+<div class="row-item">
+<div class="col" style="width: 210px; flex: none; gap: 2px"><span class="h3 trunc">{{l.name}}</span><span class="num s c2">{{l.phone}}</span></div>
+<span class="s grow trunc">{{l.product}}</span>
+<span class="badge {{l.tone}}"><i class="dot"></i>{{l.status}}</span>
+</div>
+</sc-for>
+</div>
+</section>
+
+<aside class="panel card col">
+<div class="col g12" style="padding: 20px">
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"></path></svg><span>Перезвон был назначен на <span class="num w6">12:00</span>, просрочен на <span class="num w6">2 ч 10 мин</span>.</span></div>
+<div class="row between g12" style="align-items: flex-start">
+<div class="col g4"><h2 class="h1" style="font-size: 22px; line-height: 28px">Dilnoza Yusupova</h2><span class="num" style="font-size: 17px; font-weight: 600">+998 93 456 78 90</span></div>
+<span class="badge b-info"><i class="dot"></i>Callback</span>
+</div>
+<p class="s c3">Samsung Galaxy S24 · Telegram-бот · «ждёт зарплату в пятницу»</p>
+<button class="btn btn-ok btn-lg btn-block" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"></path></svg>Позвонить</button>
+</div>
+<hr class="hr">
+<div class="col g8" style="padding: 16px 20px 20px">
+<span class="lbl">Итог звонка</span>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<a class="out is-ok" href="OpSale.dc.html"><b>Продажа</b><span>Оформить продажу</span></a>
+<a class="out" href="OpCallback.dc.html"><b>Перезвон</b><span>Новое время</span></a>
+<button class="out" type="button"><b>Не ответил</b><span>Гудки или выключен</span></button>
+<button class="out" type="button"><b>Не купит</b><span>Указать причину</span></button>
+</div>
+</div>
+</aside>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+theme: this.props.theme ?? 'light',
+blocking: [
+{ cls: 'is-sel', name: 'Dilnoza Yusupova', phone: '+998 93 456 78 90', reason: 'Перезвон просрочен на 2 ч 10 мин', status: 'Callback', tone: 'b-info', action: 'Открыть' },
+{ cls: '', name: 'Bekzod Nazarov', phone: '+998 91 700 00 11', reason: 'Вчера не ответил, итог не выбран', status: 'Не ответил 2', tone: 'b-hot', action: 'Открыть' },
+{ cls: '', name: 'Otabek Ergashev', phone: '+998 94 300 40 50', reason: 'Обещал прийти в магазин вчера', status: 'Придёт в магазин', tone: 'b-info', action: 'Открыть' }
+],
+rest: [
+{ name: 'Sardor Aliyev', phone: '+998 90 123 45 67', product: 'iPhone 15 Pro 256 GB', status: 'В работе', tone: 'b-hot' },
+{ name: 'Madina Rahimova', phone: '+998 99 555 01 02', product: 'iPhone 13 128 GB', status: 'Показалось дорого', tone: 'b-hot' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Боковое меню</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<sc-if value="{{rail}}" hint-placeholder-val="{{ false }}">
+<nav class="rail" aria-label="{{navLabel}}" style="min-height: 960px; font-family: var(--font); color: var(--ink)">
+<div class="col" style="align-items: center; gap: 4px; padding: 2px 0 10px">
+<i class="ikat ikat-mark" style="width: 22px; height: 30px; border-radius: 6px" aria-hidden="true"></i>
+<span class="display" style="font-size: 13px">naff</span>
+</div>
+<button class="rail-item" type="button" aria-label="Поиск и команды, Ctrl K"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg><span class="kbd" style="height: 16px; font-size: 9.5px">⌘K</span></button>
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="4">
+<i class="hr" style="width: 40px; margin: 4px 0" aria-hidden="true"></i>
+<sc-for list="{{g.items}}" as="it" hint-placeholder-count="3">
+<a class="rail-item {{it.cls}}" href="{{it.href}}"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="{{it.d}}"></path></svg><span>{{it.short}}</span><sc-if value="{{it.cnt}}" hint-placeholder-val="{{ false }}"><span class="cnt {{it.cntCls}}">{{it.cnt}}</span></sc-if></a>
+</sc-for>
+</sc-for>
+<div class="col" style="align-items: center; gap: 8px; margin-top: auto; padding-top: 12px">
+<span class="ava" data-s="on" title="{{me.name}}">{{me.ini}}</span>
+<button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="{{logoutLabel}}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h9"></path></svg></button>
+</div>
+</nav>
+</sc-if>
+<sc-if value="{{full}}" hint-placeholder-val="{{ true }}">
+<nav class="side" aria-label="{{navLabel}}" style="min-height: 960px; font-family: var(--font); color: var(--ink)">
+<div class="wordmark"><i class="ikat ikat-mark" aria-hidden="true"></i>naff<b>AI</b></div>
+<button class="cmd" type="button" style="min-width: 0; margin: 0 2px 6px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg>{{cmdLabel}}<span class="kbd">⌘K</span></button>
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="7">
+<sc-if value="{{g.open}}" hint-placeholder-val="{{ true }}">
+<sc-if value="{{g.title}}" hint-placeholder-val="{{ true }}"><button class="side-grp is-open" type="button" aria-expanded="true"><span class="grow">{{g.title}}</span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"></path></svg></button></sc-if>
+<sc-for list="{{g.items}}" as="it" hint-placeholder-count="5">
+<a class="side-item {{it.cls}}" href="{{it.href}}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="{{it.d}}"></path></svg><span class="grow trunc">{{it.label}}</span><sc-if value="{{it.tag}}" hint-placeholder-val="{{ false }}"><span class="side-tag">{{it.tag}}</span></sc-if><sc-if value="{{it.cnt}}" hint-placeholder-val="{{ false }}"><span class="cnt {{it.cntCls}}">{{it.cnt}}</span></sc-if></a>
+</sc-for>
+</sc-if>
+<sc-if value="{{g.closed}}" hint-placeholder-val="{{ false }}">
+<button class="side-grp" type="button" aria-expanded="false"><span class="grow">{{g.title}}</span><span class="side-n">{{g.n}}</span><sc-if value="{{g.cnt}}" hint-placeholder-val="{{ false }}"><span class="cnt">{{g.cnt}}</span></sc-if><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+</sc-if>
+</sc-for>
+<div class="row g6" style="margin-top: auto; padding: 12px 6px 4px 10px; border-top: 1px solid var(--line)">
+<a class="row g8 grow {{me.cls}}" href="{{me.profile}}" style="min-width: 0; border-radius: 9px"><span class="ava">{{me.ini}}</span><span class="col grow" style="min-width: 0"><span class="s w6 trunc">{{me.name}}</span><span class="xs c3">{{me.role}}</span></span></a>
+<a class="btn btn-ghost btn-sq btn-sm {{me.bellCls}}" href="{{me.notif}}" aria-label="{{me.bellLabel}}" style="position: relative"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16v-5a6 6 0 1 1 12 0v5l2 2H4zM10 21h4"></path></svg><span class="cnt" style="position: absolute; top: -4px; right: -6px; min-width: 18px; height: 18px; font-size: 10.5px">{{me.bell}}</span></a>
+<button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="{{logoutLabel}}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h9"></path></svg></button>
+</div>
+</nav>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"who":{"editor":"enum","options":["operator","manager","super"],"default":"manager"},"at":{"editor":"text","default":"my"},"lang":{"editor":"enum","options":["ru","uz"],"default":"ru"},"open":{"editor":"enum","options":["current","all"],"default":"current"},"$preview":{"width":248,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+const who = this.props.who ?? 'manager';
+const at = this.props.at ?? (who === 'operator' ? 'my' : who === 'super' ? 'board' : 'dash');
+const uz = (this.props.lang ?? 'ru') === 'uz';
+const I = {
+list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+focus: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4',
+plus: 'M12 5v14M5 12h14',
+wallet: 'M4 7h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4zM4 7V5a1 1 0 0 1 1-1h11M16 13.5h.01',
+receipt: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6',
+calc: 'M6 3h12v18H6zM9 7h6M9 12h.01M12 12h.01M15 12h.01M9 16h.01M12 16h.01M15 16h.01',
+phone: 'M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2',
+trophy: 'M8 4h8v5a4 4 0 0 1-8 0zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8 20h8',
+book: 'M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h10',
+play: 'M4 5h16v14H4zM10 9l5 3-5 3z',
+bell: 'M6 16v-5a6 6 0 1 1 12 0v5l2 2H4zM10 21h4',
+coffee: 'M5 9h12v5a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5zM17 10h2a2 2 0 0 1 0 4h-2M8 3v3M12 3v3',
+user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
+users: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 6.5M18 14.5a6 6 0 0 1 3.5 5.5',
+seats: 'M4 5h4v4H4zM10 5h4v4h-4zM16 5h4v4h-4zM4 15h4v4H4zM10 15h4v4h-4zM16 15h4v4h-4z',
+check: 'M5 12.5l4.5 4.5L19 7.5',
+clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
+inbox: 'M4 13l3-8h10l3 8v6H4zM4 13h5l1 2h4l1-2h5',
+call: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z',
+chart: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+file: 'M6 3h9l4 4v14H6zM14 3v5h5',
+video: 'M4 7h11v10H4zM15 11l5-3v8l-5-3z',
+gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.5 7.5 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.5 7.5 0 0 0 1.7-1l2.4 1 2-3.4z',
+shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
+board: 'M4 4h5v16H4zM10 4h5v10h-5zM16 4h4v13h-4z'
+};
+const it = (id, label, short, d, href, cnt, mute) => ({ id: id, label: label, short: short, d: d, href: href, cnt: cnt || '', cntCls: mute ? 'cnt-mute' : '' });
+const operator = [
+{ title: '', items: [it('my', 'Мои лиды', 'Лиды', I.focus, 'OpMy.dc.html', '2'), it('sale', 'Новая продажа', 'Продажа', I.plus, 'OpSale.dc.html')] },
+{ title: 'Деньги', items: [it('payroll', 'Зарплата', 'Зарплата', I.wallet, 'OpPayroll.dc.html'), it('sales', 'Мои продажи', 'Продажи', I.receipt, 'OpSales.dc.html')] },
+{ title: 'Инструменты', items: [it('calc', 'Калькулятор рассрочки', 'Рассрочка', I.calc, 'OpCalc.dc.html'), it('catalog', 'Каталог телефонов', 'Каталог', I.phone, 'OpCatalog.dc.html'), it('board', 'Табло', 'Табло', I.trophy, 'OpBoard.dc.html')] },
+{ title: 'Обучение', items: [it('lessons', 'Урок дня', 'Урок', I.book, 'OpLessons.dc.html', '1', true), it('training', 'Курсы', 'Курсы', I.play, 'OpTraining.dc.html')] },
+{ title: 'Личное', items: [it('notif', 'Уведомления', 'Сигналы', I.bell, 'OpNotif.dc.html', '2'), it('dayoff', 'Выходной', 'Выходной', I.coffee, 'OpDayOff.dc.html'), it('profile', 'Профиль', 'Профиль', I.user, 'OpProfile.dc.html')] }
+];
+const operatorUz = [
+{ title: '', items: [it('my', 'Mening lidlarim', 'Lidlar', I.focus, 'OpMyUz.dc.html', '2'), it('sale', 'Yangi sotuv', 'Sotuv', I.plus, 'OpSale.dc.html')] },
+{ title: 'Pul', items: [it('payroll', 'Ish haqi', 'Ish haqi', I.wallet, 'OpPayroll.dc.html'), it('sales', 'Mening sotuvlarim', 'Sotuvlar', I.receipt, 'OpSales.dc.html')] },
+{ title: 'Vositalar', items: [it('calc', "Muddatli to'lov", 'Kalkulyator', I.calc, 'OpCalc.dc.html'), it('catalog', 'Telefonlar katalogi', 'Katalog', I.phone, 'OpCatalog.dc.html'), it('board', 'Reyting', 'Reyting', I.trophy, 'OpBoard.dc.html')] },
+{ title: "O'qish", items: [it('lessons', 'Kun darsi', 'Dars', I.book, 'OpLessons.dc.html', '1', true), it('training', 'Kurslar', 'Kurslar', I.play, 'OpTraining.dc.html')] },
+{ title: 'Shaxsiy', items: [it('notif', 'Bildirishnomalar', 'Xabarlar', I.bell, 'OpNotif.dc.html', '2'), it('dayoff', 'Dam olish kuni', 'Dam olish', I.coffee, 'OpDayOff.dc.html'), it('profile', 'Profil', 'Profil', I.user, 'OpProfile.dc.html')] }
+];
+I.cal = 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4';
+I.qr = 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2zM14 18h2';
+I.photo = 'M4 7h4l2-2h4l2 2h4v12H4zM12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6z';
+I.archive = 'M4 5h16v4H4zM5 9v10h14V9M10 13h4';
+I.tv = 'M3 5h18v12H3zM8 21h8M12 17v4';
+I.sliders = 'M4 7h10M18 7h2M4 17h2M10 17h10M14 5v4M6 15v4';
+I.cog2 = 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z';
+I.tag = 'M4 4h8l8 8-8 8-8-8zM8 8h.01';
+I.bank = 'M3 10l9-6 9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18';
+I.percent = 'M19 5L5 19M7 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z';
+I.text = 'M5 6h14M5 12h14M5 18h9';
+I.handshake = 'M4 12l4-4 4 3 4-4 4 4-6 6-3-2-3 3z';
+I.sheet = 'M4 5h16v14H4zM4 10h16M4 15h16M10 5v14';
+I.dots = 'M5 7h14M5 12h14M5 17h14M3 7h.01M3 12h.01M3 17h.01';
+I.ai = 'M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z';
+I.send = 'M21 3L3 10.5l7 3 3 7z';
+I.bot = 'M7 8h10v10H7zM12 4v4M9.5 13h.01M14.5 13h.01M4 12v3M20 12v3';
+I.people = 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20a6.5 6.5 0 0 1 13 0';
+I.target = 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01';
+I.lost = 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9 9l6 6M15 9l-6 6';
+I.sticker = 'M5 4h14v9l-6 7H5zM13 20v-7h6';
+I.trash = 'M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13';
+const tg = (label, items, opt) => Object.assign({ title: label, items: items }, opt || {});
+const mgr = [
+tg('', [it('dash', 'Пульт зала', '', I.seats, 'MgDashboard.dc.html'), it('sales', 'Продажи', '', I.receipt, 'MgSales.dc.html'), it('pending', 'Ждут подтверждения', '', I.check, 'MgPending.dc.html', '3'), it('calls', 'Звонки', '', I.call, 'MgCalls.dc.html'), it('leads', 'Лиды', '', I.list, 'MgLeadsAll.dc.html', '12', true), it('orphans', 'Свободные лиды', '', I.inbox, 'MgLeads.dc.html', '7')], { main: true }),
+tg('Аналитика', [it('analytics', 'Аналитика', '', I.chart, 'MgAnalytics.dc.html'), it('lboard', 'Табло', '', I.trophy, 'MgBoard.dc.html'), it('lstats', 'Статистика лидов', '', I.target, 'MgLeadsStats.dc.html'), it('reports', 'Отчёты', '', I.file, 'MgReports.dc.html'), it('screen', 'TV-экран', '', I.tv, 'MgScreen.dc.html')]),
+tg('Посещаемость', [it('att', 'Сегодня', '', I.clock, 'MgAttendance.dc.html'), it('kiosk', 'Киоск check-in', '', I.qr, 'MgKiosk.dc.html'), it('attrep', 'Отчёт', '', I.cal, 'MgAttReport.dc.html'), Object.assign(it('photos', 'Фото сотрудников', '', I.photo, 'MgAttPhotos.dc.html'), { tag: 'админ' }), it('live', 'Live-эфир', '', I.video, 'MgLive.dc.html'), it('archive', 'Архив live', '', I.archive, 'MgLiveArchive.dc.html')]),
+tg('Команда', [it('ops', 'Операторы', '', I.users, 'MgOperators.dc.html'), it('dayoff', 'Заявки на выходной', '', I.coffee, 'MgDayOff.dc.html', '2', true), it('payroll', 'Зарплата', '', I.wallet, 'MgPayroll.dc.html'), it('attset', 'Настройки посещаемости', '', I.sliders, 'MgAttSettings.dc.html'), it('lessons', 'Уроки', '', I.book, 'OpLessons.dc.html'), it('training', 'Обучение', '', I.play, 'OpTraining.dc.html'), it('trmanage', 'Управление обучением', '', I.book, 'MgTraining.dc.html'), it('users', 'Пользователи', '', I.user, 'MgUsers.dc.html'), Object.assign(it('stickers', 'Стикеры', '', I.sticker, 'Coverage.dc.html'), { tag: 'скоро' })]),
+tg('Справочники', [it('catalog', 'Каталог', '', I.phone, 'MgCatalog.dc.html'), it('calc', 'Калькулятор', '', I.calc, 'MgCalc.dc.html'), it('tiers', 'Тарифы рассрочки', '', I.percent, 'MgCatalogMore.dc.html'), it('banks', 'Банки', '', I.bank, 'MgCatalogMore.dc.html'), it('mkt', 'Тексты для маркетинга', '', I.text, 'MgCatalogMore.dc.html'), it('partners', 'Партнёры', '', I.handshake, 'MgPartners.dc.html'), it('sheets', 'Google-таблицы', '', I.sheet, 'MgSheets.dc.html'), it('statuses', 'Статусы лидов', '', I.dots, 'MgSettings.dc.html')]),
+tg('AI и Telegram', [it('ai', 'AI-чат', '', I.ai, 'MgAIChat.dc.html'), it('tgq', 'Очередь Telegram', '', I.send, 'MgTgQueue.dc.html'), it('bot', 'Бот и рассылки', '', I.bot, 'MgBot.dc.html'), it('botsubs', 'Подписчики бота', '', I.people, 'MgBotSubs.dc.html'), it('marketing', 'Маркетинг', '', I.target, 'MgMarketing.dc.html'), it('sources', 'Аналитика источников', '', I.chart, 'MgSources.dc.html')]),
+tg('Система', [it('audit', 'Журнал изменений', '', I.shield, 'MgJournal.dc.html'), Object.assign(it('lost', 'Системно потерянные', '', I.lost, 'MgSystemLost.dc.html'), { tag: 'админ' }), it('settings', 'Настройки', '', I.gear, 'MgSettingsGeneral.dc.html')])
+];
+const branch = tg('Моя ветка', [it('tsales', 'Продажи команды', '', I.chart, 'SmTeamSales.dc.html'), it('sdash', 'Пульт ветки', '', I.seats, 'SmDashboard.dc.html'), it('spending', 'Ждут подтверждения', '', I.check, 'MgPending.dc.html', '7'), it('tops', 'Мои операторы', '', I.users, 'SmOperators.dc.html'), it('board', 'Доска ветки', '', I.board, 'SmBoard.dc.html'), it('deleted', 'Удалённые операторы', '', I.trash, 'SmDeleted.dc.html')], { main: true });
+const supMgr = mgr.map((g) => g.main ? Object.assign({}, g, { title: 'Основное', main: false }) : g);
+const groupsBy = {
+operator: uz ? operatorUz : operator,
+manager: mgr,
+super: [branch].concat(supMgr)
+};
+const meOn = (id) => at === id ? 'is-on' : '';
+const meBy = {
+operator: { ini: 'GK', name: 'Gulnoza Karimova', role: uz ? 'Operator' : 'Оператор' },
+manager: { ini: 'KA', name: 'Kamola Ahmedova', role: uz ? 'Menejer' : 'Менеджер', profile: 'MgProfile.dc.html', notif: 'MgNotif.dc.html', bell: '4', cls: meOn('profile'), bellCls: meOn('notif') === 'is-on' ? 'is-on' : '', bellLabel: uz ? 'Bildirishnomalar: 4 ta yangi' : 'Уведомления: 4 новых' },
+super: { ini: 'BX', name: 'Bobur Xolmatov', role: uz ? 'Super-menejer' : 'Супер-менеджер', profile: 'SmProfile.dc.html', notif: 'SmNotif.dc.html', bell: '3', cls: meOn('profile'), bellCls: meOn('notif') === 'is-on' ? 'is-on' : '', bellLabel: uz ? 'Bildirishnomalar: 3 ta yangi' : 'Уведомления: 3 новых' }
+};
+const UZ = { 'Основное': 'Asosiy', 'Ждут подтверждения': 'Tasdiq kutmoqda', 'TV-экран': 'TV-ekran', 'Статистика лидов': 'Lidlar statistikasi', 'Посещаемость': 'Davomat', 'Сегодня': 'Bugun', 'Киоск check-in': 'Check-in kiosk', 'Отчёт': 'Hisobot', 'Фото сотрудников': 'Xodimlar suratlari', 'Архив live': 'Efir arxivi', 'Настройки посещаемости': 'Davomat sozlamalari', 'Уроки': 'Darslar', 'Управление обучением': 'O‘qitishni boshqarish', 'Пользователи': 'Foydalanuvchilar', 'Стикеры': 'Stikerlar', 'Справочники': 'Ma’lumotnomalar', 'Каталог': 'Katalog', 'Калькулятор': 'Kalkulyator', 'Тарифы рассрочки': 'Muddatli to‘lov tariflari', 'Банки': 'Banklar', 'Тексты для маркетинга': 'Marketing matnlari', 'Партнёры': 'Hamkorlar', 'Google-таблицы': 'Google jadvallar', 'Статусы лидов': 'Lid holatlari', 'AI и Telegram': 'AI va Telegram', 'AI-чат': 'AI-chat', 'Очередь Telegram': 'Telegram navbati', 'Бот и рассылки': 'Bot va xabarlar', 'Подписчики бота': 'Bot obunachilari', 'Маркетинг': 'Marketing', 'Аналитика источников': 'Manbalar tahlili', 'Системно потерянные': 'Tizim yo‘qotgan lidlar', 'Как у менеджера': 'Menejer bo‘limlari', 'Мои операторы': 'Mening operatorlarim', 'Удалённые операторы': 'O‘chirilgan operatorlar', 'Пульт ветки': 'Filial pulti', 'Пульт зала': 'Zal pulti', 'Пульт ветки': 'Filial pulti', 'Подтвердить продажи': 'Sotuvlarni tasdiqlash', 'Смена сегодня': 'Bugungi smena', 'Продажи и лиды': 'Sotuvlar va lidlar', 'Продажи': 'Sotuvlar', 'Лиды': 'Lidlar', 'Свободные лиды': "Bo'sh lidlar", 'Звонки': "Qo'ng'iroqlar", 'Команда': 'Jamoa', 'Операторы': 'Operatorlar', 'Заявки на выходной': 'Dam olish arizalari', 'Зарплата': 'Ish haqi', 'Обучение': "O'qitish", 'Аналитика': 'Tahlil', 'Отчёты': 'Hisobotlar', 'Табло': 'Reyting', 'Live-эфир': 'Jonli efir', 'Система': 'Tizim', 'Настройки': 'Sozlamalar', 'Журнал изменений': "O'zgarishlar jurnali", 'Моя ветка': 'Mening filialim', 'Доска ветки': 'Filial doskasi', 'Продажи команды': 'Jamoa sotuvlari', 'Операторы ветки': 'Filial operatorlari' };
+const tr = (x) => (uz && who !== 'operator' && UZ[x]) ? UZ[x] : x;
+const allOpen = (this.props.open ?? '') === 'all';
+const groups = (groupsBy[who] || groupsBy.operator).map((g) => {
+const items = g.items.map((x) => Object.assign({ tag: '' }, x, { label: tr(x.label), cls: x.id === at ? 'is-on' : '' }));
+const hasAt = items.some((x) => x.id === at);
+const open = who === 'operator' || allOpen || g.main || hasAt || !g.title;
+const cnt = items.reduce((n, x) => n + (x.cnt && !x.cntCls ? Number(x.cnt) : 0), 0);
+return { title: tr(g.title), items: items, open: open, closed: !open, n: items.length, cnt: cnt ? String(cnt) : '' };
+});
+const rail = who === 'operator';
+return { rail: rail, full: !rail, groups: groups, me: meBy[who] || meBy.operator, cmdLabel: uz ? 'Topish yoki bajarish' : 'Найти или сделать', navLabel: uz ? 'Bo‘limlar' : 'Разделы', logoutLabel: uz ? 'Chiqish' : 'Выйти' };
+}
+}
+</script>
+</body>
+</html>

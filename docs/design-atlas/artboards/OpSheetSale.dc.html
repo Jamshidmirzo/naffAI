@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Новая продажа: ошибки</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1240px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6">
+<h1 class="h1">Новая продажа: проверки и ошибки</h1>
+<p class="c3">Ошибка видна сразу под полем, а итог справа объясняет, почему кнопка «Отправить» неактивна. Сейчас кнопка просто серая, и оператор не понимает, что не так.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; align-items: start">
+
+<div class="col g8">
+<span class="when">IMEI · все состояния поля</span>
+<section class="card col g16 pad" style="padding: 20px">
+<div class="field"><label for="e1">IMEI</label><input class="input num is-bad" id="e1" type="text" value="" placeholder="15 цифр"><span class="err">Введите IMEI телефона</span></div>
+<div class="field"><label for="e2">IMEI</label><input class="input num is-bad" id="e2" type="text" value="35 693108 12345"><span class="err">Нужно 15 цифр, сейчас 14</span></div>
+<div class="field"><label for="e3">IMEI</label><input class="input num is-warn" id="e3" type="text" value="35 693108 123456 9"><span class="hint" style="color: var(--warn)">Похоже на опечатку, проверьте номер. Отправить всё равно можно</span></div>
+<div class="field"><label for="e4">IMEI</label><input class="input num is-bad" id="e4" type="text" value="35 391710 554210 3"><span class="err">Этот IMEI уже продан 03.10, продажа №1 301. Проверьте номер или напишите менеджеру</span></div>
+<div class="field"><label for="e5">IMEI</label><input class="input num is-ok" id="e5" type="text" value="35 693108 123456 7"><span class="hint" style="color: var(--ok)">IMEI верный. Модель: Apple iPhone 15 Pro</span></div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Сумма и партнёры</span>
+<section class="card col g16" style="padding: 20px">
+<div class="field"><label for="e6">Сумма продажи, сум</label><input class="input num is-bad" id="e6" type="text" value="800"><span class="err">Минимальная сумма — 1 000 сум</span></div>
+<div class="col g8">
+<span class="flabel">Оплата через партнёров</span>
+<div class="row g8"><select class="input" aria-label="Партнёр 1" style="width: 130px"><option>Alif</option></select><input class="input num grow" type="text" value="10 000 000" aria-label="Сумма 1"></div>
+<div class="row g8"><select class="input" aria-label="Партнёр 2" style="width: 130px"><option>Uzum</option></select><input class="input num grow" type="text" value="4 000 000" aria-label="Сумма 2"></div>
+<span class="hint" style="color: var(--warn)">Осталось распределить 500 000 сум<button class="btn btn-ghost btn-sm" type="button" style="margin-left: 8px">Добавить к Uzum</button></span>
+</div>
+<div class="col g6">
+<span class="err">Превышение на 300 000 сум: сумма партнёров больше суммы продажи</span>
+<span class="err">Alif выбран дважды. Выберите другого партнёра</span>
+<span class="hint">Партнёров не больше двух: кнопка «Добавить партнёра» скрывается после второго</span>
+</div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Клиент и телефон</span>
+<section class="card col g16" style="padding: 20px">
+<div class="field"><label for="e7">Телефон клиента</label><div class="row g8"><span class="pfx" style="height: 40px; font-size: 14px; border-radius: 9px" aria-hidden="true">+998</span><input class="input num grow is-bad" id="e7" type="tel" value="90 123 45"></div><span class="err">Нужно 9 цифр после +998, сейчас 7</span></div>
+<div class="col g4">
+<div class="field"><label for="e8">Телефон клиента</label><div class="row g8"><span class="pfx" style="height: 40px; font-size: 14px; border-radius: 9px" aria-hidden="true">+998</span><input class="input num grow" id="e8" type="tel" value="90 12"></div></div>
+<div class="card col" style="box-shadow: var(--shadow)">
+<div class="li" style="min-height: 52px"><span class="col grow"><span class="s w6">Sardor Aliyev</span><span class="num xs c3">+998 90 123 45 67 · Instagram</span></span><span class="badge b-info">Новый</span></div>
+<div class="li" style="min-height: 52px"><span class="col grow"><span class="s w6">Без имени</span><span class="num xs c3">+998 90 120 33 44 · Сайт</span></span><span class="badge">Архив</span></div>
+</div>
+</div>
+<div class="banner b-warn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>Этого клиента нет среди лидов. Продажа сохранится без источника, и мы не узнаем, откуда пришёл клиент.</span></div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Фото договора</span>
+<section class="card col g12" style="padding: 20px">
+<div class="ph" style="height: 110px; border-color: var(--bad-solid); background: var(--bad-bg); color: var(--bad)"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V9M7 13l5-5 5 5M5 4h14"></path></svg><span class="w6">Прикрепите хотя бы одно фото договора</span><span>Перетащите файл, вставьте Ctrl+V или снимите камерой</span></div>
+<span class="err">Фото больше 10 МБ — уменьшите размер: «IMG_2041.jpg», 14 МБ</span>
+<span class="err">Можно только изображения JPG, PNG или WebP: «договор.pdf»</span>
+<span class="err">Можно не больше 5 фото. Шестое не добавлено</span>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Итог справа · почему нельзя отправить</span>
+<section class="card col">
+<div class="card-h"><span class="h3">Итог</span><span class="badge b-bad">2 проблемы</span></div>
+<div class="col g8" style="padding: 16px 20px">
+<div class="row g8 s"><svg class="ic c-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>IMEI проверен</div>
+<a class="row g8 s c-bad" href="#e6"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>Суммы партнёров не сходятся: осталось 500 000</a>
+<a class="row g8 s c-bad" href="#e7"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>Нет фото договора</a>
+</div>
+<hr class="hr">
+<div class="col g8" style="padding: 16px 20px">
+<button class="btn btn-pri btn-lg btn-block" type="button" disabled="{{yes}}">Отправить на подтверждение</button>
+<span class="xs c3">Нажмите на пункт, чтобы перейти к полю.</span>
+</div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Ошибка сервера и уход со страницы</span>
+<div class="col g16">
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span class="col g4"><span class="w6">Не отправилось: проверьте выделенные поля</span><span>Сервер не принял IMEI. Остальное сохранено в черновике.</span></span></div>
+<section class="dlg" role="dialog" aria-labelledby="e9">
+<div class="dlg-h"><h2 class="h2" id="e9">Уйти без отправки?</h2></div>
+<div class="dlg-b"><p class="s c2">Черновик сохранится на этом компьютере. Вернуться к нему можно из «Новой продажи».</p></div>
+<div class="dlg-f"><button class="btn" type="button">Уйти</button><button class="btn btn-pri" type="button">Остаться</button></div>
+</section>
+</div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1240}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light', yes: true };
+}
+}
+</script>
+</body>
+</html>

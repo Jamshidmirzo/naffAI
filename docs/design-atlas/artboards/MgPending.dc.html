@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Подтвердить продажи</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1110px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="pending" hint-size="248px,1110px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Подтвердить продажи</h1>
+<span class="badge b-warn"><span class="num">3</span> ждут</span>
+<span class="grow"></span>
+<span class="s c3">Пока продажа не подтверждена, она не входит в зарплату оператора</span>
+</header>
+
+<main class="page">
+<div class="split">
+
+<section class="list col g12">
+<div class="card row g12" style="padding: 10px 16px; background: var(--ink); color: var(--surface); border-color: var(--ink)">
+<input class="check" type="checkbox" checked="{{yes}}" aria-label="Выбрано 2">
+<span class="s w6 grow"><span class="num">2</span> выбрано · <span class="num">26 400 000</span> сум</span>
+<button class="btn btn-sm btn-ghost" type="button" style="color: var(--surface)">Снять выбор</button>
+<button class="btn btn-sm" type="button" style="color: var(--bad)">Отклонить все</button>
+<button class="btn btn-sm btn-ok" type="button">Одобрить все</button>
+</div>
+<div class="row between"><button class="btn btn-ghost btn-sm" type="button"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 12l3 3 5-6"></path></svg>Выбрать все</button><span class="xs c3">клик по карточке открывает продажу, чекбокс — выбор</span></div>
+<div class="card">
+<sc-for list="{{items}}" as="p" hint-placeholder-count="3">
+<div class="row-item {{p.cls}}" style="align-items: flex-start; padding-top: 14px; padding-bottom: 14px">
+<input class="check" type="checkbox" checked="{{p.checked}}" aria-label="Выбрать продажу {{p.model}}" style="margin-top: 3px">
+<div class="ph" style="width: 72px; height: 72px; flex: none"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01"></path></svg>{{p.photos}}</div>
+<div class="col grow" style="gap: 4px">
+<div class="row between g8"><a class="h3 trunc" href="MgSaleDetail.dc.html">{{p.model}}</a><span class="num w6">{{p.sum}}</span></div>
+<span class="row g6"><span class="lbl" style="font-size: 10px">IMEI</span><span class="num s">{{p.imei}}</span><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Скопировать IMEI" style="width: 24px; height: 24px"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h11v11H9zM5 15V4h11"></path></svg></button></span>
+<span class="row g6 wrap"><sc-for list="{{p.parts}}" as="c" hint-placeholder-count="2"><span class="badge b-info" style="height: 22px">{{c.n}} <span class="num" style="font-weight: 500">{{c.a}}</span></span></sc-for><span class="s c2">· {{p.op}}</span></span>
+<span class="xs c3">{{p.client}} · <span class="num">{{p.phone}}</span> · отправлена {{p.ago}}</span>
+<sc-if value="{{p.warn}}" hint-placeholder-val="{{ false }}"><span class="xs c-bad w6">{{p.warn}}</span></sc-if>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<aside class="panel card col">
+<div class="card-h"><div class="col"><span class="lbl">Продажа №1 482</span><span class="h3">iPhone 15 Pro 256 GB</span></div><span class="badge b-hot"><i class="dot"></i>ожидает</span></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 16px 20px 0">
+<div class="ph" style="height: 150px"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01"></path></svg>Договор, стр. 1</div>
+<div class="ph" style="height: 150px"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01"></path></svg>Договор, стр. 2</div>
+</div>
+<div class="col g8" style="padding: 16px 20px">
+<div class="row between"><span class="s c3">IMEI</span><span class="row g6"><span class="num s">35 693108 123456 7</span><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Скопировать IMEI"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h11v11H9zM5 15V4h11"></path></svg></button></span></div>
+<div class="row between"><span class="s c3">Сумма</span><span class="num s w6">14 500 000</span></div>
+<div class="row between"><span class="s c3">Партнёры</span><span class="row g6"><span class="badge b-info">Alif <span class="num" style="font-weight: 500">10 000 000</span></span><span class="badge b-info">Uzum <span class="num" style="font-weight: 500">4 500 000</span></span></span></div>
+<div class="row between"><span class="s c3">Оператор</span><span class="s w6">Gulnoza Karimova</span></div>
+<div class="row between"><span class="s c3">Клиент</span><span class="s">Sardor Aliyev · <span class="num">+998 90 123 45 67</span></span></div>
+<div class="row between"><span class="s c3">Лид</span><span class="s">Instagram, назначен в <span class="num">14:02</span></span></div>
+<div class="well s">Доставка завтра до 12:00</div>
+<div class="banner b-ok"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg><span class="grow">IMEI не встречался в других продажах. Цена совпадает с каталогом.</span><span class="badge b-info" style="height: 20px">новое</span></div>
+</div>
+<hr class="hr">
+<div class="col g8" style="padding: 16px 20px 20px">
+<div class="row g8"><button class="btn btn-ok grow" type="button">Одобрить</button><a class="btn grow" href="MgSaleForm.dc.html">Исправить и одобрить</a></div>
+<button class="btn btn-bad" type="button">Отклонить с причиной</button>
+</div>
+</aside>
+
+</div>
+
+<section class="col g12" aria-label="Состояния">
+<span class="lbl">Состояния экрана</span>
+<div class="row g20" style="align-items: flex-start">
+<div class="col g8" style="flex: 1 1 0"><span class="when">Отклонить все · окно</span>
+<section class="dlg"><div class="dlg-h"><div class="col g4"><h2 class="h2">Отклонить 2 продаж</h2><span class="s c3">iPhone 15 Pro · Galaxy S24 · 26 400 000</span></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b"><div class="field"><label for="pr1">Причина отклонения</label><textarea class="input" id="pr1" rows="2" placeholder="Кратко почему отклоняем — оператор увидит"></textarea><span class="hint">Пустая причина не принимается</span></div></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-danger" type="button" disabled="{{yes}}">Отклонить все</button></div></section></div>
+<div class="col g8" style="flex: 1 1 0"><span class="when">После массового действия · тост</span>
+<div class="col g8" style="align-items: flex-start">
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Обработано 2 · пропущено 0 · ошибок 0</span>
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--warn-solid)"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg>Обработано 1 · пропущено 1 · ошибок 0</span>
+<span class="xs c3">«пропущено» — продажу уже обработал другой менеджер</span>
+</div></div>
+<div class="col g8" style="flex: 1 1 0"><span class="when">Пусто</span>
+<div class="card empty" style="padding: 36px 20px"><span class="icon-tile t-ok" style="width: 48px; height: 48px"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span><span class="h3" style="color: var(--ink)">Нет продаж на подтверждении</span><span class="s">Все продажи операторов уже обработаны.</span></div>
+</div>
+</div>
+</section>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1110}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+theme: this.props.theme ?? 'light',
+yes: true,
+items: [
+{ imei: '35 693108 123456 7', parts: [{ n: 'Alif', a: '10 000 000' }, { n: 'Uzum', a: '4 500 000' }], cls: 'is-sel', checked: true, photos: '2 фото', model: 'iPhone 15 Pro 256 GB', sum: '14 500 000', op: 'Gulnoza Karimova', client: 'Sardor Aliyev', phone: '+998 90 123 45 67', ago: '8 мин назад', warn: '' },
+{ imei: '35 288911 021187 5', parts: [{ n: 'Alif', a: '11 900 000' }], cls: '', checked: true, photos: '1 фото', model: 'Samsung Galaxy S24', sum: '11 900 000', op: 'Nilufar Saidova', ch: 'Alif', client: 'Kamron Ibragimov', phone: '+998 93 220 14 70', ago: '25 мин назад', warn: '' },
+{ imei: '35 744912 300419 8', parts: [{ n: 'Cash', a: '5 200 000' }], cls: '', checked: false, photos: 'нет фото', model: 'Samsung Galaxy A55', sum: '5 200 000', op: 'Shahlo Komilova', ch: 'Cash', client: 'Feruza Hamidova', phone: '+998 97 515 30 30', ago: '40 мин назад', warn: 'Нет фото договора' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

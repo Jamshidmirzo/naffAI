@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Каталог и бот: окна</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1700px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6"><h1 class="h1">Каталог и Telegram-бот: редакторы</h1><p class="c3">Карточка телефона и редактор отчёта бота с живым предпросмотром. Тестовая отправка видна сразу, а не только после выбора чата.</p></div>
+<div class="row g24" style="align-items: flex-start">
+
+<div class="col g8" style="flex: 1 1 0; min-width: 0">
+<span class="when">Карточка телефона · редактирование</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2">Карточка телефона</h2><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b">
+<div class="row g8"><div class="field grow"><label for="c1">Бренд</label><input class="input" id="c1" type="text" value="Samsung"></div><div class="field grow"><label for="c2">Модель</label><input class="input" id="c2" type="text" value="Galaxy S24"></div></div>
+<div class="field"><label for="c2b">Слоган / подпись</label><input class="input" id="c2b" type="text" value="Yuqori sifat va yuqori mustahkamlik!"></div>
+<div class="row g8"><div class="field grow"><label for="c3">Память, GB</label><input class="input num" id="c3" type="text" value="256"></div><div class="field grow"><label for="c3b">RAM, GB</label><input class="input num" id="c3b" type="text" value="8"></div><div class="field grow"><label for="c3c">Наличие</label><select class="input" id="c3c"><option>В наличии</option><option>Под заказ</option><option>Нет</option></select></div></div>
+<div class="row g8"><div class="field grow"><label for="c3d">Камера, MP</label><input class="input num" id="c3d" type="text" value="50"></div><div class="field grow"><label for="c3e">Батарея, mAh</label><input class="input num" id="c3e" type="text" value="4000"></div><div class="field grow"><label for="c4">Цена (сум)</label><input class="input num" id="c4" type="text" value="11 900 000"></div></div>
+<div class="field"><label>Обложка</label><div class="row g8"><div class="ph" style="width: 72px; height: 72px">Обложка</div><button class="btn btn-sm" type="button">Заменить</button></div><span class="hint">Фото телефона. Copy отправит его в буфер вместе с текстом.</span></div>
+<div class="field"><label>Галерея (до 10 фото)</label><div class="row g6 wrap"><span class="chip" title="Удалить это фото после сохранения">#1 <svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></span><span class="chip" title="Удалить это фото после сохранения">#2 <svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></span><span class="chip" style="text-decoration: line-through; opacity: .6">#3 <svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></span><button class="chip" type="button" style="border-style: dashed">Выбрать файлы</button></div><span class="hint">Дополнительные фото. Обложка задаётся выше отдельно.</span></div>
+<div class="field"><label>Характеристики (свободные поля)</label>
+<div class="row g6"><input class="input num" type="text" value="processor" aria-label="Ключ" style="width: 130px"><input class="input grow" type="text" value="Snapdragon 8 Gen 3" aria-label="Значение"><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Удалить поле"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="row g6"><input class="input num" type="text" value="screen" aria-label="Ключ" style="width: 130px"><input class="input grow" type="text" value="6,2 Dynamic AMOLED 2X, 120 Гц" aria-label="Значение"><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Удалить поле"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<button class="btn btn-sm btn-ghost" type="button" style="align-self: flex-start">+ Поле</button></div>
+<div class="field"><label>Цвета</label>
+<div class="row g6"><input class="input grow" type="text" value="Onyx Black" aria-label="Название цвета"><span style="width: 40px; height: 40px; border-radius: 9px; border: 1px solid var(--line-2); background: #2B2B2E; flex: none"></span><input class="input num" type="text" value="#2B2B2E" aria-label="Цвет" style="width: 110px"><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Удалить цвет"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="row g6"><input class="input grow" type="text" value="Cobalt Violet" aria-label="Название цвета"><span style="width: 40px; height: 40px; border-radius: 9px; border: 1px solid var(--line-2); background: #7D6BB0; flex: none"></span><input class="input num" type="text" value="#7D6BB0" aria-label="Цвет" style="width: 110px"><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Удалить цвет"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<button class="btn btn-sm btn-ghost" type="button" style="align-self: flex-start">+ Добавить цвет</button></div>
+<div class="field"><label for="c9">Описание (необязательно)</label><textarea class="input" id="c9" rows="2">Флагман 2024 года, официальная гарантия 1 год.</textarea></div>
+<label class="row g8 s"><input class="check" type="checkbox" checked="{{yes}}">Показывать операторам</label>
+</div>
+<div class="dlg-f"><span class="xs c3 grow">«Сохранить» неактивна без бренда, модели и цены</span><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Сохранить</button></div></section>
+</div>
+
+<div class="col g8" style="flex: 1.55 1 0; min-width: 0">
+<span class="when">Отчёт бота · редактор с живым предпросмотром</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2">Редактирование отчёта</h2><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="row g20" style="padding: 4px 22px 18px; align-items: flex-start">
+<div class="col g12" style="flex: 1.1 1 0; min-width: 0">
+<div class="field"><label for="b1">Название</label><input class="input" id="b1" type="text" value="Ежедневная сводка для группы" placeholder="Например: Ежедневная сводка для группы"></div>
+<div class="field"><label>Расписание</label>
+<div class="row g6 wrap"><span class="chip is-on">Каждое утро 9:00</span><span class="chip">Каждый вечер 20:00</span><span class="chip">Пн–Пт 9:00</span><span class="chip">По понедельникам 9:00</span></div>
+<div class="well col g8" style="padding: 10px 12px">
+<span class="row g6 xs w6 c2"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>Точная настройка</span>
+<div class="row g8"><div class="field" style="width: 100px"><label for="b2" class="xs">Время</label><input class="input num" id="b2" type="text" value="09:00" style="height: 34px"></div><span class="xs c3" style="align-self: flex-end; padding-bottom: 9px" title="Все времена в часовом поясе магазина.">Asia/Tashkent (UTC+5)</span></div>
+<span class="xs w6 c2">Дни недели</span>
+<div class="row g4 wrap"><span class="chip" style="height: 28px">Пн</span><span class="chip" style="height: 28px">Вт</span><span class="chip" style="height: 28px">Ср</span><span class="chip" style="height: 28px">Чт</span><span class="chip" style="height: 28px">Пт</span><span class="chip" style="height: 28px">Сб</span><span class="chip" style="height: 28px">Вс</span></div>
+<span class="hint">Пусто = каждый день</span>
+</div></div>
+<div class="row g8"><div class="field grow"><label>Язык</label><div class="seg seg-lg"><button type="button">O'zbekcha</button><button class="is-on" type="button">Русский</button></div></div><div class="field grow"><label for="b3">Период данных</label><select class="input" id="b3"><option>Вчера</option><option>Сегодня</option><option>Неделя</option><option>Месяц</option></select></div></div>
+<div class="field"><label>Куда отправить</label>
+<label class="row g8 s"><input class="check" type="checkbox" checked="{{yes}}"><span class="badge" style="height: 20px">supergroup</span>Naff · продажи</label>
+<label class="row g8 s"><input class="check" type="checkbox"><span class="badge" style="height: 20px">private</span>Bobur Xolmatov <span class="xs c3">@ Супер-менеджер</span></label>
+<label class="row g8 s"><input class="check" type="checkbox" checked="{{yes}}"><span class="badge" style="height: 20px">private</span>Kamola Ahmedova <span class="xs c3">@ Менеджер</span></label></div>
+<div class="field"><label>Блоки данных</label>
+<div class="tabs" style="gap: 0; flex-wrap: wrap; overflow: visible"><button class="tab" type="button" style="padding: 0 8px; font-size: 13px">Продажи <span class="cnt cnt-mute">3</span></button><button class="tab is-on" type="button" style="padding: 0 8px; font-size: 13px">Лиды <span class="cnt cnt-mute">2</span></button><button class="tab" type="button" style="padding: 0 8px; font-size: 13px">Звонки <span class="cnt cnt-mute">1</span></button><button class="tab" type="button" style="padding: 0 8px; font-size: 13px">Операторы <span class="cnt cnt-mute">1</span></button><button class="tab" type="button" style="padding: 0 8px; font-size: 13px">Каталог</button><button class="tab" type="button" style="padding: 0 8px; font-size: 13px">Операционка <span class="cnt cnt-mute">1</span></button></div>
+<label class="row g8 s"><input class="check" type="checkbox" checked="{{yes}}">Статистика лидов</label>
+<label class="row g8 s"><input class="check" type="checkbox" checked="{{yes}}">Воронка лидов<span class="badge b-warn" style="height: 20px" title="Sensitive-блок: в групповые чаты не отправляется.">только в личке</span></label>
+<label class="row g8 s"><input class="check" type="checkbox">Зависшие лиды<span class="badge b-warn" style="height: 20px">только в личке</span></label>
+<span class="xs c3">Выбрано блоков: 8</span></div>
+</div>
+<div class="col g8" style="flex: 1 1 0; min-width: 0">
+<span class="lbl">Живой предпросмотр</span>
+<div class="row g8"><span class="xs c3">Показать как увидит:</span><select class="input grow" aria-label="Показать как увидит" style="height: 30px; font-size: 12px"><option>Личный чат (все блоки)</option><option>Naff · продажи</option></select></div>
+<pre class="num well" style="margin: 0; font-size: 12px; line-height: 19px; white-space: pre-wrap">Сводка за вчера (13.10)
+
+Итого продаж: 23 шт · 241 600 000 сум
+Средний чек: 10 504 000 сум
+По источнику: Instagram 11 · Facebook 6 · Бот 4
+
+Статистика лидов: пришло 162, в работе 58
+Воронка лидов: дозвон 66% · callback 18% · продажа 4,6%
+
+Просроченные callback: 5
+Ждут подтверждения: 3</pre>
+<span class="xs w6 c2">Кнопки в сообщении:</span>
+<div class="col g4"><span class="btn btn-sm btn-soft" style="justify-content: flex-start">Открыть pending</span><span class="btn btn-sm btn-soft" style="justify-content: flex-start">Позвонить</span></div>
+<button class="btn" type="button" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3L3 10.5l7 3 3 7z"></path></svg>Отправить тестово</button>
+<span class="hint">В группу «Naff · продажи» блоки «только в личке» не попадут.</span>
+</div>
+</div>
+<div class="dlg-f"><label class="row g8 s grow"><input class="check" type="checkbox" checked="{{yes}}">Включен</label><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Сохранить</button></div></section>
+</div>
+
+</div>
+
+<div class="col g8"><span class="when">«Из шаблона» · Выберите пресет</span>
+<section class="dlg"><div class="dlg-h"><div class="col g4"><h2 class="h2">Выберите пресет</h2><span class="s c3">Готовые шаблоны отчётов. После выбора всё можно поправить.</span></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b"><div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{tpl}}" as="t" hint-placeholder-count="4">
+<section class="card col g6 pad"><span class="row g8"><span class="icon-tile t-info" style="width: 30px; height: 30px"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="{{t.ic}}"></path></svg></span><span class="h3">{{t.n}}</span></span><span class="xs c3">{{t.d}}</span><span class="row g4 wrap"><sc-for list="{{t.blocks}}" as="b" hint-placeholder-count="4"><span class="badge" style="height: 20px; font-size: 11px">{{b}}</span></sc-for><span class="xs c3">{{t.more}}</span></span></section>
+</sc-for>
+</div></div>
+<div class="dlg-f"><button class="btn" type="button">Начать с чистого листа</button></div></section></div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1700}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+theme: this.props.theme ?? 'light',
+yes: true,
+tpl: [
+{ n: 'Утренняя сводка', d: 'Продажи за вчера, топ операторов, прогресс месяца', ic: 'M12 3v2M5 12H3M21 12h-2M12 7a5 5 0 0 1 5 5H7a5 5 0 0 1 5-5zM4 17h16', blocks: ['Итого продаж', 'Топ операторов', 'Прогресс месяца', 'Средний чек'], more: '+2' },
+{ n: 'Посещаемость', d: 'Кто пришёл и кто опоздал', ic: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2', blocks: ['Посещаемость'], more: '' },
+{ n: 'Колбэки и лиды', d: 'Просроченные callback и зависшие лиды', ic: 'M5 4h4l2 5-3 2a11 11 0 0 0 5 5l2-3 5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2', blocks: ['Просроченные callback', 'Зависшие лиды', 'Воронка лидов'], more: '' },
+{ n: 'Недельный итог', d: 'Динамика к прошлой неделе и источники', ic: 'M4 20V10M10 20V4M16 20v-7M22 20H2', blocks: ['Динамика (WoW)', 'Продажи по источнику (шиту)', 'Мульти-рейтинг', 'Нет в наличии'], more: '+1' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

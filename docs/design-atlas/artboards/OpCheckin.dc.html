@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Начало смены</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="min-height: 900px; display: flex; flex-direction: column">
+<i class="ikat" style="height: 10px" aria-hidden="true"></i>
+
+<div class="row between" style="padding: 20px 32px">
+<div class="wordmark" style="padding: 0"><i class="ikat ikat-mark" aria-hidden="true"></i>naff<b>AI</b></div>
+<div class="row g12">
+<span class="ava">GK</span>
+<span class="col"><span class="s w6">Gulnoza Karimova</span><span class="xs c3">Оператор</span></span>
+<button class="btn btn-ghost" type="button">Выйти</button>
+</div>
+</div>
+
+<div style="flex: 1 1 auto; display: flex; align-items: center; justify-content: center; padding: 16px 16px 64px">
+<section class="card" style="width: 960px; max-width: 100%; padding: 32px; display: flex; flex-wrap: wrap; gap: 32px; align-items: stretch">
+
+<div class="col g12" style="flex: 1 1 420px; min-width: 0">
+<div class="ph" style="aspect-ratio: 4 / 3; max-width: 100%; border-radius: 12px">
+<svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4zM12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg>
+<span class="s w6" style="color: var(--ink-2)">Камера компьютера</span>
+<span>Лицо целиком в кадре, без маски и тёмных очков</span>
+</div>
+<button class="btn btn-ok btn-lg btn-block" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4zM12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg>Сделать снимок и начать смену</button>
+</div>
+
+<div class="col g20" style="flex: 1 1 360px; min-width: 0">
+<div class="col g8">
+<span class="badge" style="align-self: flex-start"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3"></path></svg>Лиды закрыты до отметки</span>
+<h1 class="h1" style="font-size: 28px; line-height: 34px">Начни смену, чтобы получить лиды</h1>
+<p class="c2">Вторник, 14 октября. Смена с <span class="num">10:00</span> до <span class="num">20:00</span>, сейчас <span class="num">09:58</span>.</p>
+</div>
+
+<div class="well col g8">
+<div class="row g8"><svg class="ic c-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg><span class="s">После отметки автораздача сразу даст до 5 лидов.</span></div>
+<div class="row g8"><svg class="ic c-warn" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"></path></svg><span class="s">Опоздание считается после <span class="num">10:15</span>.</span></div>
+<div class="row g8"><svg class="ic c3" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg><span class="s">Снимок видит только менеджер в разделе «Смена сегодня».</span></div>
+</div>
+
+<div class="col g8" style="margin-top: auto">
+<span class="s c3">Камера не работает?</span>
+<button class="btn btn-lg btn-block" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z"></path></svg>Отметиться по QR на входе</button>
+</div>
+</div>
+
+</section>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light' };
+}
+}
+</script>
+</body>
+</html>

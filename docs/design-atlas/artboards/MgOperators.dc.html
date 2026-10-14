@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Операторы</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1040px">
+<div class="side-wrap"><dc-import name="SideNav" who="{{who}}" at="{{at}}" hint-size="248px,1040px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<div class="col"><h1 class="h1">{{title}}</h1><span class="xs c3">Управление командой</span></div>
+<span class="grow"></span>
+<div class="inwrap" style="width: 220px; max-width: 100%"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg><input class="input" type="search" placeholder="Поиск: имя или телефон…" aria-label="Поиск операторов"></div>
+<sc-if value="{{isSuper}}" hint-placeholder-val="{{ false }}"><select class="input" aria-label="Менеджер" style="width: 180px"><option>Все менеджеры</option><option>Без менеджера</option><option>Kamola Ahmedova</option><option>Rustam Yuldashev</option><option>Bobur Xolmatov</option></select></sc-if>
+<a class="btn" href="MgOperatorsDiag.dc.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg>Диагностика раздачи</a>
+<a class="btn btn-pri" href="MgSheetOp1.dc.html" style="color: var(--brand-ink)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Добавить оператора</a>
+</header>
+
+<main class="page" style="gap: 16px">
+
+<div class="row g8 wrap">
+<button class="chip is-on" type="button">Все <span class="n">38</span></button>
+<button class="chip" type="button">Активные <span class="n">35</span></button>
+<button class="chip" type="button">Уволенные <span class="n">3</span></button>
+<sc-if value="{{isSuper}}" hint-placeholder-val="{{ false }}"><span class="hr" style="width: 1px; height: 22px; margin: 0 4px"></span><button class="chip" type="button">Без менеджера <span class="n">2</span></button><a class="chip" href="SmDeleted.dc.html">Удалённые <span class="n">9</span></a></sc-if>
+<span class="grow"></span>
+<span class="xs c3">Продажи и сумма — за октябрь</span>
+</div>
+
+<div class="split">
+
+<section class="list card tbl">
+<div class="tr th" style="grid-template-columns: {{cols}}"><button class="th-s" type="button">Оператор</button><sc-if value="{{isSuper}}" hint-placeholder-val="{{ false }}"><span>Менеджер</span></sc-if><span>Смена</span><button class="th-s is-on r" type="button">Сумма · мес <svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"></path></svg></button><span>План месяца</span></div>
+<sc-for list="{{ops}}" as="o" hint-placeholder-count="10">
+<div class="tr {{o.cls}}" style="grid-template-columns: {{cols}}; min-height: 60px; opacity: {{o.op}}">
+<span class="row g8" style="min-width: 0; align-items: flex-start"><span class="ava" data-s="{{o.s}}" style="margin-top: 2px">{{o.ini}}</span><span class="col g4" style="min-width: 0">
+<span class="row g6" style="min-width: 0"><span class="w6 trunc">{{o.name}}</span><sc-if value="{{o.sticker}}" hint-placeholder-val="{{ false }}"><span class="badge b-warn" style="height: 20px; padding: 0 5px" title="Стикер"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"></path></svg></span></sc-if><sc-if value="{{o.bday}}" hint-placeholder-val="{{ false }}"><span class="badge b-hot" style="height: 20px; padding: 0 5px" title="Сегодня у оператора день рождения"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21h16M5 21v-8h14v8M5 16.5c1.5 1 3 1 4.5 0s3-1 4.5 0 3.5 1 5 0M12 13V9.5M12 7a1.2 1.2 0 0 1-1.2-1.2C10.8 4.8 12 3 12 3s1.2 1.8 1.2 2.8A1.2 1.2 0 0 1 12 7z"></path></svg></span></sc-if></span>
+<span class="xs c3 num trunc">{{o.phone}} · с {{o.since}}</span>
+<sc-if value="{{o.tags}}" hint-placeholder-val="{{ false }}"><span class="row g4" style="overflow: hidden"><sc-if value="{{o.forgot}}" hint-placeholder-val="{{ false }}"><span class="badge {{o.forgotTone}}" style="height: 20px" title="Забыл отметить уход за 30 дней">Забыл: {{o.forgot}}</span></sc-if><sc-if value="{{o.paused}}" hint-placeholder-val="{{ false }}"><span class="badge b-warn" style="height: 20px" title="На паузе — новые лиды не приходят, старые остаются"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12M15 6v12"></path></svg>На паузе</span></sc-if><sc-if value="{{o.trainee}}" hint-placeholder-val="{{ false }}"><span class="badge" style="height: 20px">стажёр</span></sc-if><sc-if value="{{o.personal}}" hint-placeholder-val="{{ false }}"><span class="badge b-info" style="height: 20px" title="У оператора личное расписание">личное расписание</span></sc-if></span></sc-if>
+</span></span>
+<sc-if value="{{isSuper}}" hint-placeholder-val="{{ false }}"><span class="s c2 trunc">{{o.mgr}}</span></sc-if>
+<span><span class="badge {{o.tone}}">{{o.shift}}</span></span>
+<span class="col r" style="align-items: flex-end"><span class="num w6">{{o.sum}}</span><span class="xs c3">{{o.count}} продаж</span></span>
+<span class="row g8"><span class="bar grow"><i class="{{o.barCls}}" style="width: {{o.bw}}%"></i></span><span class="num xs w6" style="width: 38px">{{o.pctTxt}}</span></span>
+</div>
+</sc-for>
+</section>
+
+<aside class="panel card col" style="flex: 0 1 400px">
+<div class="row g16" style="padding: 20px; align-items: flex-start">
+<span style="position: relative; width: 76px; height: 76px; border-radius: 20px; flex: none; overflow: hidden; background: linear-gradient(160deg, #C9B8A6 0%, #8E7B6B 100%)" role="img" aria-label="Фото оператора"><svg viewBox="0 0 76 76" aria-hidden="true" style="position: absolute; left: 0; top: 0; width: 76px; height: 76px"><circle cx="38" cy="30" r="13" fill="#F3E6D8"></circle><path d="M12 76c2-16 13-24 26-24s24 8 26 24z" fill="#2D2A8C"></path></svg></span>
+<div class="col g6 grow">
+<div class="row g6"><h2 class="h2 trunc">Gulnoza Karimova</h2><span class="badge b-hot" style="height: 20px; padding: 0 5px" title="Сегодня у оператора день рождения"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21h16M5 21v-8h14v8M5 16.5c1.5 1 3 1 4.5 0s3-1 4.5 0 3.5 1 5 0M12 13V9.5M12 7a1.2 1.2 0 0 1-1.2-1.2C10.8 4.8 12 3 12 3s1.2 1.8 1.2 2.8A1.2 1.2 0 0 1 12 7z"></path></svg></span></div>
+<span class="num s c2">+998 90 777 11 00 · ДР 14.10.1999</span>
+<div class="row g6 wrap"><span class="badge b-hot">активный</span><span class="badge b-ok"><i class="dot"></i>На смене <span class="num">02:15</span></span><span class="badge">с 12.03.2026</span></div>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0 20px 16px">
+<div class="well col g4"><span class="lbl">План</span><span class="num w6" style="font-size: 13px">30 000 000</span></div>
+<div class="well col g4"><span class="lbl">Сделал</span><span class="num w6" style="font-size: 13px">23 400 000</span></div>
+<div class="well col g4"><span class="lbl">%</span><span class="num w6" style="font-size: 13px; color: var(--warn)">78%</span></div>
+</div>
+<div class="row g8 wrap" style="padding: 0 20px 16px">
+<a class="btn btn-sm btn-pri" href="MgOperatorDetail.dc.html" style="color: var(--brand-ink)">Открыть карточку</a>
+<button class="btn btn-sm" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"></path></svg>Стикер</button>
+<a class="btn btn-sm" href="MgSheetOp1.dc.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"></path></svg>Редактировать</a>
+<button class="btn btn-sm" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01"></path></svg>План</button>
+<a class="btn btn-sm" href="MgOperatorsDiag.dc.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg>Диагностика раздачи</a>
+<button class="btn btn-sm" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4zM12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg>Попросить снимок</button>
+<button class="btn btn-sm" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 15l4-4 4 4 3-3 5 5M15 9h.01"></path></svg>Загрузить фото</button>
+<button class="btn btn-sm" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12M15 6v12"></path></svg>На паузу</button>
+</div>
+<hr class="hr">
+<div class="col g8" style="padding: 16px 20px">
+<div class="row between"><span class="lbl">Сегодня</span><span class="badge b-info" style="height: 20px">новое</span></div>
+<div class="row between s"><span class="c3">Лидов в работе</span><span class="num">4 / 5</span></div>
+<div class="row between s"><span class="c3">Звонков</span><span class="num">27</span></div>
+<div class="row between s"><span class="c3">Продаж</span><span class="num">3</span></div>
+<div class="row between s"><span class="c3">Пришла</span><span class="num">09:58, вовремя</span></div>
+</div>
+<hr class="hr">
+<div class="col g8" style="padding: 16px 20px">
+<div class="row between"><span class="lbl">Учётная запись</span><span class="badge b-info" style="height: 20px">новое</span></div>
+<div class="row between s"><span class="c3">Логин</span><span class="num">+998907771100</span></div>
+<div class="row g8"><button class="btn btn-sm grow" type="button">Показать пароль</button><button class="btn btn-sm grow" type="button">Новый пароль</button></div>
+<div class="row between s" style="margin-top: 6px"><span class="c3">Live-эфир с камеры</span><button class="switch" type="button" aria-label="Live-эфир выключен"><i></i></button></div>
+<div class="row between s"><span class="c3">Требовать отметку прихода</span><button class="switch is-on" type="button" aria-label="Отметка обязательна"><i></i></button></div>
+</div>
+<hr class="hr">
+<div class="col g6" style="padding: 14px 20px 18px">
+<div class="row g8"><button class="btn btn-sm" type="button">Деактивировать</button><span class="grow"></span><button class="btn btn-sm btn-bad" type="button">Удалить</button></div>
+<span class="xs c3">У уволенного оператора вместо «Деактивировать» — «Активировать», кнопка «На паузу» скрыта.</span>
+</div>
+</aside>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"scope":{"editor":"enum","options":["manager","super"],"default":"manager"},"$preview":{"width":1440,"height":1040}}'>
+class Component extends DCLogic {
+renderVals() {
+const isSuper = (this.props.scope ?? 'manager') === 'super';
+const o = (cls, s, ini, name, phone, since, mgr, shift, tone, sum, count, pct, x) => {
+  const f = x || {};
+  return { cls: cls, s: s, ini: ini, name: name, phone: phone, since: since, mgr: mgr, shift: shift, tone: tone, sum: sum, count: count,
+    bw: Math.min(pct, 100), pctTxt: pct === null ? '—' : pct + '%', barCls: pct >= 85 ? 'ok' : pct >= 60 ? 'warn' : 'bad',
+    sticker: !!f.st, bday: !!f.bd, forgot: f.fg || 0, forgotTone: (f.fg || 0) >= 5 ? 'b-bad' : '', paused: !!f.pa, personal: !!f.ps, trainee: !!f.tr,
+    tags: !!(f.fg || f.pa || f.ps || f.tr), op: f.off ? '0.55' : f.pa ? '0.85' : '1' };
+};
+return {
+theme: this.props.theme ?? 'light',
+isSuper: isSuper,
+who: isSuper ? 'super' : 'manager',
+at: isSuper ? 'tops' : 'ops',
+title: isSuper ? 'Операторы ветки' : 'Операторы',
+cols: isSuper ? 'minmax(0, 2.1fr) minmax(0, 0.9fr) 84px 108px 96px' : 'minmax(0, 2.4fr) 96px 118px 130px',
+ops: [
+o('', 'on', 'JT', 'Jasur Toshmatov', '+998 90 112 45 67', '04.02.2025', 'Kamola Ahmedova', '04:22', 'b-ok', '41 850 000', 31, 104, { st: 1 }),
+o('', 'on', 'NS', 'Nilufar Saidova', '+998 93 540 18 22', '17.06.2025', 'Kamola Ahmedova', '04:30', 'b-ok', '36 100 000', 27, 91, { ps: 1 }),
+o('', 'pause', 'SK', 'Shahlo Komilova', '+998 97 301 77 40', '01.08.2026', 'Rustam Yuldashev', 'пауза', 'b-warn', '24 700 000', 19, 72, { pa: 1 }),
+o('is-sel', 'on', 'GK', 'Gulnoza Karimova', '+998 90 777 11 00', '12.03.2026', 'Kamola Ahmedova', '02:15', 'b-ok', '23 400 000', 18, 78, { bd: 1, st: 1 }),
+o('', 'on', 'OE', 'Otabek Ergashev', '+998 99 845 03 16', '20.11.2025', 'Rustam Yuldashev', '04:18', 'b-ok', '19 950 000', 16, 66, { fg: 2 }),
+o('', 'late', 'JS', 'Javlon Sobirov', '+998 91 266 90 05', '05.01.2026', 'Kamola Ahmedova', 'опоздал', 'b-bad', '17 300 000', 14, 58, { fg: 6, ps: 1 }),
+o('', 'on', 'MT', 'Malika Tursunova', '+998 94 618 22 71', '01.09.2026', 'Rustam Yuldashev', '04:25', 'b-ok', '13 200 000', 11, 49, { tr: 1 }),
+o('', 'on', 'AQ', 'Aziz Qodirov', '+998 88 207 51 94', '14.07.2026', 'Без менеджера', '04:21', 'b-ok', '9 800 000', 8, 37, {}),
+o('', 'on', 'FR', 'Feruza Rahimova', '+998 95 077 34 12', '03.10.2026', 'Rustam Yuldashev', '04:12', 'b-ok', '5 600 000', 4, 28, { tr: 1, ps: 1 }),
+o('', 'off', 'BN', 'Bekzod Nurmatov', '+998 93 712 08 55', '10.09.2026', 'Kamola Ahmedova', 'не пришёл', '', '3 900 000', 3, 18, { fg: 1 }),
+o('', 'off', 'DY', 'Dilshod Yo‘ldoshev', '+998 90 455 61 08', '22.02.2025', 'Bobur Xolmatov', 'уволен', '', '2 150 000', 2, null, { off: 1 })
+]
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Калькулятор рассрочки</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1260px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="calc" hint-size="248px,1260px"></dc-import></div>
+<div class="main-col">
+<header class="top">
+<div class="col"><h1 class="h1">Калькулятор рассрочки</h1><span class="xs c3">Выбери товар, укажи предоплату — увидишь платёж по каждому сроку</span></div>
+<span class="grow"></span>
+<a class="btn" href="MgCatalogMore.dc.html">Тарифы рассрочки</a>
+</header>
+<main class="page">
+
+<section class="card col">
+<div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 16px; padding: 18px 20px">
+<div class="field" style="position: relative"><label for="k1">Товар (поиск по бренду/модели)</label>
+<div class="inwrap"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg><input class="input" id="k1" type="text" value="galaxy s"></div>
+<div class="card col" style="position: absolute; top: 72px; left: 0; right: 0; z-index: 2; box-shadow: var(--shadow); padding: 4px">
+<sc-for list="{{found}}" as="f" hint-placeholder-count="3"><div class="row between" style="padding: 8px 10px; border-radius: 8px; background: {{f.bg}}"><span class="s">{{f.n}}</span><span class="num xs c3">{{f.p}} сум</span></div></sc-for>
+<div class="row g8 xs c3" style="padding: 8px 10px; border-top: 1px solid var(--line)">или оставьте свой текст — сумму можно ввести вручную</div>
+</div>
+</div>
+<div class="field"><label for="k2">Сумма заявки</label><input class="input num" id="k2" type="text" value="11 900 000" placeholder="5 000 000"></div>
+<div class="field"><label for="k3">Предоплата</label><input class="input num" id="k3" type="text" value="2 000 000" placeholder="1 000 000"></div>
+</div>
+<div class="row g16" style="padding: 0 20px 18px; justify-content: flex-end">
+<span class="s c3">Цена заявки: <span class="num w6" style="font-size: 16px; color: var(--ink)">9 900 000 сум</span></span>
+<button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h11v11H9zM5 15V4h11"></path></svg>Копировать расчёт</button>
+</div>
+</section>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 70px">
+<sc-for list="{{tiers}}" as="t" hint-placeholder-count="6">
+<button class="card col g12 {{t.cls}}" type="button" onClick="{{t.pick}}" style="padding: 18px 20px; text-align: left">
+<span class="row between" style="width: 100%; align-items: flex-start"><span class="col"><span class="lbl">мес</span><span class="display" style="font-size: 28px; line-height: 32px">{{t.m}}</span></span><span style="width: 20px; height: 20px; border-radius: 50%; border: 2px solid {{t.ring}}; background: {{t.dot}}"></span></span>
+<span class="col"><span class="lbl">в месяц</span><span class="num w7 c-brand" style="font-size: 20px">{{t.month}} сум</span></span>
+<span class="col g4" style="width: 100%">
+<span class="row between xs"><span class="c3">Цена заявки</span><span class="num">{{t.ariza}}</span></span>
+<span class="row between xs"><span class="c3">Комиссия {{t.pct}}%</span><span class="num">{{t.kom}}</span></span>
+<span class="row between xs" style="border-top: 1px solid var(--line); padding-top: 4px"><span class="c3">Итого к выплате</span><span class="num w6">{{t.total}}</span></span>
+</span>
+</button>
+</sc-for>
+</div>
+
+<section class="card col">
+<div class="card-h"><div class="col"><span class="h3">Рассрочка по банкам</span><span class="xs c3">Samsung Galaxy S24 · множители из «Банки рассрочки»</span></div><span class="row g6 s w6"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"></path></svg>Рассрочка</span></div>
+<div class="tr th" style="grid-template-columns: 1.2fr repeat(4, minmax(0, 1fr))"><span>Банк</span><span class="r">3 мес</span><span class="r">6 мес</span><span class="r">12 мес</span><span class="r">24 мес</span></div>
+<sc-for list="{{banks}}" as="b" hint-placeholder-count="3">
+<div class="tr" style="grid-template-columns: 1.2fr repeat(4, minmax(0, 1fr))"><span class="row g8"><span class="icon-tile t-info" style="width: 26px; height: 26px; font-size: 12px; font-weight: 700">{{b.ic}}</span><span class="s w6">{{b.n}}</span></span><sc-for list="{{b.cells}}" as="c" hint-placeholder-count="4"><span class="r col" style="align-items: flex-end" title="{{c.t}}"><span class="num s w6">{{c.v}}</span><span class="xs c3">{{c.s}}</span></span></sc-for></div>
+</sc-for>
+</section>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start">
+<div class="col g8"><span class="when">Товар не выбран</span>
+<section class="card"><div class="empty"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18H6zM9 7h6M9 12h.01M12 12h.01M15 12h.01M9 16h.01M12 16h.01M15 16h.01"></path></svg><span class="s">Выберите товар из каталога или введите сумму вручную</span></div></section></div>
+<div class="col g8"><span class="when">Нет активных тарифов</span>
+<section class="card"><div class="empty"><span class="s">Нет активных тарифов — добавьте их в разделе «Тарифы рассрочки»</span><a class="btn btn-sm" href="MgCatalogMore.dc.html">Открыть тарифы</a></div></section></div>
+<div class="col g8"><span class="when">Банки не настроены · копирование</span>
+<section class="card"><div class="empty" style="padding: 20px"><span class="s">Банки рассрочки ещё не настроены</span></div></section>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Расчёт скопирован</span></div>
+</div>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1260}}'>
+class Component extends DCLogic {
+renderVals() {
+const sp = (n) => String(Math.round(n / 1000) * 1000).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const ariza = 9900000;
+const sel = (this.state && this.state.sel) || 12;
+const tiers = [[3, 7], [6, 14], [9, 21], [12, 28], [18, 42], [24, 56]].map((p) => {
+const kom = ariza * p[1] / 100, total = ariza + kom, on = p[0] === sel;
+return { m: p[0], pct: p[1], ariza: sp(ariza), kom: sp(kom), total: sp(total), month: sp(total / p[0]), cls: on ? 'pick-on' : '', ring: on ? 'var(--brand)' : 'var(--line-2)', dot: on ? 'var(--brand)' : 'transparent', pick: () => this.setState({ sel: p[0] }) };
+});
+const price = 11900000;
+const bank = (n, ic, ks) => ({ n: n, ic: ic, cells: ks.map((k, i) => { const m = [3, 6, 12, 24][i]; if (!k) return { v: '—', s: '', t: '' }; return { v: sp(price * k / m), s: '/ мес', t: 'Переплата: +' + sp(price * (k - 1)) }; }) });
+return {
+theme: this.props.theme ?? 'light',
+found: [{ n: 'Samsung Galaxy S24 256GB', p: '11 900 000', bg: 'var(--brand-soft)' }, { n: 'Samsung Galaxy S23 FE 128GB', p: '7 400 000', bg: 'transparent' }, { n: 'Samsung Galaxy A55 128GB', p: '5 200 000', bg: 'transparent' }],
+tiers: tiers,
+banks: [bank('Alif', 'A', [0, 1.12, 1.24, 0]), bank('Uzum Nasiya', 'U', [1.06, 0, 1.26, 1.52]), bank('Anorbank', 'A', [1.07, 1.13, 1.27, 0])]
+};
+}
+}
+</script>
+</body>
+</html>

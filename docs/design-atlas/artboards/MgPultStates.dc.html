@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Пульт: состояния</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1200px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6"><h1 class="h1">Пульт зала: особые состояния</h1><p class="c3">Утро до смены, первый день нового менеджера, конец дня и потеря связи. Пульт ветки у супер-менеджера ведёт себя так же.</p></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 24px; align-items: start">
+<div class="col g8"><span class="when">До начала смены · 09:42</span>
+<section class="card col" style="min-height: 430px">
+<div class="card-h"><div class="col"><span class="h3">Пульт зала</span><span class="xs c3">смена с 10:00 · отметились 2 из 14</span></div></div>
+<div class="banner b-info" style="margin: 16px 16px 0"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"></path></svg><span>Смена начнётся через 18 минут. Лиды раздаются только тем, кто отметился.</span></div><div class="floor" style="padding: 16px"><div class="seat st-wait" style="min-height: 84px"><span class="s w6 trunc">Jasur T.</span><span class="xs c-ok">отметился 09:41</span><span class="sales" style="margin-top: auto">0</span></div><div class="seat st-off" style="min-height: 84px"><span class="s w6 trunc">Nilufar S.</span><span class="xs c3">ещё не пришёл</span><span class="sales" style="margin-top: auto">0</span></div><div class="seat st-wait" style="min-height: 84px"><span class="s w6 trunc">Gulnoza K.</span><span class="xs c-ok">отметилась 09:38</span><span class="sales" style="margin-top: auto">0</span></div><div class="seat st-off" style="min-height: 84px"><span class="s w6 trunc">Shahlo K.</span><span class="xs c3">ещё не пришёл</span><span class="sales" style="margin-top: auto">0</span></div><div class="seat st-off" style="min-height: 84px"><span class="s w6 trunc">Otabek E.</span><span class="xs c3">ещё не пришёл</span><span class="sales" style="margin-top: auto">0</span></div><div class="seat st-off" style="min-height: 84px"><span class="s w6 trunc">Javlon S.</span><span class="xs c3">ещё не пришёл</span><span class="sales" style="margin-top: auto">0</span></div></div>
+<div class="li" style="min-height: 52px; margin-top: auto"><span class="s grow">Вчерашние продажи ждут подтверждения</span><span class="num w6">2</span><a class="btn btn-sm" href="MgPending.dc.html">Проверить</a></div>
+</section></div>
+<div class="col g8"><span class="when">Новый менеджер · операторов ещё нет</span>
+<section class="card col" style="min-height: 430px">
+<div class="card-h"><div class="col"><span class="h3">Пульт зала</span><span class="xs c3">команда пустая</span></div></div>
+<div class="empty" style="flex: 1 1 0; justify-content: center; position: relative">
+<i class="ikat-soft" style="width: 120px; height: 72px; border-radius: 14px" aria-hidden="true"></i>
+<span class="h3" style="color: var(--ink)">У вас пока нет операторов</span>
+<span class="s" style="max-width: 380px">Добавьте оператора сами или попросите Bobur Xolmatov перенести операторов к вам на доске ветки.</span>
+<div class="row g8"><a class="btn btn-pri" href="MgSheetOp1.dc.html">Добавить оператора</a><a class="btn" href="MgSettingsGeneral.dc.html">Настроить автораздачу</a></div>
+</div>
+
+</section></div>
+<div class="col g8"><span class="when">Конец дня · 20:10</span>
+<section class="card col" style="min-height: 430px">
+<div class="card-h"><div class="col"><span class="h3">Пульт зала</span><span class="xs c3">смена закончилась в 19:00 · сегодня 22 продажи</span></div></div>
+<div class="banner b-warn" style="margin: 16px 16px 0"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span class="col g4"><span class="w6">2 оператора не закрыли смену</span><span>Завтра утром им придётся указать время ухода. Можно закрыть за них сейчас.</span></span></div><div class="floor" style="padding: 16px"><div class="seat st-off" style="min-height: 84px"><span class="s w6 trunc">Jasur T.</span><span class="xs c3">ушёл 19:02</span><span class="sales" style="margin-top: auto">6</span></div><div class="seat st-off" style="min-height: 84px"><span class="s w6 trunc">Nilufar S.</span><span class="xs c3">ушла 19:10</span><span class="sales" style="margin-top: auto">5</span></div><div class="seat st-late" style="min-height: 84px"><span class="s w6 trunc">Gulnoza K.</span><span class="xs c-bad">не закрыла смену</span><span class="sales" style="margin-top: auto">3</span></div><div class="seat st-off" style="min-height: 84px"><span class="s w6 trunc">Shahlo K.</span><span class="xs c3">ушла 18:55</span><span class="sales" style="margin-top: auto">4</span></div><div class="seat st-late" style="min-height: 84px"><span class="s w6 trunc">Otabek E.</span><span class="xs c-bad">не закрыл смену</span><span class="sales" style="margin-top: auto">3</span></div><div class="seat st-off" style="min-height: 84px"><span class="s w6 trunc">Javlon S.</span><span class="xs c3">ушёл 19:30</span><span class="sales" style="margin-top: auto">1</span></div></div>
+<div class="row g8" style="padding: 0 16px 16px; margin-top: auto"><a class="btn btn-pri" href="MgSheetOp2.dc.html">Закрыть смену за них</a><button class="btn" type="button">Напомнить</button><span class="grow"></span><span class="xs c3">отчёт дня уйдёт в Telegram в 20:30</span></div>
+</section></div>
+<div class="col g8"><span class="when">Пульт не обновляется · нет связи 3 минуты</span>
+<section class="card col" style="min-height: 430px">
+<div class="card-h"><div class="col"><span class="h3">Пульт зала</span><span class="xs c3">последние данные 14:19</span></div></div>
+<div class="banner b-bad" style="margin: 16px 16px 0"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0M12 19h.01M3 3l18 18"></path></svg><span class="col g4"><span class="w6">Данные устарели</span><span>Плитки показывают состояние на 14:19. Таймеры остановлены, чтобы не вводить в заблуждение.</span></span></div><div class="floor" style="padding: 16px"><div class="seat st-call" style="min-height: 84px; opacity: .55"><span class="s w6 trunc">Jasur T.</span><span class="xs c-brand">на звонке · 03:12</span><span class="sales" style="margin-top: auto">6</span></div><div class="seat st-call" style="min-height: 84px; opacity: .55"><span class="s w6 trunc">Nilufar S.</span><span class="xs c-brand">на звонке · 01:40</span><span class="sales" style="margin-top: auto">5</span></div><div class="seat st-wait" style="min-height: 84px; opacity: .55"><span class="s w6 trunc">Gulnoza K.</span><span class="xs c-ok">ждёт лид</span><span class="sales" style="margin-top: auto">3</span></div><div class="seat st-pause" style="min-height: 84px; opacity: .55"><span class="s w6 trunc">Shahlo K.</span><span class="xs c-warn">пауза · 12 мин</span><span class="sales" style="margin-top: auto">4</span></div><div class="seat st-call" style="min-height: 84px; opacity: .55"><span class="s w6 trunc">Otabek E.</span><span class="xs c-brand">на звонке · 00:48</span><span class="sales" style="margin-top: auto">3</span></div><div class="seat st-late" style="min-height: 84px; opacity: .55"><span class="s w6 trunc">Javlon S.</span><span class="xs c-bad">опоздал · 33 мин</span><span class="sales" style="margin-top: auto">1</span></div></div>
+<div class="row g8" style="padding: 0 16px 16px; margin-top: auto"><button class="btn btn-pri" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4M4 13a8 8 0 0 0 14 5l2-2M20 20v-4h-4"></path></svg>Обновить</button><span class="xs c3">пробуем сами каждые 10 секунд</span></div>
+</section></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1200}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light' };
+}
+}
+</script>
+</body>
+</html>

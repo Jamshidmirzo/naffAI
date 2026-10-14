@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Вчерашняя смена</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="min-height: 900px; display: flex; flex-direction: column">
+<i class="ikat" style="height: 10px" aria-hidden="true"></i>
+<div class="row between" style="padding: 20px 32px">
+<div class="wordmark" style="padding: 0"><i class="ikat ikat-mark" aria-hidden="true"></i>naff<b>AI</b></div>
+<div class="row g8"><span class="ava">GK</span><span class="s w6">Gulnoza Karimova</span></div>
+</div>
+
+<div style="flex: 1 1 auto; display: flex; align-items: center; justify-content: center; padding: 16px 16px 64px">
+<section class="card col g20" style="width: 620px; max-width: 100%; padding: 32px">
+<div class="col g8">
+<span class="badge b-warn" style="align-self: flex-start"><i class="dot"></i>Вчерашняя смена не закрыта</span>
+<h1 class="h1" style="font-size: 26px; line-height: 34px">Во сколько вы вчера ушли?</h1>
+<p class="c2">Вы забыли отметить уход, и смена закрылась сама в <span class="num">23:00</span>. Пришли вы в понедельник, 13 октября, в <span class="num">10:22</span>. Укажите, когда ушли на самом деле.</p>
+</div>
+
+<div class="row g12">
+<div class="field grow"><label for="bf-date">Дата ухода</label><input class="input input-lg num" id="bf-date" type="text" value="13.10.2026"><span class="hint">Если ушли после полуночи, выберите 14.10</span></div>
+<div class="field" style="width: 180px"><label for="bf-time">Время ухода</label><input class="input input-lg num" id="bf-time" type="text" value="19:05"></div>
+</div>
+
+<div class="well row between">
+<span class="s c2">Смена получится</span>
+<span class="num w6" style="font-size: 18px">8 ч 43 мин</span>
+</div>
+
+<div class="col g6">
+<span class="lbl">Проверки</span>
+<span class="err" style="color: var(--ink-3)"><svg class="ic ic-s c-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Уход не раньше чем через 30 минут после прихода</span>
+<span class="err" style="color: var(--ink-3)"><svg class="ic ic-s c-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Смена не длиннее 14 часов</span>
+</div>
+
+<button class="btn btn-pri btn-lg btn-block" type="button">Подтвердить время ухода</button>
+<p class="xs c3">Пропустить нельзя: без этого не начнётся сегодняшняя смена. Время увидит менеджер.</p>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light' };
+}
+}
+</script>
+</body>
+</html>

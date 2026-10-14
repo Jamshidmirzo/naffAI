@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Аналитика источников</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1460px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="sources" hint-size="248px,1460px"></dc-import></div>
+<div class="main-col">
+<header class="top">
+<div class="col"><h1 class="h1">Аналитика источников</h1><span class="xs c3">Спрос vs предложение по видео/шитам</span></div>
+<span class="grow"></span>
+<div class="row g6"><select class="input" aria-label="Выбрать конкретный месяц" style="width: 200px"><option>Октябрь 2026</option><option>Сентябрь 2026</option></select><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Сбросить месяц"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+</header>
+<main class="page">
+
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+<section class="card col g4 pad"><span class="lbl">Источников</span><span class="kpi" style="font-size: 22px">7</span></section>
+<section class="card col g4 pad"><span class="lbl">Лидов</span><span class="kpi" style="font-size: 22px">4 824</span></section>
+<section class="card col g4 pad"><span class="lbl">Продаж</span><span class="kpi" style="font-size: 22px">214</span><span class="xs c3">конверсия 4,4%</span></section>
+<section class="card col g4 pad"><span class="lbl">Оборот</span><span class="kpi" style="font-size: 22px">2 249 000 000</span></section>
+</div>
+
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: 1.7fr 70px 80px 70px 130px 110px 1fr 1fr"><span>Источник</span><button class="th-s r" type="button">Лиды</button><button class="th-s r" type="button">Продажи</button><button class="th-s r" type="button">Конв.</button><button class="th-s is-on r" type="button">Оборот ▼</button><button class="th-s r" type="button">Ср. чек</button><span>Купили</span><span>Спрашивали</span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+<div class="tr {{r.cls}}" style="grid-template-columns: 1.7fr 70px 80px 70px 130px 110px 1fr 1fr">
+<span class="row g8" style="min-width: 0"><span class="badge {{r.kCls}}" style="height: 20px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em">{{r.kind}}</span><span class="w6 trunc">{{r.n}}</span><sc-if value="{{r.gap}}" hint-placeholder-val="{{ false }}"><span class="badge b-warn" style="height: 20px" title="Клиенты спрашивают, но покупают редко — возможен дефицит модели или неточная реклама">дефицит</span></sc-if></span>
+<span class="r num">{{r.l}}</span><span class="r num">{{r.s}}</span><span class="r num w6">{{r.c}}</span><span class="r num">{{r.rev}}</span><span class="r num c3">{{r.avg}}</span>
+<span class="s trunc">{{r.bought}}</span><span class="s c2 trunc">{{r.asked}}</span>
+</div>
+</sc-for>
+</section>
+
+<section class="card col">
+<div class="card-h"><div class="col"><span class="lbl">Разбор источника</span><span class="h3">Instagram октябрь</span></div><span class="row g8"><a class="btn btn-sm" href="MgSales.dc.html">Смотреть продажи →</a><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть разбор"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></span></div>
+<div style="display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 28px; padding: 18px 20px; border-bottom: 1px solid var(--line); align-items: start">
+<div class="col" style="gap: 10px"><span class="lbl">Воронка</span>
+<sc-for list="{{funnel}}" as="f" hint-placeholder-count="6"><div class="row g8"><span class="xs c3" style="width: 80px; flex: none">{{f.label}}</span><span class="bar grow" style="height: 6px"><i class="{{f.cls}}" style="width: {{f.pct}}%"></i></span><span class="num xs" style="width: 40px; text-align: right">{{f.n}}</span></div></sc-for>
+<span class="xs c3">Среднее время до продажи: <span class="w6" style="color: var(--ink)">38 ч</span></span>
+</div>
+<div class="col g16">
+<div class="col g8"><span class="lbl">Топ моделей</span><div class="row between s"><span>iPhone 15 Pro 256 GB</span><span class="num c3">22</span></div><div class="row between s"><span>iPhone 15 128 GB</span><span class="num c3">14</span></div><div class="row between s"><span>Samsung Galaxy S24</span><span class="num c3">11</span></div></div>
+<div class="col g8"><span class="lbl">Топ операторов</span><div class="row between s"><span>Gulnoza Karimova</span><span class="num c3">146 300 000</span></div><div class="row between s"><span>Jasur Toshmatov</span><span class="num c3">131 900 000</span></div></div>
+</div>
+<div class="col g16">
+<div class="col g8"><span class="lbl">Причины отказа</span><div class="row between s"><span>Показалось дорого</span><span class="num c3">188 <span class="xs">(31%)</span></span></div><div class="row between s"><span>Нет карты</span><span class="num c3">121 <span class="xs">(20%)</span></span></div><div class="row between s"><span>Купил в другом месте</span><span class="num c3">97 <span class="xs">(16%)</span></span></div></div>
+<div class="col g8"><span class="lbl">Реклама</span><div class="row between s"><span class="c3">Расход</span><span class="num w6">32 000 000</span></div><div class="row between s"><span class="c3">CAC</span><span class="num w6">316 832</span></div><div class="row between s"><span class="c3">ROI</span><span class="num w6 c-ok">3 217%</span></div></div>
+</div>
+</div>
+<div class="card-h" style="border-bottom: 1px solid var(--line)"><span class="h3">Что искали vs что купили</span><span class="xs c3">по «Что хочет купить» из таблицы</span></div>
+<div class="tr th" style="grid-template-columns: 1.6fr 90px 90px 90px 140px"><span>Модель</span><span class="r">Спрос</span><span class="r">Продано</span><span class="r">Конв.</span><span>Статус</span></div>
+<sc-for list="{{gap}}" as="g" hint-placeholder-count="6">
+<div class="tr" style="grid-template-columns: 1.6fr 90px 90px 90px 140px; min-height: 42px"><span class="s w6 trunc">{{g.m}}</span><span class="r num">{{g.d}}</span><span class="r num">{{g.s}}</span><span class="r num c2">{{g.c}}</span><span><span class="badge {{g.tone}}">{{g.st}}</span></span></div>
+</sc-for>
+<div class="row between s" style="padding: 12px 16px; border-top: 1px solid var(--line)"><span class="c3">Всего: спрос <span class="num w6" style="color: var(--ink)">1 040</span>, продано <span class="num w6" style="color: var(--ink)">88</span></span><span class="xs c3">сортировка: спрос + продано</span></div>
+</section>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start">
+<div class="col g8"><span class="when">Нет источников за месяц</span><section class="card"><div class="empty"><span class="s">Нет источников за выбранный период</span></div></section></div>
+<div class="col g8"><span class="when">Нет данных о спросе</span><section class="card"><div class="empty"><span class="s">Нет данных о спросе за период</span></div></section></div>
+</div>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1460}}'>
+class Component extends DCLogic {
+renderVals() {
+const sp = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const K = { sheet: ['Sheet', 'b-info'], bot: ['Bot', 'b-hot'], manual: ['Ручной', 'b-warn'], other: ['Другое', ''] };
+const r = (kind, n, l, s, rev, bought, asked, gap, sel) => ({ kind: K[kind][0], kCls: K[kind][1], n: n, l: sp(l), s: s, c: l ? String(Math.round(s / l * 1000) / 10).replace('.', ',') + '%' : '—', rev: sp(rev), avg: s ? sp(Math.round(rev / s / 1000) * 1000) : '—', bought: bought, asked: asked, gap: gap, cls: sel ? 'is-sel' : '' });
+const st = (n, i) => ({ label: ['Новые', 'Назначены', 'В работе', 'Callback', 'Продажа', 'Потерян'][i], n: n, pct: Math.round(n / 2140 * 100), cls: i === 4 ? 'ok' : i === 5 ? 'bad' : '' });
+const g = (m, d, s, ind) => ({ m: m, d: d, s: s, c: String(Math.round(s / d * 1000) / 10).replace('.', ',') + '%', st: ind === 'd' ? 'не хватает' : ind === 's' ? 'избыток' : 'в норме', tone: ind === 'd' ? 'b-warn' : ind === 's' ? 'b-info' : 'b-ok' });
+return {
+theme: this.props.theme ?? 'light',
+rows: [
+r('sheet', 'Instagram октябрь', 2140, 101, 1061400000, 'iPhone 15 Pro 256 GB', 'iPhone 15 Pro 256 GB', false, true),
+r('sheet', 'Facebook октябрь', 1320, 48, 497300000, 'iPhone 13 128 GB', 'Samsung Galaxy S24', true, false),
+r('bot', 'Telegram-бот', 780, 41, 432000000, 'Redmi Note 13 Pro', 'Redmi Note 13 Pro', false, false),
+r('sheet', 'Сайт · заявки', 412, 18, 184200000, 'Samsung Galaxy A55', 'Samsung Galaxy A55', false, false),
+r('manual', 'Звонок в магазин', 64, 3, 37500000, 'iPhone 14 128 GB', '—', false, false),
+r('sheet', 'TikTok · Aziz', 96, 2, 21800000, 'Redmi 13C', 'Honor X9b', true, false),
+r('other', 'Без источника', 12, 1, 15200000, 'iPhone 15 128 GB', '—', false, false)
+],
+funnel: [212, 388, 524, 301, 101, 614].map(st),
+gap: [g('iPhone 15 Pro 256 GB', 410, 38, 'm'), g('Samsung Galaxy S24', 260, 9, 'd'), g('iPhone 13 128 GB', 180, 21, 'm'), g('Redmi Note 13 Pro', 90, 14, 's'), g('Honor X9b', 70, 2, 'd'), g('iPhone 15 128 GB', 30, 4, 'm')]
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Навигация</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 2600px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6"><h1 class="h1">Навигация: всё меню целиком</h1><p class="c3" style="max-width: 820px">Меню менеджера и супер-менеджера со всеми группами раскрытыми. В работе группы сворачиваются: раскрыта только та, где вы сейчас.</p></div>
+<div class="row g24" style="align-items: flex-start">
+<div class="col g8" style="flex: none"><span class="when">Менеджер · 7 групп, 42 пункта</span><div class="card" style="overflow: hidden; width: 248px"><dc-import name="SideNav" who="manager" at="dash" open="all" hint-size="248px,2000px"></dc-import></div></div>
+<div class="col g8" style="flex: none"><span class="when">Супер-менеджер · «Моя ветка» + всё меню менеджера</span><div class="card" style="overflow: hidden; width: 248px"><dc-import name="SideNav" who="super" at="board" open="all" hint-size="248px,2300px"></dc-import></div></div>
+<div class="col g8" style="flex: none"><span class="when">Как сейчас в работе · супер на доске ветки</span><div class="card" style="overflow: hidden; width: 248px"><dc-import name="SideNav" who="super" at="board" hint-size="248px,1000px"></dc-import></div></div>
+<div class="col g12 grow"><section class="card col g6 pad"><span class="h3">Все разделы на месте</span><span class="s c2">У менеджера 42 пункта в 7 группах — те же 41, что в старом фронте, плюс «Банки» (страница была, ссылки на неё не было).</span></section><section class="card col g6 pad"><span class="h3">Супер-менеджер видит всё</span><span class="s c2">Сверху «Моя ветка», ниже всё меню менеджера, как в коде. «Пульт ветки» — новое: сейчас супер попадает сразу в «Продажи команды».</span></section><section class="card col g6 pad"><span class="h3">Группы сворачиваются</span><span class="s c2">Раскрыты «Основное» и группа открытой страницы. Остальные — одной строкой с числом пунктов и суммой красных счётчиков внутри.</span></section><section class="card col g6 pad"><span class="h3">Только для администратора</span><span class="s c2">«Фото сотрудников» и «Системно потерянные» видит только superadmin — в меню у них метка «админ».</span></section><section class="card col g6 pad"><span class="h3">Стикеры</span><span class="s c2">Страница-заглушка «Скоро появится». В меню с меткой «скоро»; решение — убрать, пока раздела нет.</span></section><section class="card col g6 pad"><span class="h3">Переименовано</span><span class="s c2">«Дашборд» → «Пульт зала», «Аудит» → «Журнал изменений», «Google-шиты (источники лидов)» → «Google-таблицы», «Marketing-настройки» → «Тексты для маркетинга», «Ожидают подтверждения» → «Ждут подтверждения».</span></section><section class="card col g6 pad"><span class="h3">Профиль и уведомления</span><span class="s c2">Внизу меню: имя ведёт в профиль, колокольчик — в уведомления. В старом меню менеджера пункта «Уведомления» не было.</span></section><section class="card col g6 pad"><span class="h3">Оператор</span><span class="s c2">Узкая панель с иконками (SideRail), 12 пунктов: как в коде, только «Уроки — история» открывается из «Урока дня», а «Новая продажа» вынесена в меню.</span></section></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":2600}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light' };
+}
+}
+</script>
+</body>
+</html>

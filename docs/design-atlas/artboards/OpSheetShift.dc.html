@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Смена и камера: окна</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1180px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6">
+<h1 class="h1">Смена, камера и эфир</h1>
+<p class="c3">Начало и конец смены, снимки с камеры, запрос снимка от менеджера и состояния эфира.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; align-items: start">
+
+<div class="col g8">
+<span class="when">Камера: открываем · проверка · нет доступа</span>
+<div class="col g12">
+<section class="dlg" style="overflow: hidden; background: #15132B; color: #F1F0F7; border-color: #15132B">
+<div class="row between" style="padding: 12px 16px"><span class="s w6">Селфи для смены</span><span class="xs" style="opacity: .7">Открываем камеру…</span></div>
+<div style="height: 150px; margin: 0 16px; border-radius: 12px; background: #24223F"></div>
+<div class="row g8" style="padding: 12px 16px; justify-content: center"><button class="btn" type="button" disabled="{{yes}}">Сделать фото</button></div>
+</section>
+<section class="dlg" style="overflow: hidden">
+<div class="row between" style="padding: 12px 16px"><span class="s w6">Проверьте фото</span></div>
+<div class="ph" style="height: 150px; margin: 0 16px">Снимок</div>
+<div class="row g8" style="padding: 12px 16px; justify-content: flex-end"><button class="btn" type="button">Переснять</button><button class="btn btn-ok" type="button">Отправить</button></div>
+</section>
+<section class="dlg" role="alertdialog">
+<div class="dlg-h"><div class="col g4"><h2 class="h2">Камера недоступна</h2><span class="s c3">Браузер запретил доступ к камере</span></div></div>
+<div class="dlg-b"><p class="s c2">Нажмите на значок камеры в адресной строке и выберите «Разрешить». Или загрузите фото с компьютера.</p></div>
+<div class="dlg-f"><button class="btn" type="button">Выбрать фото</button><button class="btn btn-pri" type="button">Повторить</button></div>
+</section>
+</div>
+</div>
+
+<div class="col g8">
+<span class="when">Отметка через телефон · окно QR</span>
+<section class="dlg" role="dialog" aria-labelledby="s2">
+<div class="dlg-h"><div class="col g4"><span class="lbl" style="color: var(--brand-text)">Отметка ухода</span><h2 class="h2" id="s2">Отсканируйте QR телефоном</h2></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b">
+<div class="ph" style="width: 200px; height: 200px; align-self: center"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2z"></path></svg>Ваш личный QR</div>
+<ol class="col g6 s" style="padding-left: 20px; margin: 0">
+<li>Наведите камеру телефона на код</li>
+<li>Откроется страница отметки</li>
+<li>Сделайте селфи, здесь всё обновится само</li>
+</ol>
+<div class="row g8 s c3"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4"></path></svg>Ожидаем скан…</div>
+</div>
+<div class="dlg-f"><button class="btn btn-ghost" type="button">Снять камерой компьютера</button></div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Завершить смену · новое подтверждение</span>
+<div class="col g12">
+<section class="dlg" role="dialog" aria-labelledby="s3">
+<div class="dlg-h"><h2 class="h2" id="s3">Завершить смену?</h2></div>
+<div class="dlg-b"><p class="s c2">Отработано <span class="num w6">8 ч 12 мин</span>. После этого новые лиды перестанут приходить, а 2 открытых лида останутся у вас до завтра.</p></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Завершить смену</button></div>
+</section>
+<section class="card col" style="overflow: hidden; align-items: center; text-align: center; padding-bottom: 20px">
+<i class="ikat" style="height: 8px; align-self: stretch" aria-hidden="true"></i>
+<span class="icon-tile t-ok" style="width: 52px; height: 52px; border-radius: 16px; margin-top: 18px"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span>
+<span class="lbl" style="color: var(--ok); margin-top: 8px">Смена завершена</span>
+<span class="display" style="font-size: 20px">Уход в <span class="num">19:02</span></span>
+<span class="s c3">Отработано 9 ч 4 мин · закроется через 4 секунды</span>
+</section>
+</div>
+</div>
+
+<div class="col g8" style="grid-column: span 2">
+<span class="when">Напоминание об уходе · под шапкой</span>
+<div class="banner b-warn" style="align-items: center"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"></path></svg><span class="col grow"><span class="w6">Не забудьте отметить уход</span><span>Прошло 8 часов. Если не отметитесь, смена закроется сама в 23:00.</span></span><button class="btn btn-sm" type="button">Завершить смену</button><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Скрыть до конца смены"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<p class="xs c3">«Завершить смену» открывает подтверждение справа, а не просто прячет плашку, как сейчас.</p>
+</div>
+
+<div class="col g8">
+<span class="when">Эфир с камеры · плашка слева внизу</span>
+<div class="col g8">
+<span class="toast" style="background: var(--surface); color: var(--ink); border: 1px solid var(--line); align-self: flex-start"><i class="dot" style="color: var(--bad-solid); width: 10px; height: 10px"></i>Вы в эфире</span>
+<span class="toast" style="background: var(--surface); color: var(--ink-2); border: 1px solid var(--line); align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4"></path></svg>Включаем камеру…</span>
+<span class="toast" style="background: var(--bad-bg); color: var(--bad); align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h11v10H4zM15 11l5-3v8l-5-3zM3 3l18 18"></path></svg>Камера заблокирована браузером</span>
+<span class="toast" style="background: var(--warn-bg); color: var(--warn); align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg>Эфир прервался, переподключаем</span>
+</div>
+</div>
+
+<div class="col g8" style="grid-column: span 3">
+<span class="when">Запрос снимка от менеджера · ошибка камеры</span>
+<div class="row g24" style="align-items: flex-start">
+<section class="dlg" role="alertdialog" style="width: 420px">
+<div class="dlg-h"><div class="col g4"><h2 class="h2">Не удалось сделать снимок</h2><span class="s c3">Запрос от Kamola Ahmedova</span></div></div>
+<div class="dlg-b"><p class="s c2">Доступ к камере запрещён в браузере. Разрешите камеру и попробуйте ещё раз, менеджер ждёт снимок ещё 50 секунд.</p></div>
+<div class="dlg-f"><button class="btn" type="button">Закрыть</button><button class="btn btn-pri" type="button">Повторить</button></div>
+</section>
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Снимок отправлен менеджеру</span>
+</div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1180}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light', yes: true };
+}
+}
+</script>
+</body>
+</html>

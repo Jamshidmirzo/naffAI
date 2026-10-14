@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Фото сотрудников</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1000px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="photos" hint-size="248px,1000px"></dc-import></div>
+<div class="main-col">
+<header class="top">
+<h1 class="h1">Смена</h1>
+<div class="seg"><a href="MgAttendance.dc.html">Сегодня</a><a href="MgAttReport.dc.html">Отчёт</a><a class="is-on" href="MgAttPhotos.dc.html" aria-current="page">Фото</a><a href="MgKiosk.dc.html">Киоск</a><a href="MgAttSettings.dc.html">Настройки</a></div>
+<span class="grow"></span>
+<span class="col" style="align-items: flex-end"><span class="lbl">Всего</span><span class="num w6" style="font-size: 20px; line-height: 24px">71</span></span>
+</header>
+<main class="page" style="gap: 16px">
+<section class="card row g16 wrap" style="padding: 12px 16px; align-items: flex-end">
+<div class="field"><label for="pf1">С даты</label><input class="input num" id="pf1" type="text" value="13.10.2026" style="width: 150px; height: 36px"></div>
+<div class="field"><label for="pf2">По дату</label><input class="input num" id="pf2" type="text" value="14.10.2026" style="width: 150px; height: 36px"></div>
+<div class="field"><label for="pf3">Оператор</label><select class="input" id="pf3" style="width: 240px; height: 36px"><option>Все операторы</option></select></div>
+<span class="grow"></span>
+<button class="btn btn-ghost" type="button">Сбросить</button>
+<button class="btn btn-ghost btn-sq" type="button" aria-label="Обновить"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"></path></svg></button>
+</section>
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+<div class="col g12">
+<div class="row g8"><span class="h3">{{g.title}}</span><span class="badge" style="height: 20px"><span class="num">{{g.n}}</span></span></div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{g.cards}}" as="c" hint-placeholder-count="4">
+<section class="card col" style="overflow: hidden">
+<div class="row" style="gap: 1px; background: var(--line)">
+<div class="ph grow" style="height: 104px; border-radius: 0; border: 0">Приход</div>
+<div class="ph grow" style="height: 104px; border-radius: 0; border: 0">{{c.outLabel}}</div>
+</div>
+<div class="col g4" style="padding: 10px 12px 12px">
+<span class="s w6 trunc">{{c.name}}</span>
+<span class="num xs c2">{{c.in}} → {{c.out}}</span>
+<span class="xs c3">Длительность: <b class="c2">{{c.dur}}</b></span>
+<div class="row g6" style="margin-top: 2px"><sc-if value="{{c.late}}" hint-placeholder-val="{{ false }}"><span class="badge b-hot" style="height: 20px">Опоздание</span></sc-if><span class="lbl" style="font-size: 10px">{{c.src}}</span></div>
+</div>
+</section>
+</sc-for>
+</div>
+</div>
+</sc-for>
+<div class="row g12" style="justify-content: center"><button class="btn btn-ghost btn-sm" type="button" disabled="{{yes}}">←</button><span class="num s c3">1–24 / 71</span><button class="btn btn-ghost btn-sm" type="button">→</button></div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+const c = (name, inn, out, dur, late, src, nophoto) => ({ name: name, in: inn, out: out || '—', outLabel: out && !nophoto ? 'Уход' : 'нет фото ухода', dur: dur, late: late, src: src });
+return {
+theme: this.props.theme ?? 'light',
+yes: true,
+groups: [
+{ title: 'Сегодня', n: 31, cards: [c('Gulnoza Karimova', '09:58', '', '—', false, 'qr'), c('Javlon Sobirov', '10:48', '', '—', true, 'tg'), c('Jasur Toshmatov', '09:52', '', '—', false, 'qr'), c('Feruza Hamidova', '09:55', '13:10', '3 ч 15 мин', false, 'qr')] },
+{ title: 'Вчера', n: 40, cards: [c('Gulnoza Karimova', '10:22', '19:04', '8 ч 42 мин', true, 'qr'), c('Jasur Toshmatov', '09:50', '19:10', '9 ч 20 мин', false, 'qr'), c('Otabek Ergashev', '10:05', '23:00', '12 ч 55 мин', false, 'manual'), c('Nilufar Saidova', '09:47', '19:00', '9 ч 13 мин', false, 'tg'), c('Madina Rasulova', '10:31', '19:02', '8 ч 31 мин', true, 'tg'), c('Shahlo Komilova', '09:59', '18:55', '8 ч 56 мин', false, 'qr'), c('Aziz Qodirov', '10:00', '23:00', '13 ч 0 мин', false, 'qr', true), c('Malika Tursunova', '09:54', '19:06', '9 ч 12 мин', false, 'qr')] }
+]
+};
+}
+}
+</script>
+</body>
+</html>

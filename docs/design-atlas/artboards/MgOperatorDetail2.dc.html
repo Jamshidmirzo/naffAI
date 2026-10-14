@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Карточка оператора: детали</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 2580px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="ops" hint-size="248px,2580px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<a class="btn btn-ghost btn-sq" href="MgOperatorDetail.dc.html" aria-label="Назад к карточке"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
+<span class="ava ava-l" data-s="on">GK</span>
+<div class="col"><h1 class="h1" style="font-size: 20px; line-height: 26px">Gulnoza Karimova</h1><span class="s c3">Карточка оператора · продолжение страницы</span></div>
+<span class="grow"></span>
+<div class="seg"><button type="button">День</button><button type="button">Неделя</button><button class="is-on" type="button">Месяц</button></div>
+<select class="input" aria-label="Месяц" style="width: 190px"><option>Текущий период</option><option>Сентябрь 2026</option><option>Август 2026</option></select>
+<a class="btn" href="MgOperatorDetail.dc.html">Обзор: KPI, план, смены</a>
+</header>
+
+<main class="page">
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start">
+<section class="card tbl">
+<div class="card-h"><span class="h3">По моделям</span><span class="xs c3">октябрь</span></div>
+<div class="tr th" style="grid-template-columns: 1fr 80px 140px"><span>Модель</span><span class="r">Кол-во</span><span class="r">Сумма</span></div>
+<sc-for list="{{models}}" as="m" hint-placeholder-count="6">
+<div class="tr" style="grid-template-columns: 1fr 80px 140px; min-height: 44px"><span class="s w5 trunc">{{m.n}}</span><span class="r num s">{{m.q}}</span><span class="r num s w6">{{m.a}}</span></div>
+</sc-for>
+</section>
+<section class="card tbl">
+<div class="card-h"><span class="h3">По партнёрам</span><span class="xs c3">октябрь · сумма по каналу оплаты</span></div>
+<div class="tr th" style="grid-template-columns: 1fr 80px 140px"><span>Партнёр</span><span class="r">Кол-во</span><span class="r">Сумма</span></div>
+<sc-for list="{{partners}}" as="p" hint-placeholder-count="5">
+<div class="tr" style="grid-template-columns: 1fr 80px 140px; min-height: 44px"><span class="row g8 s w5"><span class="ava ava-s">{{p.i}}</span>{{p.n}}</span><span class="r num s">{{p.q}}</span><span class="r num s w6">{{p.a}}</span></div>
+</sc-for>
+<div class="tr" style="grid-template-columns: 1fr 80px 140px; min-height: 44px; background: var(--surface-2)"><span class="xs c3">одна продажа может идти через 2 партнёров — считается в обоих</span><span></span><span></span></div>
+</section>
+</div>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Посещаемость · 30 дней</span><span class="xs c3">15.09 – 14.10.2026</span></div>
+<div class="col g20" style="padding: 20px">
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px">
+<div class="well col g4" style="text-align: center"><span class="xs c3">Присутствие</span><span class="num w7" style="font-size: 18px">23 / 25 дн.</span></div>
+<div class="well col g4" style="text-align: center"><span class="xs c3">Пропуски</span><span class="num w7 c-bad" style="font-size: 18px">2 дн.</span></div>
+<div class="well col g4" style="text-align: center"><span class="xs c3">Опоздания (среднее)</span><span class="num w7 c-warn" style="font-size: 18px">4 (12 мин)</span></div>
+<div class="well col g4" style="text-align: center"><span class="xs c3">Средняя смена</span><span class="num w7 c-brand" style="font-size: 18px">538 мин</span></div>
+<div class="well col g4" style="text-align: center"><span class="xs c3">Итого часов</span><span class="num w7 c-ok" style="font-size: 18px">206 ч.</span></div>
+</div>
+<div class="col g12">
+<span class="h3" style="font-size: 14px">Календарь присутствия</span>
+<div class="row g6 wrap well" style="padding: 12px">
+<sc-for list="{{heat}}" as="h" hint-placeholder-count="30"><span class="num" title="{{h.t}}" style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 6px; font-size: 10px; font-weight: 700; background: {{h.bg}}; color: {{h.fg}}">{{h.d}}</span></sc-for>
+</div>
+<div class="row g16 wrap xs c3">
+<sc-for list="{{legend}}" as="l" hint-placeholder-count="6"><span class="row g6"><i style="display: inline-block; width: 14px; height: 14px; border-radius: 4px; background: {{l.bg}}"></i>{{l.t}}</span></sc-for>
+</div>
+</div>
+</div>
+</section>
+
+<div style="display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; align-items: start">
+<section class="card tbl">
+<div class="card-h"><span class="h3">Обучение · последние 7 разборов</span><a class="btn btn-ghost btn-sm" href="OpLessons.dc.html">Вся история</a></div>
+<div class="tr th" style="grid-template-columns: 110px 1fr 1.2fr 60px"><span>Дата</span><span>Фокус дня</span><span>Резюме</span><span class="r">Прочит.</span></div>
+<sc-for list="{{lessons}}" as="l" hint-placeholder-count="7">
+<div class="tr {{l.cls}}" style="grid-template-columns: 110px 1fr 1.2fr 60px; min-height: 52px">
+<span class="num s w5">{{l.d}}</span><span class="s w6 trunc">{{l.f}}</span><span class="s c3 trunc">{{l.s}}</span>
+<span class="r"><sc-if value="{{l.read}}" hint-placeholder-val="{{ true }}"><svg class="ic c-brand" viewBox="0 0 24 24" aria-label="прочитан"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg></sc-if><sc-if value="{{l.unread}}" hint-placeholder-val="{{ false }}"><svg class="ic c3" viewBox="0 0 24 24" aria-label="не прочитан"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6 0 10 7 10 7a17 17 0 0 1-3.2 3.9M6.6 6.6C3.9 8.3 2 12 2 12s4 7 10 7a9.6 9.6 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"></path></svg></sc-if></span>
+</div>
+</sc-for>
+</section>
+
+<div class="col g8">
+<span class="when">Окно разбора · по клику на строку</span>
+<div class="dlg">
+<div class="dlg-h"><div class="col g4"><span class="lbl c-brand">ИИ-разбор</span><span class="h2">13 октября 2026</span></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b">
+<div class="well col g4" style="border-color: var(--brand); background: var(--brand-soft)"><span class="lbl c-brand">Фокус</span><span class="s w6">Называй платёж в месяц раньше полной цены</span></div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+<div class="well col g4" style="padding: 8px 10px"><span class="xs c3">Продажи</span><span class="num w6">3 шт</span></div>
+<div class="well col g4" style="padding: 8px 10px"><span class="xs c3">Сумма</span><span class="num w6 trunc">4 200 000</span></div>
+<div class="well col g4" style="padding: 8px 10px"><span class="xs c3">Диалоги</span><span class="num w6">14</span></div>
+<div class="well col g4" style="padding: 8px 10px"><span class="xs c3">Качество</span><span class="num w6">72/100</span></div>
+</div>
+<div class="col g4"><span class="lbl">Итог дня</span><span class="s c2">Три продажи из 14 диалогов. Клиенты уходили после названия полной цены — рассрочку предлагала только в конце разговора.</span></div>
+<div class="col g6"><span class="lbl">Что было сильно</span>
+<span class="row g8 s" style="align-items: flex-start"><svg class="ic ic-s c-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Быстро перезванивала по колбэкам — в среднем через 6 минут</span>
+<span class="row g8 s" style="align-items: flex-start"><svg class="ic ic-s c-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Уточняла память и цвет до того, как предложить модель</span>
+</div>
+<div class="col g8"><span class="lbl">Рекомендации</span>
+<div class="well col g4" style="padding: 10px 12px"><span class="s w6">Начинай с «от 1 150 000 в месяц»</span><span class="xs c3"><span class="w6">Почему:</span> в 6 из 11 диалогов клиент замолкал после полной цены.</span></div>
+<div class="well col g4" style="padding: 10px 12px"><span class="s w6">Закрывай звонок датой визита</span><span class="xs c3"><span class="w6">Почему:</span> «подумаю» без даты почти не возвращается.</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<section class="card col" style="overflow: hidden">
+<div class="card-h"><span class="h3">TG-диалоги с клиентами</span><span class="row g8"><span class="badge b-ok"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>История загружена (чатов: 18, сообщений: 1 240)</span><button class="btn btn-ghost btn-sm" type="button">Обновить список</button></span></div>
+<div style="display: grid; grid-template-columns: 290px minmax(0, 1fr); min-height: 560px">
+<div class="col" style="border-right: 1px solid var(--line)">
+<div style="padding: 12px"><div class="inwrap"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg><input class="input" type="search" placeholder="Поиск по имени / username…" aria-label="Поиск чатов"></div></div>
+<sc-for list="{{chats}}" as="c" hint-placeholder-count="7">
+<div class="li {{c.cls}}" style="min-height: 60px; padding: 8px 12px"><span class="ava ava-s">{{c.i}}</span><span class="col grow" style="min-width: 0"><span class="row between"><span class="s w6 trunc">{{c.n}}</span><span class="num xs c3">{{c.t}}</span></span><span class="xs c3 trunc">{{c.m}}</span></span></div>
+</sc-for>
+</div>
+<div class="col" style="position: relative; min-width: 0">
+<div class="col g8" style="padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--surface)">
+<div class="row g8"><span class="s w6">AI-анализ (весь чат)</span><span class="badge b-hot num">64/100</span></div>
+<span class="s c2">Клиент интересовался iPhone 15 в рассрочку на 12 месяцев. Оператор дала цену, но не назвала платёж в месяц и не договорилась о следующем шаге.</span>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<div class="col g4"><span class="xs w6 c-bad">Риски:</span><span class="xs c-bad">· не ответила на вопрос про первый взнос</span><span class="xs c-bad">· клиент молчит второй день, нет напоминания</span></div>
+<div class="col g4"><span class="xs w6 c-brand">Плюсы:</span><span class="xs c-brand">· быстро прислала фото и цвета</span><span class="xs c-brand">· вежливый тон, обращение по имени</span></div>
+</div>
+</div>
+<div class="col g8" style="padding: 16px 18px 76px; background: var(--surface-2); flex: 1 1 auto">
+<sc-for list="{{msgs}}" as="m" hint-placeholder-count="6">
+<div class="row g8" style="justify-content: {{m.j}}; align-items: flex-start">
+<sc-if value="{{m.sel}}" hint-placeholder-val="{{ false }}"><input class="check" type="checkbox" checked="{{yes}}" aria-label="Выбрать для AI-анализа" style="margin-top: 8px"></sc-if><sc-if value="{{m.nosel}}" hint-placeholder-val="{{ true }}"><input class="check" type="checkbox" aria-label="Выбрать для AI-анализа" style="margin-top: 8px"></sc-if>
+<span class="col g4" style="max-width: 70%; padding: 8px 12px; border-radius: 12px; background: {{m.bg}}; border: 1px solid {{m.bd}}"><span class="s">{{m.t}}</span><span class="num xs c3">{{m.h}}</span></span>
+</div>
+</sc-for>
+</div>
+<div class="row g12" style="position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 18px; background: var(--surface); border-top: 1px solid var(--line)">
+<span class="s">Выбрано: <span class="num w6">2</span></span>
+<button class="btn btn-ghost btn-sm" type="button"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>Снять</button>
+<span class="grow"></span>
+<button class="btn btn-pri btn-sm" type="button"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4zM19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path></svg>AI: как сказать лучше</button>
+</div>
+</div>
+</div>
+</section>
+
+<div style="display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; align-items: start">
+<div class="col g8">
+<span class="when">Результат «AI: как сказать лучше»</span>
+<div class="dlg">
+<div class="dlg-h"><div class="col g4"><span class="h2">AI-разбор сообщений</span><span class="xs c3"><span class="num">2</span> замечаний</span></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b">
+<div class="well col g8">
+<div class="row between"><span class="s c2" style="font-style: italic">«Цена 13 800 000, можно в рассрочку»</span><span class="badge b-bad">критично</span></div>
+<div class="col g4"><span class="lbl c-bad">Проблема</span><span class="s">Полная цена без платежа в месяц пугает клиента, который спрашивал про рассрочку.</span></div>
+<div class="col g4"><span class="lbl c-ok">Как лучше сказать</span><span class="s">«На 12 месяцев выйдет 1 150 000 в месяц, первый взнос 0. Оформим сегодня?»</span></div>
+</div>
+<div class="well col g8">
+<div class="row between"><span class="s c2" style="font-style: italic">«Хорошо, пишите если что»</span><span class="badge b-warn">средне</span></div>
+<div class="col g4"><span class="lbl c-bad">Проблема</span><span class="s">Разговор закрыт без следующего шага.</span></div>
+<div class="col g4"><span class="lbl c-ok">Как лучше сказать</span><span class="s">«Давайте я наберу вас завтра в 11:00 — удобно?»</span></div>
+</div>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Закрыть</button></div>
+</div>
+</div>
+<div class="col g8">
+<span class="when">Загрузка истории: другие состояния</span>
+<section class="card col g12 pad">
+<span class="row g8 s"><span class="badge b-info">идёт</span>Загружаем историю… чатов: 7, сообщений: 412</span>
+<span class="row g8 s"><span class="badge">очередь</span>В очереди на загрузку истории…</span>
+<span class="row g8 s wrap"><span class="badge b-bad">ошибка</span>Ошибка загрузки: FloodWait 120 s<button class="btn btn-sm" type="button">Повторить</button></span>
+<hr class="hr">
+<span class="row g8 s"><span class="badge">пусто</span>Диалогов нет</span>
+<span class="row g8 s"><span class="badge">выбор</span>Выберите чат слева</span>
+<span class="row g8 s"><span class="badge b-ok">чисто</span>Явных ошибок не нашлось — в выбранных сообщениях всё выглядит нормально.</span>
+<span class="xs c3">Максимум 30 сообщений для одного AI-разбора.</span>
+</section>
+</div>
+</div>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":2580}}'>
+class Component extends DCLogic {
+renderVals() {
+const C = { on: ['var(--ok-solid)', '#FFFFFF', 'Вовремя'], late: ['var(--warn-solid)', '#15132B', 'Опоздание'], abs: ['var(--bad-solid)', '#FFFFFF', 'Пропуск'], off: ['var(--line-2)', 'var(--ink-3)', 'Выходной'], auto: ['repeating-linear-gradient(45deg, #D97706, #D97706 4px, #F59E0B 4px, #F59E0B 8px)', '#FFFFFF', 'Авто-закрытие (23:00)'], tl: ['var(--brand)', '#FFFFFF', 'Закрыто ТL/Менеджером'] };
+const seq = ['on','on','late','on','on','off','on','on','on','abs','on','on','off','on','late','on','auto','on','on','off','on','on','tl','on','late','on','off','abs','on','late'];
+const days = [15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,1,2,3,4,5,6,7,8,9,10,11,12,13,14];
+const L = (d, f, s, read, cls) => ({ d: d, f: f, s: s, read: read, unread: !read, cls: cls || '' });
+const ch = (i, n, t, m, cls) => ({ i: i, n: n, t: t, m: m, cls: cls || '' });
+const msg = (out, t, h, sel) => ({ j: out ? 'flex-end' : 'flex-start', bg: out ? 'var(--brand-soft)' : 'var(--surface)', bd: sel ? 'var(--brand)' : 'var(--line)', t: t, h: h, sel: sel, nosel: !sel });
+return {
+theme: this.props.theme ?? 'light',
+yes: true,
+models: [ { n: 'iPhone 15 128GB', q: 5, a: '68 500 000' }, { n: 'Samsung Galaxy A55', q: 4, a: '19 600 000' }, { n: 'Redmi Note 13 Pro', q: 3, a: '11 400 000' }, { n: 'iPhone 13 128GB', q: 2, a: '18 200 000' }, { n: 'Samsung Galaxy S24', q: 2, a: '23 800 000' }, { n: 'Honor X9b', q: 2, a: '7 900 000' } ],
+partners: [ { i: 'AN', n: 'Anor Bank', q: 7, a: '61 300 000' }, { i: 'TB', n: 'TBC', q: 5, a: '38 400 000' }, { i: 'AL', n: 'Alif', q: 4, a: '24 100 000' }, { i: 'BI', n: 'Birzum', q: 2, a: '9 800 000' }, { i: 'HA', n: 'Hamroh', q: 1, a: '4 600 000' } ],
+heat: seq.map((k, i) => ({ d: String(days[i]).padStart(2, '0'), bg: C[k][0], fg: C[k][1], t: C[k][2] })),
+legend: ['on','late','abs','off','auto','tl'].map(k => ({ bg: C[k][0], t: C[k][2] })),
+lessons: [
+L('14.10.2026', 'Перезванивай в обещанное время', 'Два колбэка ушли позже на 40 минут', false),
+L('13.10.2026', 'Называй платёж в месяц раньше полной цены', 'Три продажи из 14 диалогов', true, 'is-sel'),
+L('11.10.2026', 'Записывай итог каждого звонка', '9 звонков без статуса', true),
+L('10.10.2026', 'Уточняй память и цвет сразу', 'Хороший день: 4 продажи', true),
+L('09.10.2026', 'Не обещай скидку без менеджера', 'Клиент ждал скидку, которой нет', true),
+L('08.10.2026', 'Закрывай звонок датой визита', 'Много «подумаю» без даты', false),
+L('07.10.2026', 'Предлагай второй вариант модели', 'Отказы из-за отсутствия цвета', true)
+],
+chats: [ ch('DU', 'Dilnoza Umarova', '12:40', 'А первый взнос какой?', 'is-sel'), ch('SR', 'Sardor Rahimov', '11:05', 'Голосовое 0:42'), ch('MN', 'Mohira N.', 'вчера', 'Спасибо, завтра приду'), ch('AB', '@abror_b', 'вчера', 'Есть синий цвет?'), ch('FK', 'Farrux Karimov', '12.10', 'Сколько на 6 месяцев?'), ch('ZT', 'Zarina T.', '11.10', 'Ок'), ch('JM', 'Jahongir M.', '10.10', 'Пришлите фото') ],
+msgs: [
+msg(false, 'Здравствуйте, iPhone 15 есть в рассрочку?', '12:31', false),
+msg(true, 'Здравствуйте, Dilnoza! Да, есть 128 и 256 ГБ. Какой цвет нравится?', '12:32', false),
+msg(false, 'Чёрный. Сколько стоит?', '12:34', false),
+msg(true, 'Цена 13 800 000, можно в рассрочку', '12:35', true),
+msg(false, 'А первый взнос какой?', '12:40', false),
+msg(true, 'Хорошо, пишите если что', '12:52', true)
+]
+};
+}
+}
+</script>
+</body>
+</html>

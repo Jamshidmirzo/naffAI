@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Уведомления</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 860px">
+<div class="rail-wrap"><dc-import name="SideNav" who="operator" at="notif" hint-size="84px,860px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Уведомления</h1>
+<span class="s c3"><span class="num">2</span> новых · всего <span class="num">18</span></span>
+<span class="grow"></span>
+<button class="btn" type="button">Прочитать все</button>
+</header>
+
+<main class="page">
+<div class="split">
+
+<section class="list card">
+<sc-for list="{{items}}" as="n" hint-placeholder-count="6">
+<a class="row-item" href="{{n.href}}" style="align-items: flex-start">
+<span class="icon-tile {{n.tile}}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.d}}"></path></svg></span>
+<span class="col grow" style="gap: 2px">
+<span class="row g8"><span class="s w6">{{n.title}}</span><sc-if value="{{n.unread}}" hint-placeholder-val="{{ false }}"><i class="dot" style="color: var(--brand)" aria-label="новое"></i></sc-if></span>
+<span class="s c2">{{n.body}}</span>
+</span>
+<span class="num xs c3" style="flex: none">{{n.when}}</span>
+</a>
+</sc-for>
+</section>
+
+<aside class="panel card col">
+<div class="card-h"><span class="h3">Что присылать</span></div>
+<div class="li"><span class="col grow"><span>Новые лиды</span><span class="xs c3">звук и всплывающее окно</span></span><button class="switch is-on" type="button" aria-label="Новые лиды: включено"><i></i></button></div>
+<div class="li"><span class="col grow"><span>Перезвоны со звуком</span><span class="xs c3">за 5 минут до времени</span></span><button class="switch is-on" type="button" aria-label="Перезвоны: включено"><i></i></button></div>
+<div class="li"><span class="col grow"><span>Уроки и разборы</span><span class="xs c3">утром в 09:00</span></span><button class="switch is-on" type="button" aria-label="Уроки: включено"><i></i></button></div>
+<div class="li"><span class="col grow"><span>Ежедневный отчёт по KPI</span><span class="xs c3">в Telegram в 20:30</span></span><button class="switch" type="button" aria-label="Отчёт по KPI: выключено"><i></i></button></div>
+</aside>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+const I = {
+clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
+user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
+check: 'M5 12.5l4.5 4.5L19 7.5',
+x: 'M6 6l12 12M18 6L6 18',
+book: 'M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h10',
+gift: 'M4 10h16v10H4zM3 7h18v3H3zM12 7v13M12 7c-2-4-6-3-5 0M12 7c2-4 6-3 5 0'
+};
+return {
+theme: this.props.theme ?? 'light',
+items: [
+{ tile: 't-bad', d: I.clock, title: 'Перезвон просрочен', body: 'Dilnoza Yusupova ждала звонка в 12:00. Пока перезвон открыт, новые лиды не приходят.', when: '12:10', unread: true, href: 'OpMyBlocked.dc.html' },
+{ tile: 't-info', d: I.user, title: 'Новый лид', body: 'Sardor Aliyev, iPhone 15 Pro 256 GB. Горячий: позвони в течение 15 минут.', when: '14:02', unread: true, href: 'OpMy.dc.html' },
+{ tile: 't-ok', d: I.check, title: 'Продажа подтверждена', body: 'Samsung Galaxy A55 на 5 200 000 сум. Сумма вошла в зарплату за октябрь.', when: 'вчера 17:40', unread: false, href: 'OpSales.dc.html' },
+{ tile: 't-bad', d: I.x, title: 'Продажа отклонена', body: 'iPhone 13 128 GB: нет фото договора. Добавь фото и отправь заново.', when: '11.10 16:02', unread: false, href: 'OpSales.dc.html' },
+{ tile: 't-info', d: I.book, title: 'Урок дня готов', body: 'Фокус: называй ежемесячный платёж раньше цены.', when: 'сегодня 09:00', unread: false, href: 'OpLessons.dc.html' },
+{ tile: 't-warn', d: I.gift, title: 'День рождения в команде', body: 'Сегодня у Malika Tursunova. Поздравь коллегу.', when: 'сегодня 08:30', unread: false, href: '#' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

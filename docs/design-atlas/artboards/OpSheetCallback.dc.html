@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Перезвоны: окна</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1100px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6">
+<h1 class="h1">Перезвоны</h1>
+<p class="c3">Назначить, напомнить, просрочить. Просроченный перезвон блокирует новые лиды, поэтому напоминание нельзя случайно закрыть кликом мимо.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; align-items: start">
+
+<div class="col g8">
+<span class="when">Назначить перезвон · время уже прошло</span>
+<section class="dlg" role="dialog" aria-labelledby="c1">
+<div class="dlg-h"><div class="col g4"><h2 class="h2" id="c1">Когда перезвонить</h2><span class="s c3">Dilnoza Yusupova · <span class="num">+998 93 456 78 90</span></span></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b">
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<button class="chip" type="button" style="justify-content: space-between">Через час <span class="n">15:22</span></button>
+<button class="chip" type="button" style="justify-content: space-between">Через 3 часа <span class="n">17:22</span></button>
+<button class="chip" type="button" style="justify-content: space-between">Вечером <span class="n">19:00</span></button>
+<button class="chip" type="button" style="justify-content: space-between">Завтра утром <span class="n">09:30</span></button>
+</div>
+<div class="row g8">
+<div class="field grow"><label for="c1d">Дата</label><input class="input num" id="c1d" type="text" value="14.10.2026"></div>
+<div class="field" style="width: 110px"><label for="c1t">Время</label><input class="input num is-bad" id="c1t" type="text" value="12:00"></div>
+</div>
+<span class="err"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg>Это время уже прошло. Выберите время после 14:22</span>
+<div class="field"><label for="c1n">Что обсудили?</label><input class="input" id="c1n" type="text" value="Ждёт зарплату в пятницу"></div>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button" disabled="{{yes}}">Назначить</button></div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Пришло время перезвона · со звуком</span>
+<section class="dlg" role="alertdialog" aria-labelledby="c2" style="overflow: hidden">
+<div class="row g12" style="padding: 18px 22px; background: var(--warn-bg); color: var(--warn)">
+<svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 9v4l2 2M5 3L2 6M19 3l3 3"></path></svg>
+<span class="col"><span class="lbl" style="color: var(--warn)">Время перезвона</span><span class="num w6" style="font-size: 18px">16:30</span></span>
+</div>
+<div class="dlg-b" style="padding-top: 16px">
+<h2 class="display" id="c2" style="font-size: 20px; line-height: 28px">Dilnoza Yusupova</h2>
+<span class="num" style="font-size: 17px; font-weight: 600">+998 93 456 78 90</span>
+<div class="well s">«Ждёт зарплату в пятницу, хочет Galaxy S24 в рассрочку на 12 месяцев»</div>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Через 15 минут</button><button class="btn btn-ok" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"></path></svg>Открыть и позвонить</button></div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Перезвон просрочен · в очереди и в шапке</span>
+<section class="card col">
+<div class="banner b-bad" style="border-radius: 14px 14px 0 0"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3"></path></svg><span class="col g4"><span class="w6">Новые лиды на паузе</span><span>Перезвон Dilnoza Yusupova просрочен на 2 ч 10 мин. Позвони или назначь новое время.</span></span></div>
+<div class="col g4" style="padding: 8px">
+<div class="queue-item is-next" style="border-color: var(--bad-solid)"><span class="col grow"><span class="s w6">Dilnoza Yusupova</span><span class="xs c-bad w6">просрочен на 2 ч 10 мин</span></span><span class="badge b-bad">Callback</span></div>
+<div class="queue-item"><span class="col grow"><span class="s w6">Sardor Aliyev</span><span class="xs c3">горячий, назначен в 14:02</span></span><span class="badge b-info">Новый</span></div>
+<div class="queue-item"><span class="col grow"><span class="s w6">Madina Rahimova</span><span class="xs c3">вернулась в работу в 09:30</span></span><span class="badge b-hot">Дорого</span></div>
+</div>
+</section>
+</div>
+
+<div class="col g8" style="grid-column: span 3">
+<span class="when">Уведомления</span>
+<div class="row g12 wrap">
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Перезвон назначен на сегодня, 19:00<span class="t-act">Отменить · 5</span></span>
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--warn-solid)"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"></path></svg>Напомним через 15 минут, в 16:45</span>
+</div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light', yes: true };
+}
+}
+</script>
+</body>
+</html>

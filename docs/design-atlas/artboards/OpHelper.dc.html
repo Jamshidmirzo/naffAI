@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Помощник и эфир</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="height: 900px; position: relative; overflow: hidden">
+<div aria-hidden="true"><dc-import name="OpMy" hint-size="100%,960px"></dc-import></div>
+<div class="scrim" style="background: rgba(21,19,43,.22)"></div>
+
+<div class="col g8" style="position: absolute; left: 108px; bottom: 24px">
+<span class="toast" style="background: var(--surface); color: var(--ink); border: 1px solid var(--line)"><i class="dot" style="color: var(--bad-solid); width: 10px; height: 10px"></i>Вы в эфире<button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Выключить эфир до конца смены"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></span>
+<span class="xs c3" style="background: var(--surface); padding: 4px 8px; border-radius: 6px">Другие состояния: «Включаем камеру…», «Камера заблокирована браузером», «Эфир прервался: переподключаем»</span>
+</div>
+
+<aside class="drawer" aria-label="Помощник" style="width: 440px">
+<div class="row between" style="padding: 18px 20px 12px">
+<div class="row g8"><span class="icon-tile t-info"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z"></path></svg></span><h2 class="h2">Помощник</h2></div>
+<button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</div>
+<div class="tabs" style="padding: 0 20px"><button class="tab is-on" type="button">Подсказки <span class="cnt">3</span></button><button class="tab" type="button">Частые вопросы <span class="cnt cnt-mute">12</span></button></div>
+<div class="col g12" style="padding: 16px 20px; overflow-y: auto; flex: 1 1 0">
+<sc-for list="{{tips}}" as="t" hint-placeholder-count="3">
+<section class="card col g8 pad">
+<span class="badge {{t.tone}}" style="align-self: flex-start">{{t.sev}}</span>
+<span class="s w6">{{t.title}}</span>
+<span class="s c3">{{t.body}}</span>
+<a class="btn btn-sm" href="{{t.href}}" style="align-self: flex-start">{{t.action}}</a>
+</section>
+</sc-for>
+<span class="lbl" style="margin-top: 6px">Частый вопрос</span>
+<section class="card col">
+<div class="li" style="min-height: 48px"><span class="s w6 grow">Почему мне не приходят новые лиды?</span><svg class="ic c3" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"></path></svg></div>
+<p class="s c2" style="padding: 0 16px 14px">Новые лиды не приходят, если смена не начата, вы на паузе, все 5 слотов заняты или есть просроченный перезвон. Закройте любой лид, и автораздача даст новый.</p>
+</section>
+</div>
+<div class="xs c3" style="padding: 12px 20px; border-top: 1px solid var(--line)">Подсказки обновляются каждую минуту</div>
+</aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+theme: this.props.theme ?? 'light',
+tips: [
+{ sev: 'Срочно', tone: 'b-bad', title: 'Перезвон просрочен у Dilnoza Yusupova', body: 'Обещали перезвонить в 12:00. Пока перезвон открыт, новые лиды не приходят.', action: 'Открыть лид', href: 'OpMyBlocked.dc.html' },
+{ sev: 'Внимание', tone: 'b-warn', title: '2 лида со вчера без итога', body: 'Madina Rahimova и Bekzod Nazarov. Выберите итог, чтобы освободить слоты.', action: 'Разобрать', href: 'OpMyList.dc.html' },
+{ sev: 'К сведению', tone: 'b-info', title: 'Урок дня готов', body: 'Фокус: называй ежемесячный платёж раньше цены.', action: 'Открыть урок', href: 'OpLessons.dc.html' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

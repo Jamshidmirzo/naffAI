@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Перезвон</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 960px">
+<div class="rail-wrap"><dc-import name="SideNav" who="operator" at="my" hint-size="84px,960px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Мои лиды</h1>
+<span class="badge b-ok" style="height: 28px"><i class="dot"></i>На смене <span class="num">02:21:12</span></span>
+<span class="grow"></span>
+<a class="btn btn-pri" href="OpSale.dc.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Новая продажа</a>
+</header>
+
+<main class="page">
+<div class="split">
+
+<section class="list col g12">
+<div class="seg" style="align-self: flex-start"><button class="is-on" type="button">Активные <span class="num xs">6</span></button><button type="button">Отложенные <span class="num xs">2</span></button><button type="button">Закрытые</button></div>
+<div class="card">
+<sc-for list="{{leads}}" as="l" hint-placeholder-count="5">
+<div class="row-item {{l.cls}}">
+<div class="col" style="width: 210px; flex: none; gap: 2px"><span class="h3 trunc">{{l.name}}</span><span class="num s c2">{{l.phone}}</span></div>
+<span class="s grow trunc">{{l.product}}</span>
+<span class="badge {{l.tone}}"><i class="dot"></i>{{l.status}}</span>
+</div>
+</sc-for>
+</div>
+</section>
+
+<aside class="panel card col" aria-label="Назначить перезвон">
+<div class="row between g12" style="padding: 18px 20px 14px">
+<div class="col g4"><h2 class="h2">Когда перезвонить</h2><span class="s c3">Dilnoza Yusupova · <span class="num">+998 93 456 78 90</span></span></div>
+<a class="btn btn-ghost btn-sq" href="OpMy.dc.html" aria-label="Вернуться к итогам звонка"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></a>
+</div>
+<hr class="hr">
+<div class="col g16" style="padding: 16px 20px">
+<div class="col g8">
+<span class="lbl">Быстрое время</span>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<sc-for list="{{quick}}" as="q" hint-placeholder-count="4">
+<button class="chip {{q.cls}}" type="button" onClick="{{q.pick}}" style="height: 40px; justify-content: space-between">{{q.label}} <span class="n">{{q.at}}</span></button>
+</sc-for>
+</div>
+</div>
+<div class="row g8">
+<div class="field grow"><label for="cb-date">Дата</label><input class="input num" id="cb-date" type="text" value="{{date}}"></div>
+<div class="field" style="width: 120px"><label for="cb-time">Время</label><input class="input num" id="cb-time" type="text" value="{{time}}"></div>
+</div>
+<div class="field">
+<label for="cb-note">Что обсудили?</label>
+<textarea class="input" id="cb-note" rows="3">Хочет Galaxy S24 в рассрочку на 12 месяцев, ждёт зарплату в пятницу.</textarea>
+<div class="row g6 wrap">
+<button class="chip" type="button">Ждёт зарплату</button>
+<button class="chip" type="button">Посоветуется с семьёй</button>
+<button class="chip" type="button">Занят, просил позже</button>
+</div>
+</div>
+<p class="s c3">В назначенное время лид поднимется наверх и напомнит звуком. Просроченный перезвон блокирует новые лиды.</p>
+</div>
+<hr class="hr">
+<div class="row g8" style="padding: 14px 20px">
+<a class="btn" href="OpMy.dc.html">Отмена</a>
+<a class="btn btn-pri grow" href="OpMy.dc.html">Назначить на {{when}}</a>
+</div>
+</aside>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+const picked = (this.state && this.state.picked) || 'evening';
+const opts = [
+{ id: '15m', label: 'Через 15 минут', at: '14:35' },
+{ id: '1h', label: 'Через час', at: '15:20' },
+{ id: 'evening', label: 'Вечером', at: '19:00' },
+{ id: 'tomorrow', label: 'Завтра утром', at: '09:30' }
+];
+const cur = opts.filter((o) => o.id === picked)[0];
+const tomorrow = picked === 'tomorrow';
+return {
+theme: this.props.theme ?? 'light',
+time: cur.at,
+date: tomorrow ? '15.10.2026' : '14.10.2026',
+when: (tomorrow ? 'завтра ' : '') + cur.at,
+quick: opts.map((o) => ({ label: o.label, at: o.at, cls: o.id === picked ? 'is-on' : '', pick: () => this.setState({ picked: o.id }) })),
+leads: [
+{ cls: '', name: 'Sardor Aliyev', phone: '+998 90 123 45 67', product: 'iPhone 15 Pro 256 GB', status: 'Новый', tone: 'b-info' },
+{ cls: 'is-sel', name: 'Dilnoza Yusupova', phone: '+998 93 456 78 90', product: 'Samsung Galaxy S24', status: 'В работе', tone: 'b-hot' },
+{ cls: '', name: 'Jasur Toshmatov', phone: '+998 97 111 22 33', product: 'Redmi Note 13', status: 'Не ответил 1', tone: '' },
+{ cls: '', name: 'Madina Rahimova', phone: '+998 99 555 01 02', product: 'iPhone 13 128 GB', status: 'Показалось дорого', tone: 'b-hot' },
+{ cls: '', name: 'Bekzod Nazarov', phone: '+998 91 700 00 11', product: 'Honor X9b', status: 'Телефон включён', tone: 'b-info' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

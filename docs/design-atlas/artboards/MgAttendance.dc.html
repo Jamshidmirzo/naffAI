@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Смена сегодня</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1400px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="att" hint-size="248px,1400px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Смена</h1>
+<div class="seg"><a class="is-on" href="MgAttendance.dc.html" aria-current="page">Сегодня</a><a href="MgAttReport.dc.html">Отчёт</a><a href="MgAttPhotos.dc.html">Фото</a><a href="MgKiosk.dc.html">Киоск</a><a href="MgAttSettings.dc.html">Настройки</a></div>
+<span class="badge"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3"></path></svg>PIN введён в <span class="num">14:02</span></span>
+<span class="grow"></span>
+<a class="btn" href="MgKiosk.dc.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4zM12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg>Открыть киоск</a>
+<a class="btn btn-ghost" href="MgKiosk.dc.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2z"></path></svg>Открыть экран /scan</a>
+</header>
+
+<main class="page">
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+<section class="card pad col g4"><span class="lbl">На смене сейчас</span><span class="kpi" style="color: var(--ok)">31</span><span class="s c3">Операторов сегодня · из 38 активных</span></section>
+<section class="card pad col g4"><span class="lbl">Опоздали</span><span class="kpi" style="color: var(--bad)">4</span><span class="s c3">Более чем на 15 мин</span></section>
+<section class="card pad col g4"><span class="lbl">Не пришли</span><span class="kpi">3</span><span class="s c3">Не отметились</span></section>
+</div>
+
+<div class="row g8 wrap">
+<span class="s c3 row g6"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"></path></svg>Дата:</span>
+<input class="input num" type="text" value="14.10.2026" aria-label="Дата" style="width: 140px; height: 36px">
+<button class="btn btn-sm" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"></path></svg>Обновить</button>
+<span class="xs c3">Обновлено в <span class="num">14:22:05</span> · само каждые 30 с</span>
+</div>
+
+<section class="card col">
+<div class="card-h"><span class="row g8"><span class="dot" style="color: var(--ok-solid)"></span><span class="h3">Сейчас на смене</span></span><span class="badge b-ok"><span class="num">31</span></span></div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 16px">
+<sc-for list="{{people}}" as="p" hint-placeholder-count="8">
+<div class="card col" style="overflow: hidden">
+<div class="ph" style="height: 110px; border-radius: 0; border: 0; border-bottom: 1px solid var(--line)"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0"></path></svg>Снимок при входе</div>
+<div class="col g4" style="padding: 10px 12px 12px">
+<span class="s w6 trunc">{{p.name}}</span>
+<span class="xs c3 row g6">Пришёл: <span class="num c2 w6">{{p.in}}</span><sc-if value="{{p.late}}" hint-placeholder-val="{{ false }}"><span class="badge b-bad" style="height: 18px; font-size: 11px">Опоздание</span></sc-if></span>
+<span class="xs c3">Длит.: <span class="num">{{p.dur}}</span></span>
+<div class="row g6" style="margin-top: 4px"><span class="badge b-hot" style="height: 20px">на смене</span><span class="lbl" style="font-size: 10px">{{p.src}}</span><span class="grow"></span><button class="btn btn-sm btn-bad" type="button" style="height: 26px; padding: 0 8px; font-size: 12px">Закрыть</button></div>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<div style="display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; align-items: start">
+<section class="card col">
+<div class="card-h"><span class="row g8"><span class="dot" style="color: var(--ink-3)"></span><span class="h3">Уже ушли</span></span><span class="badge"><span class="num">4</span></span></div>
+<sc-for list="{{gone}}" as="g" hint-placeholder-count="3">
+<div class="row-item" style="align-items: flex-start; gap: 12px">
+<div class="row g4"><span class="ph" style="width: 44px; height: 44px; font-size: 9px">вход</span><span class="ph" style="width: 44px; height: 44px; font-size: 9px">уход</span></div>
+<div class="col g4 grow" style="min-width: 0">
+<span class="s w6 trunc">{{g.name}}</span>
+<span class="xs c3 row g6"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"></path></svg><span class="num c2">{{g.in}}</span>→<svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"></path></svg><span class="num c2">{{g.out}}</span><span>· Длит.: <b class="num c2">{{g.dur}}</b></span></span>
+<div class="row g6 wrap"><sc-if value="{{g.auto}}" hint-placeholder-val="{{ false }}"><span class="badge" style="height: 20px"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg>23:00 авто</span></sc-if><sc-if value="{{g.late}}" hint-placeholder-val="{{ false }}"><span class="badge b-bad" style="height: 20px">Опоздание</span></sc-if><span class="lbl" style="font-size: 10px">{{g.src}}</span><span class="xs c3">{{g.note}}</span></div>
+</div>
+</div>
+</sc-for>
+</section>
+
+<div class="col g16">
+<section class="card col">
+<div class="card-h"><span class="row g8"><span class="dot" style="color: var(--bad-solid)"></span><span class="h3">Не пришли</span></span><span class="badge b-bad"><span class="num">3</span></span></div>
+<sc-for list="{{absent}}" as="a" hint-placeholder-count="3">
+<div class="row-item" style="min-height: 52px"><span class="icon-tile t-bad" style="width: 32px; height: 32px; border-radius: 50%"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM3 21a7 7 0 0 1 12.5-4.3M17 15l4 4M21 15l-4 4"></path></svg></span><span class="s w5 grow">{{a}}</span></div>
+</sc-for>
+</section>
+<div class="col g8"><span class="when">Нажали «Закрыть» у Javlon Sobirov</span>
+<section class="dlg" role="dialog" aria-labelledby="cls">
+<div class="dlg-h"><div class="col g4"><h2 class="h2" id="cls">Закрыть смену</h2><span class="s c3">Javlon Sobirov — время ухода будет зафиксировано сейчас</span></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b"><div class="field"><label for="cn">Комментарий (необязательно)</label><textarea class="input" id="cn" rows="2" placeholder="Например: клиент задержал"></textarea></div></div>
+<div class="dlg-f"><button class="btn btn-ghost" type="button">Отмена</button><button class="btn btn-danger" type="button">Закрыть смену</button></div>
+</section>
+</div>
+</div>
+</div>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1400}}'>
+class Component extends DCLogic {
+renderVals() {
+const p = (name, inn, late, dur, src) => ({ name: name, in: inn, late: late, dur: dur, src: src });
+const g = (name, inn, out, dur, auto, late, src, note) => ({ name: name, in: inn, out: out, dur: dur, auto: auto, late: late, src: src, note: note });
+return {
+theme: this.props.theme ?? 'light',
+people: [
+p('Gulnoza Karimova', '09:58', false, '4 ч 24 мин', 'qr'),
+p('Jasur Toshmatov', '09:52', false, '4 ч 30 мин', 'qr'),
+p('Javlon Sobirov', '10:48', true, '3 ч 34 мин', 'tg'),
+p('Shahlo Komilova', '09:57', false, '4 ч 25 мин', 'qr'),
+p('Nilufar Saidova', '09:49', false, '4 ч 33 мин', 'qr'),
+p('Otabek Ergashev', '10:04', false, '4 ч 18 мин', 'manual'),
+p('Madina Rasulova', '10:34', true, '3 ч 48 мин', 'tg'),
+p('Aziz Qodirov', '10:01', false, '4 ч 21 мин', 'qr')
+],
+gone: [
+g('Feruza Hamidova', '09:55', '13:10', '3 ч 15 мин', false, false, 'qr', ''),
+g('Sardor Nazarov', '10:41', '13:52', '3 ч 11 мин', false, true, 'manual', 'закрыл менеджер'),
+g('Malika Tursunova', '09:50', '14:05', '4 ч 15 мин', false, false, 'tg', ''),
+g('Kamron Aliyev', '10:02', '23:00', '12 ч 58 мин', true, false, 'qr', 'пример: так выглядит строка за 13.10')
+],
+absent: ['Dilshod Yo‘ldoshev', 'Sevara Po‘latova', 'Bahodir Mirzayev']
+};
+}
+}
+</script>
+</body>
+</html>

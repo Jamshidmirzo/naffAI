@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Доска ветки</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1000px">
+<div class="side-wrap"><dc-import name="SideNav" who="super" at="board" hint-size="248px,1000px"></dc-import></div>
+<div class="main-col">
+<header class="top">
+<h1 class="h1">Доска ветки</h1>
+<span class="badge b-info" style="height: 20px">новое</span>
+<span class="s c3">перетащите оператора к другому менеджеру</span>
+<span class="grow"></span>
+<div class="inwrap" style="width: 240px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg><input class="input" type="search" placeholder="Найти оператора" aria-label="Найти оператора"></div>
+<button class="btn btn-pri" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Добавить менеджера</button>
+</header>
+<main class="page" style="position: relative">
+<div class="board" style="grid-auto-columns: minmax(0, 1fr); gap: 10px; overflow-x: visible">
+<sc-for list="{{cols}}" as="c" hint-placeholder-count="5">
+<section class="bcol {{c.cls}}" aria-label="{{c.name}}" style="padding: 10px; min-width: 0">
+<div class="col g6" style="padding: 2px 2px 8px">
+<div class="row g8"><span class="ava ava-s">{{c.ini}}</span><span class="s w6 trunc grow">{{c.name}}</span><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Действия: {{c.name}}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"></path></svg></button></div>
+<sc-if value="{{c.isMgr}}" hint-placeholder-val="{{ true }}">
+<div class="row g6" style="min-width: 0"><span class="num xs c2 trunc grow">{{c.login}}</span><span class="badge b-hot" style="height: 20px">{{c.role}}</span></div>
+<span class="xs c3">создан <span class="num">{{c.created}}</span></span>
+<span class="xs c3">вход: <span class="num">{{c.last}}</span></span>
+</sc-if>
+<sc-if value="{{c.isNew}}" hint-placeholder-val="{{ false }}"><div class="row g6"><span class="xs c3 grow">{{c.hint}}</span><span class="badge b-info" style="height: 20px">новое</span></div></sc-if>
+<span class="xs c2 w6">{{c.meta}}</span>
+<sc-if value="{{c.plan}}" hint-placeholder-val="{{ true }}"><div class="row g6"><span class="bar grow" style="height: 6px"><i class="{{c.barCls}}" style="width: {{c.plan}}%"></i></span><span class="num xs w6">{{c.plan}}%</span><span class="badge b-info" style="height: 20px">новое</span></div><span class="xs c3">план · <span class="num">{{c.sum}}</span> сум</span></sc-if>
+</div>
+<sc-for list="{{c.cards}}" as="o" hint-placeholder-count="4">
+<div class="bcard {{o.cls}}" style="padding: 8px 10px; gap: 8px">
+<span class="ava ava-s" data-s="{{o.s}}">{{o.ini}}</span>
+<span class="col grow" style="min-width: 0"><span class="s w6 trunc">{{o.name}}</span><span class="num xs c3 trunc">{{o.phone}}</span><span class="xs c3 trunc">{{o.note}}</span></span>
+<span class="num xs w6">{{o.sales}}</span>
+</div>
+</sc-for>
+<sc-if value="{{c.empty}}" hint-placeholder-val="{{ false }}"><div class="ph" style="height: 90px">Перетащите сюда операторов</div></sc-if>
+</section>
+</sc-for>
+</div>
+
+<sc-if value="{{drag}}" hint-placeholder-val="{{ false }}">
+<section class="dlg" role="dialog" aria-labelledby="mv" style="position: absolute; right: 24px; bottom: 24px; width: 420px">
+<div class="dlg-h"><h2 class="h2" id="mv">Перенести Otabek Ergashev к Kamola Ahmedova?</h2></div>
+<div class="dlg-b"><p class="s c2">Его лиды, продажи и план останутся у него. Rustam Yuldashev перестанет видеть его в своей команде.</p></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Перенести</button></div>
+</section>
+</sc-if>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"mode":{"editor":"enum","options":["normal","drag"],"default":"normal"},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+const drag = (this.props.mode ?? 'normal') === 'drag';
+const bc = (p) => p >= 85 ? 'ok' : p >= 60 ? 'warn' : 'bad';
+const o = (s, ini, name, phone, note, sales, cls) => ({ s: s, ini: ini, name: name, phone: phone, note: note, sales: sales, cls: cls || '' });
+const col = (ini, name, mgr, meta, plan, sum, cards, cls) => ({ ini: ini, name: name, isMgr: !!mgr, isNew: !mgr, login: mgr ? mgr[0] : '', role: 'Менеджер', created: mgr ? mgr[1] : '', last: mgr ? mgr[2] : '', hint: mgr ? '' : (name === 'Мои прямые' ? 'назначены вам напрямую' : 'операторы без менеджера'), meta: meta, plan: plan, sum: sum, barCls: bc(plan || 0), cards: cards, empty: cards.length === 0, cls: cls || '' });
+const kamola = [o('call', 'JT', 'Jasur Toshmatov', '+998 90 123 45 67', '104% плана', 31), o('call', 'NS', 'Nilufar Saidova', '+998 93 210 44 18', '91% плана', 27), o('on', 'GK', 'Gulnoza Karimova', '+998 90 777 11 00', '78% плана', 18), o('late', 'JS', 'Javlon Sobirov', '+998 97 402 18 55', '58% · опоздал', 14), o('on', 'MT', 'Malika Tursunova', '+998 94 615 30 07', 'стажёр · 49%', 11)];
+const rustam = [o('pause', 'SK', 'Shahlo Komilova', '+998 91 330 72 14', 'пауза · 72%', 19), o('call', 'OE', 'Otabek Ergashev', '+998 99 845 12 60', '66% плана', 16, drag ? 'ghost' : ''), o('on', 'AQ', 'Aziz Qodirov', '+998 90 508 66 21', '37% плана', 8)];
+if (drag) { kamola.splice(2, 0, o('call', 'OE', 'Otabek Ergashev', '+998 99 845 12 60', 'переносится сюда', 16, 'dragging')); }
+return {
+theme: this.props.theme ?? 'light',
+drag: drag,
+cols: [
+col('KA', 'Kamola Ahmedova', ['+998901112233', '12.02.2026', 'сегодня 09:12'], '14 операторов', 82, '1 624 000 000', kamola, drag ? 'drop-on' : ''),
+col('RY', 'Rustam Yuldashev', ['+998935402211', '03.04.2026', 'вчера 18:40'], '11 операторов', 64, '957 000 000', rustam),
+col('ZM', 'Zarina Mahmudova', ['+998935553311', '13.10.2026', 'ещё не входила'], '0 операторов', 0, '', []),
+col('BX', 'Мои прямые', null, '6 операторов', 71, '522 000 000', [o('on', 'DS', 'Dilshod Yo‘ldoshev', '+998 95 117 09 43', 'не пришёл', 9), o('on', 'MR', 'Madina Rasulova', '+998 90 960 21 34', '61% плана', 9)]),
+col('—', 'Без менеджера', null, '2 оператора', 0, '', [o('off', 'SP', 'Sevara Po‘latova', '+998 33 702 55 19', 'стажёр, новая', 3), o('off', 'BM', 'Bahodir Mirzayev', '+998 88 214 63 70', 'деактивирован', 0)])
+]
+};
+}
+}
+</script>
+</body>
+</html>

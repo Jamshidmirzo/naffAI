@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Заявки на выходной</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 960px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="dayoff" hint-size="248px,960px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<div class="col"><h1 class="h1">Заявки на выходной</h1><span class="s c3">Ожидают решения менеджера</span></div>
+<span class="grow"></span>
+<div class="seg"><button class="is-on" type="button">Ждут</button><button type="button">Решённые</button></div><span class="badge b-info" style="height: 20px">новое</span>
+</header>
+
+<main class="page">
+<section class="card row g16" style="padding: 14px 18px"><span class="icon-tile t-warn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v3M17 3v3M4 8h16M5 5h14v15H5z"></path></svg></span><span class="col grow"><span class="h3">Ожидают решения: <span class="num">3</span></span><span class="s c3">Разверните карточку — увидите когда оператор в последний раз брал выходной, сколько других уже одобрены на этот день, и его показатели за 7 дней.</span></span></section>
+<div class="split">
+<div class="list col g12">
+<section class="card col">
+<div class="row-item" style="border-bottom: 1px solid var(--line)">
+<span class="ava ava-l">NS</span>
+<span class="col grow"><span class="h3">Nilufar Saidova</span><span class="s c3">Сб, 18 октября · «Свадьба брата, нужен целый день»</span></span>
+<span class="xs c3">отправлена сегодня в <span class="num">10:12</span></span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 16px">
+<div class="well col g4"><span class="lbl">Последний выходной</span><span class="num w6">04.10</span></div>
+<div class="well col g4" style="border-color: var(--bad-solid)"><span class="lbl">Других в этот день</span><span class="num w6 c-bad">3</span></div>
+<div class="well col g4"><span class="lbl">Продажи · 7 дней</span><span class="num w6">9 · 84 600 000</span></div>
+<div class="well col g4"><span class="lbl">Лиды · звонки (7д)</span><span class="num w6">54 · 212</span><span class="xs c3">уникальных лидов · звонков</span></div>
+</div>
+<div class="col g8" style="padding: 0 16px 16px">
+<div class="field"><label for="do1">Комментарий менеджера</label><input class="input" id="do1" type="text" placeholder="Например: сделай ещё 5 продаж — тогда одобрю"></div>
+<div class="row g8" style="justify-content: flex-end"><button class="btn btn-bad" type="button">Отклонить</button><button class="btn btn-ok" type="button">Одобрить</button></div>
+</div>
+</section>
+
+<section class="card col">
+<div class="row-item" style="border-bottom: 1px solid var(--line)">
+<span class="ava ava-l">OE</span>
+<span class="col grow"><span class="h3">Otabek Ergashev</span><span class="s c3">Пн, 20 октября · «Визит к врачу»</span></span>
+<span class="xs c3">вчера в <span class="num">17:40</span></span>
+</div>
+<div class="banner b-warn" style="margin: 16px 16px 0"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span class="grow">Не удалось загрузить статистику оператора. Решение можно принять и без неё.</span><button class="btn btn-sm" type="button">Повторить</button></div>
+<div class="col g8" style="padding: 16px">
+<div class="field"><label for="do2">Комментарий менеджера</label><input class="input" id="do2" type="text" placeholder="Например: сделай ещё 5 продаж — тогда одобрю"></div>
+<div class="row g8" style="justify-content: flex-end"><button class="btn btn-bad" type="button">Отклонить</button><button class="btn btn-ok" type="button">Одобрить</button></div>
+</div>
+</section>
+
+<section class="card row-item" style="border-bottom: 1px solid var(--line)">
+<span class="ava ava-l">LK</span>
+<span class="col grow"><span class="h3">Lola Karimova</span><span class="s c3">Чт, 23 октября · «Семейные дела»</span></span>
+<span class="xs c3">вчера в <span class="num">09:15</span></span>
+<svg class="ic c3" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+</section>
+</div>
+
+<aside class="panel card col">
+<div class="card-h"><span class="h3">Кто отдыхает на этой неделе</span><span class="badge b-info" style="height: 20px">новое</span></div>
+<sc-for list="{{week}}" as="w" hint-placeholder-count="5">
+<div class="li" style="min-height: 48px"><span class="s w6" style="width: 90px">{{w.d}}</span><span class="s grow c2">{{w.who}}</span><span class="num xs c3">{{w.n}}</span></div>
+</sc-for>
+</aside>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+theme: this.props.theme ?? 'light',
+week: [
+{ d: 'Ср, 15', who: 'Aziz Qodirov', n: '1' },
+{ d: 'Чт, 16', who: 'никто', n: '0' },
+{ d: 'Пт, 17', who: 'Shahlo Komilova', n: '1' },
+{ d: 'Сб, 18', who: 'Malika T., Javlon S., Lola K.', n: '3' },
+{ d: 'Вс, 19', who: 'выходной по графику', n: '—' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

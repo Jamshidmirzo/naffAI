@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Переписки операторов</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 960px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="tgq" hint-size="248px,960px"></dc-import></div>
+<div class="main-col">
+<header class="top"><div class="col"><h1 class="h1">Очередь Telegram</h1><span class="xs c3">Подключение операторов и загрузка их переписки</span></div><span class="grow"></span><span class="row g6 s c3"><i class="dot" style="color: var(--ok-solid)"></i>Автообновление каждые 5 сек · 34 операторов</span></header>
+<main class="page">
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px">
+<section class="card col g4 pad"><span class="lbl">Активны</span><span class="kpi" style="font-size: 22px; color: var(--ok)">26</span></section>
+<section class="card col g4 pad"><span class="lbl">Подключаются</span><span class="kpi" style="font-size: 22px">2</span><span class="xs c3">ждут код или 2FA</span></section>
+<section class="card col g4 pad"><span class="lbl">Загружаем</span><span class="kpi" style="font-size: 22px">1</span></section>
+<section class="card col g4 pad"><span class="lbl">Не подключены</span><span class="kpi" style="font-size: 22px">4</span></section>
+<section class="card col g4 pad" style="border-color: var(--bad-solid)"><span class="lbl">Ошибок</span><span class="kpi" style="font-size: 22px; color: var(--bad)">1</span></section>
+<section class="card col g4 pad"><span class="lbl">Всего сообщений</span><span class="kpi" style="font-size: 22px">5 570</span></section>
+</div>
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: 1.2fr 1.5fr 1.5fr 60px 90px 50px 120px"><span>Оператор</span><span>TG-сессия</span><span>Загрузка истории</span><span class="r">Чаты</span><span class="r">Сообщ.</span><span class="r">AI</span><span></span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+<div class="tr" style="grid-template-columns: 1.2fr 1.5fr 1.5fr 60px 90px 50px 120px; min-height: 60px">
+<span class="row g8" style="min-width: 0"><span class="ava ava-s">{{r.ini}}</span><span class="trunc">{{r.name}}</span></span>
+<span class="col g4" style="min-width: 0"><span class="row g6"><span class="badge {{r.tone}}">{{r.st}}</span><span class="num xs c2 trunc">{{r.user}}</span></span><span class="xs {{r.subCls}} trunc">{{r.sub}}</span></span>
+<span class="row g6 s {{r.jobCls}}" style="min-width: 0"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.jobIc}}"></path></svg><span class="trunc">{{r.job}}</span></span>
+<span class="r num">{{r.chats}}</span><span class="r num">{{r.msgs}}</span><span class="r num c2">{{r.ai}}</span>
+<span><sc-if value="{{r.action}}" hint-placeholder-val="{{ false }}"><a class="btn btn-sm" href="{{r.href}}" title="{{r.tip}}">{{r.action}}</a></sc-if></span>
+</div>
+</sc-for>
+<div class="row g8 wrap" style="padding: 12px 16px; border-top: 1px solid var(--line)"><span class="xs c3">Всего:</span><span class="chip" style="height: 28px"><span class="num">145</span> чатов</span><span class="chip" style="height: 28px"><span class="num">5 570</span> сообщений</span><span class="chip" style="height: 28px"><span class="num">35</span> AI-инсайтов</span></div>
+</section>
+<p class="xs c3">«Повторить» есть только у активной сессии с ошибкой загрузки. «Подключить» ведёт в карточку оператора — там мастер подключения Telegram.</p>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+const J = { wait: 'M10 9v6M14 9v6', run: 'M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4', done: 'M5 12.5l4.5 4.5L19 7.5', err: 'M12 4l9 16H3zM12 10v4M12 17h.01', none: 'M5 12h14' };
+const r = (ini, name, st, tone, user, sub, subCls, job, jk, jobCls, chats, msgs, ai, action, href, tip) => ({ ini: ini, name: name, st: st, tone: tone, user: user, sub: sub, subCls: subCls, job: job, jobIc: J[jk], jobCls: jobCls, chats: chats, msgs: msgs, ai: ai, action: action, href: href, tip: tip || '' });
+return {
+theme: this.props.theme ?? 'light',
+rows: [
+r('GK', 'Gulnoza Karimova', 'активна', 'b-ok', '@gulnoza_k', 'подключена 02.10, 10:14', 'c3', 'готово · 5 мин назад', 'done', 'c-ok', '64', '2 410', '18', '', ''),
+r('JT', 'Jasur Toshmatov', 'активна', 'b-ok', '@jasur_t', 'подключена 14.10, 13:58', 'c3', 'загружаем: 41 чатов · 1 820 сообщ.', 'run', 'c-brand', '41', '1 820', '9', '', ''),
+r('NS', 'Nilufar Saidova', 'ждёт код', 'b-warn', '+998 93 707 70 07', 'код отправлен в Telegram', 'c3', 'в очереди', 'wait', 'c3', '—', '—', '—', '', ''),
+r('MR', 'Madina Rahimova', 'ждёт 2FA', 'b-warn', '@madina_r', 'нужен облачный пароль', 'c3', 'в очереди', 'wait', 'c3', '—', '—', '—', '', ''),
+r('SK', 'Shahlo Komilova', 'активна', 'b-ok', '@shahlo_k', 'подключена 28.09, 17:40', 'c3', 'ошибка: FLOOD_WAIT_3600 — Telegram ограничил…', 'err', 'c-bad', '12', '380', '2', 'Повторить', '#', 'Перезапустить загрузку истории'),
+r('OE', 'Otabek Ergashev', 'ошибка', 'b-bad', '@otabek_e', 'AUTH_KEY_UNREGISTERED: session was terminated fr…', 'c-bad', 'готово · 6 дн назад', 'done', 'c3', '28', '960', '6', '', ''),
+r('DY', 'Dilnoza Yusupova', 'истёкла', '', '@dilnoza_y', 'последнее подключение 01.09, 09:12', 'c3', '—', 'none', 'c3', '—', '—', '—', '', ''),
+r('JS', 'Javlon Sobirov', 'не подключён', '', '—', '', 'c3', '—', 'none', 'c3', '—', '—', '—', 'Подключить', 'MgOperatorDetail.dc.html')
+]
+};
+}
+}
+</script>
+</body>
+</html>

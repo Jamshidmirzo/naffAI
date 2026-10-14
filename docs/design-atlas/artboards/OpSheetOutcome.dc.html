@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Итог звонка: окна</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1100px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6">
+<h1 class="h1">Итог звонка</h1>
+<p class="c3">Окна после звонка. Всё закрывается клавишами: 1–4 выбирают исход, Enter сохраняет, Esc отменяет. После сохранения сразу открывается следующий лид, а вместо подтверждений есть «Отменить» в уведомлении.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; align-items: start">
+
+<div class="col g8">
+<span class="when">Вернулись во вкладку через 15 секунд после звонка</span>
+<section class="dlg" role="dialog" aria-labelledby="o1">
+<div class="dlg-h"><div class="col g4"><h2 class="h2" id="o1">Как прошёл звонок?</h2><span class="s c3">Sardor Aliyev · <span class="num">+998 90 123 45 67</span></span></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b">
+<div class="col g8">
+<button class="keycap k-ok" type="button" style="min-height: 56px"><span class="kbd">1</span><span><b>Продажа</b></span></button>
+<button class="keycap" type="button" style="min-height: 56px"><span class="kbd">2</span><span><b>Перезвон</b></span></button>
+<button class="keycap" type="button" style="min-height: 56px"><span class="kbd">3</span><span><b>Не ответил</b></span></button>
+<button class="keycap" type="button" style="min-height: 56px"><span class="kbd">4</span><span><b>Не купит</b></span></button>
+</div>
+<input class="input" type="text" placeholder="Заметка к звонку, необязательно" aria-label="Заметка к звонку">
+</div>
+<div class="dlg-f"><button class="btn btn-ghost" type="button">Написал в Telegram</button><span class="grow"></span><button class="btn" type="button">Позже</button></div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Нажата 3 · Не ответил</span>
+<section class="dlg" role="dialog" aria-labelledby="o2">
+<div class="dlg-h"><div class="col g4"><h2 class="h2" id="o2">Что со звонком?</h2><span class="s c3">Jasur Toshmatov · звонок <span class="num">2</span> за сегодня</span></div></div>
+<div class="dlg-b">
+<label class="keycap is-on" style="min-height: 56px"><input type="radio" name="na" checked="{{yes}}" style="margin: 0"><span><b>Гудки, не берёт</b><span>второй раз подряд: статус станет «Не ответил 2»</span></span></label>
+<label class="keycap" style="min-height: 56px"><input type="radio" name="na" style="margin: 0"><span><b>Телефон выключен</b><span>лид останется в работе, попробуйте позже</span></span></label>
+<label class="keycap" style="min-height: 56px"><input type="radio" name="na" style="margin: 0"><span><b>Отправил SMS</b><span>ждём ответа клиента</span></span></label>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Назад</button><button class="btn btn-pri" type="button">Сохранить и дальше<span class="kbd" style="background: transparent; color: #FFFFFF; border-color: rgba(255,255,255,.5)">Enter</span></button></div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Нажата 4 · Не купит</span>
+<section class="dlg" role="dialog" aria-labelledby="o3">
+<div class="dlg-h"><div class="col g4"><h2 class="h2" id="o3">Почему не купит?</h2><span class="s c3">Лид закроется. Причина попадёт в аналитику</span></div></div>
+<div class="dlg-b">
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<button class="chip chip-lg is-on" type="button">Дорого</button>
+<button class="chip chip-lg" type="button">Долг у клиента</button>
+<button class="chip chip-lg" type="button">Нет карты</button>
+<button class="chip chip-lg" type="button">Купил в другом месте</button>
+<button class="chip chip-lg" type="button">Просто интересовался</button>
+<button class="chip chip-lg" type="button">Не тот номер</button>
+</div>
+<div class="banner b-info"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3z"></path></svg><span>«Дорого» вернётся в работу сегодня в 16:00, другой оператор предложит рассрочку.</span></div>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Назад</button><button class="btn btn-pri" type="button">Закрыть лид</button></div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Клавиша O · Отложить</span>
+<section class="dlg" role="dialog" aria-labelledby="o4">
+<div class="dlg-h"><div class="col g4"><h2 class="h2" id="o4">Отложить на потом</h2><span class="s c3">Bekzod Nazarov · <span class="num">+998 91 700 00 11</span></span></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b">
+<div class="field"><label for="o4r">Причина, необязательно</label><textarea class="input" id="o4r" rows="2">после обеда</textarea><span class="hint row between"><span>Лид уйдёт во вкладку «Отложенные» и освободит слот</span><span class="num">11/280</span></span></div>
+<div class="row g6 wrap"><button class="chip" type="button">после обеда</button><button class="chip" type="button">ждёт зарплату</button><button class="chip" type="button">в дороге</button></div>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Отложить</button></div>
+</section>
+</div>
+
+<div class="col g8" style="grid-column: span 2">
+<span class="when">После сохранения · уведомление с отменой вместо подтверждения</span>
+<div class="col g12">
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Лид закрыт: дорого. Дальше Dilnoza Yusupova<span class="t-act">Отменить · 5</span></span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Отмечено: написали в Telegram<span class="t-act">Отменить · 5</span></span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: #FF8FA9"><path d="M6 6l12 12M18 6L6 18"></path></svg>Не удалось сохранить итог, статус вернули как был<span class="t-act">Повторить</span></span>
+<p class="s c3">Сейчас уведомления «успех» появляются до ответа сервера, а при ошибке на экране остаётся неверный статус. В новом виде уведомление показывается после ответа, а при ошибке статус откатывается и предлагается «Повторить».</p>
+</div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light', yes: true };
+}
+}
+</script>
+</body>
+</html>

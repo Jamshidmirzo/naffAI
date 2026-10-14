@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Потерянные лиды</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1000px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="lost" hint-size="248px,1000px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<div class="col"><h1 class="h1">Системно потерянные</h1><span class="xs c3">Лиды, автоматически закрытые из-за увольнений и битых телефонов</span></div>
+<span class="badge b-info">только superadmin</span>
+<span class="grow"></span>
+<label class="row g8 s c2">За последние<input class="input num" type="number" min="1" max="365" value="30" aria-label="За последние N дней (1–365)" style="width: 84px; height: 36px; text-align: right">дней</label>
+<span class="xs c3">от 1 до 365</span>
+</header>
+
+<main class="page">
+<p class="s c3" style="max-width: 760px">Лиды, которые закрыла система: оператор уволен или номер в таблице битый. «Восстановить» вернёт лид в пул свободных, и его получит авто-раздача.</p>
+
+<section class="card row g32 wrap" style="padding: 16px 20px; gap: 40px; align-items: flex-start">
+<div class="col g4"><span class="lbl">Всего</span><span class="kpi">63</span><span class="xs c3">за 30 дней</span></div>
+<div class="col g8" style="min-width: 260px"><span class="lbl">По причинам</span><div class="row between s g16"><span class="c2">Оператор уволен</span><span class="num w6">41</span></div><div class="row between s g16"><span class="c2">Битый телефон из таблицы</span><span class="num w6">22</span></div></div>
+<div class="col g8 grow"><span class="lbl">Топ операторов (до увольнения)</span><div class="row g16 wrap s"><span class="c2">Bahodir Mirzayev <span class="num w6" style="color: var(--ink)">27</span></span><span class="c2">Timur Xasanov <span class="num w6" style="color: var(--ink)">14</span></span><span class="c2">Kamron Ismoilov <span class="num w6" style="color: var(--ink)">6</span></span><span class="c2">Zarina Ergasheva <span class="num w6" style="color: var(--ink)">4</span></span></div></div>
+</section>
+
+<div class="row g8"><button class="chip is-on" type="button">Все причины</button><button class="chip" type="button">Оператор уволен</button><button class="chip" type="button">Битый телефон из таблицы</button></div>
+
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.1fr) 110px minmax(0, 1.2fr) 172px"><span>Лид</span><span>Оператор до</span><span>Статус до</span><span>Причина</span><span class="r">Закрыт</span><span>Комментарий</span><span></span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+<div class="tr" style="grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.1fr) 110px minmax(0, 1.2fr) 172px">
+<span class="col" style="min-width: 0"><span class="w6 trunc">{{r.name}}</span><span class="num xs {{r.phoneCls}}">{{r.phone}}</span></span>
+<span class="trunc">{{r.op}}</span>
+<span><span class="badge">{{r.status}}</span></span>
+<span class="s c2">{{r.why}}</span>
+<span class="r num s c3">{{r.at}}</span>
+<span class="s c3 trunc">{{r.note}}</span>
+<span class="r"><button class="btn btn-sm" type="button" disabled="{{r.busy}}">{{r.btn}}</button></span>
+</div>
+</sc-for>
+</section>
+<div class="row between"><span class="s c3">Показано <span class="num">1–50</span> из <span class="num">63</span></span><div class="row g8"><button class="btn btn-sm" type="button" disabled="{{yes}}">Назад</button><span class="s w6">1 из 2</span><button class="btn btn-sm" type="button">Вперёд</button></div></div>
+
+<div class="row g24" style="align-items: flex-start; margin-top: 8px">
+<div class="col g8" style="flex: 0 0 480px">
+<span class="when">Окно подтверждения перед «Восстановить»</span>
+<div class="dlg">
+<div class="dlg-h"><div class="col g4"><span class="h2">Вернуть лид в пул?</span><span class="s c3">Sanjar Pulatov · <span class="num">+998 94 610 23 23</span></span></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b"><span class="s c2">Лид уйдёт в пул свободных, его получит авто-раздача. Метаданные закрытия (причина, оператор до, комментарий) будут удалены.</span></div>
+<div class="dlg-f"><button class="btn btn-ghost" type="button">Отмена</button><button class="btn btn-pri" type="button" style="color: var(--brand-ink)">Восстановить</button></div>
+</div>
+</div>
+<div class="col g8 grow">
+<span class="when">После восстановления</span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Лид восстановлен</span>
+<span class="when" style="margin-top: 12px">Пусто за период</span>
+<section class="card empty" style="padding: 24px 20px"><span class="h3" style="color: var(--ink)">Системно потерянных лидов нет.</span><span class="s">Попробуйте увеличить число дней</span></section>
+</div>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+const r = (name, phone, op, status, tone, why, at, note, busy) => ({ name: name, phone: phone, phoneCls: phone.length < 17 ? 'c-bad w6' : 'c3', op: op, status: status, tone: tone, why: why === 'Битый телефон' ? 'Битый телефон из таблицы' : why, at: at, note: note, busy: busy, btn: busy ? 'Восстанавливаем…' : 'Восстановить' });
+return {
+theme: this.props.theme ?? 'light',
+yes: true,
+rows: [
+r('Sanjar Pulatov', '+998 94 610 23 23', 'Bahodir Mirzayev', 'Callback', 'b-info', 'Оператор уволен', '13 окт, 18:40', 'обещал купить в пятницу', true),
+r('Nodira Aliyeva', '+998 93 117 70 07', 'Bahodir Mirzayev', 'Новый', 'b-info', 'Оператор уволен', '13 окт, 18:40', '—', false),
+r('—', '0', '—', 'Новый', 'b-info', 'Битый телефон', '12 окт, 03:00', 'в таблице 0 вместо номера', false),
+r('Rustam Bekov', '+998 97 410 02 02', 'Timur Xasanov', 'Не ответил 2', 'b-hot', 'Оператор уволен', '9 окт, 03:00', '—', false),
+r('Zilola Mirzo', '+998 91 9', '—', 'Новый', 'b-info', 'Битый телефон', '8 окт, 03:00', 'номер обрезан', false),
+r('Akmal Saidov', '+998 99 280 45 45', 'Timur Xasanov', 'Показалось дорого', 'b-hot', 'Оператор уволен', '7 окт, 18:10', '—', false)
+]
+};
+}
+}
+</script>
+</body>
+</html>

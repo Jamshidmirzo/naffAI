@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Аналитика</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1940px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="analytics" hint-size="248px,1940px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<div class="col"><h1 class="h1">Аналитика</h1><span class="xs c3">Аналитика по команде · октябрь 2026</span></div>
+<span class="grow"></span>
+<div class="row g6"><select class="input" aria-label="Выбрать конкретный месяц" style="width: 200px"><option>Октябрь 2026</option><option>Сентябрь 2026</option><option>Август 2026</option></select><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Сбросить месяц"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"></path></svg>Excel</button>
+</header>
+
+<main class="page">
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start">
+<section class="card col">
+<div class="card-h"><div class="col"><span class="h3">Воронка команды</span><span class="xs c3">Лиды → контакт → callback → продажа</span></div><span class="xs c3">топ-20 операторов</span></div>
+<div class="col g12" style="padding: 18px 20px 20px">
+<sc-for list="{{funnel}}" as="f" hint-placeholder-count="4">
+<div class="col g6">
+<div class="row between s"><span class="w6">{{f.label}}</span><span class="row g8"><span class="num w6">{{f.n}}</span><span class="xs c3">{{f.conv}}</span></span></div>
+<span class="bar" style="height: 22px; border-radius: 7px"><i class="{{f.cls}}" style="width: {{f.w}}%; border-radius: 7px"></i></span>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section class="card col">
+<div class="card-h"><div class="col"><span class="h3">Каналы продаж</span><span class="xs c3">Доля в выручке · октябрь 2026</span></div><span class="num s w6">2 249 000 000 сум</span></div>
+<div class="col g12" style="padding: 18px 20px 20px">
+<sc-for list="{{channels}}" as="c" hint-placeholder-count="6">
+<div class="col g6">
+<div class="row between s"><span class="w6">{{c.name}}</span><span class="row g8"><span class="num c2">{{c.sum}}</span><span class="num w6" style="width: 40px; text-align: right">{{c.pct}}%</span></span></div>
+<span class="bar"><i style="width: {{c.pct}}%; opacity: {{c.o}}"></i></span>
+</div>
+</sc-for>
+</div>
+</section>
+</div>
+
+<div style="display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; align-items: start">
+<section class="card tbl">
+<div class="card-h"><div class="col"><span class="h3">По источникам лидов (таргетологи)</span><span class="xs c3">Конверсия и выручка по каждому источнику · октябрь 2026</span></div><span class="row g6 xs c3"><i class="dot" style="color: var(--brand)"></i>конверсия от 3%</span></div>
+<div class="tr th" style="grid-template-columns: 1.5fr 70px 70px 90px 140px"><span>Источник</span><span class="r">Лидов</span><span class="r">Продаж</span><span class="r">Конверсия</span><span class="r">Выручка</span></div>
+<sc-for list="{{sources}}" as="s" hint-placeholder-count="7">
+<div class="tr" style="grid-template-columns: 1.5fr 70px 70px 90px 140px; min-height: 56px">
+<span class="col g6" style="min-width: 0"><span class="s w6 trunc">{{s.name}}</span><span class="bar" style="height: 5px"><i style="width: {{s.w}}%; opacity: {{s.o}}"></i></span></span>
+<span class="r num">{{s.leads}}</span><span class="r num">{{s.sales}}</span><span class="r num w6 {{s.convCls}}">{{s.conv}}%</span><span class="r num">{{s.rev}}</span>
+</div>
+</sc-for>
+</section>
+
+<section class="card col">
+<div class="card-h"><div class="col"><span class="h3">Топ операторов</span><span class="xs c3">По выручке · октябрь 2026</span></div><span class="xs c3">10 из 34</span></div>
+<div class="col g12" style="padding: 16px 20px 18px">
+<sc-for list="{{tops}}" as="t" hint-placeholder-count="10">
+<div class="row g12">
+<span class="rank {{t.rk}}" style="width: 24px; height: 24px; font-size: 12px">{{t.i}}</span>
+<span class="col g4 grow"><span class="s w5 trunc">{{t.name}}</span><span class="bar" style="height: 5px"><i style="width: {{t.w}}%"></i></span></span>
+<span class="num s w6" style="width: 72px; text-align: right">{{t.mln}}</span>
+</div>
+</sc-for>
+</div>
+</section>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start">
+<section class="card tbl">
+<div class="card-h"><div class="col"><span class="h3">Топ моделей</span><span class="xs c3">По продажам · октябрь 2026</span></div><span class="xs c3">12 моделей</span></div>
+<div class="tr th" style="grid-template-columns: 1.5fr 80px 150px"><span>Модель</span><span class="r">Кол-во</span><span class="r">Сумма</span></div>
+<sc-for list="{{models}}" as="m" hint-placeholder-count="12">
+<div class="tr" style="grid-template-columns: 1.5fr 80px 150px; min-height: 40px"><span class="s w6 trunc">{{m.n}}</span><span class="r num c2">{{m.c}}</span><span class="r num w6">{{m.s}}</span></div>
+</sc-for>
+</section>
+
+<div class="col g12">
+<span class="when">Месяц без данных · пустые состояния</span>
+<section class="card col">
+<div class="card-h"><span class="h3">Воронка команды</span><span class="xs c3">май 2025</span></div>
+<div class="col g8" style="padding: 14px 20px 16px">
+<sc-for list="{{zeroFunnel}}" as="z" hint-placeholder-count="4">
+<div class="row g12"><span class="s c3" style="width: 80px">{{z}}</span><span class="bar grow" style="height: 14px"></span><span class="num s c3">0</span></div>
+</sc-for>
+</div>
+</section>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+<section class="card col"><div class="card-h"><span class="h3">Каналы продаж</span></div><div class="empty" style="padding: 22px 16px"><span class="s">Нет данных</span></div></section>
+<section class="card col"><div class="card-h"><span class="h3">Топ операторов</span></div><div class="empty" style="padding: 22px 16px"><span class="s">Нет данных</span></div></section>
+<section class="card col"><div class="card-h"><span class="h3">По источникам</span></div><div class="empty" style="padding: 22px 16px"><span class="s">Нет данных</span></div></section>
+<section class="card col"><div class="card-h"><span class="h3">Топ моделей</span></div><div class="empty" style="padding: 22px 16px"><span class="s">Нет данных</span></div></section>
+</div>
+<p class="xs c3">Воронка и тепловая карта считаются за последние 30 дней и выбор месяца не учитывают — так работает код.</p>
+</div>
+</div>
+
+<section class="card col">
+<div class="card-h"><div class="col"><span class="h3">Тепловая карта callback-активности</span><span class="xs c3">Часы дня — колонки; операторы — строки; интенсивность = число callback'ов · 30 дней</span></div>
+<span class="row g6 xs c3">меньше<span class="row" style="gap: 2px"><i style="display: block; width: 14px; height: 14px; border-radius: 4px; background: var(--surface-3)"></i><i style="display: block; width: 14px; height: 14px; border-radius: 4px; background: color-mix(in srgb, var(--brand) 30%, var(--surface-3))"></i><i style="display: block; width: 14px; height: 14px; border-radius: 4px; background: color-mix(in srgb, var(--brand) 60%, var(--surface-3))"></i><i style="display: block; width: 14px; height: 14px; border-radius: 4px; background: var(--brand)"></i></span>больше</span></div>
+<div class="col" style="padding: 14px 20px 18px; gap: 3px">
+<div class="row" style="gap: 3px"><span style="width: 140px; flex: none"></span><sc-for list="{{hours}}" as="h" hint-placeholder-count="24"><span class="grow num xs c3" style="text-align: center">{{h}}</span></sc-for></div>
+<sc-for list="{{heat}}" as="r" hint-placeholder-count="8">
+<div class="row" style="gap: 3px"><span class="s trunc" style="width: 140px; flex: none">{{r.name}}</span><sc-for list="{{r.cells}}" as="c" hint-placeholder-count="24"><span class="grow num" style="height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; background: {{c.bg}}; color: {{c.fg}}">{{c.v}}</span></sc-for></div>
+</sc-for>
+</div>
+</section>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1940}}'>
+class Component extends DCLogic {
+renderVals() {
+const sp = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const steps = [['Лиды', 4812], ['Дозвоны', 3120], ['Callback', 846], ['Продажи', 214]];
+const funnel = steps.map((s, i) => ({ label: s[0], n: sp(s[1]), w: Math.max(2, Math.round(s[1] / steps[0][1] * 100)), cls: i === 3 ? 'ok' : '', conv: i === 0 ? '100%' : (Math.round(s[1] / steps[0][1] * 1000) / 10 + '%').replace('.', ',') }));
+const chRaw = [['Alif', 854200000], ['Uzum', 607300000], ['Hamroh', 315000000], ['TBC', 247400000], ['Birzum', 135000000], ['Cash', 90100000]];
+const chTotal = chRaw.reduce((a, c) => a + c[1], 0);
+const channels = chRaw.map((c, i) => ({ name: c[0], sum: sp(c[1]), pct: Math.round(c[1] / chTotal * 100), o: i === 0 ? 1 : Math.max(.35, .8 - i * .1) }));
+const srcRaw = [['Instagram октябрь', 2140, 101, 1061400000], ['Facebook октябрь', 1320, 48, 497300000], ['Telegram-бот', 780, 41, 432000000], ['Сайт · заявки', 412, 18, 184200000], ['TikTok · Aziz', 96, 2, 21800000], ['Звонок в магазин', 64, 3, 37500000], ['Без источника (прямые)', 0, 1, 15200000]];
+const srcMax = Math.max(...srcRaw.map((s) => s[3]));
+const sources = srcRaw.map((s, i) => { const conv = s[1] ? Math.round(s[2] / s[1] * 1000) / 10 : 0; return { name: s[0], leads: sp(s[1]), sales: s[2], conv: String(conv).replace('.', ','), convCls: conv >= 3 ? 'c-brand' : 'c3', rev: sp(s[3]), w: Math.round(s[3] / srcMax * 100), o: i === 0 ? 1 : Math.max(.4, .75 - i * .08) }; });
+const opRaw = [['Gulnoza Karimova', 214.6], ['Jasur Toshmatov', 198.2], ['Nilufar Saidova', 176.9], ['Otabek Ergashev', 151.3], ['Malika Tursunova', 139.0], ['Shahlo Komilova', 122.4], ['Javlon Sobirov', 104.7], ['Madina Rahimova', 96.1], ['Sardor Aliyev', 81.5], ['Dilnoza Yusupova', 74.2]];
+const tops = opRaw.map((o, i) => ({ i: i + 1, rk: i === 0 ? 'r1' : '', name: o[0], mln: String(o[1]).replace('.', ',') + ' млн', w: Math.round(o[1] / opRaw[0][1] * 100) }));
+const mdRaw = [['iPhone 15 Pro 256 GB', 38, 551000000], ['Samsung Galaxy S24', 24, 285600000], ['iPhone 15 128 GB', 21, 266700000], ['iPhone 13 128 GB', 19, 155800000], ['Redmi Note 13 Pro', 18, 73800000], ['Samsung Galaxy A55', 16, 83200000], ['iPhone 14 128 GB', 14, 135800000], ['Honor X9b', 12, 46800000], ['Samsung Galaxy A35', 11, 41800000], ['Redmi 13C', 10, 19000000], ['iPhone 12 64 GB', 8, 55200000], ['Tecno Camon 30', 7, 21700000]];
+const models = mdRaw.map((m) => ({ n: m[0], c: m[1], s: sp(m[2]) }));
+const hours = [];
+for (let h = 0; h < 24; h++) hours.push(String(h).padStart(2, '0'));
+const shape = [0, 0, 0, 0, 0, 0, 0, 0, 1, 4, 9, 11, 8, 5, 4, 6, 7, 9, 10, 8, 5, 2, 1, 0];
+const ops = [['Gulnoza Karimova', 1.2], ['Jasur Toshmatov', 1.1], ['Nilufar Saidova', 1], ['Otabek Ergashev', .9], ['Malika Tursunova', .85], ['Shahlo Komilova', .7], ['Javlon Sobirov', .6], ['Madina Rahimova', .5]];
+let max = 1;
+const raw = ops.map((o, oi) => shape.map((v, hi) => { const x = Math.round(v * o[1] + ((oi * 7 + hi * 3) % 5 === 0 && v ? 1 : 0)); if (x > max) max = x; return x; }));
+const heat = ops.map((o, oi) => ({ name: o[0], cells: raw[oi].map((v) => { const k = v / max; return { v: v ? v : '', bg: v ? 'color-mix(in srgb, var(--brand) ' + Math.round(14 + k * 86) + '%, var(--surface-3))' : 'var(--surface-3)', fg: k > .42 ? '#FFFFFF' : 'var(--ink-3)' }; }) }));
+return {
+theme: this.props.theme ?? 'light',
+funnel: funnel,
+channels: channels,
+sources: sources,
+tops: tops,
+models: models,
+zeroFunnel: ['Лиды', 'Дозвоны', 'Callback', 'Продажи'],
+hours: hours,
+heat: heat
+};
+}
+}
+</script>
+</body>
+</html>

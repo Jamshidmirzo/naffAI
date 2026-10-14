@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Каталог: тарифы, банки, тексты</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 960px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="tiers" hint-size="248px,960px"></dc-import></div>
+<div class="main-col">
+<header class="top">
+<h1 class="h1">Каталог и рассрочка</h1>
+<div class="seg"><a href="MgCatalog.dc.html">Телефоны</a><a class="is-on" href="MgCatalogMore.dc.html" aria-current="page">Тарифы, банки, тексты</a></div>
+</header>
+<main class="page">
+<div style="display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 16px; align-items: start">
+
+<section class="card col">
+<div class="card-h"><div class="col"><span class="h3">Тарифы рассрочки</span><span class="xs c3">по ним считает калькулятор</span></div></div>
+<div class="tr th" style="grid-template-columns: 52px 96px 50px 64px 64px 28px; column-gap: 8px; padding: 0 12px"><span>Месяцы</span><span>Комиссия, %</span><span>Акт.</span><span>В marketing</span><span>Порядок</span><span></span></div>
+<sc-for list="{{tiers}}" as="t" hint-placeholder-count="6">
+<div class="tr" style="grid-template-columns: 52px 96px 50px 64px 64px 28px; column-gap: 8px; padding: 6px 12px"><span class="num w6">{{t.m}} мес</span><input class="input num {{t.cls}}" type="text" value="{{t.p}}" aria-label="Комиссия, %" style="height: 32px"><input class="check" type="checkbox" checked="{{t.on}}" aria-label="Активен"><input class="check" type="checkbox" checked="{{t.ad}}" aria-label="В marketing-тексте"><input class="input num" type="text" value="{{t.o}}" aria-label="Порядок" style="height: 32px"><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Удалить тариф" style="width: 28px; color: var(--bad)"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13"></path></svg></button></div>
+</sc-for>
+<div class="col g6" style="padding: 12px 16px; border-top: 1px solid var(--line)">
+<span class="flabel">Добавить тариф</span>
+<div class="row g8"><input class="input num" type="text" value="12" aria-label="Месяцы" placeholder="Месяцы" style="width: 90px"><input class="input num grow" type="text" value="30" aria-label="Комиссия, %" placeholder="Комиссия, %"><button class="btn btn-pri" type="button">Сохранить</button></div>
+<span class="row g6"><span class="err">Тариф на 12 месяцев уже есть — сохранение заменит его комиссию</span><span class="badge b-info" style="height: 20px">новое</span></span>
+<span class="toast" style="align-self: flex-start; margin-top: 4px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Тариф сохранён</span>
+</div>
+</section>
+
+<section class="card col">
+<div class="card-h"><div class="col"><span class="h3">Банки рассрочки</span><span class="xs c3">Alif, Zoodpay и др. — коэффициенты для расчёта</span></div></div>
+<div class="col g6" style="padding: 12px 16px; border-bottom: 1px solid var(--line)">
+<span class="flabel">Добавить банк</span>
+<div class="row g8"><input class="input grow" type="text" placeholder="Alif / Zoodpay / Payme…" value="Anorbank" aria-label="Название банка"><input class="input" type="text" placeholder="иконка" value="A" aria-label="Иконка" style="width: 56px; text-align: center"><button class="btn btn-pri" type="button">Сохранить</button></div>
+</div>
+<sc-for list="{{banks}}" as="b" hint-placeholder-count="2">
+<div class="col g6" style="padding: 12px 16px; border-bottom: 1px solid var(--line)">
+<div class="row between"><span class="row g8"><span class="icon-tile t-info" style="width: 26px; height: 26px; font-size: 12px; font-weight: 700">{{b.ic}}</span><span class="s w6">{{b.n}}</span></span><button class="btn btn-ghost btn-sm" type="button" style="color: var(--bad)">Удалить банк</button></div>
+<div class="row xs c3 lbl" style="font-size: 10px"><span style="width: 60px">Срок</span><span style="width: 80px">Множитель</span><span class="grow">Переплата</span></div>
+<sc-for list="{{b.plans}}" as="p" hint-placeholder-count="3"><div class="row s"><span class="num" style="width: 60px">{{p.m}} мес</span><span class="num c3" style="width: 80px">×{{p.k}}</span><span class="num grow">+{{p.o}}%</span><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Удалить план" style="width: 26px; height: 26px"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div></sc-for>
+<div class="row g6"><input class="input num" type="text" placeholder="12" aria-label="Срок, мес" style="width: 60px; height: 32px"><input class="input num grow" type="text" placeholder="1.18" aria-label="Множитель" style="height: 32px"><button class="btn btn-sm" type="button" disabled="{{yes}}">План</button></div>
+</div>
+</sc-for>
+<p class="xs c3" style="padding: 10px 16px">Удаление банка спрашивает «Удалить банк Alif и все его планы?». План удаляется без подтверждения.</p>
+</section>
+
+<section class="card col">
+<div class="card-h"><div class="col"><span class="h3">Настройки маркетинга</span><span class="xs c3">для кнопки «Marketing» в каталоге</span></div></div>
+<div class="col g12" style="padding: 16px">
+<div class="field"><label for="m1">Слоган по умолчанию</label><input class="input" id="m1" type="text" value="Yuqori sifat va yuqori mustahkamlik!"></div>
+<div class="field"><label for="m2">Телефон основной</label><input class="input num" id="m2" type="text" value="+998 71 200 00 00"></div>
+<div class="field"><label for="m2b">Телефон второй (необязательно)</label><input class="input num" id="m2b" type="text" value="+998 90 200 00 00"></div>
+<div class="field"><label for="m3">Telegram</label><input class="input num" id="m3" type="text" value="@naff_store"></div>
+<div class="field"><label for="m3b">Адрес</label><input class="input" id="m3b" type="text" value="Ташкент, Чиланзар, ТЦ «Next», 2 этаж"></div>
+<div class="field"><label for="m4">Преимущества</label><textarea class="input" id="m4" rows="5">Рассрочка от 3 до 24 месяцев
+Доставка по Ташкенту за 1 день
+Официальная гарантия
+Trade-in старого телефона</textarea><span class="hint">По одному на строку. Начинайте с эмодзи, если хотите иконку в тексте.</span></div>
+<button class="btn btn-pri" type="button" style="align-self: flex-start">Сохранить</button>
+</div>
+</section>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+const t = (m, p, on, ad, o, edit) => ({ m: m, p: p, on: on, ad: ad, o: o, cls: edit ? 'is-ok' : '' });
+return {
+theme: this.props.theme ?? 'light',
+yes: true,
+tiers: [t(3, 7, true, true, 10), t(6, 14, true, true, 20), t(9, 21, true, false, 30), t(12, 28, true, true, 40, true), t(18, 42, true, false, 50), t(24, 56, false, false, 60)],
+banks: [
+{ n: 'Alif', ic: 'A', plans: [{ m: 6, k: '1.12', o: 12 }, { m: 12, k: '1.24', o: 24 }] },
+{ n: 'Uzum Nasiya', ic: 'U', plans: [{ m: 3, k: '1.06', o: 6 }, { m: 12, k: '1.26', o: 26 }] }
+]
+};
+}
+}
+</script>
+</body>
+</html>

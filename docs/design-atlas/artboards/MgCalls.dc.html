@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Звонки</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1290px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="calls" hint-size="248px,1290px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<div class="col"><h1 class="h1">Звонки</h1><span class="xs c3">Все попытки звонков операторов</span></div>
+<span class="grow"></span>
+<span class="badge b-info">Звонков сегодня: <span class="num">486</span></span>
+</header>
+
+<main class="page">
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+<section class="card col g4 pad"><span class="lbl">Всего звонков</span><span class="kpi">3 412</span></section>
+<section class="card col g4 pad"><span class="lbl">Средняя длительность</span><span class="kpi">2:14</span></section>
+<section class="card col g4 pad"><span class="lbl">С записью</span><span class="kpi">61%</span><span class="s c3"><span class="num">2 081</span> шт</span></section>
+<section class="card col g4 pad"><span class="lbl">Ответили</span><span class="kpi">58%</span><span class="s c3"><span class="num">1 979</span> шт</span></section>
+</div>
+
+<section class="card col g12" style="padding: 14px 16px">
+<div class="row g8 wrap">
+<button class="chip" type="button">Сегодня</button><button class="chip" type="button">Вчера</button><button class="chip is-on" type="button">7 дней</button><button class="chip" type="button">30 дней</button><button class="chip" type="button">Этот месяц</button>
+<span class="grow"></span>
+<input class="input num" type="text" value="08.10.2026" aria-label="Дата от" style="width: 130px; height: 36px">
+<span class="c3">—</span>
+<input class="input num" type="text" value="14.10.2026" aria-label="Дата до" style="width: 130px; height: 36px">
+<button class="btn" type="button" aria-expanded="true" style="border-color: var(--brand)"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg>Операторы <span class="cnt" style="background: var(--brand)">2</span><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+</div>
+<div class="row g8 wrap">
+<button class="chip is-on" type="button">Все</button><button class="chip" type="button">Разговор</button><button class="chip" type="button">Нет ответа</button><button class="chip" type="button">Отказ</button><button class="chip" type="button">Прочее</button><button class="chip" type="button">Без результата</button>
+<span class="grow"></span>
+<span class="row g6 s c2">Выбраны: <span class="chip" style="height: 26px">Gulnoza Karimova <svg class="ic ic-s" viewBox="0 0 24 24" aria-label="Убрать"><path d="M6 6l12 12M18 6L6 18"></path></svg></span><span class="chip" style="height: 26px">Jasur Toshmatov <svg class="ic ic-s" viewBox="0 0 24 24" aria-label="Убрать"><path d="M6 6l12 12M18 6L6 18"></path></svg></span></span>
+</div>
+</section>
+
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: 132px minmax(0, 1.1fr) minmax(0, 1.3fr) 100px minmax(0, 1fr) 210px"><span>Дата и время</span><span>Оператор</span><span>Лид</span><span class="r">Длительность</span><span>Результат</span><span>Запись</span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="9">
+<div class="tr {{r.cls}}" style="grid-template-columns: 132px minmax(0, 1.1fr) minmax(0, 1.3fr) 100px minmax(0, 1fr) 210px">
+<span class="num s c2">{{r.d}}, {{r.t}}</span>
+<span class="trunc w5">{{r.op}}</span>
+<span class="col" style="min-width: 0"><a class="trunc c-brand" href="MgLeadsAll.dc.html">{{r.lead}}</a><span class="num xs c3" style="white-space: nowrap">{{r.phone}}</span></span>
+<span class="r num">{{r.dur}}</span>
+<span><span class="badge {{r.tone}}">{{r.res}}</span></span>
+<span>
+<sc-if value="{{r.rec}}" hint-placeholder-val="{{ true }}"><span class="row g8" style="height: 30px; padding: 0 10px 0 4px; border-radius: 99px; background: var(--surface-3)"><button class="btn btn-sq btn-sm" type="button" aria-label="Слушать запись" style="width: 24px; height: 24px; border-radius: 50%; padding: 0"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7z"></path></svg></button><span class="bar grow" style="height: 4px"><i style="width: {{r.pos}}%"></i></span><span class="num xs c3">{{r.time}}</span></span></sc-if>
+<sc-if value="{{r.norec}}" hint-placeholder-val="{{ false }}"><span class="xs c3">—</span></sc-if>
+</span>
+</div>
+</sc-for>
+<div class="row between" style="padding: 12px 16px; border-top: 1px solid var(--line)"><span class="num s c3">9 / 3 412</span><button class="btn btn-ghost btn-sm" type="button">Загрузить ещё</button></div>
+</section>
+
+<div class="row g24" style="align-items: flex-start">
+<div class="col g8" style="flex: 0 0 520px">
+<span class="when">Клик по строке — окно «Детали звонка»</span>
+<div class="dlg">
+<div class="dlg-h"><div class="col g4"><span class="h2">Детали звонка</span><span class="s c3">Gulnoza Karimova → <a class="c-brand" href="MgLeadsAll.dc.html">Sardor Aliyev</a> · <span class="num">+998 90 123 45 67</span></span></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b">
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<div class="col g4"><span class="lbl">Начало</span><span class="num s">14 окт, 14:05:12</span></div>
+<div class="col g4"><span class="lbl">Окончание</span><span class="num s">14 окт, 14:08:40</span></div>
+<div class="col g4"><span class="lbl">Длительность</span><span class="num s">3:28</span></div>
+<div class="col g4"><span class="lbl">Результат</span><span class="badge b-ok" style="align-self: flex-start">Разговор, интерес</span></div>
+</div>
+<div class="well row g8"><button class="btn btn-pri btn-sq btn-sm" type="button" aria-label="Слушать" style="color: var(--brand-ink)"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7z"></path></svg></button><div class="bar grow"><i style="width: 34%"></i></div><span class="num xs c3">1:11 / 3:28</span></div>
+<div class="col g4"><span class="lbl">Комментарий</span><span class="s">Хочет 12 месяцев, перезвонить после 16:00</span></div>
+</div>
+</div>
+</div>
+<div class="col g8" style="flex: 0 0 280px">
+<span class="when">Выпадашка «Операторы»</span>
+<section class="card col" style="box-shadow: var(--shadow)">
+<div style="padding: 10px"><div class="inwrap"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg><input class="input" type="search" placeholder="Поиск" aria-label="Поиск оператора" style="height: 34px"></div></div>
+<sc-for list="{{opsel}}" as="o" hint-placeholder-count="7">
+<label class="row g8 s" style="padding: 7px 14px"><input class="check" type="checkbox" checked="{{o.on}}" aria-label="{{o.name}}"><span class="trunc">{{o.name}}</span></label>
+</sc-for>
+<div class="row between" style="padding: 10px 14px; border-top: 1px solid var(--line)"><button class="btn btn-ghost btn-sm" type="button">Сбросить</button><span class="xs c3">выбрано 2 из 31</span></div>
+</section>
+</div>
+<div class="col g8 grow">
+<span class="when">Ничего не нашлось по фильтрам</span>
+<section class="card empty"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"></path></svg><span class="h3" style="color: var(--ink)">Звонков не найдено</span><span class="s">Смените период, операторов или результат</span></section>
+</div>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1290}}'>
+class Component extends DCLogic {
+renderVals() {
+const r = (cls, d, t, op, lead, phone, dur, res, tone, rec, pos) => ({ cls: cls, d: d, t: t, op: op, lead: lead, phone: phone, dur: dur, res: res, tone: tone, rec: rec, norec: !rec, pos: pos || 0, time: rec ? dur : '' });
+return {
+theme: this.props.theme ?? 'light',
+rows: [
+r('is-sel', '14 окт', '14:05', 'Gulnoza Karimova', 'Sardor Aliyev', '+998 90 123 45 67', '3:28', 'Разговор, интерес', 'b-ok', true, 34),
+r('', '14 окт', '14:02', 'Jasur Toshmatov', 'Kamron Ibragimov', '+998 93 220 14 70', '0:00', 'Не берёт', '', false),
+r('', '14 окт', '13:47', 'Gulnoza Karimova', 'Dilnoza Yusupova', '+998 93 456 78 90', '1:40', 'Отказ', 'b-bad', true, 0),
+r('', '14 окт', '13:21', 'Jasur Toshmatov', 'Madina Rahimova', '+998 99 555 01 02', '4:45', 'Разговор, интерес', 'b-ok', true, 0),
+r('', '14 окт', '12:58', 'Gulnoza Karimova', 'Lola Karimova', '+998 95 120 90 90', '0:08', 'Не тот номер', 'b-bad', true, 0),
+r('', '14 окт', '12:30', 'Jasur Toshmatov', 'Akmal Saidov', '+998 99 280 45 45', '2:02', 'Только Telegram', 'b-info', true, 0),
+r('', '13 окт', '18:44', 'Gulnoza Karimova', 'Bekzod Nazarov', '+998 91 700 00 11', '0:00', 'Не берёт', '', false),
+r('', '13 окт', '17:15', 'Jasur Toshmatov', 'Rustam Bekov', '+998 97 410 02 02', '5:12', 'Перезвонить', 'b-info', true, 0),
+r('', '13 окт', '16:02', 'Gulnoza Karimova', 'Feruza Hamidova', '+998 97 515 30 30', '—', 'Без результата', 'b-warn', false)
+],
+opsel: [
+{ on: true, name: 'Gulnoza Karimova' }, { on: true, name: 'Jasur Toshmatov' }, { on: false, name: 'Nilufar Saidova' }, { on: false, name: 'Otabek Ergashev' }, { on: false, name: 'Shahlo Komilova' }, { on: false, name: 'Malika Tursunova' }, { on: false, name: 'Aziz Qodirov' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

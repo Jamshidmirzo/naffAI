@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Продажа</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1080px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="sales" hint-size="248px,1080px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<a class="btn btn-ghost btn-sq" href="MgSales.dc.html" aria-label="Назад к продажам"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
+<h1 class="h1">Продажа №1 482</h1>
+<span class="badge b-hot" style="height: 26px"><i class="dot"></i>ожидает</span>
+<span class="grow"></span>
+<button class="btn btn-bad" type="button">Отклонить</button>
+<a class="btn" href="MgSaleForm.dc.html">Исправить и одобрить</a>
+<button class="btn btn-ok" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Одобрить</button>
+</header>
+
+<main class="page">
+<div class="split">
+
+<div class="list col g16">
+<section class="card row g24 wrap" style="padding: 22px 24px; align-items: flex-end">
+<div class="col g6 grow"><span class="lbl">Модель</span><span class="display" style="font-size: 24px; line-height: 32px">iPhone 15 Pro 256 GB</span><span class="row g6"><span class="num c2">35 693108 123456 7</span><button class="btn btn-ghost btn-sm" type="button" aria-label="Скопировать IMEI"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h11v11H9zM5 15V4h11"></path></svg>Копировать</button></span></div>
+<div class="col g4" style="text-align: right"><span class="lbl">Сумма</span><span class="kpi">14 500 000</span><span class="xs c3">сум · 1 шт.</span></div>
+</section>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<section class="card col g6 pad"><span class="lbl">Оплата по каналам</span><div class="row between s"><span>Alif</span><span class="num">10 000 000</span></div><div class="row between s"><span>Uzum</span><span class="num">4 500 000</span></div></section>
+<section class="card col g6 pad"><span class="lbl">Оператор</span><span class="s w6 row g6"><span class="ava ava-s">GK</span>Gulnoza Karimova <span class="badge" style="height: 18px">+1</span></span><span class="xs c3">60% · сплит ниже</span></section>
+<section class="card col g6 pad"><span class="lbl">Клиент</span><span class="s w6">Sardor Aliyev</span><span class="num xs c3">+998 90 123 45 67</span><a class="xs c-brand" href="MgLeadsAll.dc.html">Из лида #18 204</a></section>
+<section class="card col g6 pad"><span class="lbl">Дата</span><span class="s w6">сегодня в 14:20</span><span class="num xs c3">14.10.2026</span></section>
+<section class="card col g6 pad"><span class="lbl">Подарки</span><span class="s w6">Чехол, защитное стекло</span><span class="xs c3">2 подарка</span></section>
+<section class="card col g6 pad"><span class="lbl">Источник лида</span><span class="s w6">Instagram октябрь</span><span class="xs c3">Google-таблица</span></section>
+</div>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Сплит: 2 оператора</span><span class="xs c3">доли идут в зарплату после одобрения</span></div>
+<div class="tr th" style="grid-template-columns: 1fr 80px 140px"><span>Оператор</span><span class="r">Доля</span><span class="r">Сумма</span></div>
+<div class="tr" style="grid-template-columns: 1fr 80px 140px"><span class="row g8"><span class="ava ava-s">GK</span>Gulnoza Karimova</span><span class="r num">60%</span><span class="r num w6">8 700 000</span></div>
+<div class="tr" style="grid-template-columns: 1fr 80px 140px"><span class="row g8"><span class="ava ava-s">JT</span>Jasur Toshmatov</span><span class="r num">40%</span><span class="r num w6">5 800 000</span></div>
+</section>
+
+<section class="card col g6 pad"><span class="lbl">Комментарий</span><span class="s">Клиент просил доставку после 18:00, рассрочка на 12 месяцев через Alif, остаток — Uzum.</span></section>
+
+<div class="banner b-warn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h16v10H4zM3 7h18v3H3zM12 7v13"></path></svg><span class="col g4"><span class="w6">Бонус / особые условия</span><span>Чехол в подарок, доставка завтра до 12:00</span></span></div>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Договор</span><span class="xs c3"><span class="num">3</span> фото · нажмите, чтобы открыть на весь экран</span></div>
+<div class="row g12" style="padding: 16px">
+<a class="ph" href="MgSheetSale.dc.html" style="width: 170px; height: 124px; position: relative"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01"></path></svg>Стр. 1<span class="badge num" style="position: absolute; right: 6px; top: 6px; height: 18px">1 / 3</span></a>
+<a class="ph" href="MgSheetSale.dc.html" style="width: 170px; height: 124px; position: relative"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01"></path></svg>Стр. 2<span class="badge num" style="position: absolute; right: 6px; top: 6px; height: 18px">2 / 3</span></a>
+<a class="ph" href="MgSheetSale.dc.html" style="width: 170px; height: 124px; position: relative"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01"></path></svg>Паспорт<span class="badge num" style="position: absolute; right: 6px; top: 6px; height: 18px">3 / 3</span></a>
+</div>
+</section>
+</div>
+
+<aside class="panel col g16">
+<section class="card col">
+<div class="card-h"><span class="row g8"><span class="h3">Проверка</span><span class="badge b-info" style="height: 20px">новое</span></span><span class="badge b-ok">всё сходится</span></div>
+<div class="col g8" style="padding: 14px 16px">
+<div class="row g8 s"><svg class="ic c-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>IMEI раньше не продавался</div>
+<div class="row g8 s"><svg class="ic c-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Цена совпадает с каталогом</div>
+<div class="row g8 s"><svg class="ic c-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Суммы партнёров сходятся</div>
+<div class="row g8 s"><svg class="ic c-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Клиент найден среди лидов</div>
+</div>
+</section>
+<section class="card col">
+<div class="card-h"><span class="h3">История изменений</span></div>
+<div class="col g12" style="padding: 14px 16px">
+<sc-for list="{{hist}}" as="h" hint-placeholder-count="4">
+<div class="row g12" style="align-items: flex-start"><i class="dot" style="color: var(--brand); width: 7px; height: 7px; margin-top: 7px"></i><span class="col grow"><span class="s">{{h.text}}</span><span class="xs c3">{{h.who}} · <span class="num">{{h.when}}</span></span></span></div>
+</sc-for>
+</div>
+</section>
+<section class="card col g8" style="padding: 16px">
+<span class="lbl">В других статусах</span>
+<div class="row between s"><span class="badge b-ok"><i class="dot"></i>оплачено</span><span class="c3">Изменить · Оформить возврат · Удалить</span></div>
+<div class="row between s"><span class="badge b-bad"><i class="dot"></i>возврат</span><span class="c3">Изменить · Удалить</span></div>
+<div class="row between s"><span class="badge b-bad"><i class="dot"></i>отклонена</span><span class="c3">Изменить · Удалить · блок с причиной</span></div>
+<div class="row between s"><span class="badge"><i class="dot"></i>удалена</span><span class="c3">только просмотр</span></div>
+<span class="xs c3">Окна возврата и удаления — <a class="c-brand" href="MgSheetSale.dc.html">MgSheetSale</a></span>
+</section>
+<section class="card col" style="border-color: var(--bad-solid)">
+<div class="card-h"><span class="row g8"><span class="badge b-bad" style="height: 22px"><i class="dot"></i>отклонена</span><span class="xs c3">так выглядит блок, если продажу отклонили</span></span></div>
+<div class="col g4" style="padding: 12px 16px; background: var(--bad-bg); border-radius: 0 0 13px 13px"><span class="s w6 c-bad">Продажа отклонена. Причина:</span><span class="s">IMEI не совпадает с фото договора. Перезалейте фото страницы 2.</span><span class="xs c3">Rustam Yuldashev · 13.10.2026 18:42</span></div>
+</section>
+<section class="card col">
+<div class="card-h"><span class="row g8"><span class="badge" style="height: 22px"><i class="dot"></i>удалена</span><span class="xs c3">шапка удалённой продажи</span></span></div>
+<div class="s c2" style="padding: 12px 16px">Продажа помечена как удалённая, кнопок нет. Восстановление — через админку.</div>
+</section>
+</aside>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1080}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+theme: this.props.theme ?? 'light',
+hist: [
+{ text: 'Продажа создана · 14 500 000', who: 'Gulnoza Karimova', when: '14.10.2026 14:20' },
+{ text: 'Лид Sardor Aliyev закрыт как «Продажа»', who: 'система', when: '14.10.2026 14:20' },
+{ text: 'Добавлен сплит: Jasur Toshmatov 40%', who: 'Gulnoza Karimova', when: '14.10.2026 14:23' },
+{ text: 'Загружено фото договора (3)', who: 'Gulnoza Karimova', when: '14.10.2026 14:24' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

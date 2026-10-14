@@ -1,0 +1,1526 @@
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-10-14T03:55:37Z"
+ },
+ "title": "naffAI Redesign",
+ "launch": {
+  "view": "canvas",
+  "page": "manager"
+ },
+ "pages": [
+  {
+   "id": "base",
+   "name": "Основа"
+  },
+  {
+   "id": "operator",
+   "name": "Оператор"
+  },
+  {
+   "id": "opstates",
+   "name": "Оператор · окна и ошибки"
+  },
+  {
+   "id": "manager",
+   "name": "Менеджер"
+  },
+  {
+   "id": "mgmore",
+   "name": "Менеджер · все разделы"
+  },
+  {
+   "id": "mgstates",
+   "name": "Менеджер · окна и ошибки"
+  },
+  {
+   "id": "super",
+   "name": "Супер-менеджер"
+  },
+  {
+   "id": "system",
+   "name": "Система"
+  }
+ ],
+ "boards": {
+  "Main.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 1180,
+   "page": "base",
+   "title": "Стиль «Атлас»"
+  },
+  "Components.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1440,
+   "h": 1560,
+   "page": "base",
+   "title": "Компоненты"
+  },
+  "Dialogs.dc.html": {
+   "x": 3040,
+   "y": 0,
+   "w": 1440,
+   "h": 1600,
+   "page": "base",
+   "title": "Набор окон и уведомлений"
+  },
+  "CommandK.dc.html": {
+   "x": 4560,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "page": "base",
+   "title": "Поиск и команды ⌘K"
+  },
+  "SideNav.dc.html": {
+   "x": 6080,
+   "y": 0,
+   "w": 248,
+   "h": 960,
+   "page": "base",
+   "title": "Меню менеджера (роль — в Tweaks)"
+  },
+  "SideRail.dc.html": {
+   "x": 6408,
+   "y": 0,
+   "w": 84,
+   "h": 960,
+   "page": "base",
+   "title": "Узкое меню оператора"
+  },
+  "NavMap.dc.html": {
+   "x": 6572,
+   "y": 0,
+   "w": 1440,
+   "h": 2600,
+   "page": "base",
+   "title": "Навигация: всё меню целиком"
+  },
+  "OpLogin.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "page": "operator",
+   "title": "Вход",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpCheckin.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "page": "operator",
+   "title": "Начало смены (CheckinGate)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpMy.dc.html": {
+   "x": 4560,
+   "y": 0,
+   "w": 1440,
+   "h": 960,
+   "page": "operator",
+   "title": "Мои лиды · фокус-режим",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpMyBlocked.dc.html": {
+   "x": 7600,
+   "y": 0,
+   "w": 1440,
+   "h": 960,
+   "page": "operator",
+   "title": "Мои лиды — блокирующие",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpCallback.dc.html": {
+   "x": 10640,
+   "y": 0,
+   "w": 1440,
+   "h": 960,
+   "page": "operator",
+   "title": "Итог звонка: перезвон",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpSale.dc.html": {
+   "x": 0,
+   "y": 1380,
+   "w": 1440,
+   "h": 1000,
+   "page": "operator",
+   "title": "Новая продажа",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpSales.dc.html": {
+   "x": 3040,
+   "y": 1380,
+   "w": 1440,
+   "h": 900,
+   "page": "operator",
+   "title": "Мои продажи",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpPayroll.dc.html": {
+   "x": 4560,
+   "y": 1380,
+   "w": 1440,
+   "h": 1000,
+   "page": "operator",
+   "title": "Моя зарплата",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpDayOff.dc.html": {
+   "x": 6080,
+   "y": 1380,
+   "w": 1440,
+   "h": 860,
+   "page": "operator",
+   "title": "Выходной",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpProfile.dc.html": {
+   "x": 7600,
+   "y": 1380,
+   "w": 1440,
+   "h": 1000,
+   "page": "operator",
+   "title": "Профиль",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpNotif.dc.html": {
+   "x": 9120,
+   "y": 1380,
+   "w": 1440,
+   "h": 860,
+   "page": "operator",
+   "title": "Уведомления",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpBoard.dc.html": {
+   "x": 0,
+   "y": 2800,
+   "w": 1440,
+   "h": 900,
+   "page": "operator",
+   "title": "Табло",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpCalc.dc.html": {
+   "x": 1520,
+   "y": 2800,
+   "w": 1440,
+   "h": 960,
+   "page": "operator",
+   "title": "Калькулятор рассрочки",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpLessons.dc.html": {
+   "x": 4560,
+   "y": 2800,
+   "w": 1440,
+   "h": 1000,
+   "page": "operator",
+   "title": "Урок дня",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpCelebration.dc.html": {
+   "x": 0,
+   "y": 4220,
+   "w": 1440,
+   "h": 900,
+   "page": "operator",
+   "title": "Коллега продал",
+   "expand": "fill"
+  },
+  "OpSnapshot.dc.html": {
+   "x": 1520,
+   "y": 4220,
+   "w": 1440,
+   "h": 900,
+   "page": "operator",
+   "title": "Запрос снимка и напоминание о смене",
+   "expand": "fill"
+  },
+  "OpMyUz.dc.html": {
+   "x": 6080,
+   "y": 4220,
+   "w": 1440,
+   "h": 960,
+   "page": "operator",
+   "title": "Mening lidlarim (UZ)",
+   "expand": "fill"
+  },
+  "OpMyDark.dc.html": {
+   "x": 7600,
+   "y": 4220,
+   "w": 1440,
+   "h": 960,
+   "page": "operator",
+   "title": "Мои лиды — тёмная тема",
+   "expand": "fill"
+  },
+  "OpBackfill.dc.html": {
+   "x": 3040,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "page": "operator",
+   "title": "Вчерашняя смена не закрыта",
+   "expand": "fill"
+  },
+  "OpMyList.dc.html": {
+   "x": 6080,
+   "y": 0,
+   "w": 1440,
+   "h": 960,
+   "page": "operator",
+   "title": "Мои лиды · список",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpMyEmpty.dc.html": {
+   "x": 9120,
+   "y": 0,
+   "w": 1440,
+   "h": 960,
+   "page": "operator",
+   "title": "Мои лиды — всё закрыто",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpSaleDetail.dc.html": {
+   "x": 1520,
+   "y": 1380,
+   "w": 1440,
+   "h": 960,
+   "page": "operator",
+   "title": "Моя продажа /sales/:id",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpCatalog.dc.html": {
+   "x": 3040,
+   "y": 2800,
+   "w": 1440,
+   "h": 960,
+   "page": "operator",
+   "title": "Каталог телефонов",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpLessonsHistory.dc.html": {
+   "x": 6080,
+   "y": 2800,
+   "w": 1440,
+   "h": 900,
+   "page": "operator",
+   "title": "История разборов",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpTraining.dc.html": {
+   "x": 7600,
+   "y": 2800,
+   "w": 1440,
+   "h": 860,
+   "page": "operator",
+   "title": "Курсы",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpTrainingLesson.dc.html": {
+   "x": 9120,
+   "y": 2800,
+   "w": 1440,
+   "h": 1000,
+   "page": "operator",
+   "title": "Урок курса: видео, файл, тест",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "OpScan.dc.html": {
+   "x": 10640,
+   "y": 2800,
+   "w": 1440,
+   "h": 900,
+   "page": "operator",
+   "title": "Отметка по QR /scan"
+  },
+  "OpMorning.dc.html": {
+   "x": 3040,
+   "y": 4220,
+   "w": 1440,
+   "h": 900,
+   "page": "operator",
+   "title": "Утреннее приветствие и день рождения",
+   "expand": "fill"
+  },
+  "OpHelper.dc.html": {
+   "x": 4560,
+   "y": 4220,
+   "w": 1440,
+   "h": 900,
+   "page": "operator",
+   "title": "Помощник и эфир",
+   "expand": "fill"
+  },
+  "OpSheetOutcome.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 1100,
+   "page": "opstates",
+   "title": "Итог звонка"
+  },
+  "OpSheetCallback.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1440,
+   "h": 1100,
+   "page": "opstates",
+   "title": "Перезвоны"
+  },
+  "OpSheetSale.dc.html": {
+   "x": 3040,
+   "y": 0,
+   "w": 1440,
+   "h": 1240,
+   "page": "opstates",
+   "title": "Новая продажа: проверки и ошибки"
+  },
+  "OpSheetShift.dc.html": {
+   "x": 4560,
+   "y": 0,
+   "w": 1440,
+   "h": 1180,
+   "page": "opstates",
+   "title": "Смена, камера и эфир"
+  },
+  "OpSheetProfile.dc.html": {
+   "x": 6080,
+   "y": 0,
+   "w": 1440,
+   "h": 1160,
+   "page": "opstates",
+   "title": "Профиль: пароль, фото, Telegram"
+  },
+  "OpSheetLearn.dc.html": {
+   "x": 7600,
+   "y": 0,
+   "w": 1440,
+   "h": 1100,
+   "page": "opstates",
+   "title": "Обучение, табло, калькулятор"
+  },
+  "MgDashboard.dc.html": {
+   "x": 0,
+   "y": 2190,
+   "w": 1440,
+   "h": 1770,
+   "page": "manager",
+   "title": "Пульт зала",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgSales.dc.html": {
+   "x": 1520,
+   "y": 2190,
+   "w": 1440,
+   "h": 1340,
+   "page": "manager",
+   "title": "Продажи",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgPending.dc.html": {
+   "x": 4560,
+   "y": 2190,
+   "w": 1440,
+   "h": 1110,
+   "page": "manager",
+   "title": "Подтверждение продаж",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgLeads.dc.html": {
+   "x": 1520,
+   "y": 4380,
+   "w": 1440,
+   "h": 1400,
+   "page": "manager",
+   "title": "Свободные лиды",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgOperators.dc.html": {
+   "x": 4560,
+   "y": 4380,
+   "w": 1440,
+   "h": 1040,
+   "page": "manager",
+   "title": "Операторы",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgAttendance.dc.html": {
+   "x": 0,
+   "y": 7380,
+   "w": 1440,
+   "h": 1400,
+   "page": "manager",
+   "title": "Смена сегодня",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgPayroll.dc.html": {
+   "x": 1520,
+   "y": 7380,
+   "w": 1440,
+   "h": 1100,
+   "page": "manager",
+   "title": "Зарплата",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgDashboardDark.dc.html": {
+   "x": 4560,
+   "y": 7380,
+   "w": 1440,
+   "h": 1770,
+   "page": "manager",
+   "title": "Пульт — тёмная тема",
+   "expand": "fill"
+  },
+  "MgSaleDetail.dc.html": {
+   "x": 3040,
+   "y": 2190,
+   "w": 1440,
+   "h": 1080,
+   "page": "manager",
+   "title": "Продажа /sales/:id",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgSalesToday.dc.html": {
+   "x": 6080,
+   "y": 2190,
+   "w": 1440,
+   "h": 1450,
+   "page": "manager",
+   "title": "Продажи сегодня",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgLeadsAll.dc.html": {
+   "x": 0,
+   "y": 4380,
+   "w": 1440,
+   "h": 1460,
+   "page": "manager",
+   "title": "Все лиды",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgSystemLost.dc.html": {
+   "x": 3040,
+   "y": 4380,
+   "w": 1440,
+   "h": 1000,
+   "page": "manager",
+   "title": "Потерянные системой (суперадмин)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgOperatorDetail.dc.html": {
+   "x": 6080,
+   "y": 4380,
+   "w": 1440,
+   "h": 1200,
+   "page": "manager",
+   "title": "Карточка оператора /operators/:id",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgDayOff.dc.html": {
+   "x": 9120,
+   "y": 4380,
+   "w": 1440,
+   "h": 960,
+   "page": "manager",
+   "title": "Заявки на выходной",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgCalls.dc.html": {
+   "x": 3040,
+   "y": 7380,
+   "w": 1440,
+   "h": 1290,
+   "page": "manager",
+   "title": "Звонки",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgAnalytics.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 1940,
+   "page": "mgmore",
+   "title": "Аналитика · команда",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgLive.dc.html": {
+   "x": 6080,
+   "y": 2440,
+   "w": 1440,
+   "h": 1080,
+   "page": "mgmore",
+   "title": "Live-эфир",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgLeadsStats.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1440,
+   "h": 1500,
+   "page": "mgmore",
+   "title": "Аналитика · лиды",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgMarketing.dc.html": {
+   "x": 3040,
+   "y": 0,
+   "w": 1440,
+   "h": 2020,
+   "page": "mgmore",
+   "title": "Аналитика · маркетинг",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgSources.dc.html": {
+   "x": 7600,
+   "y": 0,
+   "w": 1440,
+   "h": 1460,
+   "page": "mgmore",
+   "title": "Аналитика · источники",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgReports.dc.html": {
+   "x": 9120,
+   "y": 0,
+   "w": 1440,
+   "h": 1010,
+   "page": "mgmore",
+   "title": "Аналитика · отчёты",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgAttReport.dc.html": {
+   "x": 0,
+   "y": 2440,
+   "w": 1440,
+   "h": 960,
+   "page": "mgmore",
+   "title": "Смена · отчёт",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgAttPhotos.dc.html": {
+   "x": 1520,
+   "y": 2440,
+   "w": 1440,
+   "h": 1000,
+   "page": "mgmore",
+   "title": "Смена · фото",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgKiosk.dc.html": {
+   "x": 3040,
+   "y": 2440,
+   "w": 1440,
+   "h": 1110,
+   "page": "mgmore",
+   "title": "Киоск отметок",
+   "expand": "fill"
+  },
+  "MgAttSettings.dc.html": {
+   "x": 4560,
+   "y": 2440,
+   "w": 1440,
+   "h": 1000,
+   "page": "mgmore",
+   "title": "Смена · настройки",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgLiveArchive.dc.html": {
+   "x": 7600,
+   "y": 2440,
+   "w": 1440,
+   "h": 960,
+   "page": "mgmore",
+   "title": "Архив эфиров",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgAIChat.dc.html": {
+   "x": 10640,
+   "y": 0,
+   "w": 1440,
+   "h": 1200,
+   "page": "mgmore",
+   "title": "AI-ассистент",
+   "expand": "fill"
+  },
+  "MgSettingsGeneral.dc.html": {
+   "x": 0,
+   "y": 3970,
+   "w": 1440,
+   "h": 1300,
+   "page": "mgmore",
+   "title": "Настройки · общие",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgSheets.dc.html": {
+   "x": 3040,
+   "y": 3970,
+   "w": 1440,
+   "h": 980,
+   "page": "mgmore",
+   "title": "Источники лидов (Google-таблицы)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgPartners.dc.html": {
+   "x": 6080,
+   "y": 3970,
+   "w": 1440,
+   "h": 860,
+   "page": "mgmore",
+   "title": "Партнёры",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgCatalog.dc.html": {
+   "x": 7600,
+   "y": 3970,
+   "w": 1440,
+   "h": 1280,
+   "page": "mgmore",
+   "title": "Каталог · телефоны",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgCatalogMore.dc.html": {
+   "x": 9120,
+   "y": 3970,
+   "w": 1440,
+   "h": 960,
+   "page": "mgmore",
+   "title": "Каталог · тарифы, банки, тексты",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgBot.dc.html": {
+   "x": 0,
+   "y": 6350,
+   "w": 1440,
+   "h": 960,
+   "page": "mgmore",
+   "title": "Telegram-бот",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgBotSubs.dc.html": {
+   "x": 3040,
+   "y": 6350,
+   "w": 1440,
+   "h": 960,
+   "page": "mgmore",
+   "title": "Подписчики бота",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgTgQueue.dc.html": {
+   "x": 4560,
+   "y": 6350,
+   "w": 1440,
+   "h": 960,
+   "page": "mgmore",
+   "title": "Telegram операторов",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgUsers.dc.html": {
+   "x": 0,
+   "y": 8040,
+   "w": 1440,
+   "h": 960,
+   "page": "mgmore",
+   "title": "Пользователи",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgTraining.dc.html": {
+   "x": 3040,
+   "y": 8040,
+   "w": 1440,
+   "h": 880,
+   "page": "mgmore",
+   "title": "Обучение · уроки",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgTrainingForm.dc.html": {
+   "x": 4560,
+   "y": 8040,
+   "w": 1440,
+   "h": 1480,
+   "page": "mgmore",
+   "title": "Урок: редактор и статистика",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgScreen.dc.html": {
+   "x": 9120,
+   "y": 8040,
+   "w": 1440,
+   "h": 1140,
+   "page": "mgmore",
+   "title": "Табло на ТВ /screen",
+   "expand": "fill"
+  },
+  "MgSheetSale.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 1160,
+   "page": "mgstates",
+   "title": "Продажи: подтверждение, отказ, возврат"
+  },
+  "MgSheetSaleForm.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1440,
+   "h": 1140,
+   "page": "mgstates",
+   "title": "Форма продажи: проверки"
+  },
+  "MgSheetLeads.dc.html": {
+   "x": 3040,
+   "y": 0,
+   "w": 1440,
+   "h": 1100,
+   "page": "mgstates",
+   "title": "Лиды: назначение и раздача"
+  },
+  "MgSheetStatuses.dc.html": {
+   "x": 4560,
+   "y": 0,
+   "w": 1440,
+   "h": 1000,
+   "page": "mgstates",
+   "title": "Статусы лидов: создание и удаление"
+  },
+  "MgSheetSources.dc.html": {
+   "x": 6080,
+   "y": 0,
+   "w": 1440,
+   "h": 1870,
+   "page": "mgstates",
+   "title": "Google-таблицы: мастер и диагностика"
+  },
+  "MgSheetOp1.dc.html": {
+   "x": 7600,
+   "y": 0,
+   "w": 1440,
+   "h": 1800,
+   "page": "mgstates",
+   "title": "Оператор: создать, изменить, удалить"
+  },
+  "MgSheetOp2.dc.html": {
+   "x": 0,
+   "y": 2290,
+   "w": 1440,
+   "h": 1200,
+   "page": "mgstates",
+   "title": "Оператор: учётка, QR, телефоны, смена"
+  },
+  "MgSheetUsers.dc.html": {
+   "x": 1520,
+   "y": 2290,
+   "w": 1440,
+   "h": 1000,
+   "page": "mgstates",
+   "title": "Пользователи: менеджеры и роли"
+  },
+  "MgSheetPin.dc.html": {
+   "x": 3040,
+   "y": 2290,
+   "w": 1440,
+   "h": 1000,
+   "page": "mgstates",
+   "title": "PIN для «Смены» и «Зарплаты»"
+  },
+  "MgSheetPayroll.dc.html": {
+   "x": 4560,
+   "y": 2290,
+   "w": 1440,
+   "h": 1170,
+   "page": "mgstates",
+   "title": "Зарплата: разбор и личный порог"
+  },
+  "MgSheetCatalogBot.dc.html": {
+   "x": 6080,
+   "y": 2290,
+   "w": 1440,
+   "h": 1700,
+   "page": "mgstates",
+   "title": "Каталог и бот: редакторы"
+  },
+  "MgSheetTrainingLive.dc.html": {
+   "x": 7600,
+   "y": 2290,
+   "w": 1440,
+   "h": 1000,
+   "page": "mgstates",
+   "title": "Обучение, эфир, AI: ошибки"
+  },
+  "MgSettings.dc.html": {
+   "x": 1520,
+   "y": 3970,
+   "w": 1440,
+   "h": 1960,
+   "page": "mgmore",
+   "title": "Настройки · статусы лидов",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgJournal.dc.html": {
+   "x": 1520,
+   "y": 8040,
+   "w": 1440,
+   "h": 1020,
+   "page": "mgmore",
+   "title": "Журнал изменений",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgSaleForm.dc.html": {
+   "x": 6080,
+   "y": 8040,
+   "w": 1440,
+   "h": 1040,
+   "page": "mgmore",
+   "title": "Исправить продажу (менеджер)",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "SmTeamSales.dc.html": {
+   "x": 4560,
+   "y": 0,
+   "w": 1440,
+   "h": 1160,
+   "page": "super",
+   "title": "Продажи команды",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "SmBoard.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 1000,
+   "page": "super",
+   "title": "Доска ветки /team/managers",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "SmBoardDrag.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1440,
+   "h": 1000,
+   "page": "super",
+   "title": "Доска ветки: перенос оператора",
+   "expand": "fill"
+  },
+  "SmSheet.dc.html": {
+   "x": 3040,
+   "y": 0,
+   "w": 1440,
+   "h": 1660,
+   "page": "super",
+   "title": "Доска ветки: окна"
+  },
+  "SmDeleted.dc.html": {
+   "x": 7600,
+   "y": 0,
+   "w": 1440,
+   "h": 1130,
+   "page": "super",
+   "title": "Удалённые операторы",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "SmOperators.dc.html": {
+   "x": 6080,
+   "y": 0,
+   "w": 1440,
+   "h": 1040,
+   "page": "super",
+   "title": "Операторы ветки",
+   "expand": "fill"
+  },
+  "SmDashboard.dc.html": {
+   "x": 9120,
+   "y": 0,
+   "w": 1440,
+   "h": 1770,
+   "page": "super",
+   "title": "Пульт ветки",
+   "expand": "fill"
+  },
+  "SysStates.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 1500,
+   "page": "system",
+   "title": "Общие состояния: загрузка, пусто, ошибки, доступ, сессия, связь, 404"
+  },
+  "Coverage.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1440,
+   "h": 4600,
+   "page": "system",
+   "title": "Карта покрытия: 68 роутов → артборды"
+  },
+  "Bugs.dc.html": {
+   "x": 3040,
+   "y": 0,
+   "w": 1440,
+   "h": 4600,
+   "page": "system",
+   "title": "Баги из кода: 58 проблем и где их исправляет макет"
+  },
+  "MgProfile.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 1100,
+   "page": "manager",
+   "title": "Профиль менеджера /profile",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgNotif.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1440,
+   "h": 960,
+   "page": "manager",
+   "title": "Уведомления менеджера /notifications",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "MgMorning.dc.html": {
+   "x": 3040,
+   "y": 0,
+   "w": 1440,
+   "h": 1120,
+   "page": "manager",
+   "title": "Утро менеджера: сводка при первом входе (новое)"
+  },
+  "MgOverlay.dc.html": {
+   "x": 4560,
+   "y": 0,
+   "w": 1440,
+   "h": 1120,
+   "page": "manager",
+   "title": "Поверх пульта: новая продажа, PIN, день рождения"
+  },
+  "MgPultStates.dc.html": {
+   "x": 6080,
+   "y": 0,
+   "w": 1440,
+   "h": 1200,
+   "page": "manager",
+   "title": "Пульт зала: до смены, пустая команда, конец дня, нет связи"
+  },
+  "MgDashboardUz.dc.html": {
+   "x": 7600,
+   "y": 0,
+   "w": 1440,
+   "h": 1770,
+   "page": "manager",
+   "title": "Zal pulti — пульт по-узбекски",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "SmProfile.dc.html": {
+   "x": 0,
+   "y": 2190,
+   "w": 1440,
+   "h": 1100,
+   "page": "super",
+   "title": "Профиль супер-менеджера /profile"
+  },
+  "SmNotif.dc.html": {
+   "x": 1520,
+   "y": 2190,
+   "w": 1440,
+   "h": 960,
+   "page": "super",
+   "title": "Уведомления супер-менеджера /notifications"
+  },
+  "SmMorning.dc.html": {
+   "x": 3040,
+   "y": 2190,
+   "w": 1440,
+   "h": 1120,
+   "page": "super",
+   "title": "Утро супер-менеджера: сводка ветки (новое)"
+  },
+  "SmStates.dc.html": {
+   "x": 4560,
+   "y": 2190,
+   "w": 1440,
+   "h": 1240,
+   "page": "super",
+   "title": "Доска ветки: первый запуск, поиск, ошибка, перенос нескольких"
+  },
+  "SmBoardUz.dc.html": {
+   "x": 6080,
+   "y": 2190,
+   "w": 1440,
+   "h": 1000,
+   "page": "super",
+   "title": "Filial doskasi — доска по-узбекски",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "SmBoardDark.dc.html": {
+   "x": 7600,
+   "y": 2190,
+   "w": 1440,
+   "h": 1000,
+   "page": "super",
+   "title": "Доска ветки · тёмная тема"
+  },
+  "MgBoard.dc.html": {
+   "page": "manager",
+   "title": "Табло (вид менеджера) /leaderboard",
+   "expand": "fill",
+   "is_interactive": true,
+   "x": 7600,
+   "y": 2190,
+   "w": 1440,
+   "h": 1240
+  },
+  "MgOperatorDetail2.dc.html": {
+   "page": "manager",
+   "title": "Карточка оператора · модели, партнёры, посещаемость, уроки, Telegram",
+   "expand": "fill",
+   "is_interactive": true,
+   "x": 7600,
+   "y": 4380,
+   "w": 1440,
+   "h": 2580
+  },
+  "MgMarketing2.dc.html": {
+   "page": "mgmore",
+   "title": "Маркетинг · Динамика и Затраты",
+   "expand": "fill",
+   "is_interactive": true,
+   "x": 4560,
+   "y": 0,
+   "w": 1440,
+   "h": 1940
+  },
+  "MgMarketingSource.dc.html": {
+   "page": "mgmore",
+   "title": "Маркетинг · детали источника",
+   "expand": "fill",
+   "is_interactive": true,
+   "x": 6080,
+   "y": 0,
+   "w": 1440,
+   "h": 1350
+  },
+  "MgSheetsForm.dc.html": {
+   "page": "mgmore",
+   "title": "Google-таблицы · форма листа и псевдонимы",
+   "expand": "fill",
+   "is_interactive": true,
+   "x": 4560,
+   "y": 3970,
+   "w": 1440,
+   "h": 1540
+  },
+  "MgCalc.dc.html": {
+   "page": "mgmore",
+   "title": "Калькулятор (вид менеджера) /calculator",
+   "expand": "fill",
+   "is_interactive": true,
+   "x": 10640,
+   "y": 3970,
+   "w": 1440,
+   "h": 1260
+  },
+  "MgBot2.dc.html": {
+   "page": "mgmore",
+   "title": "Бот · Чаты и Аудит",
+   "expand": "fill",
+   "is_interactive": true,
+   "x": 1520,
+   "y": 6350,
+   "w": 1440,
+   "h": 1270
+  },
+  "MgSaleFormNew.dc.html": {
+   "page": "mgmore",
+   "title": "Новая продажа (менеджер) /sales/new",
+   "expand": "fill",
+   "is_interactive": true,
+   "x": 7600,
+   "y": 8040,
+   "w": 1440,
+   "h": 1760
+  },
+  "MgOperatorsDiag.dc.html": {
+   "page": "mgstates",
+   "title": "Диагностика раздачи (окно)",
+   "x": 9120,
+   "y": 0,
+   "w": 1440,
+   "h": 1450
+  }
+ },
+ "order": [
+  "Main.dc.html",
+  "Components.dc.html",
+  "Dialogs.dc.html",
+  "CommandK.dc.html",
+  "SideNav.dc.html",
+  "SideRail.dc.html",
+  "NavMap.dc.html",
+  "OpLogin.dc.html",
+  "OpCheckin.dc.html",
+  "OpMy.dc.html",
+  "OpMyBlocked.dc.html",
+  "OpCallback.dc.html",
+  "OpSale.dc.html",
+  "OpSales.dc.html",
+  "OpPayroll.dc.html",
+  "OpDayOff.dc.html",
+  "OpProfile.dc.html",
+  "OpNotif.dc.html",
+  "OpBoard.dc.html",
+  "OpCalc.dc.html",
+  "OpLessons.dc.html",
+  "OpCelebration.dc.html",
+  "OpSnapshot.dc.html",
+  "OpMyUz.dc.html",
+  "OpMyDark.dc.html",
+  "OpBackfill.dc.html",
+  "OpMyList.dc.html",
+  "OpMyEmpty.dc.html",
+  "OpSaleDetail.dc.html",
+  "OpCatalog.dc.html",
+  "OpLessonsHistory.dc.html",
+  "OpTraining.dc.html",
+  "OpTrainingLesson.dc.html",
+  "OpScan.dc.html",
+  "OpMorning.dc.html",
+  "OpHelper.dc.html",
+  "OpSheetOutcome.dc.html",
+  "OpSheetCallback.dc.html",
+  "OpSheetSale.dc.html",
+  "OpSheetShift.dc.html",
+  "OpSheetProfile.dc.html",
+  "OpSheetLearn.dc.html",
+  "MgDashboard.dc.html",
+  "MgSales.dc.html",
+  "MgPending.dc.html",
+  "MgLeads.dc.html",
+  "MgOperators.dc.html",
+  "MgAttendance.dc.html",
+  "MgPayroll.dc.html",
+  "MgDashboardDark.dc.html",
+  "MgSaleDetail.dc.html",
+  "MgSalesToday.dc.html",
+  "MgLeadsAll.dc.html",
+  "MgSystemLost.dc.html",
+  "MgOperatorDetail.dc.html",
+  "MgDayOff.dc.html",
+  "MgCalls.dc.html",
+  "MgAnalytics.dc.html",
+  "MgLive.dc.html",
+  "MgSettings.dc.html",
+  "MgJournal.dc.html",
+  "MgSaleForm.dc.html",
+  "MgLeadsStats.dc.html",
+  "MgMarketing.dc.html",
+  "MgSources.dc.html",
+  "MgReports.dc.html",
+  "MgAttReport.dc.html",
+  "MgAttPhotos.dc.html",
+  "MgKiosk.dc.html",
+  "MgAttSettings.dc.html",
+  "MgLiveArchive.dc.html",
+  "MgAIChat.dc.html",
+  "MgSettingsGeneral.dc.html",
+  "MgSheets.dc.html",
+  "MgPartners.dc.html",
+  "MgCatalog.dc.html",
+  "MgCatalogMore.dc.html",
+  "MgBot.dc.html",
+  "MgBotSubs.dc.html",
+  "MgTgQueue.dc.html",
+  "MgUsers.dc.html",
+  "MgTraining.dc.html",
+  "MgTrainingForm.dc.html",
+  "MgScreen.dc.html",
+  "MgSheetSale.dc.html",
+  "MgSheetSaleForm.dc.html",
+  "MgSheetLeads.dc.html",
+  "MgSheetStatuses.dc.html",
+  "MgSheetSources.dc.html",
+  "MgSheetOp1.dc.html",
+  "MgSheetOp2.dc.html",
+  "MgSheetUsers.dc.html",
+  "MgSheetPin.dc.html",
+  "MgSheetPayroll.dc.html",
+  "MgSheetCatalogBot.dc.html",
+  "MgSheetTrainingLive.dc.html",
+  "SmBoard.dc.html",
+  "SmBoardDrag.dc.html",
+  "SmSheet.dc.html",
+  "SmTeamSales.dc.html",
+  "SmOperators.dc.html",
+  "SmDashboard.dc.html",
+  "SmDeleted.dc.html",
+  "SysStates.dc.html",
+  "Coverage.dc.html",
+  "Bugs.dc.html",
+  "MgProfile.dc.html",
+  "MgNotif.dc.html",
+  "MgMorning.dc.html",
+  "MgOverlay.dc.html",
+  "MgPultStates.dc.html",
+  "MgDashboardUz.dc.html",
+  "SmProfile.dc.html",
+  "SmNotif.dc.html",
+  "SmMorning.dc.html",
+  "SmStates.dc.html",
+  "SmBoardUz.dc.html",
+  "SmBoardDark.dc.html",
+  "MgBoard.dc.html",
+  "MgOperatorDetail2.dc.html",
+  "MgMarketing2.dc.html",
+  "MgMarketingSource.dc.html",
+  "MgSheetsForm.dc.html",
+  "MgCalc.dc.html",
+  "MgBot2.dc.html",
+  "MgSaleFormNew.dc.html",
+  "MgOperatorsDiag.dc.html"
+ ],
+ "notes": {
+  "t_base": {
+   "x": 0,
+   "y": -300,
+   "text": "Основа: стиль «Атлас», компоненты, окна, навигация, ⌘K",
+   "kind": "title1",
+   "maxW": 8012,
+   "page": "base"
+  },
+  "s_data": {
+   "x": 0,
+   "y": 1300,
+   "text": "Только веб-версия для компьютера, ширина 1440. Имена, телефоны и суммы — примеры. Тему (light/dark) можно переключить в Tweaks у артборда.",
+   "w": 560,
+   "page": "base",
+   "fill": "gray"
+  },
+  "t_op1": {
+   "x": 0,
+   "y": -300,
+   "text": "Оператор · смена и работа с лидами",
+   "kind": "title1",
+   "maxW": 12080,
+   "page": "operator"
+  },
+  "t_op2": {
+   "x": 0,
+   "y": 1080,
+   "text": "Оператор · продажа, деньги, личное",
+   "kind": "title1",
+   "maxW": 10560,
+   "page": "operator"
+  },
+  "t_op3": {
+   "x": 0,
+   "y": 2500,
+   "text": "Оператор · инструменты и обучение",
+   "kind": "title1",
+   "maxW": 12080,
+   "page": "operator"
+  },
+  "t_op4": {
+   "x": 0,
+   "y": 3920,
+   "text": "Оператор · поверх экрана, узбекский, тёмная тема",
+   "kind": "title1",
+   "maxW": 9040,
+   "page": "operator"
+  },
+  "t_ops": {
+   "x": 0,
+   "y": -300,
+   "text": "Оператор · окна, шаги и ошибки",
+   "kind": "title1",
+   "maxW": 9040,
+   "page": "opstates"
+  },
+  "t_sys": {
+   "x": 0,
+   "y": -300,
+   "text": "Состояния, карта покрытия, баги из кода",
+   "kind": "title1",
+   "maxW": 4480,
+   "page": "system"
+  },
+  "t_manager_0": {
+   "x": 0,
+   "y": -300,
+   "text": "Менеджер · личное, утро, поверх экрана, особые состояния",
+   "kind": "title1",
+   "maxW": 9040,
+   "page": "manager"
+  },
+  "t_manager_1": {
+   "x": 0,
+   "y": 1890,
+   "text": "Менеджер · пульт и продажи",
+   "kind": "title1",
+   "maxW": 9040,
+   "page": "manager"
+  },
+  "t_manager_2": {
+   "x": 0,
+   "y": 4080,
+   "text": "Менеджер · лиды и команда",
+   "kind": "title1",
+   "maxW": 10560,
+   "page": "manager"
+  },
+  "t_manager_3": {
+   "x": 0,
+   "y": 7080,
+   "text": "Менеджер · смена, деньги, звонки, тёмная тема",
+   "kind": "title1",
+   "maxW": 6000,
+   "page": "manager"
+  },
+  "t_super_0": {
+   "x": 0,
+   "y": -300,
+   "text": "Супер-менеджер · доска ветки и её разделы",
+   "kind": "title1",
+   "maxW": 10560,
+   "page": "super"
+  },
+  "t_super_1": {
+   "x": 0,
+   "y": 1890,
+   "text": "Супер-менеджер · личное, утро, состояния доски, узбекский, тёмная тема",
+   "kind": "title1",
+   "maxW": 9040,
+   "page": "super"
+  },
+  "t_mgmore_0": {
+   "x": 0,
+   "y": -300,
+   "text": "Аналитика, маркетинг, отчёты",
+   "kind": "title1",
+   "maxW": 12080,
+   "page": "mgmore"
+  },
+  "t_mgmore_1": {
+   "x": 0,
+   "y": 2140,
+   "text": "Посещаемость и эфир",
+   "kind": "title1",
+   "maxW": 9040,
+   "page": "mgmore"
+  },
+  "t_mgmore_2": {
+   "x": 0,
+   "y": 3670,
+   "text": "Справочники и настройки",
+   "kind": "title1",
+   "maxW": 12080,
+   "page": "mgmore"
+  },
+  "t_mgmore_3": {
+   "x": 0,
+   "y": 6050,
+   "text": "AI и Telegram",
+   "kind": "title1",
+   "maxW": 6000,
+   "page": "mgmore"
+  },
+  "t_mgmore_4": {
+   "x": 0,
+   "y": 7740,
+   "text": "Люди, журнал, обучение, формы, табло",
+   "kind": "title1",
+   "maxW": 10560,
+   "page": "mgmore"
+  },
+  "t_mgstates_0": {
+   "x": 0,
+   "y": -300,
+   "text": "Менеджер · окна, мастера и ошибки",
+   "kind": "title1",
+   "maxW": 10560,
+   "page": "mgstates"
+  },
+  "t_mgstates_1": {
+   "x": 0,
+   "y": 1990,
+   "text": "Менеджер · окна: учётки, PIN, зарплата, каталог, обучение",
+   "kind": "title1",
+   "maxW": 9040,
+   "page": "mgstates"
+  }
+ },
+ "designSystems": []
+}

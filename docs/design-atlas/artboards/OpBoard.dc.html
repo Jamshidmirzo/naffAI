@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Табло</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 900px">
+<div class="{{wrapCls}}"><dc-import name="SideNav" who="{{who}}" at="board" hint-size="84px,900px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Табло</h1>
+<span class="grow"></span>
+<div class="seg"><button class="is-on" type="button">Сегодня</button><button type="button">Неделя</button><button type="button">Месяц</button></div>
+</header>
+
+<main class="page">
+
+<section class="card row g16 wrap" style="padding: 16px 20px; background: var(--brand-soft); border-color: transparent">
+<span class="rank" style="width: 40px; height: 40px; font-size: 17px; background: var(--surface); color: var(--brand-text)">4</span>
+<div class="col g4 grow"><span class="h3">Ты на 4 месте: 3 продажи сегодня</span><span class="s c2">До третьего места не хватает одной продажи.</span></div>
+<span class="s c3">Обновлено в <span class="num">14:22</span></span>
+</section>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+<sc-for list="{{top}}" as="p" hint-placeholder-count="3">
+<section class="card col g12" style="padding: 20px">
+<div class="row between"><span class="rank {{p.rcls}}">{{p.rank}}</span><span class="badge">{{p.tag}}</span></div>
+<div class="row g12"><span class="ava ava-l">{{p.ini}}</span><span class="col"><span class="h3">{{p.name}}</span><span class="xs c3">{{p.team}}</span></span></div>
+<div class="row between" style="align-items: baseline"><span class="kpi">{{p.count}}</span><span class="num s c2">{{p.sum}} сум</span></div>
+</section>
+</sc-for>
+</div>
+
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: 56px 1.6fr 1fr 120px 180px"><span>Место</span><span>Оператор</span><span>Менеджер</span><span class="r">Продаж</span><span class="r">Сумма, сум</span></div>
+<sc-for list="{{rest}}" as="p" hint-placeholder-count="5">
+<div class="tr {{p.cls}}" style="grid-template-columns: 56px 1.6fr 1fr 120px 180px">
+<span class="rank">{{p.rank}}</span>
+<span class="row g8"><span class="ava ava-s">{{p.ini}}</span><span class="w6">{{p.name}}</span><sc-if value="{{p.me}}" hint-placeholder-val="{{ false }}"><span class="badge b-info">Вы</span></sc-if></span>
+<span class="c2">{{p.team}}</span>
+<span class="r num w6">{{p.count}}</span>
+<span class="r num">{{p.sum}}</span>
+</div>
+</sc-for>
+</section>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"who":{"editor":"enum","options":["operator","manager","super"],"default":"operator"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+theme: this.props.theme ?? 'light',
+who: this.props.who ?? 'operator',
+wrapCls: (this.props.who ?? 'operator') === 'operator' ? 'rail-wrap' : 'side-wrap',
+top: [
+{ rank: 1, rcls: 'r1', tag: 'лидер дня', ini: 'JT', name: 'Jasur Toshmatov', team: 'команда Kamola', count: 6, sum: '58 300 000' },
+{ rank: 2, rcls: '', tag: '+1 за час', ini: 'NS', name: 'Nilufar Saidova', team: 'команда Kamola', count: 5, sum: '47 900 000' },
+{ rank: 3, rcls: '', tag: 'стажёр', ini: 'SK', name: 'Shahlo Komilova', team: 'команда Rustam', count: 4, sum: '39 100 000' }
+],
+rest: [
+{ rank: 4, cls: 'is-sel', me: true, ini: 'GK', name: 'Gulnoza Karimova', team: 'Kamola Ahmedova', count: 3, sum: '33 600 000' },
+{ rank: 5, cls: '', me: false, ini: 'OE', name: 'Otabek Ergashev', team: 'Rustam Yuldashev', count: 3, sum: '27 200 000' },
+{ rank: 6, cls: '', me: false, ini: 'MT', name: 'Malika Tursunova', team: 'Kamola Ahmedova', count: 2, sum: '19 800 000' },
+{ rank: 7, cls: '', me: false, ini: 'AQ', name: 'Aziz Qodirov', team: 'Rustam Yuldashev', count: 1, sum: '10 800 000' },
+{ rank: 8, cls: '', me: false, ini: 'JS', name: 'Javlon Sobirov', team: 'Kamola Ahmedova', count: 0, sum: '0' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

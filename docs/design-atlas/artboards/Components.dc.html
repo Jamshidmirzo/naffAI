@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Компоненты</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1560px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+
+<div class="row between"><h1 class="h1">Компоненты</h1><span class="s c3">из них собраны все экраны · тема в Tweaks</span></div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start">
+
+<section class="card col" style="grid-column: span 2">
+<div class="card-h"><span class="h3">Линия дня оператора</span><span class="xs c3">10:00–20:00, отметки прихода, продаж и перезвонов</span></div>
+<div class="pad col g8">
+<div class="dayline">
+<i class="done" style="width: 43.7%"></i>
+<span class="tick" style="left: 2%">10:00</span><span class="tick" style="left: 20%">12:00</span><span class="tick" style="left: 40%">14:00</span><span class="tick" style="left: 60%">16:00</span><span class="tick" style="left: 80%">18:00</span><span class="tick" style="left: 97%">20:00</span>
+<i class="mk mk-in" style="left: 1%"></i><i class="mk mk-sale" style="left: 16.3%"></i><i class="mk mk-sale" style="left: 30.8%"></i><i class="mk mk-cb" style="left: 53.3%"></i><i class="mk mk-cb" style="left: 65%"></i><i class="mk mk-cb" style="left: 90%"></i>
+<i class="now" style="left: 43.7%"></i>
+</div>
+<p class="xs c3">Индиго до текущего времени — пройденная часть дня. Шафран — перезвоны впереди, зелёный — продажи.</p>
+</div>
+</section>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Слоты и план</span></div>
+<div class="pad col g12">
+<div class="row between s"><span>В работе</span><span class="num w6">4 / 5</span></div>
+<div class="row g4" aria-hidden="true"><i class="slot on"></i><i class="slot on"></i><i class="slot on"></i><i class="slot on"></i><i class="slot"></i></div>
+<div class="row between s"><span>План дня</span><span class="num w6">7 из 10</span></div>
+<div class="bar"><i style="width: 70%"></i></div>
+</div>
+</section>
+
+<section class="card col" style="grid-column: span 2">
+<div class="card-h"><span class="h3">Клавиши итога звонка</span><span class="xs c3">кнопкой или клавишей 1–4</span></div>
+<div class="pad" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<button class="keycap k-ok" type="button"><span class="kbd">1</span><span><b>Продажа</b><span>Оформить продажу по этому лиду</span></span></button>
+<button class="keycap is-on" type="button"><span class="kbd">2</span><span><b>Перезвон</b><span>Выбрано: откроется выбор времени</span></span></button>
+<button class="keycap" type="button"><span class="kbd">3</span><span><b>Не ответил</b><span>Гудки, выключен или отправил SMS</span></span></button>
+<button class="keycap" type="button"><span class="kbd">4</span><span><b>Не купит</b><span>Выбрать причину, лид закроется</span></span></button>
+</div>
+</section>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Поиск и клавиши</span></div>
+<div class="pad col g12">
+<button class="cmd" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg>Найти или сделать<span class="kbd">⌘K</span></button>
+<div class="row g6 wrap xs c3"><span class="kbd">Пробел</span>позвонить<span class="kbd">T</span>Telegram<span class="kbd">O</span>отложить<span class="kbd">N</span>новая продажа</div>
+</div>
+</section>
+
+<section class="card col" style="grid-column: span 2">
+<div class="card-h"><span class="h3">Места в зале</span><span class="xs c3">полоса сверху — состояние, крупная цифра — продажи за день</span></div>
+<div class="floor pad">
+<div class="seat st-call"><span class="s w6">Jasur T.</span><span class="xs c-brand">на звонке · 03:12</span><span class="row between" style="margin-top: auto"><span class="sales">6</span><span class="num xs c3">5/5</span></span></div>
+<div class="seat st-wait"><span class="s w6">Gulnoza K.</span><span class="xs c-ok">ждёт лид</span><span class="row between" style="margin-top: auto"><span class="sales">3</span><span class="num xs c3">4/5</span></span></div>
+<div class="seat st-pause"><span class="s w6">Shahlo K.</span><span class="xs c-warn">пауза · 12 мин</span><span class="row between" style="margin-top: auto"><span class="sales">4</span><span class="num xs c3">2/5</span></span></div>
+<div class="seat st-late"><span class="s w6">Javlon S.</span><span class="xs c-bad">опоздал · 33 мин</span><span class="row between" style="margin-top: auto"><span class="sales">1</span><span class="num xs c3">3/5</span></span></div>
+<div class="seat st-off"><span class="s w6">Dilshod Y.</span><span class="xs c3">не пришёл</span><span class="row between" style="margin-top: auto"><span class="sales" style="color: var(--ink-4)">0</span><span class="num xs c3">—</span></span></div>
+<div class="seat st-call"><span class="s w6">Nilufar S.</span><span class="xs c-brand">на звонке · 01:40</span><span class="row between" style="margin-top: auto"><span class="sales">5</span><span class="num xs c3">5/5</span></span></div>
+</div>
+</section>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Доска ветки</span></div>
+<div class="pad col g8" style="background: var(--surface-3); border-radius: 0 0 14px 14px">
+<div class="bcard"><span class="ava ava-s" data-s="on">OE</span><span class="s w6 grow">Otabek Ergashev</span><span class="num xs c3">16 прод.</span></div>
+<div class="bcard dragging"><span class="ava ava-s" data-s="call">AQ</span><span class="s w6 grow">Aziz Qodirov</span><span class="num xs c3">8 прод.</span></div>
+<div class="bcard ghost"><span class="ava ava-s">AQ</span><span class="s grow c3">место, откуда тянут</span></div>
+</div>
+</section>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Кнопки</span></div>
+<div class="pad col g12">
+<div class="row g8 wrap"><button class="btn btn-pri" type="button">Главное</button><button class="btn" type="button">Обычная</button><button class="btn btn-ghost" type="button">Без рамки</button></div>
+<div class="row g8 wrap"><button class="btn btn-ok" type="button">Одобрить</button><button class="btn btn-bad" type="button">Отклонить</button><button class="btn btn-danger" type="button">Удалить</button></div>
+<div class="row g8 wrap" style="align-items: center"><button class="btn btn-pri btn-sm" type="button">30</button><button class="btn btn-pri" type="button">36</button><button class="btn btn-pri btn-lg" type="button">46</button><button class="btn" type="button" disabled="{{yes}}">Недоступна</button></div>
+</div>
+</section>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Поля и ошибки</span></div>
+<div class="pad col g12">
+<div class="field"><label for="cp1">Телефон клиента</label><div class="row g8"><span class="pfx" style="height: 40px; font-size: 14px; border-radius: 9px" aria-hidden="true">+998</span><input class="input num grow" id="cp1" type="tel" value="90 123 45 67"></div></div>
+<div class="field"><label for="cp2">IMEI</label><input class="input num is-bad" id="cp2" type="text" value="35 693108 12345"><span class="err">Нужно 15 цифр, сейчас 14</span></div>
+<div class="field"><label for="cp3">IMEI</label><input class="input num is-warn" id="cp3" type="text" value="35 693108 123456 9"><span class="hint c-warn" style="color: var(--warn)">Похоже на опечатку, проверьте. Отправить всё равно можно</span></div>
+</div>
+</section>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Выбор</span></div>
+<div class="pad col g12">
+<div class="row g8 wrap"><button class="chip is-on" type="button">Сегодня <span class="n">3</span></button><button class="chip" type="button">Вчера <span class="n">2</span></button><button class="chip" type="button">Все дни</button></div>
+<div class="seg" style="align-self: flex-start"><button class="is-on" type="button">Фокус</button><button type="button">Список</button></div>
+<div class="row g16 s"><span class="row g8"><button class="switch is-on" type="button" aria-label="Включено"><i></i></button>вкл</span><span class="row g8"><button class="switch" type="button" aria-label="Выключено"><i></i></button>выкл</span><label class="row g8"><input class="check" type="checkbox" checked="{{yes}}">выбрано</label></div>
+</div>
+</section>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Статусы и люди</span></div>
+<div class="pad col g12">
+<div class="row g6 wrap"><span class="badge"><i class="dot"></i>Нейтральный</span><span class="badge b-info"><i class="dot"></i>Индиго</span><span class="badge b-hot"><i class="dot"></i>Горячий</span><span class="badge b-warn"><i class="dot"></i>Шафран</span><span class="badge b-ok"><i class="dot"></i>Зелёный</span><span class="badge b-bad"><i class="dot"></i>Гранат</span></div>
+<div class="row g16 wrap s"><span class="row g6"><span class="ava" data-s="call">JT</span>звонок</span><span class="row g6"><span class="ava" data-s="on">GK</span>свободен</span><span class="row g6"><span class="ava" data-s="pause">SK</span>пауза</span><span class="row g6"><span class="ava" data-s="late">JS</span>опоздал</span></div>
+</div>
+</section>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Пусто с орнаментом</span></div>
+<div class="col" style="align-items: center; gap: 10px; padding: 0 0 20px">
+<i class="ikat-soft" style="width: 100%; height: 56px" aria-hidden="true"></i>
+<span class="h3">Все лиды закрыты</span>
+<span class="s c3" style="text-align: center; padding: 0 20px">Новые придут сами, обычно за несколько минут.</span>
+</div>
+</section>
+
+<section class="card tbl" style="grid-column: span 3">
+<div class="card-h"><span class="h3">Таблица</span><span class="xs c3">сортировка по клику на заголовок · выбранная строка подсвечена</span></div>
+<div class="tr th" style="grid-template-columns: 1.4fr 1fr 120px 160px 150px"><button class="th-s" type="button">Оператор</button><span>Партнёр</span><button class="th-s is-on r" type="button">Продаж <svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"></path></svg></button><span class="r">Сумма, сум</span><span>Статус</span></div>
+<div class="tr" style="grid-template-columns: 1.4fr 1fr 120px 160px 150px"><span class="row g8"><span class="ava ava-s">JT</span>Jasur Toshmatov</span><span class="c2">Alif</span><span class="r num w6">31</span><span class="r num">313 100 000</span><span><span class="badge b-ok"><i class="dot"></i>Подтверждена</span></span></div>
+<div class="tr is-sel" style="grid-template-columns: 1.4fr 1fr 120px 160px 150px"><span class="row g8"><span class="ava ava-s">GK</span>Gulnoza Karimova</span><span class="c2">Alif + Uzum</span><span class="r num w6">18</span><span class="r num">187 200 000</span><span><span class="badge b-warn"><i class="dot"></i>Ждёт</span></span></div>
+<div class="tr" style="grid-template-columns: 1.4fr 1fr 120px 160px 150px"><span class="row g8"><span class="ava ava-s">SK</span>Shahlo Komilova</span><span class="c2">Cash</span><span class="r num w6">19</span><span class="r num">171 300 000</span><span><span class="badge b-bad"><i class="dot"></i>Отклонена</span></span></div>
+</section>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1560}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light', yes: true };
+}
+}
+</script>
+</body>
+</html>

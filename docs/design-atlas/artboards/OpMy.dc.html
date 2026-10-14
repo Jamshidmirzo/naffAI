@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Мои лиды · фокус</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 960px">
+<div class="rail-wrap"><dc-import name="SideNav" who="operator" at="my" hint-size="84px,960px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Мои лиды</h1>
+<div class="seg"><a class="is-on" href="OpMy.dc.html" aria-current="page">Фокус</a><a href="OpMyList.dc.html">Список</a></div>
+<span class="badge b-ok" style="height: 28px"><i class="dot"></i>На смене <span class="num">02:15:08</span></span>
+<span class="grow"></span>
+<div class="col g4" style="width: 150px">
+<div class="row between xs"><span class="c3">В работе</span><span class="num w6">4 / 5</span></div>
+<div class="row g4" aria-hidden="true"><i class="slot on"></i><i class="slot on"></i><i class="slot on"></i><i class="slot on"></i><i class="slot"></i></div>
+</div>
+<div class="col g4" style="width: 150px">
+<div class="row between xs"><span class="c3">План дня</span><span class="num w6">7 из 10</span></div>
+<div class="bar" style="height: 8px" aria-hidden="true"><i style="width: 70%"></i></div>
+</div>
+<a class="btn btn-pri" href="OpSale.dc.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Новая продажа</a>
+</header>
+
+<main class="page" style="gap: 16px">
+
+<section class="col g6" aria-label="Линия дня">
+<div class="dayline">
+<i class="done" style="width: 43.7%"></i>
+<sc-for list="{{ticks}}" as="t" hint-placeholder-count="11"><span class="tick" style="left: {{t.x}}%">{{t.h}}</span></sc-for>
+<sc-for list="{{marks}}" as="m" hint-placeholder-count="6"><i class="mk {{m.cls}}" style="left: {{m.x}}%" title="{{m.title}}"></i></sc-for>
+<i class="now" style="left: 43.7%"></i>
+</div>
+<div class="row g16 xs c3">
+<span class="row g6"><i class="dot" style="color: var(--brand)"></i>пришла в <span class="num">09:58</span></span>
+<span class="row g6"><i class="dot" style="color: var(--ok-solid)"></i>продажи: <span class="num">2</span></span>
+<span class="row g6"><i class="dot" style="color: var(--warn-solid)"></i>перезвоны впереди: <span class="num">3</span>, ближайший в <span class="num">15:20</span></span>
+<span class="grow"></span>
+<span>Сегодня <span class="num">27</span> звонков, в среднем <span class="num">2:14</span></span>
+</div>
+</section>
+
+<div class="row g20" style="align-items: stretch; flex-wrap: wrap">
+
+<section class="focus" style="flex: 999 1 640px; min-width: 0" aria-label="Текущий лид">
+<div class="row g8 wrap">
+<span class="badge {{cur.tone}}"><i class="dot"></i>{{cur.status}}</span>
+<sc-if value="{{cur.hot}}" hint-placeholder-val="{{ true }}"><span class="badge b-hot"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a6 6 0 0 0 6-6c0-3-2-5-3-7-.5 2-2 3-3 3 .5-3-1-6-3-8 0 4-3 6-3 11a6 6 0 0 0 6 7z"></path></svg>{{cur.hot}}</span></sc-if>
+<span class="s c3">{{cur.source}}</span>
+<span class="grow"></span>
+<span class="xs c3">лид <span class="num">{{pos}}</span> из <span class="num">6</span></span>
+</div>
+
+<div class="row g24 wrap" style="align-items: flex-end">
+<div class="col g8 grow">
+<h2 class="display" style="font-size: 32px; line-height: 40px">{{cur.name}}</h2>
+<div class="row g8"><span class="num" style="font-size: 24px; font-weight: 600">{{cur.phone}}</span><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Скопировать номер"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h11v11H9zM5 15V4h11"></path></svg></button></div>
+</div>
+<button class="btn btn-ok btn-xl" type="button"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"></path></svg>Позвонить<span class="kbd" style="background: transparent; color: #FFFFFF; border-color: rgba(255,255,255,.5)">Пробел</span></button>
+</div>
+
+<div class="row g8 wrap">
+<span class="chip">{{cur.product}}</span>
+<sc-for list="{{cur.facts}}" as="f" hint-placeholder-count="2"><span class="chip">{{f}}</span></sc-for>
+</div>
+
+<sc-if value="{{cur.tip}}" hint-placeholder-val="{{ true }}">
+<div class="banner b-info"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3z"></path></svg><span>{{cur.tip}}</span></div>
+</sc-if>
+
+<div class="col g8">
+<div class="row between"><span class="lbl">Итог звонка</span><span class="xs c3">после итога сразу откроется следующий лид</span></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<a class="keycap k-ok" href="OpSale.dc.html"><span class="kbd">1</span><span><b>Продажа</b><span>Оформить продажу по этому лиду</span></span></a>
+<a class="keycap" href="OpCallback.dc.html"><span class="kbd">2</span><span><b>Перезвон</b><span>Выбрать время и записать, о чём договорились</span></span></a>
+<a class="keycap" href="OpSheetOutcome.dc.html"><span class="kbd">3</span><span><b>Не ответил</b><span>Гудки, выключен или отправил SMS</span></span></a>
+<a class="keycap" href="OpSheetOutcome.dc.html"><span class="kbd">4</span><span><b>Не купит</b><span>Выбрать причину, лид закроется</span></span></a>
+</div>
+<div class="row g8">
+<button class="btn grow" type="button"><span class="kbd">T</span>Написал в Telegram</button>
+<button class="btn grow" type="button"><span class="kbd">O</span>Отложить</button>
+<input class="input grow" type="text" placeholder="Заметка к звонку" aria-label="Заметка к звонку" style="flex: 2 1 0">
+</div>
+</div>
+
+<div class="col g6">
+<span class="lbl">История</span>
+<sc-for list="{{cur.hist}}" as="h" hint-placeholder-count="2">
+<div class="row between g12 s"><span class="c2">{{h.what}}</span><span class="num xs c3" style="flex: none">{{h.when}}</span></div>
+</sc-for>
+</div>
+</section>
+
+<aside class="col g12" style="flex: 1 1 340px; min-width: 0" aria-label="Очередь">
+<section class="card col">
+<div class="card-h"><span class="h3">Дальше в очереди</span><a class="btn btn-ghost btn-sm" href="OpMyList.dc.html">Весь список</a></div>
+<div class="col g4" style="padding: 8px">
+<sc-for list="{{queue}}" as="q" hint-placeholder-count="5">
+<button class="queue-item {{q.cls}}" type="button" onClick="{{q.pick}}" style="text-align: left; width: 100%; background: none">
+<span class="col grow" style="gap: 2px; min-width: 0">
+<span class="row g6"><span class="s w6 trunc">{{q.name}}</span><sc-if value="{{q.hot}}" hint-placeholder-val="{{ false }}"><i class="dot" style="color: var(--hot-solid)"></i></sc-if></span>
+<span class="xs c3 trunc">{{q.reason}}</span>
+</span>
+<span class="badge {{q.tone}}">{{q.status}}</span>
+</button>
+</sc-for>
+</div>
+<hr class="hr">
+<a class="li" href="OpMyList.dc.html" style="min-height: 48px"><span class="s grow">Отложенные</span><span class="cnt cnt-mute">2</span><svg class="ic c3" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></a>
+</section>
+
+<section class="card col g8 pad">
+<div class="row between"><span class="s w6">Слоты</span><span class="num s w6">4 / 5</span></div>
+<div class="row g4" aria-hidden="true"><i class="slot on"></i><i class="slot on"></i><i class="slot on"></i><i class="slot on"></i><i class="slot"></i></div>
+<p class="xs c3">Свободен 1 слот. Закрой любой лид, и автораздача сразу даст новый.</p>
+</section>
+</aside>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+const sel = (this.state && this.state.sel) || 'l1';
+const all = [
+{ id: 'l1', name: 'Sardor Aliyev', phone: '+998 90 123 45 67', status: 'Новый', tone: 'b-info', hot: 'ТЕЗ 12:40', source: 'Instagram · таблица «Октябрь»', product: 'iPhone 15 Pro 256 GB', facts: ['Есть карта', 'Назначен в 14:02'], tip: 'Горячий лид: позвони, пока не истёк таймер. Начни с платежа: от 1 333 000 сум в месяц на 12 месяцев.', reason: 'горячий, назначен в 14:02', hist: [{ what: 'Назначен автораздачей', when: 'сегодня 14:02' }, { what: 'Заявка из Google-таблицы «Октябрь»', when: 'сегодня 14:01' }] },
+{ id: 'l2', name: 'Dilnoza Yusupova', phone: '+998 93 456 78 90', status: 'Callback', tone: 'b-info', hot: '', source: 'Telegram-бот', product: 'Samsung Galaxy S24', facts: ['Перезвон в 16:30', 'Звонков: 2'], tip: 'Обещала перезвонить после зарплаты в пятницу. Уточни, удобна ли рассрочка на 12 месяцев.', reason: 'перезвон в 16:30', hist: [{ what: 'Перезвон назначен на 16:30', when: 'сегодня 11:15' }, { what: 'Разговор 3 мин: ждёт зарплату', when: 'сегодня 11:12' }] },
+{ id: 'l3', name: 'Madina Rahimova', phone: '+998 99 555 01 02', status: 'Показалось дорого', tone: 'b-hot', hot: '', source: 'Facebook', product: 'iPhone 13 128 GB', facts: ['Звонили вчера', 'Уже звонил Jasur'], tip: 'Клиент сказал дорого — предложи рассрочку или скидку.', reason: 'вернулась в работу в 09:30', hist: [{ what: 'Вернулась в работу автоматически', when: 'сегодня 09:30' }, { what: 'Показалось дорого', when: 'вчера 15:20' }] },
+{ id: 'l4', name: 'Jasur Toshmatov', phone: '+998 97 111 22 33', status: 'Не ответил 1', tone: '', hot: '', source: 'Instagram', product: 'Redmi Note 13', facts: ['Звонков: 1'], tip: '', reason: 'не взял трубку в 11:40', hist: [{ what: 'Не ответил, гудки', when: 'сегодня 11:40' }] },
+{ id: 'l5', name: 'Bekzod Nazarov', phone: '+998 91 700 00 11', status: 'Телефон включён', tone: 'b-info', hot: '', source: 'Instagram', product: 'Honor X9b', facts: ['Звонили вчера', 'Звонков: 3'], tip: 'Вчера 18:05 — телефон включён, но не ответил. Попробуй написать в Telegram.', reason: 'вчера не ответил', hist: [{ what: 'Телефон включён, не берёт', when: 'вчера 18:05' }] },
+{ id: 'l6', name: 'Без имени', phone: '+998 95 010 20 30', status: 'Новый', tone: 'b-info', hot: '', source: 'Сайт', product: 'Модель не указана', facts: [], tip: '', reason: 'с сайта, без имени', hist: [{ what: 'Заявка с сайта', when: 'сегодня 13:55' }] }
+];
+const idx = all.findIndex((x) => x.id === sel);
+const cur = all[idx < 0 ? 0 : idx];
+const hours = ['10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20'];
+const pct = (h, m) => Math.round(((h - 10) * 60 + m) / 600 * 1000) / 10;
+return {
+theme: this.props.theme ?? 'light',
+cur: cur,
+pos: (idx < 0 ? 0 : idx) + 1,
+ticks: hours.map((h, i) => ({ h: h + ':00', x: i === 0 ? 2 : i === 10 ? 97 : i * 10 })),
+marks: [
+{ cls: 'mk-in', x: 1, title: 'пришла 09:58' },
+{ cls: 'mk-sale', x: pct(11, 38), title: 'продажа 11:38' },
+{ cls: 'mk-sale', x: pct(13, 5), title: 'продажа 13:05' },
+{ cls: 'mk-cb', x: pct(15, 20), title: 'перезвон 15:20' },
+{ cls: 'mk-cb', x: pct(16, 30), title: 'перезвон 16:30' },
+{ cls: 'mk-cb', x: pct(19, 0), title: 'перезвон 19:00' }
+],
+queue: all.filter((x) => x.id !== cur.id).map((x, i) => Object.assign({}, x, { cls: i === 0 ? 'is-next' : '', pick: () => this.setState({ sel: x.id }) }))
+};
+}
+}
+</script>
+</body>
+</html>

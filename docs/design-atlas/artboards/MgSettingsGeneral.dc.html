@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Настройки: общие</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1300px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="settings" hint-size="248px,1300px"></dc-import></div>
+<div class="main-col">
+<header class="top"><h1 class="h1">Настройки</h1><span class="grow"></span><span class="s c3">каждое изменение попадает в журнал</span></header>
+<main class="page">
+<div class="row g24" style="align-items: flex-start; flex-wrap: wrap">
+<nav class="sub-nav" aria-label="Разделы настроек">
+<a class="is-on" href="MgSettingsGeneral.dc.html" aria-current="page">Общие</a>
+<a href="MgAttSettings.dc.html">Смены и зарплата</a>
+<a href="MgSettings.dc.html">Статусы лидов</a>
+<a href="MgSheets.dc.html">Источники лидов</a>
+<a href="MgCatalog.dc.html">Каталог и рассрочка</a>
+<a href="MgPartners.dc.html">Партнёры</a>
+<a href="MgBot.dc.html">Telegram-бот</a>
+<a href="MgUsers.dc.html">Пользователи</a>
+<a href="MgTraining.dc.html">Обучение</a>
+</nav>
+<div class="col g16 grow" style="min-width: 0; max-width: 860px">
+<p class="s c3">Глобальные тумблеры и правила системы</p>
+
+<section class="card col">
+<div class="card-h"><div class="col"><span class="h3">Авто-распределение лидов</span><span class="xs c3">Изменено 12.10.2026 — Kamola Ahmedova</span></div><button class="switch is-on" type="button" aria-label="Авто-распределение включено"><i></i></button></div>
+<p class="s c2" style="padding: 14px 20px">Если выключено — утренний split, доливка и watcher не работают. Все лиды распределяются менеджером вручную из «Свободных лидов».</p>
+</section>
+
+<section class="card col">
+<div class="card-h"><div class="col"><span class="h3">Блокировка при спец-лидах</span><span class="xs c3">Изменено 14.10.2026 — Bobur Xolmatov</span></div><button class="switch" type="button" aria-label="Блокировка при спец-лидах выключена"><i></i></button></div>
+<div class="col g12" style="padding: 14px 20px 16px">
+<p class="s c2">Если включено — оператору не выдаются новые лиды, пока у него есть просроченный/скорый callback или хотя бы один лид в блокирующем статусе (например «Не взял трубку», «Долг», «Телефон включён»). Статусы отмечаются на странице <a class="w6 c-brand" href="MgSettings.dc.html">«Статусы лидов»</a> флажком «Блокирует получение новых лидов».</p>
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>Оператор получает новые лиды даже с необработанными callback'ами и «спец» статусами. Восстановите блокировку, если менеджеры теряют старые заявки.</span></div>
+</div>
+</section>
+
+<section class="card col">
+<div class="card-h"><div class="col"><span class="h3">PIN для «Посещаемости»</span><span class="xs c3">Обновлён 01.10.2026 · Bobur Xolmatov</span></div><span class="badge b-ok"><i class="dot"></i>PIN установлен</span></div>
+<div class="col g12" style="padding: 14px 20px 16px">
+<p class="s c2">Общий 4-значный PIN, который вводят все менеджеры при входе в раздел «Посещаемость». Устанавливать и сбрасывать может только супер-админ.</p>
+<div class="row g8"><a class="btn btn-sm" href="MgSheetPin.dc.html">Сменить PIN</a><a class="btn btn-sm btn-bad" href="MgSheetPin.dc.html">Сбросить PIN</a><span class="xs c3">карточку видит только суперадмин</span></div>
+</div>
+</section>
+
+<span class="when">PIN не задан</span>
+<section class="card col">
+<div class="card-h"><div class="col"><span class="h3">PIN для «Посещаемости»</span></div><span class="badge b-bad"><i class="dot"></i>PIN не установлен</span></div>
+<div class="col g12" style="padding: 14px 20px 16px">
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3"></path></svg><span>PIN не установлен — менеджеры не могут войти в «Посещаемость»</span></div>
+<div class="row g8"><a class="btn btn-sm btn-pri" href="MgSheetPin.dc.html">Установить PIN</a></div>
+</div>
+</section>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start">
+<div class="col g8"><span class="when">Задать / сменить PIN</span>
+<section class="dlg"><div class="dlg-h"><div class="col g4"><h2 class="h2">Сменить общий PIN</h2><span class="s c3">4 цифры. Все активные сессии менеджеров будут инвалидированы.</span></div></div>
+<div class="dlg-b">
+<div class="field"><label for="pn1">Новый PIN</label><input class="input num" id="pn1" type="password" value="4821" style="letter-spacing: .4em"></div>
+<div class="field"><label for="pn2">Повторите PIN</label><input class="input num is-bad" id="pn2" type="password" value="4812" style="letter-spacing: .4em"><span class="err">PIN'ы не совпадают</span></div>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Сохранить</button></div></section></div>
+<div class="col g8"><span class="when">Сбросить PIN</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2">Сбросить общий PIN?</h2></div>
+<div class="dlg-b"><p class="s c2">После сброса все менеджеры получат «PIN не установлен» и не смогут войти в «Посещаемость», пока вы не зададите новый.</p></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-danger" type="button">Сбросить PIN</button></div></section>
+<span class="toast" style="align-self: flex-start; margin-top: 4px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Блокировка при спец-лидах выключена</span>
+</div>
+</div>
+
+</div>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light', yes: true };
+}
+}
+</script>
+</body>
+</html>

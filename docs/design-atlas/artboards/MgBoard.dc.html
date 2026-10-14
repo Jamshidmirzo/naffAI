@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Табло</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1240px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="lboard" hint-size="248px,1240px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<div class="col"><h1 class="h1">Табло</h1><span class="xs c3">Рейтинг операторов по продажам</span></div>
+<span class="grow"></span>
+<span class="xs c3">обновляется каждые <span class="num">60</span> секунд</span>
+<a class="btn" href="MgScreen.dc.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v11H3zM8 20h8M12 16v4"></path></svg>На TV-экран <span class="badge b-info" style="height: 20px">новое</span></a>
+</header>
+
+<main class="page">
+
+<div class="row between wrap g12">
+<div class="seg"><button type="button">Сегодня</button><button type="button">Неделя</button><button class="is-on" type="button">Месяц</button><button type="button">Всё время</button></div>
+<div class="row g16 s c3">
+<span>Операторов: <span class="num w6" style="color: var(--ink)">{{totOps}}</span></span>
+<span>Продаж: <span class="num w6" style="color: var(--ink)">{{totCount}}</span></span>
+<span>Общая сумма: <span class="num w6" style="color: var(--ink)">{{totSum}} сум</span></span>
+</div>
+</div>
+
+<span class="lbl">Топ-5</span>
+<div style="display: grid; grid-template-columns: 1.25fr 1fr 1fr; grid-template-rows: auto auto; gap: 14px">
+<sc-for list="{{top}}" as="p" hint-placeholder-count="5">
+<section class="card col" style="{{p.box}}">
+<div class="row g8"><span class="rank" style="{{p.medal}}">{{p.rank}}</span><span class="ava {{p.avaCls}}" style="background: rgba(21,19,43,.07)">{{p.ini}}</span></div>
+<span class="w6" style="margin-top: 12px; font-size: {{p.nameSize}}; line-height: 1.2; letter-spacing: -.01em">{{p.name}}</span>
+<sc-if value="{{p.trainee}}" hint-placeholder-val="{{ false }}"><span class="xs c3">стажёр</span></sc-if>
+<span class="grow"></span>
+<span class="display" style="margin-top: 12px; font-size: {{p.sumSize}}; line-height: 1; color: {{p.sumColor}}">{{p.mln}}</span>
+<span class="num xs c3" style="margin-top: 6px">{{p.full}} сум</span>
+<span class="num xs c3" style="margin-top: 2px">{{p.count}} · продаж</span>
+</section>
+</sc-for>
+</div>
+
+<div class="row g20" style="align-items: flex-start">
+<section class="card col grow">
+<div class="card-h"><span class="h3">Остальные</span><span class="xs c3">места 6–{{totOps}}</span></div>
+<sc-for list="{{rest}}" as="p" hint-placeholder-count="9">
+<div class="row g12" style="padding: 10px 18px; border-bottom: 1px solid var(--line)">
+<span class="num w6 c3" style="width: 40px">#{{p.rank}}</span>
+<span class="ava">{{p.ini}}</span>
+<span class="col grow" style="min-width: 0"><span class="w5 trunc" style="font-size: 15px">{{p.name}}</span><span class="num xs c3">{{p.sub}}</span></span>
+<span class="num w6" style="font-size: 15px">{{p.full}} сум</span>
+</div>
+</sc-for>
+</section>
+<div class="col g8" style="flex: 0 0 340px">
+<span class="when">Пусто за выбранный период</span>
+<section class="card empty"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"></path></svg><span class="h3" style="color: var(--ink)">Пока нет продаж</span><span class="s">За выбранный период нет ни одной подтверждённой продажи</span></section>
+<span class="xs c3" style="margin-top: 4px">У менеджера строка «Вы» не подсвечивается — она есть только у оператора (OpBoard).</span>
+</div>
+</div>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1240}}'>
+class Component extends DCLogic {
+renderVals() {
+const fmt = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const mln = (n) => (Math.round(n / 100000) / 10).toString().replace('.', ',') + ' млн';
+const ini = (n) => n.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+const data = [
+['Jasur Toshmatov', 31, 312400000, false], ['Nilufar Saidova', 27, 281900000, false], ['Shahlo Komilova', 21, 219600000, true], ['Gulnoza Karimova', 20, 204300000, false], ['Otabek Ergashev', 16, 171800000, false],
+['Javlon Sobirov', 15, 152200000, false], ['Malika Tursunova', 12, 128700000, false], ['Aziz Qodirov', 12, 119500000, false], ['Kamron Ismoilov', 11, 108900000, false], ['Feruza Hamidova', 9, 91400000, true], ['Sanjar Po‘latov', 8, 84100000, false], ['Iroda Tursunova', 7, 69800000, false], ['Dilnoza Yusupova', 5, 48600000, false], ['Rustam Bekov', 3, 27900000, true]
+];
+const medal = ['background: var(--warn-solid); color: #3A2600', 'background: #D8D4CB; color: #2B2723', 'background: #D9A877; color: #4A2408', 'background: var(--surface-3); color: var(--ink-2)', 'background: var(--surface-3); color: var(--ink-2)'];
+const box = [
+'grid-row: 1 / span 2; padding: 26px 24px 22px; min-height: 380px; background: linear-gradient(155deg, var(--warn-bg) 0%, var(--surface) 75%); border-color: var(--warn-solid)',
+'padding: 20px; min-height: 183px; background: linear-gradient(155deg, var(--surface-3) 0%, var(--surface) 80%)',
+'padding: 20px; min-height: 183px; background: linear-gradient(155deg, var(--hot-bg) 0%, var(--surface) 80%)',
+'padding: 20px; min-height: 183px',
+'padding: 20px; min-height: 183px'
+];
+const top = data.slice(0, 5).map((d, i) => ({ rank: i + 1, name: d[0], ini: ini(d[0]), trainee: d[3], count: d[1], full: fmt(d[2]), mln: mln(d[2]), medal: medal[i], box: box[i], avaCls: i === 0 ? 'ava-l' : '', nameSize: i === 0 ? '24px' : '18px', sumSize: i === 0 ? '40px' : '28px', sumColor: i === 0 ? 'var(--warn)' : 'var(--ink)' }));
+const rest = data.slice(5).map((d, i) => ({ rank: i + 6, name: d[0], ini: ini(d[0]), full: fmt(d[2]), sub: d[1] + ' · продаж' + (d[3] ? ' · стажёр' : '') }));
+const totSum = data.reduce((a, d) => a + d[2], 0);
+const totCount = data.reduce((a, d) => a + d[1], 0);
+return { theme: this.props.theme ?? 'light', top: top, rest: rest, totOps: data.length, totCount: totCount, totSum: fmt(totSum) };
+}
+}
+</script>
+</body>
+</html>

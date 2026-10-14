@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Зарплата</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1100px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="payroll" hint-size="248px,1100px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Зарплата</h1>
+<span class="badge"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3"></path></svg>под PIN-кодом</span>
+<span class="grow"></span>
+<span class="s c3">Месяц</span>
+<select class="input" aria-label="Месяц" style="width: 170px"><option>Октябрь 2026</option></select>
+<span class="row g4" style="height: 40px; padding: 0 6px 0 12px; border: 1px solid var(--brand); border-radius: 9px; background: var(--brand-soft)"><button class="btn-ghost s w6 c-brand" type="button" style="border: 0; background: none; padding: 0">Операторы: 13 выбрано</button><svg class="ic ic-s c-brand" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Очистить" style="width: 26px; height: 26px"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></span>
+<button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"></path></svg>Excel</button>
+</header>
+
+<main class="page">
+<div class="row g24 wrap s">
+<span><span class="c3">К выплате всего</span> <span class="num w6">27 650 000</span> <span class="c3">сум</span></span>
+<span><span class="c3">Прошли оба порога</span> <span class="num w6">7</span> <span class="c3">из 13</span></span>
+<span><span class="c3">Пороги</span> <span class="num">85%</span> <span class="c3">посещаемость и</span> <span class="num">85%</span> <span class="c3">продажи</span></span>
+<span class="badge b-info" style="height: 20px">новое</span>
+</div>
+<div class="split">
+
+<section class="list card tbl">
+<div class="tr th" style="grid-template-columns: minmax(0, 1fr) 96px 96px 84px 84px 104px"><span>Оператор</span><span class="r">План</span><span class="r">Продано</span><span>Посещ.</span><span>Продажи</span><button class="th-s is-on r" type="button">К выплате</button></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+<div class="tr {{r.cls}}" style="grid-template-columns: minmax(0, 1fr) 96px 96px 84px 84px 104px">
+<span class="row g8" style="min-width: 0"><span class="ava ava-s">{{r.ini}}</span><span class="w6 trunc">{{r.name}}</span></span>
+<span class="r num s c2">{{r.plan}}</span>
+<span class="r num s">{{r.sold}}</span>
+<span class="row g4 num s w6 {{r.attC}}"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.attIc}}"></path></svg>{{r.att}}</span>
+<span class="row g4 num s w6 {{r.salC}}"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.salIc}}"></path></svg>{{r.sal}}</span>
+<span class="r num w6 {{r.payC}}">{{r.pay}}</span>
+</div>
+</sc-for>
+<div class="row between xs c3" style="padding: 12px 16px; border-top: 1px solid var(--line)"><span>Строка открывает разбор по дням</span><span>13 из 38 операторов</span></div>
+</section>
+
+<aside class="panel card col" style="flex: 0 0 400px">
+<div class="card-h"><div class="col"><span class="h3">Gulnoza Karimova</span><span class="xs c3">График: 10:00–20:00 · grace 15 мин</span></div><div class="row g6"><button class="btn btn-sm" type="button">Excel</button><button class="btn btn-sm" type="button">PDF</button></div></div>
+<div class="col g12" style="padding: 16px 18px">
+<div class="well row between"><div class="col g4"><span class="lbl">К выплате</span><span class="kpi" style="color: var(--ink-3)">0</span></div><span class="num xs c3">из 3 000 000</span></div>
+
+<div class="col g8" style="padding: 12px 14px; border-radius: 11px; border: 1px solid var(--ok-solid); background: var(--ok-bg)">
+<div class="row between"><span class="s w6">Посещаемость</span><svg class="ic c-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg></div>
+<div class="row g6" style="align-items: baseline"><span class="num w7 c-ok" style="font-size: 18px">1 400 000</span><span class="xs c3">из 1 500 000</span></div>
+<span class="num xs c3">92% / 85%</span>
+<span class="bar" style="overflow: visible"><i class="ok" style="width: 92%"></i><span style="position: absolute; left: 85%; top: -3px; bottom: -3px; width: 2px; border-radius: 1px; background: var(--ink); opacity: .45"></span></span>
+<span class="num xs c3">11 / 12 дн., опозданий: 2 (−100 000)</span>
+</div>
+
+<div class="col g8" style="padding: 12px 14px; border-radius: 11px; border: 1px solid var(--bad-solid); background: var(--bad-bg)">
+<div class="row between"><span class="s w6">Продажи</span><svg class="ic c-bad" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM15 9l-6 6M9 9l6 6"></path></svg></div>
+<div class="row g6" style="align-items: baseline"><span class="num w7 c3" style="font-size: 18px">0</span><span class="xs c3">из 1 500 000</span></div>
+<span class="num xs c3">78% / 85%</span>
+<span class="bar" style="overflow: visible"><i class="bad" style="width: 78%"></i><span style="position: absolute; left: 85%; top: -3px; bottom: -3px; width: 2px; border-radius: 1px; background: var(--ink); opacity: .45"></span></span>
+<span class="num xs c3">23 400 000 / 30 000 000</span>
+<span class="xs c-bad" style="padding: 6px 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--bad-bg)">До гейта осталось продать на 2 100 000</span>
+</div>
+
+<div class="well col g8">
+<div class="row between"><div class="row g6"><span class="s w6">Личный порог продаж</span><span class="badge">глобальный</span></div><button class="btn btn-sm" type="button">Изменить</button></div>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px"><div class="col g4"><span class="lbl">Порог</span><span class="num w6">25 000 000</span></div><div class="col g4"><span class="lbl">Формула выплаты</span><span class="s w6">3,5% от суммы сверх порога</span></div></div>
+</div>
+</div>
+<hr class="hr">
+<div class="col g6" style="padding: 14px 18px 18px">
+<span class="lbl">По дням</span>
+<sc-for list="{{days}}" as="d" hint-placeholder-count="5">
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) auto 76px; gap: 10px; align-items: center; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2)">
+<span class="col" style="min-width: 0"><span class="s w6 trunc">{{d.date}} <span class="xs w5 {{d.c}}">{{d.label}}</span></span><sc-if value="{{d.note}}" hint-placeholder-val="{{ false }}"><span class="xs c3 trunc">{{d.note}}</span></sc-if></span>
+<span class="num xs c3">{{d.time}}</span>
+<span class="num xs w6 r {{d.dedC}}" style="text-align: right">{{d.ded}}</span>
+</div>
+</sc-for>
+</div>
+</aside>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+renderVals() {
+const OK = 'M5 12l5 5 9-10';
+const NO = 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM15 9l-6 6M9 9l6 6';
+const r = (cls, ini, name, plan, sold, att, sal, pay) => ({ cls: cls, ini: ini, name: name, plan: plan, sold: sold, att: att + '%', attC: att >= 85 ? 'c-ok' : 'c-bad', attIc: att >= 85 ? OK : NO, sal: sal + '%', salC: sal >= 85 ? 'c-ok' : 'c-bad', salIc: sal >= 85 ? OK : NO, pay: pay, payC: pay === '0' ? 'c3' : '' });
+const d = (date, label, c, note, time, ded) => ({ date: date, label: label, c: c, note: note, time: time, ded: ded, dedC: ded === '—' ? 'c3' : 'c-bad' });
+return {
+theme: this.props.theme ?? 'light',
+rows: [
+r('', 'JT', 'Jasur Toshmatov', '30 000 000', '31 200 000', 100, 104, '4 210 000'),
+r('', 'NS', 'Nilufar Saidova', '30 000 000', '27 300 000', 96, 91, '3 520 000'),
+r('is-sel', 'GK', 'Gulnoza Karimova', '30 000 000', '23 400 000', 92, 78, '0'),
+r('', 'SK', 'Shahlo Komilova', '20 000 000', '14 400 000', 88, 72, '0'),
+r('', 'OE', 'Otabek Ergashev', '30 000 000', '19 800 000', 83, 66, '0'),
+r('', 'MT', 'Malika Tursunova', '20 000 000', '17 400 000', 92, 87, '3 150 000'),
+r('', 'JS', 'Javlon Sobirov', '30 000 000', '17 400 000', 75, 58, '0'),
+r('', 'AQ', 'Aziz Qodirov', '30 000 000', '26 700 000', 100, 89, '5 470 000'),
+r('', 'DY', 'Dilshod Yo‘ldoshev', '30 000 000', '12 300 000', 71, 41, '0'),
+r('', 'SR', 'Sardor Rahimov', '25 000 000', '24 100 000', 96, 96, '4 380 000'),
+r('', 'MX', 'Madina Xoliqova', '25 000 000', '22 500 000', 92, 90, '3 640 000'),
+r('', 'BN', 'Bekzod Nurmatov', '20 000 000', '9 600 000', 79, 48, '0'),
+r('', 'ZA', 'Zarina Abdullayeva', '20 000 000', '18 200 000', 100, 91, '3 280 000')
+],
+days: [
+d('Пн, 13 окт', 'Опоздание', 'c-warn', 'Пробка на Чиланзаре, предупредила', '10:22 → 19:04', '−50 000'),
+d('Вс, 12 окт', 'Выходной', 'c3', '', '—', '—'),
+d('Сб, 11 окт', 'Вовремя', 'c-ok', '', '09:56 → 20:02', '—'),
+d('Пт, 10 окт', 'Прощённый пропуск', 'c-brand', 'Больничный, справка у менеджера', '—', '—'),
+d('Чт, 9 окт', 'Опоздание', 'c-warn', '', '10:31 → 20:00', '−50 000')
+]
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>История разборов</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 900px">
+<div class="rail-wrap"><dc-import name="SideNav" who="operator" at="lessons" hint-size="84px,900px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Обучение</h1>
+<div class="seg"><a href="OpLessons.dc.html">Урок дня</a><a class="is-on" href="OpLessonsHistory.dc.html" aria-current="page">История разборов</a><a href="OpTraining.dc.html">Курсы</a></div>
+<span class="grow"></span>
+<span class="s c3"><span class="num">23</span> разбора · <span class="num">2</span> не прочитаны</span>
+</header>
+
+<main class="page">
+<div class="split">
+<section class="list card col">
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+<button class="row-item {{r.cls}}" type="button" onClick="{{r.pick}}" style="width: 100%; text-align: left; background: none; border-left: 0; border-right: 0; border-top: 0">
+<span class="col" style="width: 120px; flex: none"><span class="s w6">{{r.date}}</span><span class="xs c3">{{r.day}}</span></span>
+<span class="s grow trunc">{{r.focus}}</span>
+<span class="num xs c3" style="width: 120px">{{r.stats}}</span>
+<sc-if value="{{r.unread}}" hint-placeholder-val="{{ false }}"><span class="badge b-info">не прочитан</span></sc-if>
+<svg class="ic c3" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+</button>
+</sc-for>
+</section>
+
+<aside class="panel card col">
+<div class="card-h"><div class="col"><span class="lbl">Разбор за {{cur.date}}</span><span class="h3">{{cur.focus}}</span></div></div>
+<div class="row g24" style="padding: 16px 20px">
+<div class="col g4"><span class="lbl">Продаж</span><span class="kpi" style="font-size: 22px">{{cur.sales}}</span></div>
+<div class="col g4"><span class="lbl">Диалогов</span><span class="kpi" style="font-size: 22px">{{cur.talks}}</span></div>
+<div class="col g4"><span class="lbl">Качество</span><span class="kpi" style="font-size: 22px">{{cur.score}}</span></div>
+</div>
+<hr class="hr">
+<div class="col g12" style="padding: 16px 20px 20px">
+<div class="col g4"><span class="lbl">Ключевой инсайт</span><p class="s">{{cur.insight}}</p></div>
+<div class="col g4"><span class="lbl">Что подтянуть</span><p class="s">{{cur.improve}}</p></div>
+</div>
+</aside>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const sel = (this.state && this.state.sel) || 0;
+const data = [
+{ date: '14.10', day: 'вторник', focus: 'Называй платёж раньше цены', stats: '18 · 2 · 11%', unread: true, sales: '2', talks: '18', score: '7/10', insight: '4 из 6 отказов «дорого» случились после полной суммы.', improve: 'Начинай с ежемесячного платежа и срока.' },
+{ date: '13.10', day: 'понедельник', focus: 'Записывай итог каждого звонка', stats: '22 · 3 · 14%', unread: true, sales: '3', talks: '22', score: '8/10', insight: 'Без заметки два перезвона ушли в «не помнит разговор».', improve: 'Одна строка заметки после каждого звонка.' },
+{ date: '11.10', day: 'суббота', focus: 'Перезванивай в обещанное время', stats: '15 · 2 · 13%', unread: false, sales: '2', talks: '15', score: '7/10', insight: 'Перезвон вовремя дал 2 продажи из 3.', improve: 'Ставь напоминание при каждом «перезвоните».' },
+{ date: '10.10', day: 'пятница', focus: 'Сравнивай две модели', stats: '20 · 1 · 5%', unread: false, sales: '1', talks: '20', score: '6/10', insight: 'Клиенты чаще решаются, когда видят выбор.', improve: 'Предлагай ближайшую дешевле и дороже.' },
+{ date: '09.10', day: 'четверг', focus: 'Фото договора сразу', stats: '17 · 2 · 12%', unread: false, sales: '2', talks: '17', score: '8/10', insight: 'Отклонений из-за фото не было.', improve: 'Так держать.' }
+];
+return {
+theme: this.props.theme ?? 'light',
+cur: data[sel],
+rows: data.map((d, i) => Object.assign({}, d, { cls: i === sel ? 'is-sel' : '', pick: () => this.setState({ sel: i }) }))
+};
+}
+}
+</script>
+</body>
+</html>

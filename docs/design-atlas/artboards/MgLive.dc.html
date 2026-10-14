@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Live-эфир</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1080px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="live" hint-size="248px,1080px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Live-эфир операторов</h1>
+<div class="seg"><a class="is-on" href="MgLive.dc.html" aria-current="page">Сейчас</a><a href="MgLiveArchive.dc.html">Архив</a></div>
+<span class="grow"></span>
+<span class="badge b-ok"><i class="dot"></i>Подключено к LiveKit</span>
+<span class="s c3">В эфире: <span class="num w6" style="color: var(--ink)">8</span></span>
+</header>
+
+<main class="page">
+<section class="card row g16" style="padding: 14px 16px; border-color: var(--ok-solid); background: var(--ok-bg)">
+<span class="icon-tile t-ok"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h11v10H4zM15 11l5-3v8l-5-3z"></path></svg></span>
+<span class="col grow"><span class="h3 c-ok">Live-эфир включён</span><span class="xs c2">При выключении все webcam-стримы остановятся в течение 10 секунд, сервер разгрузится. После включения операторы подхватят эфир автоматически.</span></span>
+<button class="btn btn-danger" type="button">Выключить всех</button>
+</section>
+
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{tiles}}" as="t" hint-placeholder-count="8">
+<button class="card col" type="button" style="overflow: hidden; padding: 0; text-align: left">
+<span class="ph" style="display: flex; aspect-ratio: 16 / 9; border: 0; border-radius: 0; background: #15132B; color: #A09DB2; position: relative; width: 100%"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h11v10H4zM15 11l5-3v8l-5-3z"></path></svg><span class="row g4" style="position: absolute; left: 8px; top: 8px; height: 20px; padding: 0 8px; border-radius: 99px; background: var(--bad-solid); color: #FFFFFF; font-size: 10px; font-weight: 700; letter-spacing: .04em"><i class="dot" style="background: #FFFFFF"></i>LIVE</span></span>
+<span class="s w6 trunc" style="padding: 9px 12px">{{t.name}}</span>
+</button>
+</sc-for>
+</div>
+<p class="xs c3" style="margin-top: -8px">Эфир идёт только у операторов, которым включён «Live-эфир» в карточке. Клик по плитке — крупный просмотр со звуком.</p>
+
+<div class="row g20" style="align-items: flex-start">
+<div class="col g8" style="flex: 1.3 1 0; min-width: 0">
+<span class="when">Клик по плитке · крупный просмотр</span>
+<section class="card" style="overflow: hidden">
+<div class="row between" style="padding: 8px 14px; background: #15132B; color: #FFFFFF"><span class="s w6">Gulnoza Karimova</span><span class="row g12 xs"><label class="row g6"><input class="check" type="checkbox" checked="{{yes}}">Звук</label><button class="btn btn-sm" type="button" style="background: transparent; border-color: rgba(255,255,255,.25); color: #FFFFFF">Закрыть</button></span></div>
+<div class="ph" style="aspect-ratio: 16 / 9; border: 0; border-radius: 0; background: #0E0D1A; color: #66637F"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h11v10H4zM15 11l5-3v8l-5-3z"></path></svg>Видео с камеры оператора</div>
+</section>
+</div>
+<div class="col g8" style="flex: 1 1 0; min-width: 0">
+<span class="when">Эфир выключен для всех</span>
+<section class="card row g16" style="padding: 14px 16px; border-color: var(--bad-solid); background: var(--bad-bg)"><span class="col grow"><span class="h3 c-bad">Live-эфир выключен</span><span class="xs c2">Стримы операторов остановлены</span></span><button class="btn btn-ok" type="button">Включить</button></section>
+<span class="when">Подключение и ошибка</span>
+<div class="row g8 s c3"><span class="sk" style="width: 14px; height: 14px; border-radius: 50%"></span>Подключение…</div>
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>Live-эфир не настроен на этом окружении (нет LIVEKIT_* в .env).</span></div>
+<span class="when">Никого нет в эфире</span>
+<section class="card"><div class="empty" style="padding: 28px 20px"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h11v10H4zM15 11l5-3v8l-5-3zM3 3l18 18"></path></svg><span class="s">Сейчас никто не в эфире.</span></div></section>
+</div>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1080}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+theme: this.props.theme ?? 'light',
+yes: true,
+tiles: [
+{ name: 'Jasur Toshmatov' },
+{ name: 'Nilufar Saidova' },
+{ name: 'Gulnoza Karimova' },
+{ name: 'Shahlo Komilova' },
+{ name: 'Otabek Ergashev' },
+{ name: 'Javlon Sobirov' },
+{ name: 'Malika Tursunova' },
+{ name: 'Aziz Qodirov' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

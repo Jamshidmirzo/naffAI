@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Маркетинг · динамика</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1940px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="marketing" hint-size="248px,1940px"></dc-import></div>
+<div class="main-col">
+<header class="top">
+<div class="col"><h1 class="h1">Маркетинг</h1><span class="xs c3">Аналитика источников, воронок и AI-советов</span></div>
+<span class="grow"></span>
+<button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4M4 13a8 8 0 0 0 14 5l2-2M20 20v-4h-4"></path></svg>Обновить AI-анализ</button>
+<button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"></path></svg>Экспорт</button>
+</header>
+<main class="page">
+<div class="row g12 wrap">
+<div class="seg"><button type="button">7 дн</button><button type="button">14 дн</button><button class="is-on" type="button">30 дн</button><button type="button">90 дн</button></div>
+<div class="row g8"><input class="input num" type="text" value="15.09.2026" aria-label="Дата с" style="width: 130px; height: 36px"><span class="c3">—</span><input class="input num" type="text" value="14.10.2026" aria-label="Дата по" style="width: 130px; height: 36px"></div>
+</div>
+
+<div class="tabs">
+<a class="tab" href="MgMarketing.dc.html">Обзор</a>
+<a class="tab" href="MgMarketingSource.dc.html">Источники <span class="num xs c3">8</span></a>
+<a class="tab" href="MgMarketing.dc.html">Паттерны</a>
+<a class="tab is-on" href="MgMarketing2.dc.html" aria-current="page">Динамика</a>
+<a class="tab" href="MgMarketing.dc.html">AI-советы</a>
+<a class="tab" href="#spend">Затраты</a>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{wow}}" as="w" hint-placeholder-count="3">
+<section class="card col g6" style="padding: 16px 18px">
+<span class="lbl">{{w.label}}</span>
+<span class="row g12" style="align-items: baseline"><span class="kpi" style="font-size: 24px; color: var(--ok)">{{w.delta}}</span><span class="s c3 num">{{w.cur}} против {{w.prev}}</span></span>
+</section>
+</sc-for>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start">
+<sc-for list="{{charts}}" as="ch" hint-placeholder-count="2">
+<section class="card col">
+<div class="card-h"><div class="col"><span class="h3">{{ch.title}}</span><span class="xs c3">{{ch.hint}}</span></div>
+<span class="row g12 xs c3"><span class="row g6"><i style="display: block; width: 10px; height: 10px; border-radius: 3px; background: var(--line-2)"></i>Пред. период</span><span class="row g6"><i style="display: block; width: 10px; height: 10px; border-radius: 3px; background: var(--brand)"></i>Текущий</span></span></div>
+<div class="col g8" style="padding: 18px 20px 16px">
+<div class="row" style="align-items: flex-end; gap: 14px; height: 200px; border-bottom: 1px solid var(--line-2)">
+<sc-for list="{{ch.bars}}" as="b" hint-placeholder-count="6">
+<div class="col grow" style="height: 100%; justify-content: flex-end; align-items: center; gap: 4px">
+<span class="num xs c2">{{b.curL}}</span>
+<span class="row" style="align-items: flex-end; gap: 3px; width: 100%; justify-content: center; height: 170px"><i style="display: block; width: 40%; max-width: 22px; height: {{b.prev}}%; background: var(--line-2); border-radius: 4px 4px 0 0"></i><i style="display: block; width: 40%; max-width: 22px; height: {{b.cur}}%; background: var(--brand); border-radius: 4px 4px 0 0"></i></span>
+</div>
+</sc-for>
+</div>
+<div class="row" style="gap: 14px"><sc-for list="{{ch.bars}}" as="b" hint-placeholder-count="6"><span class="grow xs c3 trunc" style="text-align: center">{{b.n}}</span></sc-for></div>
+</div>
+</section>
+</sc-for>
+</div>
+
+<section class="card tbl">
+<div class="card-h"><div class="col"><span class="h3">Когорты по неделям</span><span class="xs c3">Лиды по неделе создания → конверсия за 7 / 30 дней</span></div></div>
+<div class="tr th" style="grid-template-columns: 1.4fr 100px 100px 100px 100px 100px"><span>Неделя</span><span class="r">Лиды</span><span class="r">Прод. 7д</span><span class="r">% 7д</span><span class="r">Прод. 30д</span><span class="r">% 30д</span></div>
+<sc-for list="{{cohorts}}" as="c" hint-placeholder-count="6">
+<div class="tr" style="grid-template-columns: 1.4fr 100px 100px 100px 100px 100px; min-height: 42px"><span class="num s">{{c.w}}</span><span class="r num">{{c.l}}</span><span class="r num">{{c.s7}}</span><span class="r num w6">{{c.r7}}</span><span class="r num">{{c.s30}}</span><span class="r num w6 {{c.c30}}">{{c.r30}}</span></div>
+</sc-for>
+</section>
+
+<span class="when" id="spend">Вкладка «Затраты»</span>
+<section class="card col">
+<div class="card-h"><span class="h3">Добавить расход</span><span class="xs c3">расход попадает в CAC и ROI источника</span></div>
+<div class="col g12" style="padding: 16px 20px 18px">
+<div class="row g8" style="align-items: flex-end">
+<div class="field" style="width: 140px"><label for="sp1">Период, с</label><input class="input num" id="sp1" type="text" value="01.10.2026"></div>
+<div class="field" style="width: 140px"><label for="sp2">по</label><input class="input num" id="sp2" type="text" value="14.10.2026"></div>
+<div class="field grow"><label for="sp3">Источник</label><select class="input" id="sp3"><option>— выбрать sheet-источник —</option><option>Instagram октябрь</option><option>Facebook октябрь</option></select></div>
+<div class="field grow"><label for="sp4">или название</label><input class="input" id="sp4" type="text" value="Bot" placeholder="или введите название (Bot, Manual, …)"></div>
+<div class="field" style="width: 160px"><label for="sp5">Сумма</label><input class="input num" id="sp5" type="text" value="9 000 000" placeholder="Сумма"></div>
+<button class="btn btn-pri" type="button">Сохранить</button>
+</div>
+<input class="input" type="text" placeholder="Заметка (необязательно)" value="Таргет на вечер, 18:00–21:00" aria-label="Заметка">
+<span class="hint">Если выбран sheet-источник, поле «или название» отключено. Без суммы — «Введите положительную сумму», без источника — «Выберите источник или введите название».</span>
+</div>
+</section>
+
+<section class="card tbl">
+<div class="card-h"><span class="h3">История расходов</span><span class="s">Всего: <span class="num w6">100 500 000</span></span></div>
+<div class="tr th" style="grid-template-columns: 200px 1.1fr 170px 1.4fr 36px"><span>Период</span><span>Источник</span><span class="r">Сумма</span><span>Заметка</span><span></span></div>
+<sc-for list="{{spend}}" as="s" hint-placeholder-count="6">
+<div class="tr" style="grid-template-columns: 200px 1.1fr 170px 1.4fr 36px">
+<span class="num s">{{s.p}}</span><span class="s w6">{{s.src}}</span>
+<input class="input num {{s.inCls}}" type="text" value="{{s.sum}}" aria-label="Сумма расхода: {{s.src}}" style="height: 34px; text-align: right">
+<span class="s c3 trunc">{{s.note}}</span>
+<button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Удалить" title="Удалить" style="color: var(--bad)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13"></path></svg></button>
+</div>
+</sc-for>
+</section>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; align-items: start">
+<div class="col g8"><span class="when">Удаление строки</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2">Удалить эту запись?</h2></div><div class="dlg-b"><p class="s c2">Facebook октябрь · 01–14.10 · 21 000 000 сум</p></div><div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-danger" type="button">Удалить</button></div></section></div>
+<div class="col g8"><span class="when">Тосты</span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Расход добавлен</span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Расход удалён</span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: #FF8FA9"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg>Введите положительную сумму</span></div>
+<div class="col g8"><span class="when">Расходов ещё нет</span>
+<section class="card"><div class="empty"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v10H4zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg><span class="s">Расходы ещё не введены</span></div></section></div>
+</div>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1940}}'>
+class Component extends DCLogic {
+renderVals() {
+const sp = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const names = ['Instagram', 'Facebook', 'Telegram-бот', 'Сайт', 'TikTok', 'Звонок'];
+const lPrev = [1980, 1050, 760, 398, 54, 54], lCur = [2140, 1320, 780, 412, 96, 64];
+const cPrev = [4.1, 5.0, 4.4, 4.4, 2.8, 4.4], cCur = [4.7, 3.6, 5.3, 4.4, 2.1, 4.7];
+const lMax = Math.max(...lPrev, ...lCur), cMax = Math.max(...cPrev, ...cCur);
+const bars = (prev, cur, max, fmt) => names.map((n, i) => ({ n: n, prev: Math.round(prev[i] / max * 100), cur: Math.round(cur[i] / max * 100), curL: fmt(cur[i]) }));
+const coh = (w, l, s7, s30) => ({ w: w, l: sp(l), s7: s7, r7: (Math.round(s7 / l * 1000) / 10 + '%').replace('.', ','), s30: s30 === null ? '—' : s30, r30: s30 === null ? 'идёт' : (Math.round(s30 / l * 1000) / 10 + '%').replace('.', ','), c30: s30 === null ? 'c3' : '' });
+const sr = (p, src, sum, note, edit) => ({ p: p, src: src, sum: sum, note: note, inCls: edit ? 'is-ok' : '' });
+return {
+theme: this.props.theme ?? 'light',
+wow: [
+{ label: 'Лиды vs пред.', delta: '▲ 12%', cur: '4 812', prev: '4 296' },
+{ label: 'Продажи vs пред.', delta: '▲ 4%', cur: '214', prev: '206' },
+{ label: 'Выручка vs пред.', delta: '▲ 9%', cur: '2,25 млрд', prev: '2,06 млрд' }
+],
+charts: [
+{ title: 'Лиды по источникам', hint: 'Текущий vs предыдущий период равной длины', bars: bars(lPrev, lCur, lMax, sp) },
+{ title: 'Конверсия по источникам', hint: 'Текущий vs предыдущий период равной длины (%)', bars: bars(cPrev, cCur, cMax, (v) => String(v).replace('.', ',') + '%') }
+],
+cohorts: [
+coh('08.09 – 14.09', 1012, 31, 52),
+coh('15.09 – 21.09', 1104, 34, 55),
+coh('22.09 – 28.09', 1187, 36, 49),
+coh('29.09 – 05.10', 1240, 38, null),
+coh('06.10 – 12.10', 1196, 33, null),
+coh('13.10 – 14.10', 285, 6, null)
+],
+spend: [
+sr('01.10 – 14.10.2026', 'Instagram октябрь', '32 000 000', 'Reels + сторис, 3 креатива', false),
+sr('01.10 – 14.10.2026', 'Facebook октябрь', '21 000 000', '', true),
+sr('01.10 – 14.10.2026', 'Telegram-бот', '9 000 000', 'Таргет на вечер, 18:00–21:00', false),
+sr('01.10 – 14.10.2026', 'Сайт · заявки', '6 000 000', 'Google Ads', false),
+sr('15.09 – 30.09.2026', 'Instagram сентябрь', '28 500 000', '', false),
+sr('15.09 – 30.09.2026', 'Bot', '4 000 000', 'введено вручную, без sheet-источника', false)
+]
+};
+}
+}
+</script>
+</body>
+</html>

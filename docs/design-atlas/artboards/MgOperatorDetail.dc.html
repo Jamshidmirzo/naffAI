@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Карточка оператора</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1200px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="ops" hint-size="248px,1200px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<a class="btn btn-ghost btn-sq" href="MgOperators.dc.html" aria-label="Назад к операторам"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
+<span class="ava ava-l" data-s="on">GK</span>
+<div class="col"><h1 class="h1" style="font-size: 20px; line-height: 26px">Gulnoza Karimova</h1><span class="s c3">Оператор · Kamola Ahmedova · с <span class="num">12.03.2026</span></span></div>
+<span class="badge b-ok">Активный</span>
+<span class="grow"></span>
+<button class="btn" type="button">Назначить стикер</button>
+<button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2z"></path></svg>QR для входа</button>
+<a class="btn" href="MgOperatorDetail2.dc.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 4L3 11l6 2 2 6 3-4 5 4z"></path></svg>Telegram</a>
+<button class="btn btn-pri" type="button">Изменить</button>
+</header>
+
+<main class="page">
+<div class="row between wrap g12">
+<div class="row g12 wrap">
+<span class="s c3">рабочий: <span class="num c2">+998 90 777 11 00</span> · личный: <span class="num c2">+998 93 101 20 30</span></span>
+<button class="btn btn-ghost btn-sm" type="button">редактировать</button>
+</div>
+<div class="row g6 wrap" aria-label="Достижения">
+<span class="badge b-hot"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-4 2-6 1 1 2 2 3 2 0-2-1-4 0-6z"></path></svg>Лучший сегодня</span>
+<span class="badge b-ok"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17l6-6 4 4 6-7M14 8h6v6"></path></svg>+5 дней подряд</span>
+</div>
+</div>
+
+<div class="row between wrap g12">
+<div class="row g12">
+<div class="seg"><button type="button">День</button><button type="button">Неделя</button><button class="is-on" type="button">Месяц</button></div>
+<select class="input" aria-label="Месяц" style="width: 210px"><option>Текущий период</option><option>Сентябрь 2026</option><option>Август 2026</option><option>Июль 2026</option><option>Июнь 2026</option><option>Май 2026</option><option>Апрель 2026</option></select>
+</div>
+<a class="btn btn-ghost btn-sm c-brand" href="MgOperatorDetail2.dc.html">Модели, партнёры, посещаемость, разборы, TG-диалоги<svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></a>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+<section class="card col g4 pad"><span class="lbl">Сумма · октябрь</span><span class="kpi">23 400 000</span><span class="s c3"><span class="num">18</span> продаж</span></section>
+<section class="card col g4 pad"><span class="lbl">Средний чек</span><span class="kpi">1 300 000</span><span class="s c3">Сумма ÷ кол-во</span></section>
+<section class="card col g6 pad"><span class="row between"><span class="lbl">План · октябрь</span><button class="btn btn-ghost btn-sm" type="button"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"></path></svg>изменить</button></span><span class="row g8" style="align-items: baseline"><span class="kpi" style="color: var(--warn)">78%</span><span class="num s c2">23 400 000 из 30 000 000</span></span><div class="bar"><i class="warn" style="width: 78%"></i></div></section>
+</div>
+
+<div class="row g12 wrap">
+<span class="when">Если план не задан</span>
+<span class="well row g12" style="padding: 8px 12px"><span class="lbl">План · октябрь</span><span class="s c3">Не установлен</span><button class="btn btn-sm" type="button"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>задать</button></span>
+<span class="when">Редактирование</span>
+<span class="well row g8" style="padding: 8px 12px"><input class="input num" type="text" value="30 000 000" aria-label="Цель в сумах" style="width: 150px; height: 32px"><button class="btn btn-sm btn-pri" type="button">Сохранить</button><button class="btn btn-sm btn-ghost" type="button">Отмена</button></span>
+</div>
+
+<section class="card row g24 wrap" style="padding: 16px 20px">
+<div class="col g4" style="flex: 1 1 260px"><span class="lbl">Зарплата · этот месяц</span><span class="row g12" style="align-items: baseline"><span class="kpi">0</span><span class="s c3">порог продаж ещё не пройден</span></span></div>
+<div class="col g6" style="flex: 2 1 420px">
+<div class="row between xs c3"><span class="num">23 400 000 / 25 000 000</span><span class="num w6">94%</span></div>
+<span class="bar" style="height: 10px"><i class="warn" style="width: 94%"></i></span>
+<span class="xs c3">продано за месяц / порог · <span class="c2 w6">порог достигнут</span> появится, когда полоса заполнится · <a class="c-brand" href="MgPayroll.dc.html">Зарплата команды</a></span>
+</div>
+</section>
+
+<div style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: start">
+<section class="card col">
+<div class="card-h"><span class="h3">Продажи по дням · октябрь</span><span class="xs c3">штук</span></div>
+<div class="row g8" style="padding: 18px 20px 8px; align-items: stretch">
+<div class="chart grow" style="height: 150px">
+<sc-for list="{{bars}}" as="b" hint-placeholder-count="14"><span class="{{b.cls}}"><span class="num xs c3" style="margin-bottom: 4px">{{b.v}}</span><i style="height: {{b.h}}%"></i></span></sc-for>
+</div>
+</div>
+<div class="row g8 num xs c3" style="padding: 0 20px 14px"><sc-for list="{{bars}}" as="b" hint-placeholder-count="14"><span class="grow" style="text-align: center">{{b.d}}</span></sc-for></div>
+</section>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Учётная запись оператора</span><span class="badge b-ok"><i class="dot"></i>активна</span></div>
+<div class="col g12" style="padding: 16px 20px">
+<div class="row between s"><span class="c3">Логин</span><span class="num">+998907771100</span></div>
+<div class="row g8"><button class="btn btn-sm grow" type="button">Показать пароль</button><button class="btn btn-sm grow" type="button">Сгенерировать новый пароль</button></div>
+<div class="row g8"><button class="btn btn-sm btn-ghost grow" type="button">Деактивировать</button><button class="btn btn-sm btn-bad grow" type="button">Удалить учётку</button></div>
+<hr class="hr">
+<div class="row between s"><span class="col"><span class="w6">Язык интерфейса и AI</span><span class="xs c3">на нём оператор видит меню и ИИ-разборы</span></span><div class="seg"><button class="is-on" type="button">UZ</button><button type="button">RU</button></div></div>
+</div>
+</section>
+</div>
+
+<section class="card tbl">
+<div class="card-h"><span class="h3">История смен</span><a class="btn btn-ghost btn-sm" href="MgOperatorDetail2.dc.html">Посещаемость · 30 дней</a></div>
+<div class="tr th" style="grid-template-columns: 1.3fr 90px 90px 100px 100px 90px 1.3fr 140px"><span>Дата</span><span>Пришёл</span><span>Ушёл</span><span>Длит.</span><span>Опозд.</span><span>Канал</span><span>Статус</span><span class="r">Действия</span></div>
+<sc-for list="{{shifts}}" as="s" hint-placeholder-count="6">
+<div class="tr" style="grid-template-columns: 1.3fr 90px 90px 100px 100px 90px 1.3fr 140px">
+<span class="s w5 num">{{s.d}}</span><span class="num s">{{s.in}}</span><span class="num s">{{s.out}}</span><span class="num s c2">{{s.dur}}</span><span class="s {{s.lateCls}}">{{s.late}}</span><span class="num xs c3" style="text-transform: uppercase; letter-spacing: .06em">{{s.ch}}</span>
+<span><span class="badge {{s.stCls}}">{{s.st}}</span></span>
+<span class="r"><sc-if value="{{s.open}}" hint-placeholder-val="{{ false }}"><button class="btn btn-sm" type="button">Закрыть смену</button></sc-if></span>
+</div>
+</sc-for>
+</section>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1200}}'>
+class Component extends DCLogic {
+renderVals() {
+const v = [1, 2, 0, 1, 1, 2, 0, 3, 1, 2, 1, 0, 1, 3];
+const sh = (d, i, o, dur, late, ch, st, stCls, open) => ({ d: d, in: i, out: o, dur: dur, late: late ? 'да' : '—', lateCls: late ? 'c-hot w6' : 'c3', ch: ch, st: st, stCls: stCls, open: open });
+return {
+theme: this.props.theme ?? 'light',
+bars: v.map((x, i) => ({ v: x, d: String(i + 1).padStart(2, '0'), h: Math.round(x / 3 * 100), cls: i === v.length - 1 ? 'is-now' : '' })),
+shifts: [
+sh('14.10.2026', '09:58', '—', '—', false, 'qr', 'на смене', 'b-hot', true),
+sh('13.10.2026', '10:22', '19:04', '522 мин', true, 'tg', 'успешно', '', false),
+sh('11.10.2026', '09:55', '19:02', '547 мин', false, 'qr', 'успешно', '', false),
+sh('10.10.2026', '10:31', '23:00', '749 мин', true, 'qr', 'Авто 23:00', 'b-hot', false),
+sh('09.10.2026', '09:50', '18:10', '500 мин', false, 'manual', 'TL: Kamola Ahmedova', '', false),
+sh('08.10.2026', '09:57', '19:00', '543 мин', false, 'tg', 'успешно', '', false)
+]
+};
+}
+}
+</script>
+</body>
+</html>

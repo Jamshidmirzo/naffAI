@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Форма продажи: ошибки</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1140px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6"><h1 class="h1">Форма продажи менеджера: проверки</h1><p class="c3">Ошибка видна у поля, а не одной красной строкой над кнопками. Кнопка показывает «Сохраняем…», чтобы продажу не сохранили дважды.</p></div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; align-items: start">
+
+<div class="col g8"><span class="when">IMEI и дубль</span>
+<section class="card col g12" style="padding: 20px">
+<div class="field"><label for="f1">IMEI, от 6 до 15 цифр</label><input class="input num is-bad" id="f1" type="text" value="35 69"><span class="err">Нужно от 6 до 15 цифр, сейчас 4</span></div>
+<div class="field"><label for="f2">IMEI</label><input class="input num is-warn" id="f2" type="text" value="35 391710 554210 3"></div>
+<div class="banner b-warn" style="flex-direction: column; align-items: stretch"><span class="w6">Этот IMEI уже продавался 03.10 (продажа №1 301)</span><span>Если это замена или обмен, укажите причину и сохраните ещё раз.</span><input class="input" type="text" placeholder="Причина: замена, обмен, ошибка" aria-label="Причина дубля"></div>
+</section></div>
+
+<div class="col g8"><span class="when">Кто продал · доли</span>
+<section class="card col g8" style="padding: 20px">
+<div class="row g8"><select class="input grow" aria-label="Оператор 1"><option>Gulnoza Karimova</option></select><input class="input num is-bad" type="text" value="800" aria-label="Доля 1" style="width: 140px"></div>
+<span class="err" style="justify-content: flex-end">Минимум 1 000 сум на строку</span>
+<div class="row g8"><select class="input grow is-bad" aria-label="Оператор 2"><option>Выберите оператора</option></select><input class="input num" type="text" value="4 500 000" aria-label="Доля 2" style="width: 140px"></div>
+<span class="err">Выберите оператора или удалите строку</span>
+</section></div>
+
+<div class="col g8"><span class="when">Сверка сумм</span>
+<section class="card col g8" style="padding: 20px">
+<div class="row between s"><span class="c3">По операторам</span><span class="num">14 500 000</span></div>
+<div class="row between s"><span class="c3">По партнёрам</span><span class="num c-bad w6">14 000 000</span></div>
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>Суммы не совпадают на 500 000 сум. Проверьте строки партнёров.</span></div>
+<div class="field"><label for="f3">Скидка, сум</label><input class="input num is-bad" id="f3" type="text" value="15 000 000"><span class="err">Скидка не может быть больше суммы продажи</span></div>
+</section></div>
+
+<div class="col g8"><span class="when">Клиент не найден среди лидов</span>
+<section class="card col g12" style="padding: 20px">
+<div class="field"><label for="f4">Телефон клиента</label><div class="row g8"><span class="pfx" style="height: 40px; font-size: 14px; border-radius: 9px" aria-hidden="true">+998</span><input class="input num grow is-warn" id="f4" type="tel" value="99 811 22 33"></div></div>
+<div class="banner b-warn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>Клиента нет среди лидов. Продажа сохранится без источника. Проверьте номер или отметьте как прямую продажу.</span></div>
+<label class="row g8 s"><input class="check" type="checkbox">Прямая продажа, без лида</label>
+</section></div>
+
+<div class="col g8"><span class="when">Бонус и сохранение</span>
+<section class="card col g12" style="padding: 20px">
+<label class="row g8 s"><input class="check" type="checkbox" checked="{{yes}}">Был бонус или особые условия</label>
+<div class="field"><textarea class="input is-bad" rows="2" aria-label="Описание бонуса">чк</textarea><span class="err">Опишите бонус хотя бы 3 символами: менеджер получит этот текст</span></div>
+<button class="btn btn-pri" type="button" disabled="{{yes}}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4"></path></svg>Сохраняем…</button>
+</section></div>
+
+<div class="col g8"><span class="when">Ошибка сервера · успех</span>
+<div class="col g12">
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span class="col g4"><span class="w6">Не сохранилось</span><span>Сервер не ответил. Все поля на месте, нажмите «Сохранить» ещё раз.</span></span></div>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Продажа сохранена и одобрена<span class="t-act">Открыть</span></span>
+</div></div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1140}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light', yes: true };
+}
+}
+</script>
+</body>
+</html>

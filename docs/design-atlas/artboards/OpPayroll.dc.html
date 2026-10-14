@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Моя зарплата</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1000px">
+<div class="rail-wrap"><dc-import name="SideNav" who="operator" at="payroll" hint-size="84px,1000px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Моя зарплата</h1>
+<span class="grow"></span>
+<select class="input" aria-label="Месяц" style="width: 180px"><option>Октябрь 2026</option><option>Сентябрь 2026</option></select>
+<button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"></path></svg>Excel</button>
+<button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"></path></svg>PDF</button>
+</header>
+
+<main class="page">
+
+<section class="card row g24 wrap" style="padding: 20px 24px; align-items: center">
+<div class="col g4" style="min-width: 260px">
+<span class="lbl">Бонус за октябрь</span>
+<div class="row g8" style="align-items: baseline"><span class="kpi" style="font-size: 34px; line-height: 40px">3 000 000</span><span class="c3">сум можно получить</span></div>
+</div>
+<div class="banner b-warn grow" style="min-width: 320px">
+<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg>
+<span>Бонус выплачивается, когда выполнены оба условия. Посещаемость уже выполнена, продажам осталось <span class="num w6">2 100 000</span> сум.</span>
+</div>
+</section>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+
+<section class="card col g16" style="padding: 20px 24px">
+<div class="row between"><span class="h3">Посещаемость</span><span class="badge b-ok"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Выполнено</span></div>
+<div class="row between" style="align-items: baseline"><span class="kpi">92%</span><span class="s c3">пришла <span class="num">11</span> из <span class="num">12</span> рабочих дней</span></div>
+<div style="position: relative; padding: 4px 0"><div class="bar"><i class="ok" style="width: 92%"></i></div><i aria-hidden="true" style="position: absolute; left: 85%; top: 0; width: 2px; height: 16px; background: var(--ink)"></i></div>
+<div class="row between s c3"><span>Порог <span class="num">85%</span></span><span>Бонус <span class="num">1 500 000</span></span></div>
+<p class="s c3">Опозданий: <span class="num">2</span>, вычет <span class="num c-bad">−100 000</span>.</p>
+</section>
+
+<section class="card col g16" style="padding: 20px 24px">
+<div class="row between"><span class="h3">Продажи</span><span class="badge b-warn"><i class="dot"></i>Ещё не выполнено</span></div>
+<div class="row between" style="align-items: baseline"><span class="kpi">78%</span><span class="s c3"><span class="num">23 400 000</span> из плана <span class="num">30 000 000</span></span></div>
+<div style="position: relative; padding: 4px 0"><div class="bar"><i class="warn" style="width: 78%"></i></div><i aria-hidden="true" style="position: absolute; left: 85%; top: 0; width: 2px; height: 16px; background: var(--ink)"></i></div>
+<div class="row between s c3"><span>Порог <span class="num">85%</span></span><span>Бонус <span class="num">1 500 000</span></span></div>
+<p class="s c3">Продай ещё на <span class="num w6" style="color: var(--ink)">2 100 000</span> сум. Продажи на подтверждении сюда пока не входят.</p>
+</section>
+
+</div>
+
+<section class="card tbl">
+<div class="card-h" style="grid-column: 1 / -1"><span class="h3">По дням</span><span class="xs c3">смена с 10:00 до 20:00, опоздание после 10:15</span></div>
+<div class="tr th" style="grid-template-columns: 1.3fr 140px 110px 110px 120px 1fr"><span>Дата</span><span>Статус</span><span>Пришла</span><span>Ушла</span><span>Длительность</span><span class="r">Вычет</span></div>
+<sc-for list="{{days}}" as="d" hint-placeholder-count="5">
+<div class="tr" style="grid-template-columns: 1.3fr 140px 110px 110px 120px 1fr">
+<span class="w5">{{d.date}}</span>
+<span><span class="badge {{d.tone}}">{{d.status}}</span></span>
+<span class="num">{{d.in}}</span>
+<span class="num">{{d.out}}</span>
+<span class="num c2">{{d.dur}}</span>
+<span class="r num c-bad">{{d.minus}}</span>
+</div>
+</sc-for>
+</section>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+theme: this.props.theme ?? 'light',
+days: [
+{ date: 'Вт, 14 октября', status: 'Вовремя', tone: 'b-ok', in: '09:58', out: 'идёт', dur: '02:15', minus: '' },
+{ date: 'Пн, 13 октября', status: 'Опоздание', tone: 'b-bad', in: '10:22', out: '19:04', dur: '08:42', minus: '−50 000' },
+{ date: 'Вс, 12 октября', status: 'Выходной', tone: '', in: '—', out: '—', dur: '—', minus: '' },
+{ date: 'Сб, 11 октября', status: 'Вовремя', tone: 'b-ok', in: '09:55', out: '19:02', dur: '09:07', minus: '' },
+{ date: 'Пт, 10 октября', status: 'Опоздание', tone: 'b-bad', in: '10:31', out: '20:00', dur: '09:29', minus: '−50 000' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

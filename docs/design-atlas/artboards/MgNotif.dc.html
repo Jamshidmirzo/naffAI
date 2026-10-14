@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Уведомления менеджера</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 960px">
+<div class="side-wrap"><dc-import name="SideNav" who="{{who}}" at="notif" hint-size="248px,960px"></dc-import></div>
+<div class="main-col">
+<header class="top">
+<h1 class="h1">Уведомления</h1>
+<span class="s c3"><span class="num">{{unread}}</span> новых · всего <span class="num">{{total}}</span></span>
+<span class="grow"></span>
+<button class="btn" type="button">Прочитать всё</button>
+</header>
+<main class="page">
+<div class="split">
+<section class="list card col">
+<div class="tabs" style="padding: 0 12px; align-items: center"><button class="tab is-on" type="button">Все</button><button class="tab" type="button">Продажи</button><button class="tab" type="button">Команда</button><button class="tab" type="button">Система</button><span class="badge b-info" style="height: 20px">новое</span></div>
+<sc-for list="{{items}}" as="n" hint-placeholder-count="7">
+<div class="row-item" style="align-items: flex-start">
+<span class="icon-tile {{n.tile}}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.d}}"></path></svg></span>
+<span class="col grow" style="gap: 4px">
+<span class="row g8"><span class="s w6">{{n.title}}</span><sc-if value="{{n.unread}}" hint-placeholder-val="{{ false }}"><i class="dot" style="color: var(--brand)" aria-label="новое"></i></sc-if><sc-if value="{{n.isNew}}" hint-placeholder-val="{{ false }}"><span class="badge b-info" style="height: 20px">новое</span></sc-if></span>
+<span class="s c2">{{n.body}}</span>
+<sc-if value="{{n.act}}" hint-placeholder-val="{{ false }}"><span class="row g6" style="margin-top: 4px"><button class="btn btn-sm btn-ok" type="button">Одобрить</button><a class="btn btn-sm" href="{{n.href}}">Открыть</a><span class="badge b-info" style="height: 20px">новое</span></span></sc-if>
+</span>
+<span class="num xs c3" style="flex: none">{{n.when}}</span>
+</div>
+</sc-for>
+<div class="col g8" style="padding: 16px; border-top: 1px dashed var(--line-2); background: var(--surface-2)"><span class="when">Пусто</span><div class="empty" style="padding: 20px"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20h4"></path></svg><span class="s">Уведомлений пока нет</span></div></div>
+</section>
+<aside class="panel col g16" style="align-self: flex-start">
+<section class="card col">
+<div class="card-h"><div class="col"><span class="h3">Подписки</span><span class="xs c3">Что присылать в интерфейс и в Telegram-бот</span></div></div>
+<sc-for list="{{subs}}" as="s" hint-placeholder-count="4">
+<div class="li" style="min-height: 60px"><span class="col grow" style="min-width: 0"><span class="s w6">{{s.label}}</span><span class="xs c3">{{s.note}}</span></span><button class="switch {{s.on}}" type="button" aria-label="{{s.label}}"><i></i></button></div>
+</sc-for>
+<p class="xs c3" style="padding: 10px 16px 14px">Сейчас переключатели живут только в браузере и после перезагрузки сбрасываются — хотя тост пишет «Настройка сохранена».</p>
+</section>
+<section class="card col">
+<div class="card-h"><div class="col"><span class="h3">Предложения для этой роли</span><span class="xs c3">отдельно: в приложении и в Telegram</span></div><span class="badge b-info" style="height: 20px">новое</span></div>
+<div class="tr th" style="grid-template-columns: 1fr 70px 70px"><span>Событие</span><span>Здесь</span><span>Telegram</span></div>
+<sc-for list="{{props}}" as="s" hint-placeholder-count="5">
+<div class="tr" style="grid-template-columns: 1fr 70px 70px; min-height: 56px">
+<span class="col" style="min-width: 0"><span class="s">{{s.label}}</span><span class="xs c3">{{s.note}}</span></span>
+<span><button class="switch {{s.app}}" type="button" aria-label="{{s.label}} в приложении"><i></i></button></span>
+<span><button class="switch {{s.tg}}" type="button" aria-label="{{s.label}} в Telegram"><i></i></button></span>
+</div>
+</sc-for>
+</section>
+</aside>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"scope":{"editor":"enum","options":["manager","super"],"default":"manager"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+const sup = (this.props.scope ?? 'manager') === 'super';
+const I = {
+money: 'M4 7h16v10H4zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM7 10h.01M17 14h.01',
+back: 'M9 14L4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3',
+x: 'M6 6l12 12M18 6L6 18',
+gift: 'M4 10h16v10H4zM3 7h18v3H3zM12 7v13M12 7c-2-4-6-3-5 0M12 7c2-4 6-3 5 0',
+coffee: 'M5 9h12v5a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5zM17 10h2a2 2 0 0 1 0 4h-2M8 3v3M12 3v3',
+sheet: 'M4 5h16v14H4zM4 10h16M4 15h16M10 5v14',
+users: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 6.5M18 14.5a6 6 0 0 1 3.5 5.5',
+chart: 'M4 20V10M10 20V4M16 20v-7M22 20H2'
+};
+const n = (tile, d, title, body, when, unread, act, href, isNew) => ({ tile: tile, d: d, title: title, body: body, when: when, unread: unread, act: act, href: href || 'MgSaleDetail.dc.html', isNew: isNew || false });
+const mgr = [
+n('t-ok', I.money, 'Jasur Toshmatov · iPhone 15 Pro 256 GB', '14 500 000 сум · Источник: Instagram октябрь · Alif + Uzum', '14:18', true, true),
+n('t-ok', I.money, 'Nilufar Saidova, Gulnoza Karimova · Galaxy A55', '5 200 000 сум · Источник: Прямая · доли 50/50', '13:52', true, true),
+n('t-warn', I.coffee, 'Заявка на выходной: Shahlo Komilova', 'Пятница, 17 октября. Причина: семейные дела. В этот день уже отпросились двое.', '13:10', true, false, 'MgDayOff.dc.html', true),
+n('t-hot', I.sheet, 'Таблица «Facebook октябрь» молчит 2 часа', 'Последняя строка пришла в 12:14. Лиды из неё не раздаются.', '14:14', true, false, 'MgSheets.dc.html', true),
+n('t-bad', I.back, 'Возврат продажи №1 471', 'Redmi Note 13 · 2 900 000 сум · Otabek Ergashev. Сумма вычтена из зарплаты за октябрь.', 'вчера 18:05', false, false),
+n('t-warn', I.gift, 'День рождения оператора', 'Сегодня у Malika Tursunova. Ей 24.', 'сегодня 08:30', false, false, 'MgOperatorDetail.dc.html')
+];
+const sm = [
+n('t-ok', I.money, 'Jasur Toshmatov · iPhone 15 Pro 256 GB', '14 500 000 сум · команда Kamola Ahmedova · ждёт подтверждения 4 мин', '14:18', true, true),
+n('t-info', I.users, 'Rustam Yuldashev удалил оператора', 'Bahodir Mirzayev. Причина: три пропуска подряд без предупреждения. 14 продаж помечены удалёнными.', '13:40', true, false, 'SmDeleted.dc.html', true),
+n('t-bad', I.chart, 'Команда Rustam Yuldashev отстаёт от плана', '64% плана при ожидаемых к 14 октября 70%. Чтобы успеть, нужно +3 продажи в день.', '12:00', true, false, 'SmTeamSales.dc.html', true),
+n('t-warn', I.users, '2 оператора без менеджера', 'Sevara Po‘latova и Bahodir Mirzayev. Новые лиды им раздаются, но их никто не проверяет.', '09:05', false, false, 'SmBoard.dc.html', true),
+n('t-warn', I.gift, 'День рождения оператора', 'Сегодня у Malika Tursunova (команда Kamola Ahmedova).', 'сегодня 08:30', false, false, 'MgOperatorDetail.dc.html')
+];
+const real = [
+{ label: 'Новые лиды', note: 'Уведомлять о каждом назначенном лиде', on: 'is-on' },
+{ label: 'Колбэки со звуком', note: 'Звуковой сигнал при наступлении времени', on: 'is-on' },
+{ label: 'Уроки и разборы', note: 'Утренний AI-разбор и рекомендации', on: '' },
+{ label: 'Ежедневный отчёт по KPI', note: 'Сводка личных показателей за день', on: 'is-on' }
+];
+const subsM = [
+{ label: 'Новые продажи', note: 'с кнопкой «Одобрить»', app: 'is-on', tg: 'is-on' },
+{ label: 'Возвраты и отклонения', note: 'продажи вашей команды', app: 'is-on', tg: '' },
+{ label: 'Дни рождения операторов', note: 'утром в 08:30', app: 'is-on', tg: 'is-on' },
+{ label: 'Заявки на выходной', note: 'сразу после подачи', app: 'is-on', tg: '' },
+{ label: 'Сбои Google-таблиц', note: 'молчит дольше часа', app: 'is-on', tg: 'is-on' }
+];
+const subsS = [
+{ label: 'Новые продажи ветки', note: 'сейчас не приходят — см. «Баги из кода»', app: 'is-on', tg: '' },
+{ label: 'Изменения в ветке', note: 'удаления, переносы, новые менеджеры', app: 'is-on', tg: 'is-on' },
+{ label: 'Отставание от плана', note: 'раз в день в 12:00', app: 'is-on', tg: 'is-on' },
+{ label: 'Операторы без менеджера', note: 'сразу после появления', app: 'is-on', tg: '' },
+{ label: 'Дни рождения операторов', note: 'утром в 08:30', app: 'is-on', tg: '' }
+];
+return {
+theme: this.props.theme ?? 'light',
+who: sup ? 'super' : 'manager',
+unread: sup ? 3 : 4,
+total: sup ? 31 : 57,
+items: sup ? sm : mgr,
+subs: real,
+props: sup ? subsS : subsM
+};
+}
+}
+</script>
+</body>
+</html>

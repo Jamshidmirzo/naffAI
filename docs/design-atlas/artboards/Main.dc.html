@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Стиль Атлас</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" style="width: 1440px; height: 1180px; display: flex; flex-direction: column">
+
+<i class="ikat" style="height: 14px" aria-hidden="true"></i>
+
+<div style="padding: 36px 56px 44px; display: flex; flex-direction: column; gap: 28px; flex: 1 1 0">
+
+<div class="row between" style="align-items: flex-end; gap: 32px">
+<div class="col g12" style="max-width: 600px">
+<div class="row g12" style="align-items: center"><i class="ikat ikat-mark" style="width: 34px; height: 48px; border-radius: 9px" aria-hidden="true"></i><span class="display" style="font-size: 52px; line-height: 56px">naff<span class="num" style="font-size: 26px; color: var(--brand-text)">AI</span></span></div>
+<p class="c2" style="font-size: 17px; line-height: 26px">«Атлас». Тихая почти белая поверхность и цвета маргиланского хан-атласа: индиго ведёт к действию, шафран зовёт обратить внимание, гранат предупреждает об ошибке.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; flex: 1 1 0; max-width: 720px">
+<div class="card pad col g6"><div class="h3">Орнамент как подпись</div><p class="s c3">Ромбы-«абр» только в логотипе, при продаже коллеги, на пустых экранах и входе. В работе их нет.</p></div>
+<div class="card pad col g6"><div class="h3">Одно дело на экране</div><p class="s c3">Оператор видит один лид крупно и закрывает его клавишами 1–4. Менеджер видит весь зал на одном пульте.</p></div>
+<div class="card pad col g6"><div class="h3">Всё найти за секунду</div><p class="s c3">⌘K открывает поиск лида по телефону, продажи по IMEI и оператора по имени, плюс быстрые действия.</p></div>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px">
+<div class="nf card" style="padding: 20px; display: flex; flex-direction: column; gap: 16px; background: var(--bg)">
+<div class="row between"><div class="h2">Светлая тема</div><span class="badge">по умолчанию</span></div>
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px 12px">
+<sc-for list="{{light}}" as="s" hint-placeholder-count="15">
+<div class="col g4"><i class="sw {{s.cls}}"></i><div class="xs w6" style="margin-top: 2px">{{s.name}}</div><div class="xs num c3">{{s.hex}}</div></div>
+</sc-for>
+</div>
+</div>
+<div class="nf card" data-theme="dark" style="padding: 20px; display: flex; flex-direction: column; gap: 16px; background: var(--bg)">
+<div class="row between"><div class="h2">Тёмная тема</div><span class="badge">индиго-ночь</span></div>
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px 12px">
+<sc-for list="{{dark}}" as="s" hint-placeholder-count="15">
+<div class="col g4"><i class="sw {{s.cls}}"></i><div class="xs w6" style="margin-top: 2px">{{s.name}}</div><div class="xs num c3">{{s.hex}}</div></div>
+</sc-for>
+</div>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1.15fr 1fr 1.1fr; gap: 24px; flex: 1 1 0; min-height: 0">
+
+<div class="card col">
+<div class="card-h"><div class="h3">Три шрифта, у каждого своя работа</div></div>
+<div class="pad col g16">
+<div class="row between"><div class="h1">Пульт зала</div><span class="xs c3">Unbounded 22 · заголовки</span></div>
+<div class="row between"><div class="kpi">241,6 млн</div><span class="xs c3">Unbounded 26 · крупные цифры</span></div>
+<div class="row between"><div class="h3">Gulnoza Karimova</div><span class="xs c3">Onest 15 · 600</span></div>
+<div class="row between"><div>Основной текст интерфейса</div><span class="xs c3">Onest 14</span></div>
+<div class="row between"><div class="lbl">Заголовок колонки</div><span class="xs c3">Onest 11 · 600</span></div>
+<div class="row between"><div class="num" style="font-size: 17px; font-weight: 600">+998 90 123 45 67</div><span class="xs c3">JetBrains Mono · данные</span></div>
+<hr class="hr">
+<p class="s c3">Qo'ng'iroqdan keyin natijani tanla — узбекская латиница и кириллица набираются без подмен.</p>
+</div>
+</div>
+
+<div class="card col">
+<div class="card-h"><div class="h3">Орнамент «абр»</div><span class="xs c3">только как подпись бренда</span></div>
+<div class="pad col g12">
+<i class="ikat" style="height: 64px; border-radius: 12px" aria-hidden="true"></i>
+<div class="row g12">
+<i class="ikat ikat-mark" style="width: 28px; height: 40px; border-radius: 8px" aria-hidden="true"></i>
+<i class="ikat-soft" style="flex: 1 1 0; height: 40px; border-radius: 10px" aria-hidden="true"></i>
+</div>
+<div class="col g6 s">
+<div class="row g8"><svg class="ic c-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Логотип, экран входа, пустые экраны</div>
+<div class="row g8"><svg class="ic c-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Праздник продажи и день рождения</div>
+<div class="row g8"><svg class="ic c-bad" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>Таблицы, формы, кнопки и статусы</div>
+</div>
+</div>
+</div>
+
+<div class="card col">
+<div class="card-h"><div class="h3">Цвет означает смысл</div></div>
+<div class="pad col g12">
+<div class="row g8 wrap"><button class="btn btn-pri" type="button">Главное действие</button><button class="btn" type="button">Обычное</button><button class="btn btn-ok" type="button">Позвонить</button><button class="btn btn-danger" type="button">Удалить</button></div>
+<div class="row g8 wrap">
+<span class="badge b-info"><i class="dot"></i>Новый</span><span class="badge b-hot"><i class="dot"></i>Горячий</span><span class="badge b-warn"><i class="dot"></i>Ждёт подтверждения</span><span class="badge b-ok"><i class="dot"></i>Оплачено</span><span class="badge b-bad"><i class="dot"></i>Отклонена</span><span class="badge"><i class="dot"></i>Не ответил 1</span>
+</div>
+<div class="row g8 wrap xs"><span class="kbd">1</span><span class="kbd">2</span><span class="kbd">3</span><span class="kbd">4</span><span class="c3">клавиши итога звонка</span><span class="kbd">⌘K</span><span class="c3">поиск и команды</span></div>
+<p class="s c3">Индиго: выбор и главное действие. Шафран: внимание и горячие лиды. Гранат: ошибки и отказ. Зелёный: деньги пришли.</p>
+</div>
+</div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1180}}'>
+class Component extends DCLogic {
+renderVals() {
+const names = [
+['sw-bg', 'Фон страницы'], ['sw-surface', 'Карточка'], ['sw-surface-2', 'Вложенный блок'], ['sw-surface-3', 'Плашка'], ['sw-line-2', 'Граница'],
+['sw-ink', 'Текст'], ['sw-ink-2', 'Вторичный'], ['sw-ink-3', 'Подписи'], ['sw-brand', 'Индиго'], ['sw-brand-soft', 'Индиго, фон'],
+['sw-ok', 'Оплачено'], ['sw-warn', 'Шафран'], ['sw-bad', 'Гранат'], ['sw-hot', 'Горячий лид'], ['sw-line', 'Линия']
+];
+const lightHex = ['#F8F7F4', '#FFFFFF', '#FAF9F6', '#F0EEEA', '#D3CFC7', '#15132B', '#3D3A55', '#615E77', '#2D2A8C', '#ECEBF8', '#11805A', '#F2B01E', '#B8204A', '#E8771C', '#E8E5DF'];
+const darkHex = ['#0E0D1A', '#16152A', '#1C1B33', '#24223F', '#3E3B5E', '#F1F0F7', '#C9C7DA', '#9C99B3', '#5550D6', '#24224A', '#11805A', '#F2B01E', '#B8204A', '#E8771C', '#2C2A47'];
+const build = (hex) => names.map((n, i) => ({ cls: n[0], name: n[1], hex: hex[i] }));
+return { light: build(lightHex), dark: build(darkHex) };
+}
+}
+</script>
+</body>
+</html>

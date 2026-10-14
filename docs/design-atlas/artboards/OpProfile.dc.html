@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Профиль</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1000px">
+<div class="rail-wrap"><dc-import name="SideNav" who="operator" at="profile" hint-size="84px,1000px"></dc-import></div>
+<div class="main-col">
+
+<header class="top"><h1 class="h1">Профиль</h1></header>
+
+<main class="page">
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start">
+
+<div class="col g16">
+<section class="card row g20" style="padding: 24px; align-items: center">
+<span class="ava ava-xl">GK</span>
+<div class="col g4 grow">
+<h2 class="h2">Gulnoza Karimova</h2>
+<span class="s c3">Оператор · в команде с <span class="num">12.03.2026</span></span>
+<span class="num s c2">+998 90 777 11 00</span>
+<div class="row g8" style="margin-top: 8px"><button class="btn btn-sm" type="button">Загрузить фото</button><button class="btn btn-sm" type="button">Снять камерой</button></div>
+</div>
+</section>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Смена</span><span class="badge b-ok"><i class="dot"></i>Идёт</span></div>
+<div class="row g16 wrap" style="padding: 16px 20px; align-items: center">
+<div class="col g4 grow"><span class="kpi">02:15:08</span><span class="s c3">пришла в <span class="num">09:58</span>, вовремя</span></div>
+<button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2z"></path></svg>Мой QR для входа</button>
+<button class="btn btn-bad" type="button">Завершить смену</button>
+</div>
+</section>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Личные данные</span></div>
+<div class="col g16" style="padding: 16px 20px 20px">
+<div class="field"><label for="pf-bd">Дата рождения</label><input class="input num" id="pf-bd" type="text" value="21.05.2001"><span class="hint">В этот день команда увидит поздравление.</span></div>
+<div class="row between"><div class="col"><span class="s w6">Пароль</span><span class="xs c3">меняли 2 месяца назад</span></div><button class="btn" type="button">Сменить пароль</button></div>
+</div>
+</section>
+</div>
+
+<div class="col g16">
+<section class="card col">
+<div class="card-h"><span class="h3">Интерфейс</span></div>
+<div class="col" style="padding: 4px 0">
+<div class="li"><span class="grow">Тема</span><div class="seg"><button class="is-on" type="button">Светлая</button><button type="button">Тёмная</button></div></div>
+<div class="li"><span class="grow">Язык</span><div class="seg"><button class="is-on" type="button">Русский</button><button type="button">O'zbekcha</button></div></div>
+<div class="li"><span class="col grow"><span>Аплодисменты, когда коллега продал</span><span class="xs c3">звук до 4 секунд</span></span><button class="switch is-on" type="button" aria-label="Звук продаж включён"><i></i></button></div>
+<div class="li"><span class="col grow"><span>Ежедневный разбор звонков</span><span class="xs c3">урок дня в 09:00</span></span><button class="switch is-on" type="button" aria-label="Разбор включён"><i></i></button></div>
+</div>
+</section>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Telegram</span><span class="badge"><i class="dot"></i>Не привязан</span></div>
+<div class="col g12" style="padding: 16px 20px 20px">
+<p class="s c3">Бот присылает новые лиды и напоминает о перезвонах. Отправь боту код ниже.</p>
+<div class="well row between g12">
+<div class="col g4"><span class="num" style="font-size: 20px; font-weight: 600">/link 204920</span><span class="xs c3">для <span class="num">@naffai_bot</span> · действует 10 минут</span></div>
+<button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h11v11H9zM5 15V4h11"></path></svg>Скопировать</button>
+</div>
+<button class="btn btn-ghost" type="button" style="align-self: flex-start">Получить новый код</button>
+</div>
+</section>
+</div>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light' };
+}
+}
+</script>
+</body>
+</html>

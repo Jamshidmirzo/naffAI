@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Обучение, эфир, AI: окна</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1000px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6"><h1 class="h1">Обучение, эфир и AI: ошибки и подтверждения</h1><p class="c3">Ошибки конструктора урока видны в самом уроке, а не одним уведомлением. Выключение эфира для всех спрашивает подтверждение.</p></div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; align-items: start">
+
+<div class="col g8"><span class="when">Урок не сохраняется · сводка ошибок</span>
+<div class="banner b-bad" style="flex-direction: column; align-items: stretch"><span class="w6">Урок не сохранён: исправьте 3 пункта</span><a class="s" href="#">Добавьте ссылку на видео или файл</a><a class="s" href="#">Вопрос 2: отметьте один правильный ответ</a><a class="s" href="#">Вопрос 3, вариант 2: заполните текст</a></div>
+<section class="dlg" style="margin-top: 12px"><div class="dlg-h"><h2 class="h2">Уйти без сохранения?</h2></div><div class="dlg-b"><p class="s c2">В уроке есть несохранённые изменения: 2 новых вопроса.</p></div><div class="dlg-f"><button class="btn" type="button">Уйти</button><button class="btn btn-pri" type="button">Остаться</button></div></section>
+</div>
+
+<div class="col g8"><span class="when">Скрыть урок</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2">Скрыть урок «Старый скрипт продаж»?</h2></div><div class="dlg-b"><p class="s c2">Операторы перестанут его видеть. Результаты 40 прохождений сохранятся.</p></div><div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Скрыть</button></div></section></div>
+
+<div class="col g8"><span class="when">Выключить эфир для всех</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2" style="color: var(--bad)">Выключить эфир у всех?</h2></div><div class="dlg-b"><p class="s c2">Остановятся 6 трансляций, у операторов погаснет «Вы в эфире». Включить обратно можно здесь же.</p></div><div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-danger" type="button">Выключить</button></div></section></div>
+
+<div class="col g8"><span class="when">Эфир не настроен на сервере</span>
+<section class="card col" style="align-items: center; text-align: center; padding: 28px 20px; gap: 8px">
+<span class="icon-tile t-warn" style="width: 52px; height: 52px; border-radius: 16px"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h11v10H4zM15 11l5-3v8l-5-3zM3 3l18 18"></path></svg></span>
+<span class="h3">Live-эфир не подключён</span>
+<span class="s c3">На этом сервере не настроен видеосервер. Обратитесь к администратору: нужны ключи LiveKit.</span>
+</section></div>
+
+<div class="col g8"><span class="when">Запись эфира не открылась</span>
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span class="grow">Не удалось получить ссылку на запись. Ссылка временная, попробуйте ещё раз.</span><button class="btn btn-sm" type="button">Повторить</button></div>
+</div>
+
+<div class="col g8"><span class="when">AI-ассистент · модель перегружена</span>
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span class="grow">Модель не ответила. Вопрос сохранён в разговоре.</span><button class="btn btn-sm" type="button">Спросить снова</button></div>
+<p class="xs c3">Если разговора ещё нет, он создаётся вместе с первым вопросом, текст не теряется.</p>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light' };
+}
+}
+</script>
+</body>
+</html>

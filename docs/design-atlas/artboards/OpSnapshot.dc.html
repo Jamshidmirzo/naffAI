@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Запрос снимка</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="height: 900px; position: relative; overflow: hidden">
+<div aria-hidden="true"><dc-import name="OpMy" hint-size="100%,960px"></dc-import></div>
+<div class="scrim"></div>
+
+<div style="position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; padding: 24px">
+<section class="modal col" role="dialog" aria-modal="true" aria-labelledby="snap-title">
+<div class="col g8" style="padding: 24px 24px 16px">
+<span class="badge b-info" style="align-self: flex-start"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4zM12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg>Запрос от Kamola Ahmedova</span>
+<h2 class="h2" id="snap-title">Менеджер просит снимок с камеры</h2>
+<p class="s c2">Нужно одно фото с рабочего места. Снимок увидит только менеджер, видео не записывается.</p>
+</div>
+<div style="padding: 0 24px">
+<div class="ph" style="aspect-ratio: 16 / 9"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4zM12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg><span>Предпросмотр камеры появится после разрешения</span></div>
+</div>
+<div class="row g8" style="padding: 20px 24px 24px; justify-content: flex-end">
+<button class="btn" type="button">Не сейчас</button>
+<button class="btn btn-pri" type="button">Разрешить и отправить</button>
+</div>
+</section>
+</div>
+
+<div class="toast" style="position: absolute; top: 76px; right: 24px; max-width: 420px; align-items: flex-start">
+<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"></path></svg>
+<span class="col g4"><span class="w6">Смена идёт 9 ч 40 мин</span><span style="opacity: .8">Не забудь завершить её до 20:00, иначе система закроет сама в 23:00.</span></span>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light' };
+}
+}
+</script>
+</body>
+</html>

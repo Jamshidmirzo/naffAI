@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Мои продажи</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 900px">
+<div class="rail-wrap"><dc-import name="SideNav" who="operator" at="sales" hint-size="84px,900px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Мои продажи</h1>
+<span class="grow"></span>
+<div class="seg"><button type="button">Сегодня</button><button type="button">Неделя</button><button class="is-on" type="button">Октябрь</button></div>
+</header>
+
+<main class="page">
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+<div class="card pad col g4">
+<span class="lbl">Подтверждено</span>
+<span class="kpi">96 400 000</span>
+<span class="s c3"><span class="num">8</span> продаж · идёт в зарплату</span>
+</div>
+<div class="card pad col g4">
+<span class="lbl">Ждёт менеджера</span>
+<span class="kpi" style="color: var(--warn)">4 500 000</span>
+<span class="s c3"><span class="num">1</span> продажа · пока не считается в зарплату</span>
+</div>
+<div class="card pad col g4">
+<span class="lbl">Отклонено</span>
+<span class="kpi" style="color: var(--bad)">8 900 000</span>
+<span class="s c3"><span class="num">1</span> продажа · причина в строке</span>
+</div>
+</div>
+
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: 120px 1.3fr 1.1fr 130px 150px 1.2fr"><span>Дата</span><span>Модель</span><span>Клиент</span><span>Партнёр</span><span class="r">Моя доля, сум</span><span>Статус</span></div>
+<sc-for list="{{sales}}" as="s" hint-placeholder-count="6">
+<div class="tr" style="grid-template-columns: 120px 1.3fr 1.1fr 130px 150px 1.2fr">
+<span class="num s c2">{{s.date}}</span>
+<span class="w6 trunc">{{s.model}}</span>
+<span class="trunc">{{s.client}}</span>
+<span class="c2">{{s.channel}}</span>
+<span class="r col" style="align-items: flex-end"><span class="num w6">{{s.sum}}</span><sc-if value="{{s.of}}" hint-placeholder-val="{{ false }}"><span class="num xs c3">из {{s.of}}</span></sc-if></span>
+<span class="row g6" style="min-width: 0"><span class="badge {{s.tone}}"><i class="dot"></i>{{s.status}}</span><span class="xs c3 trunc">{{s.note}}</span></span>
+</div>
+</sc-for>
+</section>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+theme: this.props.theme ?? 'light',
+sales: [
+{ date: '14.10 14:20', model: 'iPhone 15 Pro 256 GB', client: 'Sardor Aliyev', channel: 'Alif + Uzum', sum: '7 250 000', of: '14 500 000', status: 'Ждёт', tone: 'b-warn', note: 'отправлена 5 мин назад' },
+{ date: '13.10 17:05', model: 'Samsung Galaxy A55', client: 'Nilufar Saidova', channel: 'Uzum', sum: '5 200 000', of: '', status: 'Подтверждена', tone: 'b-ok', note: '' },
+{ date: '12.10 11:40', model: 'Redmi Note 13 Pro', client: 'Otabek Ergashev', channel: 'Cash', sum: '4 100 000', of: '', status: 'Подтверждена', tone: 'b-ok', note: '' },
+{ date: '11.10 15:12', model: 'iPhone 13 128 GB', client: 'Shahlo Komilova', channel: 'Hamroh', sum: '8 900 000', of: '', status: 'Отклонена', tone: 'b-bad', note: 'нет фото договора' },
+{ date: '10.10 12:30', model: 'iPhone 14 128 GB', client: 'Aziz Qodirov', channel: 'Alif', sum: '10 800 000', of: '', status: 'Подтверждена', tone: 'b-ok', note: '' },
+{ date: '09.10 16:48', model: 'Honor X9b', client: 'Malika Tursunova', channel: 'TBC', sum: '3 900 000', of: '', status: 'Подтверждена', tone: 'b-ok', note: '' },
+{ date: '08.10 10:15', model: 'iPhone 15 128 GB', client: 'Javlon Sobirov', channel: 'Alif', sum: '12 700 000', of: '', status: 'Подтверждена', tone: 'b-ok', note: '' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

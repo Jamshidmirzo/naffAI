@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Продажи команды</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1160px">
+<div class="side-wrap"><dc-import name="SideNav" who="super" at="tsales" hint-size="248px,1160px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Моя команда — продажи</h1>
+<span class="grow"></span>
+<span class="row g6"><select class="input" aria-label="Ветка" style="width: 210px"><option>Ветка: все менеджеры</option><option>Kamola Ahmedova</option><option>Rustam Yuldashev</option></select><span class="badge b-info" style="height: 20px">новое</span></span>
+<div class="seg"><button type="button">Сегодня</button><button type="button">Неделя</button><button class="is-on" type="button">Месяц</button></div>
+<button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"></path></svg>Excel</button><span class="badge b-info" style="height: 20px">новое</span>
+</header>
+
+<main class="page">
+<div class="tabs">
+<button class="tab" type="button">Всё итого</button>
+<button class="tab" type="button">Прямые</button>
+<button class="tab is-on" type="button">По менеджерам</button>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+<section class="card pad col g4"><span class="lbl">Продажи за период</span><span class="kpi">2 248 600 000</span><span class="s c3"><span class="num">214</span> продажи</span></section>
+<section class="card pad col g4"><span class="lbl">Активных операторов</span><span class="kpi">31</span><span class="s c3"><span class="num">4</span> стажёров</span></section>
+<section class="card pad col g4"><span class="lbl">Мои менеджеры</span><span class="kpi">2</span><span class="s c3"><span class="num">38</span> операторов всего</span></section>
+<section class="card pad col g4"><span class="row between"><span class="lbl">Средний чек</span><span class="badge b-info" style="height: 20px">новое</span></span><span class="kpi">10,5 млн</span><span class="s c3">план месяца 300 продаж · 71%</span></section>
+</div>
+
+<sc-for list="{{teams}}" as="t" hint-placeholder-count="3">
+<section class="card tbl">
+<div class="tr" style="grid-template-columns: 28px 1.6fr 110px 110px 170px 1.2fr; min-height: 60px; background: var(--surface-2)">
+<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="{{t.chev}}"></path></svg>
+<span class="row g8"><span class="ava">{{t.ini}}</span><span class="col"><span class="h3">{{t.name}}</span><span class="xs c3">{{t.ops}} операторов</span></span></span>
+<span class="r num w6">{{t.count}}</span>
+<span class="r num c2">{{t.avg}}</span>
+<span class="r num w6">{{t.sum}}</span>
+<span class="row g8"><span class="bar grow"><i class="{{t.barCls}}" style="width: {{t.pct}}%"></i></span><span class="num xs w6" style="width: 36px">{{t.pct}}%</span></span>
+</div>
+<sc-if value="{{t.open}}" hint-placeholder-val="{{ false }}">
+<div class="tr th" style="grid-template-columns: 28px 1.6fr 110px 110px 170px 1.2fr"><span></span><button class="th-s" type="button">Оператор</button><button class="th-s is-on r" type="button">Продаж <svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"></path></svg></button><span class="row g4 r" style="justify-content: flex-end"><span class="badge b-info" style="height: 18px; text-transform: none; letter-spacing: 0">новое</span><button class="th-s" type="button">Ср. чек</button></span><button class="th-s r" type="button">Сумма, сум</button><span class="row g6">План <span class="badge b-info" style="height: 18px; text-transform: none; letter-spacing: 0">новое</span></span></div>
+<sc-for list="{{t.rows}}" as="o" hint-placeholder-count="7">
+<div class="tr" style="grid-template-columns: 28px 1.6fr 110px 110px 170px 1.2fr">
+<span></span>
+<span class="row g8" style="min-width: 0"><span class="ava ava-s">{{o.ini}}</span><span class="trunc {{o.nameCls}}">{{o.name}}</span><sc-if value="{{o.trainee}}" hint-placeholder-val="{{ false }}"><span class="badge" style="height: 18px; font-size: 11px">стажёр</span></sc-if></span>
+<span class="r num w6 {{o.nameCls}}">{{o.count}}</span>
+<span class="r num c2">{{o.avg}}</span>
+<span class="r num">{{o.sum}}</span>
+<span class="row g8"><span class="bar grow"><i class="{{o.barCls}}" style="width: {{o.pct}}%"></i></span><span class="num xs" style="width: 36px">{{o.pct}}%</span></span>
+</div>
+</sc-for>
+</sc-if>
+</section>
+</sc-for>
+
+<section class="col g8" aria-label="Вкладка Прямые">
+<span class="when">Вкладка «Прямые»</span>
+<section class="card tbl">
+<div class="card-h"><div class="col"><span class="h3">Мои прямые операторы</span><span class="xs c3">Операторы без промежуточного менеджера — назначены вам напрямую.</span></div><div class="col" style="text-align: right"><span class="num w6">374 400 000</span><span class="xs c3"><span class="num">36</span> продажи</span></div></div>
+<div class="tr th" style="grid-template-columns: 1fr 180px 120px"><span>Оператор</span><span class="r">Сумма</span><span class="r">Продажи</span></div>
+<sc-for list="{{direct}}" as="d" hint-placeholder-count="4">
+<div class="tr" style="grid-template-columns: 1fr 180px 120px"><span class="row g8"><span class="ava ava-s">{{d.ini}}</span><span class="{{d.cls}}">{{d.name}}</span><sc-if value="{{d.trainee}}" hint-placeholder-val="{{ false }}"><span class="badge" style="height: 18px; font-size: 11px">стажёр</span></sc-if></span><span class="r num w6 {{d.cls}}">{{d.sum}}</span><span class="r num {{d.cls}}">{{d.cnt}}</span></div>
+</sc-for>
+</section>
+</section>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1160}}'>
+class Component extends DCLogic {
+renderVals() {
+const bc = (p) => p >= 85 ? 'ok' : p >= 60 ? 'warn' : 'bad';
+const o = (ini, name, count, avg, sum, pct, tr) => ({ ini: ini, name: name, count: count || '0', avg: avg, sum: sum, pct: pct, barCls: bc(pct), trainee: !!tr, nameCls: count ? '' : 'c3' });
+const t = (open, ini, name, ops, count, avg, sum, pct, rows) => ({ open: open, chev: open ? 'M6 9l6 6 6-6' : 'M9 6l6 6-6 6', ini: ini, name: name, ops: ops, count: count, avg: avg, sum: sum, pct: pct, barCls: bc(pct), rows: rows });
+return {
+theme: this.props.theme ?? 'light',
+direct: [
+{ ini: 'SP', name: 'Sanjar Po\u2018latov', sum: '168 800 000', cnt: 17, cls: '', trainee: false },
+{ ini: 'FH', name: 'Feruza Hasanova', sum: '121 600 000', cnt: 13, cls: '', trainee: false },
+{ ini: 'LK', name: 'Lola Karimova', sum: '84 000 000', cnt: 6, cls: '', trainee: true },
+{ ini: 'TX', name: 'Timur Xolmatov', sum: '0', cnt: 0, cls: 'c3', trainee: true }
+],
+teams: [
+t(true, 'KA', 'Kamola Ahmedova', 14, 112, '10,8', '1 209 600 000', 82, [
+o('JT', 'Jasur Toshmatov', 31, '10,1', '313 100 000', 104),
+o('NS', 'Nilufar Saidova', 27, '10,6', '286 200 000', 91),
+o('GK', 'Gulnoza Karimova', 18, '10,4', '187 200 000', 78),
+o('JS', 'Javlon Sobirov', 14, '9,9', '138 600 000', 58),
+o('MT', 'Malika Tursunova', 11, '9,7', '106 700 000', 49),
+o('SK', 'Shahlo Komilova', 6, '8,8', '52 800 000', 27, true),
+o('AS', 'Akmal Saidov', 0, '—', '—', 0, true)
+]),
+t(false, 'RY', 'Rustam Yuldashev', 11, 66, '10,2', '673 200 000', 64, [])
+]
+};
+}
+}
+</script>
+</body>
+</html>

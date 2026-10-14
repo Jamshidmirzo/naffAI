@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Все лиды</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1460px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="leads" hint-size="248px,1460px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<div class="col"><h1 class="h1">Лиды</h1><span class="xs c3">Управление воронкой и назначением</span></div>
+<span class="grow"></span>
+<div class="inwrap" style="width: 300px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg><input class="input" type="search" placeholder="Поиск: имя, телефон, товар…" aria-label="Поиск лидов"></div>
+<button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"></path></svg>Excel <span class="badge b-info" style="height: 20px">новое</span></button>
+</header>
+
+<main class="page" style="gap: 14px">
+<section class="card row g12 wrap" style="padding: 8px 10px 8px 16px" aria-label="Синхронизация Google-таблиц">
+<i class="dot" style="color: var(--ok-solid); width: 10px; height: 10px"></i>
+<span class="s w6">Google-таблицы:</span>
+<span class="s c3 grow trunc"><span class="num c2 w6">4</span> таблицы на связи · последняя проверка: <span class="c2 w6">2 мин назад</span> · в очереди записи: <span class="num c2 w6">3</span></span>
+<button class="btn btn-ghost btn-sm" type="button"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"></path></svg>Проверить сейчас</button>
+<a class="btn btn-sm" href="MgSheets.dc.html"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 10h16M4 15h16M10 5v14"></path></svg>Таблицы</a>
+<button class="btn btn-sm" type="button"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM22 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8"></path></svg>Операторы</button>
+</section>
+<div class="tabs">
+<button class="tab is-on" type="button">Все лиды <span class="num xs c3">4 812</span></button>
+<button class="tab" type="button">Нужна проверка <span class="cnt cnt-mute">12</span></button>
+<a class="tab" href="MgLeads.dc.html">Без оператора <span class="cnt">7</span></a>
+<button class="tab" type="button">Просроченные перезвоны <span class="cnt cnt-mute">5</span> <span class="badge b-info" style="height: 20px">новое</span></button>
+</div>
+<div class="row g8 wrap">
+<button class="chip is-on" type="button">Все источники</button><button class="chip" type="button">Instagram <span class="n">2 140</span></button><button class="chip" type="button">Facebook <span class="n">1 320</span></button><button class="chip" type="button">Telegram-бот <span class="n">780</span></button><button class="chip" type="button">Сайт <span class="n">412</span></button>
+<span class="grow"></span>
+<span class="badge b-info" style="height: 20px">новое</span>
+<select class="input" aria-label="Оператор" style="width: 190px; height: 32px; border-radius: 99px; font-size: 13px"><option>Все операторы</option></select>
+<select class="input" aria-label="Статус" style="width: 170px; height: 32px; border-radius: 99px; font-size: 13px"><option>Все статусы</option></select>
+</div>
+
+<div class="split">
+<section class="list col g8">
+<div class="card row g12" style="padding: 8px 16px; background: var(--ink); color: var(--surface); border-color: var(--ink)">
+<span class="s w6 grow">Выбрано: 2</span>
+<button class="btn btn-sm btn-pri" type="button">Назначить оператора</button>
+<button class="btn btn-sm" type="button" style="color: var(--ink)">Снять выбор</button>
+</div>
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: 28px minmax(150px, 1.5fr) minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.2fr) 52px 100px"><input class="check" type="checkbox" aria-label="Выбрать все на странице"><span>Лид</span><span>Источник</span><span>Оператор</span><span>Статус</span><span class="r">Звонки</span><span class="r">Колбэк</span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="9">
+<div class="tr {{r.cls}}" style="grid-template-columns: 28px minmax(150px, 1.5fr) minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.2fr) 52px 100px">
+<input class="check" type="checkbox" checked="{{r.on}}" aria-label="Выбрать: {{r.name}}">
+<button class="col" type="button" onClick="{{r.pick}}" style="min-width: 0; padding: 4px 0; border: 0; background: none; text-align: left; gap: 1px">
+<span class="row g6" style="min-width: 0"><sc-if value="{{r.review}}" hint-placeholder-val="{{ false }}"><svg class="ic ic-s c-hot" viewBox="0 0 24 24" aria-label="Нужна проверка"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg></sc-if><span class="w6 trunc">{{r.name}}</span></span>
+<span class="num xs {{r.phoneCls}}" style="white-space: nowrap">{{r.phone}}</span>
+<span class="xs w5 c-hot trunc">{{r.product}}</span>
+</button>
+<span class="c2 trunc">{{r.src}}</span>
+<span class="trunc">{{r.op}}</span>
+<span><span class="badge {{r.tone}}"><i class="dot"></i>{{r.status}}</span></span>
+<span class="r num">{{r.calls}}</span>
+<span class="r num s {{r.cbCls}}">{{r.cb}}</span>
+</div>
+</sc-for>
+</section>
+<div class="row between"><span class="s c3">Всего: <span class="num c2 w6">4 812</span> · <span class="c-hot w6">1 просрочено</span></span><div class="row g8"><span class="s c3">Показано <span class="num">1–50</span> из <span class="num">4 812</span></span><button class="btn btn-sm" type="button" disabled="{{yes}}">Назад</button><button class="btn btn-sm btn-pri btn-sq" type="button" aria-current="page" style="color: var(--brand-ink)">1</button><button class="btn btn-sm btn-sq" type="button">2</button><button class="btn btn-sm btn-sq" type="button">3</button><span class="c3">…</span><button class="btn btn-sm btn-sq" type="button">97</button><button class="btn btn-sm" type="button">Вперёд</button></div></div>
+</section>
+
+<aside class="panel card col" style="flex: 0 1 340px">
+<div class="card-h"><div class="col"><span class="row g6"><span class="h3">{{cur.name}}</span><span class="badge b-info" style="height: 20px">новое</span></span><span class="num xs {{cur.phoneCls}}">{{cur.phone}}</span></div><span class="badge {{cur.tone}}"><i class="dot"></i>{{cur.status}}</span></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px">
+<div class="col g4"><span class="lbl">Источник</span><span class="s">{{cur.src}}</span></div>
+<div class="col g4"><span class="lbl">Оператор</span><span class="s">{{cur.op}}</span></div>
+<div class="col g4"><span class="lbl">Товар</span><span class="s">{{cur.product}}</span></div>
+<div class="col g4"><span class="lbl">Создан</span><span class="num s">{{cur.created}}</span></div>
+</div>
+<hr class="hr">
+<div class="col g8" style="padding: 14px 16px">
+<span class="lbl">История</span>
+<sc-for list="{{cur.hist}}" as="h" hint-placeholder-count="3"><div class="row between s g12"><span class="c2">{{h.what}}</span><span class="num xs c3" style="flex: none">{{h.when}}</span></div></sc-for>
+</div>
+<hr class="hr">
+<div class="row g8" style="padding: 14px 16px"><button class="btn grow" type="button">Переназначить</button><button class="btn grow" type="button">Позвонить</button></div>
+</aside>
+</div>
+
+<div class="row g24" style="align-items: flex-start; margin-top: 10px">
+<div class="col g8" style="flex: 0 0 480px">
+<span class="when">Окно «Назначить оператора» — из панели выбора</span>
+<div class="dlg">
+<div class="dlg-h"><div class="col g4"><span class="h2">Назначить оператора · 2</span><span class="s c3">2 лида будут переназначены</span></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b">
+<div class="field"><label>Оператор</label><select class="input" aria-label="Оператор"><option>Nilufar Saidova</option><option>Gulnoza Karimova</option></select></div>
+<div class="field"><label>Причина (необязательно)</label><input class="input" type="text" placeholder="Например: alias «Sevara» → Sevara Karimova" aria-label="Причина"></div>
+</div>
+<div class="dlg-f"><button class="btn btn-ghost" type="button">Отмена</button><button class="btn btn-pri" type="button" style="color: var(--brand-ink)">Назначить</button></div>
+</div>
+</div>
+<div class="col g8 grow">
+<span class="when">Полоса синхронизации, если таблица сломалась</span>
+<section class="card row g12 wrap" style="padding: 8px 10px 8px 16px; background: var(--bad-bg); border-color: var(--bad-bg)">
+<i class="dot" style="color: var(--bad-solid); width: 10px; height: 10px"></i>
+<span class="s w6">Google-таблицы:</span>
+<span class="s c-bad w6 row g6" style="white-space: nowrap"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg>В 1 таблице ошибка!</span>
+<span class="grow"></span>
+<button class="btn btn-ghost btn-sm btn-sq" type="button" aria-label="Проверить сейчас"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"></path></svg></button>
+<a class="btn btn-sm" href="MgSheets.dc.html">Таблицы</a>
+<button class="btn btn-sm" type="button">Операторы</button>
+</section>
+<span class="when" style="margin-top: 12px">Список пуст</span>
+<section class="card empty"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13l3-8h10l3 8v6H4zM4 13h5l1 2h4l1-2h5"></path></svg><span class="h3" style="color: var(--ink)">Лидов пока нет</span><span class="s">Попробуйте другой источник или вкладку</span></section>
+<span class="when" style="margin-top: 12px">После назначения</span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Оператор назначен</span>
+</div>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1460}}'>
+class Component extends DCLogic {
+renderVals() {
+const sel = (this.state && this.state.sel) || 1;
+const r = (on, name, phone, src, op, status, tone, calls, cb, cbCls, product, created, hist) => ({ on: on, name: name, phone: phone || 'нет телефона', phoneCls: (!phone || phone.length < 14) ? 'c-bad w6' : 'c3', review: false, src: src, op: op, status: status, tone: tone, calls: calls, cb: cb, cbCls: cbCls, product: product, created: created, hist: hist });
+const rows = [
+r(true, 'Sardor Aliyev', '+998 90 123 45 67', 'Instagram', 'Gulnoza Karimova', 'Новый', 'b-info', 0, '—', 'c3', 'iPhone 15 Pro 256 GB', '14.10 14:01', [{ what: 'Назначен автораздачей', when: '14:02' }, { what: 'Пришёл из таблицы «Октябрь»', when: '14:01' }]),
+r(false, 'Dilnoza Yusupova', '+998 93 456 78 90', 'Telegram-бот', 'Gulnoza Karimova', 'Callback', 'b-info', 2, '14 окт, 12:00', 'c-hot w6', 'Samsung Galaxy S24', '13.10 18:40', [{ what: 'Перезвон просрочен на 2 ч 10 мин', when: '12:00' }, { what: 'Разговор 3 мин, ждёт зарплату', when: '11:12' }, { what: 'Назначен Gulnoza Karimova', when: '13.10' }]),
+r(true, 'Madina Rahimova', '+998 99 555 01 02', 'Facebook', 'Jasur Toshmatov', 'Показалось дорого', 'b-hot', 3, '14 окт, 16:00', '', 'iPhone 13 128 GB', '12.10 10:15', [{ what: 'Вернётся в работу в 16:00', when: '15:20' }]),
+r(false, 'Jasur Raximov', '97 111 22', 'Instagram', 'Otabek Ergashev', 'Не ответил 1', '', 1, '—', 'c3', 'Redmi Note 13', '14.10 09:40', [{ what: 'Не ответил, гудки', when: '11:40' }]),
+r(false, 'Bekzod Nazarov', '+998 91 700 00 11', 'Instagram', 'Nilufar Saidova', 'Телефон включён', 'b-info', 3, '—', 'c3', 'Honor X9b', '13.10 12:00', [{ what: 'Телефон включён, не берёт', when: 'вчера 18:05' }]),
+r(false, 'Aziz Qodirov', '+998 90 404 55 66', 'Сайт', 'Aziz Qodirov', 'Продажа', 'b-ok', 2, '—', 'c3', 'iPhone 14 128 GB', '14.10 09:12', [{ what: 'Продажа №1 478', when: '12:30' }]),
+r(false, 'Lola Karimova', '+998 95 120 90 90', 'Instagram', 'Shahlo Komilova', 'Потерян', 'b-bad', 4, '—', 'c3', 'Samsung Galaxy S24', '11.10 15:30', [{ what: 'Купил в другом месте', when: '11:05' }]),
+r(false, 'Без имени', '', 'Сайт', 'Gulnoza Karimova', 'Callback', 'b-info', 1, '14 окт, 19:00', '', '', '12.10 16:00', [{ what: 'Перезвон на 19:00', when: '13:55' }]),
+r(false, 'Kamron Ibragimov', '+998 93 220 14 70', 'Instagram', 'не назначен', 'Новый', 'b-info', 0, '—', 'c3', 'iPhone 15 128 GB', '14.10 14:18', [{ what: 'Ждёт оператора: у всех заняты слоты', when: '14:18' }])
+];
+rows[3].review = true; rows[7].review = true; rows[7].name = '—';
+const list = rows.map((x, i) => Object.assign({}, x, { cls: i === sel ? 'is-sel' : '', pick: () => this.setState({ sel: i }) }));
+return { theme: this.props.theme ?? 'light', yes: true, rows: list, cur: rows[sel] };
+}
+}
+</script>
+</body>
+</html>

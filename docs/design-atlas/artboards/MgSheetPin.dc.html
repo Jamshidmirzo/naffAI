@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>PIN разделов: окна</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1000px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6"><h1 class="h1">PIN для «Смены» и «Зарплаты»</h1><p class="c3">Один общий PIN на всех менеджеров, сессия 30 минут. Суперадмин задаёт, меняет и сбрасывает его в «Настройках».</p></div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; align-items: start">
+
+<div class="col g8"><span class="when">Вход в раздел</span>
+<section class="dlg" style="overflow: hidden"><i class="ikat" style="height: 8px" aria-hidden="true"></i>
+<div class="dlg-h"><div class="col g4"><h2 class="h2">Введите PIN</h2><span class="s c3">Раздел «Посещаемость» защищён общим PIN из 4 цифр</span></div></div>
+<div class="dlg-b"><input class="input input-lg num" type="password" value="12" aria-label="PIN" style="letter-spacing: .6em; text-align: center; font-size: 24px"><span class="hint" style="text-align: center">Ещё 2 цифры</span></div>
+<div class="dlg-f"><span class="xs c3 grow">Забыли? Его сбрасывает суперадмин</span><button class="btn btn-pri" type="button" disabled="{{yes}}">Войти</button></div></section></div>
+
+<div class="col g8"><span class="when">Неверный PIN</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2">Введите PIN</h2></div>
+<div class="dlg-b"><input class="input input-lg num is-bad" type="password" value="" aria-label="PIN" style="letter-spacing: .6em; text-align: center"><span class="err" style="justify-content: center">Неверный PIN, попробуйте ещё раз</span></div>
+<div class="dlg-f"><button class="btn btn-pri" type="button" disabled="{{yes}}">Войти</button></div></section></div>
+
+<div class="col g8"><span class="when">PIN ещё не задан</span>
+<section class="card col" style="align-items: center; text-align: center; padding: 28px 20px; gap: 8px">
+<span class="icon-tile t-warn" style="width: 52px; height: 52px; border-radius: 16px"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3"></path></svg></span>
+<span class="h3">PIN не установлен</span>
+<span class="s c3">Попросите суперадмина задать общий PIN в «Настройках». До этого раздел закрыт для менеджеров.</span>
+</section></div>
+
+<div class="col g8"><span class="when">Задать или сменить PIN · суперадмин</span>
+<section class="dlg"><div class="dlg-h"><div class="col g4"><h2 class="h2">Сменить общий PIN</h2><span class="s c3">Все менеджеры введут новый PIN при следующем входе</span></div></div>
+<div class="dlg-b">
+<div class="field"><label for="pn1">Новый PIN</label><input class="input num" id="pn1" type="password" value="4821" style="letter-spacing: .4em"></div>
+<div class="field"><label for="pn2">Повторите</label><input class="input num is-bad" id="pn2" type="password" value="4812" style="letter-spacing: .4em"><span class="err">PIN не совпадают</span></div>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button" disabled="{{yes}}">Сохранить</button></div></section></div>
+
+<div class="col g8"><span class="when">Сбросить PIN</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2" style="color: var(--bad)">Сбросить общий PIN?</h2></div>
+<div class="dlg-b"><p class="s c2">Менеджеры не смогут открыть «Смену» и «Зарплату», пока вы не зададите новый PIN.</p></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-danger" type="button">Сбросить</button></div></section></div>
+
+<div class="col g8"><span class="when">Сессия заканчивается</span>
+<div class="col g8">
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--warn-solid)"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"></path></svg>Сессия PIN закончится через минуту<span class="t-act">Продлить</span></span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Общий PIN сохранён</span>
+</div></div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light', yes: true };
+}
+}
+</script>
+</body>
+</html>

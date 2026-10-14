@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Отчёт посещаемости</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 960px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="attrep" hint-size="248px,960px"></dc-import></div>
+<div class="main-col">
+<header class="top">
+<h1 class="h1">Смена</h1>
+<div class="seg"><a href="MgAttendance.dc.html">Сегодня</a><a class="is-on" href="MgAttReport.dc.html" aria-current="page">Отчёт</a><a href="MgAttPhotos.dc.html">Фото</a><a href="MgKiosk.dc.html">Киоск</a><a href="MgAttSettings.dc.html">Настройки</a></div>
+<span class="grow"></span>
+<button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"></path></svg>Экспорт в Excel</button>
+</header>
+<main class="page" style="gap: 16px">
+<section class="card row g16 wrap" style="padding: 12px 16px">
+<span class="row g8"><svg class="ic c3" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"></path></svg><input class="input num" type="text" value="01.10.2026" aria-label="Дата от" style="width: 130px; height: 36px"><span class="c3">—</span><input class="input num" type="text" value="14.10.2026" aria-label="Дата до" style="width: 130px; height: 36px"></span>
+<span class="row g8"><svg class="ic c3" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 20v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 20v-1a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"></path></svg><button class="btn btn-sm" type="button">Операторы <span class="xs c3">все</span><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button></span>
+<span class="grow"></span><span class="xs c3">клик по строке раскрывает календарь · все колонки сортируются</span>
+</section>
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: 1.3fr 130px 130px 130px 130px 110px 120px 32px"><button class="th-s" type="button">Оператор <svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true" style="opacity: .6"><path d="M7 4v16M4 7l3-3 3 3M17 20V4M14 17l3 3 3-3"></path></svg></button><button class="th-s r" type="button">Явился / Ожид. <svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true" style="opacity: .6"><path d="M7 4v16M4 7l3-3 3 3M17 20V4M14 17l3 3 3-3"></path></svg></button><button class="th-s r" type="button">Опоздал <svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true" style="opacity: .6"><path d="M7 4v16M4 7l3-3 3 3M17 20V4M14 17l3 3 3-3"></path></svg></button><button class="th-s r" type="button">Авто-закрыто <svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true" style="opacity: .6"><path d="M7 4v16M4 7l3-3 3 3M17 20V4M14 17l3 3 3-3"></path></svg></button><button class="th-s r" type="button">Ручное закр. <svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true" style="opacity: .6"><path d="M7 4v16M4 7l3-3 3 3M17 20V4M14 17l3 3 3-3"></path></svg></button><button class="th-s r" type="button">Ср. смена <svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true" style="opacity: .6"><path d="M7 4v16M4 7l3-3 3 3M17 20V4M14 17l3 3 3-3"></path></svg></button><button class="th-s is-on r" type="button">Итого часов <svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"></path></svg></button><span></span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="3">
+<div class="tr {{r.cls}}" style="grid-template-columns: 1.3fr 130px 130px 130px 130px 110px 120px 32px">
+<span class="row g8"><span class="ava ava-s">{{r.ini}}</span><span class="w6 trunc">{{r.name}}</span></span><span class="r num">{{r.att}}</span><span class="r num {{r.lateCls}}">{{r.late}}</span><span class="r num c2">{{r.auto}}</span><span class="r num c2">{{r.man}}</span><span class="r num">{{r.avg}}</span><span class="r num w6 c-brand">{{r.total}}</span><span class="r c3"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span>
+</div>
+</sc-for>
+<div class="tr is-sel" style="grid-template-columns: 1.3fr 130px 130px 130px 130px 110px 120px 32px">
+<span class="row g8"><span class="ava ava-s">GK</span><span class="w6 trunc">Gulnoza Karimova</span></span><span class="r num">11 / 12</span><span class="r num c-brand w6">2 (14 мин)</span><span class="r num c2">1</span><span class="r num c2">1</span><span class="r num">538 мин</span><span class="r num w6 c-brand">98 ч</span><span class="r c2"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"></path></svg></span>
+</div>
+<div style="padding: 16px 20px; background: var(--surface-2); border-bottom: 1px solid var(--line)">
+<div class="card col g16" style="padding: 16px">
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px">
+<div class="well col g4" style="align-items: center"><span class="xs c3">Присутствие</span><span class="num w7" style="font-size: 17px">11 / 12 дн.</span></div>
+<div class="well col g4" style="align-items: center"><span class="xs c3">Пропуски</span><span class="num w7 c-bad" style="font-size: 17px">1 дн.</span></div>
+<div class="well col g4" style="align-items: center"><span class="xs c3">Опоздания (среднее)</span><span class="num w7 c-warn" style="font-size: 17px">2 (14 мин)</span></div>
+<div class="well col g4" style="align-items: center"><span class="xs c3">Средняя смена</span><span class="num w7 c-brand" style="font-size: 17px">538 мин</span></div>
+<div class="well col g4" style="align-items: center"><span class="xs c3">Итого часов</span><span class="num w7 c-ok" style="font-size: 17px">98 ч.</span></div>
+</div>
+<div class="col g8">
+<span class="h3">Календарь присутствия</span>
+<div class="row g6 wrap" style="padding: 10px; border-radius: 11px; background: var(--surface-2); border: 1px solid var(--line)">
+<sc-for list="{{hm}}" as="d" hint-placeholder-count="14"><span class="num" title="{{d.t}}" style="display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 6px; font-size: 10px; font-weight: 700; color: {{d.fg}}; background: {{d.bg}}">{{d.n}}</span></sc-for>
+</div>
+<div class="row g16 wrap xs c2">
+<sc-for list="{{legend}}" as="l" hint-placeholder-count="6"><span class="row g6"><i style="display: block; width: 14px; height: 14px; border-radius: 4px; background: {{l.bg}}"></i>{{l.t}}</span></sc-for>
+</div>
+</div>
+</div>
+</div>
+<sc-for list="{{rows2}}" as="r" hint-placeholder-count="4">
+<div class="tr {{r.cls}}" style="grid-template-columns: 1.3fr 130px 130px 130px 130px 110px 120px 32px">
+<span class="row g8"><span class="ava ava-s">{{r.ini}}</span><span class="w6 trunc">{{r.name}}</span></span><span class="r num">{{r.att}}</span><span class="r num {{r.lateCls}}">{{r.late}}</span><span class="r num c2">{{r.auto}}</span><span class="r num c2">{{r.man}}</span><span class="r num">{{r.avg}}</span><span class="r num w6 c-brand">{{r.total}}</span><span class="r c3"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span>
+</div>
+</sc-for>
+</section>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+const r = (ini, name, att, late, lm, auto, man, avg, total) => ({ cls: '', ini: ini, name: name, att: att, late: late > 0 ? late + ' (' + lm + ' мин)' : '0', lateCls: late > 0 ? 'c-brand w6' : 'c3', auto: auto, man: man, avg: avg + ' мин', total: total + ' ч' });
+const ON = 'var(--ok-solid)', LT = 'var(--warn-solid)', AB = 'var(--bad-solid)', WE = 'var(--line-2)', AU = 'repeating-linear-gradient(45deg, #D97706, #D97706 4px, #F59E0B 4px, #F59E0B 8px)', MC = 'var(--brand)';
+const st = { on: [ON, '#FFFFFF', 'Вовремя'], late: [LT, '#15132B', 'Опоздание'], abs: [AB, '#FFFFFF', 'Пропуск'], we: [WE, 'var(--ink-3)', 'Выходной'], auto: [AU, '#FFFFFF', 'Авто-закрытие (23:00)'], man: [MC, '#FFFFFF', 'Закрыто ТL/Менеджером'] };
+const days = ['on', 'on', 'late', 'on', 'we', 'on', 'on', 'auto', 'on', 'abs', 'late', 'we', 'man', 'on'];
+return {
+theme: this.props.theme ?? 'light',
+rows: [
+r('JT', 'Jasur Toshmatov', '12 / 12', 0, 0, 0, 0, 552, 110),
+r('NS', 'Nilufar Saidova', '12 / 12', 1, 6, 0, 0, 545, 109),
+r('MT', 'Malika Tursunova', '11 / 12', 0, 0, 0, 0, 541, 99)
+],
+rows2: [
+r('SK', 'Shahlo Komilova', '11 / 12', 1, 9, 0, 1, 520, 95),
+r('OE', 'Otabek Ergashev', '10 / 12', 2, 22, 2, 0, 570, 95),
+r('JS', 'Javlon Sobirov', '9 / 12', 4, 31, 1, 0, 490, 73),
+r('BM', 'Bahodir Mirzayev', '6 / 12', 3, 27, 2, 1, 440, 44)
+],
+hm: days.map((k, i) => ({ n: String(i + 1).padStart(2, '0'), bg: st[k][0], fg: st[k][1], t: String(i + 1).padStart(2, '0') + '.10: ' + st[k][2] })),
+legend: ['on', 'late', 'abs', 'we', 'auto', 'man'].map((k) => ({ bg: st[k][0], t: st[k][2] }))
+};
+}
+}
+</script>
+</body>
+</html>

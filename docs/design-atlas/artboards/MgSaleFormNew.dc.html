@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Новая продажа</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1760px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="sales" hint-size="248px,1760px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<a class="btn btn-ghost btn-sq" href="MgSales.dc.html" aria-label="Назад к продажам"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
+<h1 class="h1">Новая продажа</h1>
+<span class="s c3">менеджер оформляет за оператора · исправление существующей — <a class="c-brand" href="MgSaleForm.dc.html">MgSaleForm</a></span>
+<span class="grow"></span>
+<a class="btn btn-ghost" href="MgSales.dc.html">Отмена</a>
+</header>
+
+<main class="page">
+<div class="split">
+
+<form class="list col g16">
+<section class="card">
+<div class="card-h"><span class="h3">Устройство</span></div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 18px 20px">
+<div class="field" style="grid-column: span 2"><label for="n-imei">IMEI (15 цифр)</label><input class="input num is-ok" id="n-imei" type="text" value="356931081234567"><span class="row g6 xs c-ok w6"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>→ iPhone 15 Pro 256 GB</span></div>
+<div class="field"><label for="n-qty">Кол-во, шт</label><input class="input num" id="n-qty" type="text" value="1"><span class="hint">Сумма ниже — за всю продажу, не за штуку.</span></div>
+<div class="field" style="grid-column: span 3"><label for="n-model">Модель</label><input class="input" id="n-model" type="text" value="iPhone 15 Pro 256 GB"><span class="hint">Начни вводить — выпадет список. Нет в списке? Впиши свой</span></div>
+</div>
+</section>
+
+<section class="card">
+<div class="card-h"><span class="h3">Клиент</span><span class="xs c3">поиск лида по телефону от 3 цифр</span></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 18px 20px">
+<div class="field"><label for="n-name">Имя клиента</label><input class="input" id="n-name" type="text" placeholder="Иванов Иван"></div>
+<div class="field"><label for="n-phone">Телефон клиента</label><input class="input num" id="n-phone" type="tel" value="+998 90 123" style="border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft)"></div>
+<div class="card col" style="grid-column: span 2; box-shadow: var(--shadow); overflow: hidden; margin-top: -8px">
+<sc-for list="{{matches}}" as="l" hint-placeholder-count="3">
+<button class="li" type="button" style="width: 100%; border-left: 0; border-right: 0; border-top: 0; background: {{l.bg}}; text-align: left; min-height: 0; padding: 9px 14px">
+<span class="col grow" style="gap: 2px; min-width: 0"><span class="s w6 trunc">{{l.name}}</span><span class="row g6 xs c3"><span class="num">{{l.phone}}</span><span class="badge b-info" style="height: 18px; font-size: 11px">{{l.src}}</span><span>· {{l.product}}</span><span>· {{l.op}}</span></span></span>
+<span class="badge {{l.tone}}" style="height: 20px; font-size: 11px">{{l.status}}</span>
+</button>
+</sc-for>
+</div>
+</div>
+</section>
+
+<section class="card">
+<div class="card-h"><span class="h3">Операторы</span><button class="btn btn-ghost btn-sm" type="button"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>добавить</button></div>
+<div class="col g8" style="padding: 16px 20px">
+<div class="row g8" style="align-items: flex-start"><select class="input grow" aria-label="Оператор 1"><option>Gulnoza Karimova</option></select><span class="col g4" style="width: 180px"><input class="input num" type="text" value="10 000 000" aria-label="Сумма оператора 1"><span class="hint">мин 1 000</span></span><button class="btn btn-ghost btn-sq" type="button" aria-label="Убрать оператора 1"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="row g8" style="align-items: flex-start"><span class="inwrap grow"><input class="input" type="text" value="Dilnoza Yusupova" aria-label="Оператор 2" style="padding-left: 12px; padding-right: 70px"><span class="badge b-info" style="position: absolute; right: 8px; height: 20px">новый</span></span><span class="col g4" style="width: 180px"><input class="input num" type="text" value="4 500 000" aria-label="Сумма оператора 2"><span class="hint">мин 1 000</span></span><button class="btn btn-ghost btn-sq" type="button" aria-label="Убрать оператора 2"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<span class="hint">Новые имена добавятся автоматически при сохранении.</span>
+</div>
+</section>
+
+<section class="card">
+<div class="card-h"><span class="h3">Партнёры</span><span class="row g8"><span class="xs c3">не больше двух на продажу</span><button class="btn btn-ghost btn-sm" type="button" disabled="{{yes}}"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>добавить</button></span></div>
+<div class="col g8" style="padding: 16px 20px">
+<div class="row g8" style="align-items: flex-start"><select class="input grow" aria-label="Партнёр 1"><option>Alif</option></select><span class="col g4" style="width: 180px"><input class="input num" type="text" value="10 000 000" aria-label="Сумма партнёра 1"><span class="hint">мин 1 000</span></span><button class="btn btn-ghost btn-sq" type="button" aria-label="Убрать партнёра 1"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="row g8" style="align-items: flex-start"><select class="input grow" aria-label="Партнёр 2"><option>Uzum</option></select><span class="col g4" style="width: 180px"><input class="input num" type="text" value="4 500 000" aria-label="Сумма партнёра 2"><span class="hint">мин 1 000</span></span><button class="btn btn-ghost btn-sq" type="button" aria-label="Убрать партнёра 2"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<span class="hint">Новые имена добавятся автоматически при сохранении.</span>
+</div>
+</section>
+</form>
+
+<aside class="panel col g16">
+<section class="card col">
+<div class="card-h"><span class="h3">Сверка сумм</span></div>
+<div class="col g8" style="padding: 16px 20px">
+<div class="row between s"><span class="c3">Сумма по операторам:</span><span class="num">14 500 000</span></div>
+<div class="row between s"><span class="c3">Сумма по партнёрам:</span><span class="num">14 500 000</span></div>
+<div class="row between s"><span class="w6">Итого продажи:</span><span class="num w6">14 500 000</span></div>
+<div class="row between s"><span class="c3">Скидка:</span><span class="num c-bad">− 300 000 сум</span></div>
+<hr class="hr" style="margin: 6px 0">
+<div class="row between" style="align-items: baseline"><span class="s w6">Итог (с учётом скидки):</span><span class="kpi" style="font-size: 24px">14 200 000</span></div>
+<span class="xs c3">Кредит операторов будет уменьшен пропорционально на сумму скидки.</span>
+</div>
+</section>
+<section class="card col g12" style="padding: 16px 20px">
+<div class="field"><label for="n-disc">Скидка (необязательно)</label><input class="input num" id="n-disc" type="text" value="300 000"><span class="hint">Скидка пропорционально уменьшает кредит каждого оператора. Партнёры (способы оплаты) сохраняют свои суммы.</span></div>
+<div class="field"><label for="n-note">Комментарий</label><textarea class="input" id="n-note" rows="2">Доставка завтра до 12:00</textarea></div>
+<label class="row g8 s"><input class="check" type="checkbox" checked="{{yes}}">Был бонус или особые условия</label>
+<div class="field"><input class="input" type="text" value="Подарочный чехол и стекло" aria-label="Описание бонуса"><span class="hint">Менеджер получит уведомление с текстом бонуса — не забудьте описать суть.</span></div>
+</section>
+<div class="row g8"><a class="btn" href="MgSales.dc.html" style="flex: 1 1 0">Отмена</a><button class="btn btn-pri" type="button" style="flex: 1 1 0">Сохранить</button></div>
+</aside>
+
+</div>
+
+<section class="col g12" aria-label="Состояния полей">
+<span class="lbl">Состояния полей · ошибки сохранения — MgSheetSaleForm</span>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+
+<div class="col g8"><span class="when">IMEI: модель не распознана</span>
+<div class="card col g6 pad"><label class="flabel" for="s1">IMEI (15 цифр)</label><input class="input num is-warn" id="s1" type="text" value="868210057731204"><span class="xs c-warn w6">модель не определена, заполни вручную</span></div></div>
+
+<div class="col g8"><span class="when">IMEI: ещё не дописан</span>
+<div class="card col g6 pad"><label class="flabel" for="s2">IMEI (15 цифр)</label><input class="input num" id="s2" type="text" value="356931081"><span class="xs c3">9 цифр (минимум 6)</span></div></div>
+
+<div class="col g8"><span class="when">IMEI уже продавался</span>
+<div class="card col g6 pad"><label class="flabel" for="s3">IMEI (15 цифр)</label><input class="input num is-bad" id="s3" type="text" value="353005124122071"><span class="xs c-bad w6">IMEI уже встречался. Подтвердите дубликат с комментарием:</span><input class="input" type="text" value="Обмен по гарантии, старая продажа №1 312" aria-label="Причина дубля"><span class="hint">Причина (замена, обмен, ошибка ранее…)</span></div></div>
+
+<div class="col g8"><span class="when">Лид привязан</span>
+<div class="card col g6 pad"><span class="flabel">Телефон клиента</span>
+<div class="input row g8" style="height: auto; padding: 8px 8px 8px 12px; align-items: flex-start"><span class="col grow" style="gap: 2px; min-width: 0"><span class="s w6">Sardor Aliyev</span><span class="row g6 xs"><span class="num c3">+998 90 123 45 67</span><span class="badge b-info" style="height: 18px; font-size: 11px">Instagram октябрь</span></span><span class="xs c3 trunc">Привязан к лиду · Думает · Gulnoza Karimova</span></span><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Отвязать лид"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div></div></div>
+
+<div class="col g8"><span class="when">Клиента нет среди лидов</span>
+<div class="card col g6 pad"><label class="flabel" for="s5">Телефон клиента</label><input class="input num" id="s5" type="tel" value="+998 99 812 03 77"><span class="row g6 xs c-bad" style="align-items: flex-start"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>Клиент не найден в списке лидов. Продажа сохранится без источника — мы не сможем понять с какого шита пришёл клиент. Проверь номер или оформи как «прямую» продажу.</span></span></div></div>
+
+<div class="col g8"><span class="when">Суммы расходятся</span>
+<div class="card col g8 pad">
+<div class="row between s"><span class="c3">Сумма по операторам:</span><span class="num">14 500 000</span></div>
+<div class="row between s"><span class="c3">Сумма по партнёрам:</span><span class="num">14 000 000</span></div>
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>Суммы не совпадают на 500 000 сум. Проверьте строки.</span></div>
+</div></div>
+
+</div>
+</section>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1760}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+theme: this.props.theme ?? 'light',
+yes: true,
+matches: [
+{ bg: 'var(--brand-soft)', name: 'Sardor Aliyev', phone: '+998 90 123 45 67', src: 'Instagram октябрь', product: 'iPhone 15 Pro', op: 'Gulnoza Karimova', status: 'Думает', tone: 'b-warn' },
+{ bg: 'var(--surface)', name: 'Bekzod Rahimov', phone: '+998 90 123 08 14', src: 'Telegram-бот', product: 'Galaxy A55', op: 'Jasur Toshmatov', status: 'Перезвонить', tone: 'b-info' },
+{ bg: 'var(--surface)', name: 'Без имени', phone: '+998 90 123 77 02', src: 'Сайт · заявки', product: 'Redmi Note 13', op: 'нет оператора', status: 'Новый', tone: '' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Диагностика раздачи</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1450px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6"><h1 class="h1">Диагностика раздачи</h1><p class="c3">Окно из списка операторов (кнопка «Диагностика раздачи» в шапке и в боковой панели). В коде тексты на узбекском, здесь — по-русски.</p></div>
+
+<div class="col g8"><span class="when">Открыто · выбран заблокированный оператор, вкладка «Вчерашний остаток»</span>
+<section class="dlg">
+<div class="dlg-h">
+<div class="row g12" style="align-items: flex-start"><span class="icon-tile t-info"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg></span><div class="col g4"><div class="row g8"><h2 class="h2">Диагностика раздачи операторам</h2><span class="badge b-ok"><i class="dot"></i>Real-time</span></div><span class="s c3">Почему оператор не получает лиды: пауза, вчерашний остаток, квота, посещаемость — проверка в один клик</span></div></div>
+<div class="row g8"><button class="btn btn-sm" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"></path></svg>Обновить</button><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+</div>
+<div class="dlg-b" style="gap: 16px">
+
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px">
+<sc-for list="{{sum}}" as="k" hint-placeholder-count="6">
+<div class="well col g4" style="align-items: center; text-align: center; padding: 10px; background: var({{k.bg}}); border-color: transparent"><span class="xs w6" style="color: var({{k.fg}})">{{k.l}}</span><span class="num w7" style="font-size: 18px; color: var({{k.fg}})">{{k.v}}</span></div>
+</sc-for>
+</div>
+
+<div style="display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 16px; align-items: start">
+
+<div class="col g8">
+<div class="inwrap"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg><input class="input" type="search" placeholder="Имя или номер оператора…" aria-label="Поиск оператора"></div>
+<div class="row g6 wrap"><button class="chip is-on" type="button">Все <span class="n">38</span></button><button class="chip" type="button">Заблокировано <span class="n">11</span></button><button class="chip" type="button">Пауза <span class="n">2</span></button><button class="chip" type="button">Открыто <span class="n">24</span></button></div>
+<div class="col g6">
+<sc-for list="{{ops}}" as="o" hint-placeholder-count="8">
+<div class="well col g4 {{o.sel}}" style="padding: 9px 12px; background: var(--surface)">
+<div class="row between g8"><span class="row g8" style="min-width: 0"><i class="dot" style="width: 8px; height: 8px; color: var({{o.dot}})"></i><span class="w6 s trunc">{{o.n}}</span></span><span class="badge {{o.tone}}" style="height: 20px">{{o.b}}</span></div>
+<div class="row g12 xs c3"><span class="num">Квота: {{o.q}}</span><sc-if value="{{o.y}}" hint-placeholder-val="{{ false }}"><span class="c-warn w6 num">Со вчера: {{o.y}}</span></sc-if><span class="grow"></span><span class="num">Сегодня: {{o.t}}</span></div>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div class="col g12">
+<div class="card row between g12" style="padding: 12px 14px">
+<div class="col g4" style="min-width: 0"><div class="row g8"><h3 class="h3">Javlon Sobirov</h3><span class="xs c3 num">ID: 214</span><span class="xs c3 num">+998 91 266 90 05</span></div><span class="xs c3">Последний лид: <b class="c2 w6">47 мин назад</b></span></div>
+<div class="row g6"><button class="btn btn-sm" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--warn-solid)"><path d="M9 6v12M15 6v12"></path></svg>Поставить на паузу</button><button class="btn btn-sm" type="button" title="Гейт включён: вчерашние лиды не дают прийти новым"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--warn-solid)"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6zM12 8v5M12 16h.01"></path></svg>Гейт: ВКЛ</button></div>
+</div>
+<div class="banner b-bad" style="flex-direction: column; gap: 6px; background: var(--bad-bg); color: var(--bad)">
+<div class="row g8 w7" style="font-size: 14px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg>РАЗДАЧА ЗАБЛОКИРОВАНА</div>
+<div class="col g4 c2" style="padding-left: 26px"><span>• Гейт включён: 3 незакрытых лида со вчера</span><span>• Квота заполнена: в работе 5 из 5 лидов</span><span>• 1 просроченный колбэк</span></div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+<div class="well col g4" style="padding: 10px 12px"><span class="xs c3">Текущая квота</span><span class="num w7">5 / 5</span></div>
+<div class="well col g4" style="padding: 10px 12px"><span class="xs c3">Вчерашний остаток</span><span class="num w7 c-warn">3</span></div>
+<div class="well col g4" style="padding: 10px 12px"><span class="xs c3">Получил сегодня</span><span class="num w7">7</span></div>
+<div class="well col g4" style="padding: 10px 12px"><span class="xs c3">Звонков сегодня</span><span class="num w7">42</span></div>
+</div>
+<div class="row between" style="border-bottom: 1px solid var(--line)">
+<div class="tabs" style="border-bottom: 0"><button class="tab is-on" type="button">Вчерашний остаток <span class="num c3">3</span></button><button class="tab" type="button">В текущей квоте <span class="num c3">5</span></button><button class="tab" type="button">Выдано сегодня <span class="num c3">7</span></button></div>
+<button class="btn btn-sm" type="button" title="Раздать все вчерашние лиды этого оператора поровну активным операторам"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--brand-text)"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"></path></svg>Раздать всем поровну</button>
+</div>
+<div class="col g6">
+<sc-for list="{{yl}}" as="l" hint-placeholder-count="3">
+<div class="well row between g8" style="padding: 8px 12px">
+<div class="col g4" style="min-width: 0"><div class="row g8 s"><span class="xs c3 num">#{{l.id}}</span><span class="w6 trunc">{{l.n}}</span><span class="xs c3 num">{{l.p}}</span></div><div class="row g8 xs"><span class="badge" style="height: 20px">{{l.st}}</span><span class="c3">{{l.ago}}</span></div></div>
+<button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Открыть лид"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5H5V6h5"></path></svg></button>
+</div>
+</sc-for>
+</div>
+</div>
+
+</div>
+</div>
+</section>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; align-items: start">
+
+<div class="col g8"><span class="when">«Раздать всем поровну» · подтверждение</span>
+<section class="dlg"><div class="dlg-h"><div class="col g4"><h2 class="h2">Раздать вчерашние лиды?</h2><span class="s c3">Javlon Sobirov</span></div></div>
+<div class="dlg-b"><p class="s c2">3 вчерашних лида раздать поровну всем активным операторам?</p></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Раздать</button></div></section>
+<span class="toast" style="align-self: flex-start; margin-top: 8px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Раздано лидов: 3</span>
+</div>
+
+<div class="col g8"><span class="when">Открытый оператор · вкладка «В текущей квоте»</span>
+<section class="dlg"><div class="dlg-b" style="padding-top: 18px">
+<div class="banner" style="flex-direction: column; gap: 6px; background: var(--ok-bg); color: var(--ok)">
+<div class="row g8 w7"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>РАЗДАЧА ОТКРЫТА</div>
+<span class="xs c-warn" style="padding-left: 26px">Со вчера 2 незакрытых лида — гейт выключен, поэтому не блокирует.</span>
+</div>
+<div class="tabs"><button class="tab" type="button">Вчерашний <span class="num c3">2</span></button><button class="tab is-on" type="button">В квоте <span class="num c3">3</span></button><button class="tab" type="button">Сегодня <span class="num c3">6</span></button></div>
+<sc-for list="{{wl}}" as="l" hint-placeholder-count="3">
+<div class="well col g4" style="padding: 8px 12px"><div class="row g8 s"><span class="xs c3 num">#{{l.id}}</span><span class="w6 trunc">{{l.n}}</span></div><div class="row g8 xs"><span class="badge b-info" style="height: 20px">{{l.st}}</span><span class="c3">{{l.ago}}</span></div></div>
+</sc-for>
+</div></section>
+</div>
+
+<div class="col g8"><span class="when">Вкладка «Выдано сегодня» и пустые состояния</span>
+<section class="dlg"><div class="dlg-b" style="padding-top: 18px">
+<sc-for list="{{rl}}" as="l" hint-placeholder-count="2">
+<div class="well col g4" style="padding: 8px 12px"><span class="s w6">#{{l.id}} {{l.n}}</span><div class="row g8 xs"><span class="badge" style="height: 20px">{{l.src}}</span><span class="c3">{{l.ago}}</span></div></div>
+</sc-for>
+<hr class="hr">
+<div class="col g6 xs c3">
+<span>Со вчера незакрытых лидов нет. Всё чисто!</span>
+<span>Сейчас нет активных лидов, занимающих квоту.</span>
+<span>Сегодня автораздача лидов не выдавала.</span>
+<span>Выберите оператора слева, чтобы увидеть детали</span>
+<span>Операторы не найдены · Загрузка…</span>
+</div>
+<hr class="hr">
+<div class="col g6">
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--warn-solid)"><path d="M9 6v12M15 6v12"></path></svg>Оператор на паузе: новые лиды не выдаются</span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Гейт выключен: лиды идут в любом случае</span>
+</div>
+</div></section>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1450}}'>
+class Component extends DCLogic {
+renderVals() {
+const k = (l, v, fg, bg) => ({ l: l, v: v, fg: fg, bg: bg });
+const o = (n, b, tone, dot, q, y, t, sel) => ({ n: n, b: b, tone: tone, dot: dot, q: q, y: y, t: t, sel: sel ? 'pick-on' : '' });
+const l = (id, n, p, st, ago) => ({ id: id, n: n, p: p, st: st, ago: ago });
+return {
+theme: this.props.theme ?? 'light',
+sum: [
+k('Всего', '38', '--ink-2', '--surface-2'),
+k('Открыто (готов)', '24', '--ok', '--ok-bg'),
+k('Заблокировано', '11', '--bad', '--bad-bg'),
+k('На паузе', '2', '--warn', '--warn-bg'),
+k('Квота заполнена (5/5)', '9', '--hot', '--hot-bg'),
+k('Свободных в пуле', '14', '--brand-text', '--brand-soft')
+],
+ops: [
+o('Jasur Toshmatov', 'Открыто', 'b-ok', '--ok-solid', '3/5', 0, 9, false),
+o('Nilufar Saidova', 'Открыто', 'b-ok', '--ok-solid', '3/5', 2, 6, false),
+o('Javlon Sobirov', 'Квота 5/5', 'b-bad', '--bad-solid', '5/5', 3, 7, true),
+o('Shahlo Komilova', 'На паузе', 'b-warn', '--bad-solid', '2/5', 0, 4, false),
+o('Otabek Ergashev', 'Нет отметки прихода', 'b-bad', '--bad-solid', '0/5', 0, 0, false),
+o('Gulnoza Karimova', 'Открыто', 'b-ok', '--ok-solid', '4/5', 0, 8, false),
+o('Bekzod Nurmatov', 'Вчерашний остаток', 'b-bad', '--bad-solid', '2/5', 4, 1, false),
+o('Malika Tursunova', 'Открыто', 'b-ok', '--ok-solid', '1/5', 0, 5, false)
+],
+yl: [
+l(48211, 'Sardor Azimov', '+998 90 318 44 02', 'Перезвонить', '1 день назад'),
+l(48196, 'Mohira Qosimova', '+998 93 220 15 77', 'Думает', '1 день назад'),
+l(48102, 'Ulug‘bek Rasulov', '+998 97 604 90 31', 'Не дозвонился', '2 дня назад')
+],
+wl: [
+l(48540, 'Dilnoza Ergasheva', '', 'В работе', '≈ 2 ч назад'),
+l(48533, 'Akmal Yusupov', '', 'Перезвонить', '≈ 3 ч назад'),
+l(48519, 'Zarina Xolmirzayeva', '', 'Новый', 'только что')
+],
+rl: [
+{ id: 48540, n: 'Dilnoza Ergasheva', src: 'Instagram · iPhone', ago: '12 мин назад' },
+{ id: 48519, n: 'Zarina Xolmirzayeva', src: 'Сайт · Samsung', ago: '41 мин назад' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

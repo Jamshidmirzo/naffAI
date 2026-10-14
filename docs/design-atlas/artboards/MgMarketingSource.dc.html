@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Маркетинг · источник</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1350px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="marketing" hint-size="248px,1350px"></dc-import></div>
+<div class="main-col">
+<header class="top">
+<div class="col"><h1 class="h1">Маркетинг</h1><span class="xs c3">Аналитика источников, воронок и AI-советов</span></div>
+<span class="grow"></span>
+<button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4M4 13a8 8 0 0 0 14 5l2-2M20 20v-4h-4"></path></svg>Обновить AI-анализ</button>
+<button class="btn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"></path></svg>Экспорт</button>
+</header>
+<main class="page">
+<div class="row g12 wrap">
+<div class="seg"><button type="button">7 дн</button><button type="button">14 дн</button><button class="is-on" type="button">30 дн</button><button type="button">90 дн</button></div>
+<div class="row g8"><input class="input num" type="text" value="15.09.2026" aria-label="Дата с" style="width: 130px; height: 36px"><span class="c3">—</span><input class="input num" type="text" value="14.10.2026" aria-label="Дата по" style="width: 130px; height: 36px"></div>
+</div>
+
+<div class="tabs">
+<a class="tab" href="MgMarketing.dc.html">Обзор</a>
+<a class="tab is-on" href="MgMarketingSource.dc.html" aria-current="page">Источники <span class="num xs c3">8</span></a>
+<a class="tab" href="MgMarketing.dc.html">Паттерны</a>
+<a class="tab" href="MgMarketing2.dc.html">Динамика</a>
+<a class="tab" href="MgMarketing.dc.html">AI-советы</a>
+<a class="tab" href="MgMarketing2.dc.html">Затраты</a>
+</div>
+
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: 1.6fr 80px 80px 80px 140px 120px 80px 24px"><span>Источник</span><button class="th-s r" type="button">Лиды</button><button class="th-s r" type="button">Продажи</button><button class="th-s r" type="button">Конв.</button><button class="th-s is-on r" type="button">Выручка ▼</button><button class="th-s r" type="button">Ср. чек</button><button class="th-s r" type="button">Δ pp</button><span></span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+<div class="tr {{r.sel}}" style="grid-template-columns: 1.6fr 80px 80px 80px 140px 120px 80px 24px">
+<span class="row g8" style="min-width: 0"><span class="badge {{r.kCls}}" style="height: 20px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em">{{r.kind}}</span><span class="w6 trunc">{{r.n}}</span></span>
+<span class="r num">{{r.l}}</span><span class="r num">{{r.s}}</span><span class="r num w6 {{r.cCls}}">{{r.c}}</span><span class="r num">{{r.rev}}</span><span class="r num c3">{{r.avg}}</span><span class="r num w6 {{r.dCls}}">{{r.d}}</span>
+<svg class="ic ic-s c3" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.chev}}"></path></svg>
+</div>
+<sc-if value="{{r.open}}" hint-placeholder-val="{{ false }}">
+<div style="padding: 20px 24px; background: var(--surface-2); border-bottom: 1px solid var(--line)">
+<div style="display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 28px; align-items: start">
+
+<div class="col g10" style="gap: 10px">
+<span class="lbl">Воронка</span>
+<sc-if value="{{r.hasFunnel}}" hint-placeholder-val="{{ true }}">
+<sc-for list="{{r.funnel}}" as="f" hint-placeholder-count="6">
+<div class="row g8"><span class="xs c3" style="width: 80px; flex: none">{{f.label}}</span><span class="bar grow" style="height: 6px"><i class="{{f.cls}}" style="width: {{f.pct}}%"></i></span><span class="num xs" style="width: 44px; text-align: right">{{f.n}}</span><span class="num xs c3" style="width: 40px; text-align: right">{{f.pl}}%</span></div>
+</sc-for>
+<span class="xs c3" style="margin-top: 4px">Среднее время до продажи: <span class="w6 c2" style="color: var(--ink)">{{r.avgTime}}</span></span>
+</sc-if>
+<sc-if value="{{r.noFunnel}}" hint-placeholder-val="{{ false }}"><span class="s c3">Нет данных</span></sc-if>
+</div>
+
+<div class="col g16">
+<div class="col g8"><span class="lbl">Топ моделей</span>
+<sc-for list="{{r.models}}" as="m" hint-placeholder-count="4"><div class="row between s"><span class="trunc">{{m.n}}</span><span class="num c3">{{m.c}}</span></div></sc-for>
+</div>
+<div class="col g8"><span class="lbl">Топ операторов</span>
+<sc-for list="{{r.ops}}" as="o" hint-placeholder-count="3"><div class="row between s"><span class="trunc">{{o.n}}</span><span class="num c3">{{o.s}}</span></div></sc-for>
+</div>
+</div>
+
+<div class="col g16">
+<div class="col g8"><span class="lbl">Причины отказа</span>
+<sc-if value="{{r.hasRej}}" hint-placeholder-val="{{ true }}">
+<sc-for list="{{r.rej}}" as="x" hint-placeholder-count="4"><div class="row between s"><span class="trunc">{{x.t}}</span><span class="num c3">{{x.n}} <span class="xs">({{x.p}}%)</span></span></div></sc-for>
+</sc-if>
+<sc-if value="{{r.noRej}}" hint-placeholder-val="{{ false }}"><span class="s c3">Нет данных</span></sc-if>
+</div>
+<sc-if value="{{r.hasSpend}}" hint-placeholder-val="{{ true }}">
+<div class="col g8"><span class="lbl">Реклама</span>
+<div class="row between s"><span class="c3">Расход</span><span class="num w6">{{r.spend}}</span></div>
+<div class="row between s"><span class="c3">CAC</span><span class="num w6">{{r.cac}}</span></div>
+<div class="row between s"><span class="c3">ROI</span><span class="num w6 c-ok">{{r.roi}}</span></div>
+</div>
+</sc-if>
+<sc-if value="{{r.noSpend}}" hint-placeholder-val="{{ false }}"><span class="xs c3">Расход не внесён — блок «Реклама» не показывается. Внести во вкладке «Затраты».</span></sc-if>
+</div>
+
+</div>
+</div>
+</sc-if>
+</sc-for>
+</section>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start">
+<div class="col g8"><span class="when">За период нет источников</span>
+<section class="card"><div class="empty"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"></path></svg><span class="s">Нет данных по источникам за выбранный период</span></div></section></div>
+<div class="col g8"><span class="when">Загрузка</span>
+<section class="card col g12 pad"><span class="sk" style="height: 14px; width: 40%"></span><span class="sk" style="height: 14px; width: 90%"></span><span class="sk" style="height: 14px; width: 75%"></span><span class="s c3">Загрузка…</span></section></div>
+</div>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1350}}'>
+class Component extends DCLogic {
+renderVals() {
+const sp = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const K = { sheet: ['Sheet', 'b-info'], bot: ['Bot', 'b-hot'], manual: ['Ручной', 'b-warn'], other: ['Другое', ''] };
+const stages = (arr) => { const lab = ['Новые', 'Назначены', 'В работе', 'Callback', 'Продажа', 'Потерян']; return arr.map((n, i) => ({ label: lab[i], n: sp(n), pct: Math.round(n / arr.reduce((a, b) => a + b, 0) * 1000) / 10, pl: String(Math.round(n / arr.reduce((a, b) => a + b, 0) * 1000) / 10).replace('.', ','), cls: i === 4 ? 'ok' : i === 5 ? 'bad' : '' })); };
+const base = (kind, n, l, s, rev, d) => { const c = l ? Math.round(s / l * 1000) / 10 : 0; return { kind: K[kind][0], kCls: K[kind][1], n: n, l: sp(l), s: s, c: String(c).replace('.', ',') + '%', cCls: c >= 5 ? 'c-brand' : '', rev: sp(rev), avg: s ? sp(Math.round(rev / s / 1000) * 1000) : '—', d: (d > 0 ? '+' : '') + d.toFixed(1).replace('.', ','), dCls: d > 0 ? 'c-ok' : d < 0 ? 'c-bad' : 'c3', open: false, sel: '', chev: 'M9 6l6 6-6 6', hasFunnel: false, noFunnel: false, hasRej: false, noRej: false, hasSpend: false, noSpend: false, funnel: [], models: [], ops: [], rej: [] }; };
+const ig = Object.assign(base('sheet', 'Instagram октябрь', 2140, 101, 1061400000, .6), {
+open: true, sel: 'is-sel', chev: 'M6 9l6 6 6-6', hasFunnel: true, hasRej: true, hasSpend: true,
+funnel: stages([212, 388, 524, 301, 101, 614]), avgTime: '38 ч',
+models: [{ n: 'iPhone 15 Pro 256 GB', c: 22 }, { n: 'iPhone 15 128 GB', c: 14 }, { n: 'Samsung Galaxy S24', c: 11 }, { n: 'iPhone 13 128 GB', c: 9 }],
+ops: [{ n: 'Gulnoza Karimova', s: '146 300 000' }, { n: 'Jasur Toshmatov', s: '131 900 000' }, { n: 'Nilufar Saidova', s: '98 400 000' }],
+rej: [{ t: 'Показалось дорого', n: 188, p: 31 }, { t: 'Нет карты', n: 121, p: 20 }, { t: 'Купил в другом месте', n: 97, p: 16 }, { t: 'Просто интересовался', n: 74, p: 12 }],
+spend: '32 000 000', cac: '316 832', roi: '3 217%'
+});
+const bot = Object.assign(base('bot', 'Telegram-бот', 780, 41, 432000000, .9), {
+open: true, sel: 'is-sel', chev: 'M6 9l6 6 6-6', hasFunnel: true, noRej: true, noSpend: true,
+funnel: stages([96, 140, 188, 102, 41, 213]), avgTime: '21 ч',
+models: [{ n: 'Redmi Note 13 Pro', c: 9 }, { n: 'iPhone 13 128 GB', c: 7 }, { n: 'Samsung Galaxy A55', c: 6 }],
+ops: [{ n: 'Otabek Ergashev', s: '61 200 000' }, { n: 'Malika Tursunova', s: '48 700 000' }]
+});
+return {
+theme: this.props.theme ?? 'light',
+rows: [
+ig,
+base('sheet', 'Facebook октябрь', 1320, 48, 497300000, -1.4),
+bot,
+base('sheet', 'Сайт · заявки', 412, 18, 184200000, 0),
+base('manual', 'Звонок в магазин', 64, 3, 37500000, .3),
+base('sheet', 'TikTok · Aziz', 96, 2, 21800000, -.7),
+base('sheet', 'Instagram сентябрь', 38, 1, 14500000, -2.2),
+base('other', 'Без источника', 12, 0, 0, 0)
+]
+};
+}
+}
+</script>
+</body>
+</html>

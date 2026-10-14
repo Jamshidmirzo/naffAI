@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Зарплата: разбор и личный порог</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1170px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6"><h1 class="h1">Зарплата: разбор по оператору</h1><p class="c3">Окно открывается по строке в «Зарплате». Справа: выбор операторов, личный порог в режиме правки и для тиров.</p></div>
+<div class="row g24" style="align-items: flex-start">
+
+<div class="col g12" style="flex: 1.4 1 0; min-width: 0">
+<span class="when">Разбор за месяц</span>
+<section class="dlg"><div class="dlg-h"><div class="col g4"><h2 class="h2">Gulnoza Karimova · октябрь</h2><span class="s c3">График: 10:00–20:00 · grace 15 мин</span></div><div class="row g8"><button class="btn btn-sm" type="button">Excel</button><button class="btn btn-sm" type="button">PDF</button><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div></div>
+<div class="dlg-b">
+<div class="well row between"><div class="col g4"><span class="lbl">К выплате</span><span class="kpi" style="color: var(--ink-3)">0</span></div><span class="num s c3">из 3 000 000</span></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<div class="col g8" style="padding: 12px 14px; border-radius: 11px; border: 1px solid var(--ok-solid); background: var(--ok-bg)">
+<div class="row between"><span class="s w6">Посещаемость</span><svg class="ic c-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg></div>
+<div class="row g6" style="align-items: baseline"><span class="num w7 c-ok" style="font-size: 20px">1 400 000</span><span class="xs c3">из 1 500 000</span></div>
+<span class="num xs c3">92% / 85%</span>
+<span class="bar" style="overflow: visible"><i class="ok" style="width: 92%"></i><span style="position: absolute; left: 85%; top: -3px; bottom: -3px; width: 2px; border-radius: 1px; background: var(--ink); opacity: .45"></span></span>
+<span class="num xs c3">11 / 12 дн., опозданий: 2 (−100 000)</span>
+</div>
+<div class="col g8" style="padding: 12px 14px; border-radius: 11px; border: 1px solid var(--bad-solid); background: var(--bad-bg)">
+<div class="row between"><span class="s w6">Продажи</span><svg class="ic c-bad" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM15 9l-6 6M9 9l6 6"></path></svg></div>
+<div class="row g6" style="align-items: baseline"><span class="num w7 c3" style="font-size: 20px">0</span><span class="xs c3">из 1 500 000</span></div>
+<span class="num xs c3">78% / 85%</span>
+<span class="bar" style="overflow: visible"><i class="bad" style="width: 78%"></i><span style="position: absolute; left: 85%; top: -3px; bottom: -3px; width: 2px; border-radius: 1px; background: var(--ink); opacity: .45"></span></span>
+<span class="num xs c3">23 400 000 / 30 000 000</span>
+<span class="xs c-bad" style="padding: 6px 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--bad-bg)">До гейта осталось продать на 2 100 000</span>
+</div>
+</div>
+<div class="well col g8">
+<div class="row between"><div class="row g6"><span class="s w6">Личный порог продаж</span><span class="badge b-info">личный</span></div><button class="btn btn-sm" type="button">Изменить</button></div>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px"><div class="col g4"><span class="lbl">Порог</span><span class="num w6" style="font-size: 16px">25 000 000</span></div><div class="col g4"><span class="lbl">Формула выплаты</span><span class="w6" style="font-size: 16px">3,5% от суммы сверх порога</span></div></div>
+</div>
+<div class="col g6">
+<span class="lbl">По дням</span>
+<sc-for list="{{days}}" as="d" hint-placeholder-count="6">
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) auto 92px; gap: 12px; align-items: center; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2)">
+<span class="col" style="min-width: 0"><span class="s w6 trunc">{{d.date}} <span class="xs w5 {{d.c}}">{{d.label}}</span></span><sc-if value="{{d.note}}" hint-placeholder-val="{{ false }}"><span class="xs c3 trunc">{{d.note}}</span></sc-if></span>
+<span class="num xs c3">{{d.time}}</span>
+<span class="num s w6 {{d.dedC}}" style="text-align: right">{{d.ded}}</span>
+</div>
+</sc-for>
+</div>
+</div></section>
+</div>
+
+<div class="col g16" style="flex: 1 1 0; min-width: 0">
+<span class="when">Выбор операторов (мультиселект в шапке)</span>
+<section class="dlg" style="width: 320px"><div class="col g8" style="padding: 12px">
+<div class="row between"><span class="s w6">Операторы: 3 выбрано</span><button class="btn btn-ghost btn-sm" type="button">Очистить</button></div>
+<div class="inwrap"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg><input class="input" type="search" placeholder="Поиск…" aria-label="Поиск оператора"></div>
+<label class="row g8 s"><input class="check" type="checkbox" checked="{{yes}}">Gulnoza Karimova</label>
+<label class="row g8 s"><input class="check" type="checkbox" checked="{{yes}}">Jasur Toshmatov</label>
+<label class="row g8 s"><input class="check" type="checkbox">Malika Tursunova</label>
+<label class="row g8 s"><input class="check" type="checkbox" checked="{{yes}}">Nilufar Saidova</label>
+<label class="row g8 s"><input class="check" type="checkbox">Otabek Ergashev</label>
+</div></section>
+
+<span class="when">Личный порог продаж · изменить</span>
+<section class="dlg"><div class="dlg-h"><div class="col g4"><h2 class="h2">Личный порог продаж</h2><span class="s c3">сейчас: 25 000 000 · 3,5% от суммы сверх порога</span></div><span class="badge b-info">личный</span></div>
+<div class="dlg-b">
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, .7fr); gap: 10px">
+<div class="field"><label for="pr1">Порог</label><input class="input num is-bad" id="pr1" type="text" value="-5 000 000"></div>
+<div class="field"><label for="pr3">Тип выплаты</label><select class="input" id="pr3"><option>Процент от суммы сверх порога</option><option>Фиксированный бонус</option><option>Прогрессивные тиры</option></select></div>
+<div class="field"><label for="pr2">Процент (%)</label><input class="input num" id="pr2" type="text" value="3,5"></div>
+</div>
+<span class="err">Порог должен быть неотрицательным числом</span>
+</div>
+<div class="dlg-f"><button class="btn btn-ghost" type="button">Сбросить к глобальному</button><span class="grow"></span><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Сохранить</button></div></section>
+
+<span class="when">Тип «Прогрессивные тиры»</span>
+<section class="dlg"><div class="dlg-b" style="padding-top: 18px">
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, .7fr); gap: 10px">
+<div class="field"><label for="pt1">Порог</label><input class="input num" id="pt1" type="text" value="25 000 000"></div>
+<div class="field"><label for="pt2">Тип выплаты</label><select class="input" id="pt2"><option>Прогрессивные тиры</option></select></div>
+<div class="field"><label for="pt3">—</label><input class="input num" id="pt3" type="text" value="" disabled="{{yes}}" style="opacity: .5"></div>
+</div>
+<span class="hint">Тиры настраиваются через админку — форма пока принимает только порог, значения тиров остаются без изменений.</span>
+</div></section>
+
+<span class="when">Сброс к глобальному · подтверждение <span class="badge b-info" style="height: 20px">новое</span></span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2">Вернуть глобальный порог?</h2></div><div class="dlg-b"><p class="s c2">Личное правило Gulnoza Karimova удалится, зарплата пересчитается по общим настройкам.</p></div><div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Сбросить к глобальному</button></div></section>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1170}}'>
+class Component extends DCLogic {
+renderVals() {
+const d = (date, label, c, note, time, ded) => ({ date: date, label: label, c: c, note: note, time: time, ded: ded, dedC: ded === '—' ? 'c3' : 'c-bad' });
+return {
+theme: this.props.theme ?? 'light',
+yes: true,
+days: [
+d('Пн, 13 октября', 'Опоздание', 'c-warn', 'Пробка на Чиланзаре, предупредила заранее', '10:22 → 19:04', '−50 000'),
+d('Вс, 12 октября', 'Выходной', 'c3', '', '—', '—'),
+d('Сб, 11 октября', 'Вовремя', 'c-ok', '', '09:56 → 20:02', '—'),
+d('Пт, 10 октября', 'Прощённый пропуск', 'c-brand', 'Больничный, справка у менеджера', '—', '—'),
+d('Чт, 9 октября', 'Опоздание', 'c-warn', '', '10:31 → 20:00', '−50 000'),
+d('Ср, 8 октября', 'Пропуск', 'c-bad', 'Не вышла, не предупредила', '—', '—'),
+d('Вт, 7 октября', 'Вовремя', 'c-ok', '', '09:58 → 20:05', '—')
+]
+};
+}
+}
+</script>
+</body>
+</html>

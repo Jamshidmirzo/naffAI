@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Киоск отметок</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="min-height: 1110px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="row between">
+<div class="col g6"><h1 class="h1">Киоск отметок</h1><p class="c3">Оператор отмечает приход/уход — через камеру ноутбука или через QR-код. Четыре шага на одном экране, ниже — тот же путь для ухода.</p></div>
+<div class="wordmark" style="padding: 0"><i class="ikat ikat-mark" aria-hidden="true"></i>naff<b>AI</b></div>
+</div>
+<div style="display: grid; grid-template-columns: 1.1fr 1.2fr 1fr 0.9fr; gap: 20px; align-items: start">
+
+<div class="col g8">
+<span class="when">1 · Выберите оператора</span>
+<section class="card col">
+<div class="col g4" style="padding: 16px 16px 0"><span class="h3">Выберите оператора</span><span class="xs c3">Кто сейчас отметится</span></div>
+<div class="pad"><div class="inwrap"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg><input class="input" type="search" value="Gul" aria-label="Выберите оператора"></div></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0 16px 16px">
+<button class="bcard pick-on" type="button"><span class="ava">GK</span><span class="col"><span class="s w6">Gulnoza K.</span><span class="xs c3">не отмечена</span></span></button>
+<button class="bcard" type="button"><span class="ava">GN</span><span class="col"><span class="s w6">Gavhar N.</span><span class="xs c-ok">на смене</span></span></button>
+</div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">2 · Как отметиться · приход</span>
+<div class="row between"><button class="btn btn-ghost btn-sm" type="button">← Сменить оператора</button><span class="xs c3">Выберите оператора: <b class="c2">Gulnoza Karimova</b></span></div>
+<div class="card row g12" style="padding: 14px 16px; border-left: 4px solid var(--ok)"><span class="icon-tile" style="width: 44px; height: 44px; border-radius: 50%; background: var(--ok-bg); color: var(--ok)"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0"></path></svg></span><span class="col" style="min-width: 0"><span class="lbl">Отметка прихода</span><span class="h2 trunc">Gulnoza Karimova</span></span></div><div class="card col g6" style="padding: 14px 16px"><span class="row g8 c-brand"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4zM12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg><b class="s" style="color: var(--ink)">Через камеру ноутбука</b></span><span class="xs c3">Оператор смотрит в веб-камеру этого компьютера, менеджер жмёт «Сделать снимок»</span><button class="btn btn-pri btn-sm" type="button" style="align-self: flex-start; margin-top: 4px">Открыть камеру</button></div>
+<div class="card col g6" style="padding: 14px 16px"><span class="row g8 c-brand"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2z"></path></svg><b class="s" style="color: var(--ink)">Через QR-код</b></span><span class="xs c3">Оператор сканирует QR камерой телефона, снимок делает на своём телефоне (нужен, если у компьютера нет камеры)</span><button class="btn btn-sm" type="button" style="align-self: flex-start; margin-top: 4px">Показать QR-код</button></div>
+</div>
+
+<div class="col g8">
+<span class="when">3 · QR для телефона</span>
+<section class="card col g12" style="padding: 18px; align-items: center; text-align: center">
+<span class="row g6 s w6" style="color: var(--ok)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18H7zM11 18h2"></path></svg>Отметка прихода</span>
+<span class="h2">Наведите камеру телефона</span>
+<div class="ph" style="width: 168px; height: 168px; background: #FFFFFF; border-style: solid"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ink)"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2z"></path></svg></div>
+<span class="xs c3">После сканирования на телефоне откроется страница отметки — вход не требуется.</span>
+<span class="num xs c3" style="background: var(--surface-3); border-radius: 8px; padding: 6px 10px; word-break: break-all; text-align: left">https://naff.flek.uz/scan?qr=51.1760425080.Xk3v9QbT2mLwA7</span>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">4 · Готово · через 4 секунды к шагу 1</span>
+<section class="card col" style="overflow: hidden; align-items: center; text-align: center; padding-bottom: 20px">
+<i class="ikat" style="height: 10px; align-self: stretch" aria-hidden="true"></i>
+<span class="icon-tile" style="width: 56px; height: 56px; border-radius: 16px; margin-top: 20px; background: var(--ok-bg); color: var(--ok)"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span>
+<span class="display" style="font-size: 18px; margin-top: 10px">Готово</span>
+<span class="s w6" style="color: var(--ok)">Приход зафиксирован</span>
+<span class="s c2">Gulnoza Karimova · <span class="num">09:58</span></span>
+<span class="xs c3" style="margin-top: 6px">Готов принять следующего</span>
+<button class="btn btn-ghost btn-sm" type="button" style="margin-top: 8px"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11a8 8 0 1 1 2.3 5.7M4 4v7h7"></path></svg>Сбросить</button>
+</section>
+</div>
+
+</div>
+
+<div class="col g6"><h2 class="h2">Вариант · отметка ухода</h2><p class="s c3">Оператор уже на смене — киоск сам переключается на уход: оранжевый акцент, тот же выбор камеры или QR.</p></div>
+<div style="display: grid; grid-template-columns: 1.1fr 1.2fr 1fr 0.9fr; gap: 20px; align-items: start">
+<div class="col g8">
+<span class="when">1 · Выбран сотрудник на смене</span>
+<section class="card col"><div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 16px">
+<button class="bcard" type="button"><span class="ava">GK</span><span class="col"><span class="s w6">Gulnoza K.</span><span class="xs c3">не отмечена</span></span></button>
+<button class="bcard pick-on" type="button"><span class="ava">GN</span><span class="col"><span class="s w6">Gavhar N.</span><span class="xs c-ok">на смене</span></span></button>
+</div></section>
+</div>
+<div class="col g8">
+<span class="when">2 · Как отметиться · уход</span>
+<div class="card row g12" style="padding: 14px 16px; border-left: 4px solid var(--hot)"><span class="icon-tile" style="width: 44px; height: 44px; border-radius: 50%; background: var(--hot-bg); color: var(--hot)"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0"></path></svg></span><span class="col" style="min-width: 0"><span class="lbl">Отметка ухода</span><span class="h2 trunc">Gavhar Nazarova</span></span></div><div class="card col g6" style="padding: 14px 16px"><span class="row g8 c-brand"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4zM12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg><b class="s" style="color: var(--ink)">Через камеру ноутбука</b></span><span class="xs c3">Оператор смотрит в веб-камеру этого компьютера, менеджер жмёт «Сделать снимок»</span><button class="btn btn-pri btn-sm" type="button" style="align-self: flex-start; margin-top: 4px">Открыть камеру</button></div>
+<div class="card col g6" style="padding: 14px 16px"><span class="row g8 c-brand"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2z"></path></svg><b class="s" style="color: var(--ink)">Через QR-код</b></span><span class="xs c3">Оператор сканирует QR камерой телефона, снимок делает на своём телефоне (нужен, если у компьютера нет камеры)</span><button class="btn btn-sm" type="button" style="align-self: flex-start; margin-top: 4px">Показать QR-код</button></div>
+</div>
+<div class="col g8">
+<span class="when">3 · QR · уход</span>
+<section class="card col g12" style="padding: 18px; align-items: center; text-align: center">
+<span class="row g6 s w6" style="color: var(--hot)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18H7zM11 18h2"></path></svg>Отметка ухода</span>
+<span class="h2">Наведите камеру телефона</span>
+<div class="ph" style="width: 168px; height: 168px; background: #FFFFFF; border-style: solid"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ink)"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2z"></path></svg></div>
+<span class="xs c3">После сканирования на телефоне откроется страница отметки — вход не требуется.</span>
+<span class="num xs c3" style="background: var(--surface-3); border-radius: 8px; padding: 6px 10px; word-break: break-all; text-align: left">https://naff.flek.uz/scan?qr=47.1760461312.pR8cWz1HnE5uJd</span>
+</section>
+</div>
+<div class="col g8">
+<span class="when">4 · Готово</span>
+<section class="card col" style="overflow: hidden; align-items: center; text-align: center; padding-bottom: 20px">
+<i class="ikat" style="height: 10px; align-self: stretch" aria-hidden="true"></i>
+<span class="icon-tile" style="width: 56px; height: 56px; border-radius: 16px; margin-top: 20px; background: var(--hot-bg); color: var(--hot)"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span>
+<span class="display" style="font-size: 18px; margin-top: 10px">Готово</span>
+<span class="s w6" style="color: var(--hot)">Уход зафиксирован</span>
+<span class="s c2">Gavhar Nazarova · <span class="num">19:04</span></span>
+<span class="xs c3" style="margin-top: 6px">Готов принять следующего</span>
+<button class="btn btn-ghost btn-sm" type="button" style="margin-top: 8px"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11a8 8 0 1 1 2.3 5.7M4 4v7h7"></path></svg>Сбросить</button>
+</section>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1110}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light' };
+}
+}
+</script>
+</body>
+</html>

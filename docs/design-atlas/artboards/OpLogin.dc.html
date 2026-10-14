@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Вход</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="min-height: 900px; display: flex; flex-direction: column">
+<i class="ikat" style="height: 10px" aria-hidden="true"></i>
+
+<div class="row between" style="padding: 20px 32px">
+<div class="wordmark" style="padding: 0"><i class="ikat ikat-mark" aria-hidden="true"></i>naff<b>AI</b></div>
+<div class="seg" aria-label="Язык интерфейса">
+<button class="is-on" type="button">Русский</button>
+<button type="button">O'zbekcha</button>
+</div>
+</div>
+
+<div style="flex: 1 1 auto; display: flex; align-items: center; justify-content: center; padding: 24px 16px 64px">
+<form class="card col g20" style="width: 440px; max-width: 100%; padding: 32px">
+<div class="col g6">
+<h1 class="h1">Вход в систему</h1>
+<p class="c3">Оператор входит по рабочему номеру, менеджер по логину.</p>
+</div>
+
+<div class="seg seg-lg" role="tablist" aria-label="Кто входит">
+<button class="{{opCls}}" type="button" role="tab" onClick="{{asOp}}">Оператор</button>
+<button class="{{mgCls}}" type="button" role="tab" onClick="{{asMg}}">Менеджер</button>
+</div>
+
+<sc-if value="{{op}}" hint-placeholder-val="{{ true }}">
+<div class="field">
+<label for="lg-phone">Рабочий номер</label>
+<div class="row g8">
+<span class="pfx" style="height: 40px; font-size: 14px; border-radius: 8px" aria-hidden="true">+998</span>
+<input class="input num grow" id="lg-phone" type="tel" value="90 777 11 00">
+</div>
+<span class="hint">Код страны уже подставлен, введите 9 цифр.</span>
+</div>
+</sc-if>
+<sc-if value="{{mg}}" hint-placeholder-val="{{ false }}">
+<div class="field">
+<label for="lg-login">Логин</label>
+<input class="input" id="lg-login" type="text" value="kamola.a">
+</div>
+</sc-if>
+
+<div class="field">
+<label for="lg-pass">Пароль</label>
+<div class="row g8">
+<input class="input grow" id="lg-pass" type="password" value="12345678">
+<button class="btn btn-sq" type="button" aria-label="Показать пароль" style="height: 40px; width: 40px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path></svg></button>
+</div>
+</div>
+
+<a class="btn btn-pri btn-lg btn-block" href="{{next}}">Войти</a>
+<p class="s c3">Забыли пароль? Попросите менеджера сбросить его в карточке оператора.</p>
+</form>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const mg = !!(this.state && this.state.mg);
+return {
+theme: this.props.theme ?? 'light',
+op: !mg, mg: mg,
+opCls: mg ? '' : 'is-on', mgCls: mg ? 'is-on' : '',
+asOp: () => this.setState({ mg: false }), asMg: () => this.setState({ mg: true }),
+next: mg ? 'MgDashboard.dc.html' : 'OpCheckin.dc.html'
+};
+}
+}
+</script>
+</body>
+</html>

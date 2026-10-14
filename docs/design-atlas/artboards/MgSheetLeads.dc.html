@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Лиды: окна</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1100px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6"><h1 class="h1">Лиды: назначение и раздача</h1><p class="c3">В выборе оператора сразу видно, кому лид назначить нельзя и почему. Массовая раздача спрашивает подтверждение.</p></div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; align-items: start">
+
+<div class="col g8"><span class="when">Назначить оператора · 3 лида</span>
+<section class="dlg"><div class="dlg-h"><div class="col g4"><h2 class="h2">Назначить оператора</h2><span class="s c3">3 лида будут переназначены</span></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b">
+<div class="card col" style="max-height: 260px; overflow: hidden">
+<sc-for list="{{ops}}" as="o" hint-placeholder-count="5">
+<label class="li" style="min-height: 48px; opacity: {{o.op}}"><input type="radio" name="asg" checked="{{o.on}}" disabled="{{o.off}}"><span class="ava ava-s" data-s="{{o.s}}">{{o.ini}}</span><span class="col grow"><span class="s w6">{{o.name}}</span><span class="xs c3">{{o.note}}</span></span></label>
+</sc-for>
+</div>
+<div class="field"><label for="l1">Причина, необязательно</label><input class="input" id="l1" type="text" placeholder="Например: псевдоним «Sevara» в таблице"></div>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Назначить 3 лида</button></div></section></div>
+
+<div class="col g8"><span class="when">Раздать всех свободных</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2">Раздать 7 лидов поровну?</h2></div>
+<div class="dlg-b"><p class="s c2">Получат 9 операторов на смене без паузы и без просроченных перезвонов. Каждому 0–1 лид. Отменить раздачу потом можно только вручную.</p></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Раздать</button></div></section>
+<div class="banner b-bad" style="margin-top: 12px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span class="col g4"><span class="w6">Автораздача выключена</span><span>Новые лиды копятся здесь. Включить можно в «Настройки → Общие».</span></span></div>
+</div>
+
+<div class="col g8"><span class="when">Вернуть потерянный лид (суперадмин)</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2">Вернуть лид в раздачу?</h2></div>
+<div class="dlg-b"><p class="s c2">Sanjar Pulatov · <span class="num">+998 94 610 23 23</span>. Лид закрыт 13.10, потому что оператор уволен. Он попадёт в «Свободные лиды», отметка о закрытии удалится.</p></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Вернуть</button></div></section></div>
+
+<div class="col g8"><span class="when">Нет операторов на смене</span>
+<section class="card col" style="align-items: center; text-align: center; padding: 28px 20px; gap: 8px">
+<span class="icon-tile t-warn" style="width: 52px; height: 52px; border-radius: 16px"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20a6.5 6.5 0 0 1 13 0"></path></svg></span>
+<span class="h3">Раздавать некому</span>
+<span class="s c3">Никто ещё не начал смену. Лиды подождут здесь, раздача начнётся сама.</span>
+</section></div>
+
+<div class="col g8"><span class="when">Свободных лидов нет</span>
+<section class="card col" style="align-items: center; text-align: center; padding: 0 0 24px; gap: 8px; overflow: hidden">
+<i class="ikat-soft" style="width: 100%; height: 48px" aria-hidden="true"></i>
+<span class="h3">Все лиды у операторов</span>
+<span class="s c3">Новые из таблиц появятся здесь, если у всех будут заняты слоты.</span>
+</section></div>
+
+<div class="col g8"><span class="when">Уведомления</span>
+<div class="col g8">
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Раздано 7 лидов 9 операторам</span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--warn-solid)"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg>Назначено 2 из 3: один лид уже взял другой оператор</span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Лид вернули в раздачу</span>
+</div></div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+renderVals() {
+const o = (on, off, s, ini, name, note) => ({ on: on, off: off, s: s, ini: ini, name: name, note: note, op: off ? '.5' : '1' });
+return {
+theme: this.props.theme ?? 'light',
+ops: [
+o(true, false, 'on', 'GK', 'Gulnoza Karimova', 'на смене · 4 из 5 в работе'),
+o(false, false, 'on', 'AQ', 'Aziz Qodirov', 'на смене · 3 из 5 в работе'),
+o(false, true, 'pause', 'SK', 'Shahlo Komilova', 'на паузе, назначать нельзя'),
+o(false, true, 'late', 'DY', 'Dilnoza Yusupova', 'просрочен перезвон, новые не идут'),
+o(false, true, 'off', 'DS', 'Dilshod Yo‘ldoshev', 'не начал смену')
+]
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Аналитика: отчёты</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1010px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="reports" hint-size="248px,1010px"></dc-import></div>
+<div class="main-col">
+<header class="top">
+<div class="col"><h1 class="h1">Отчёты</h1><span class="xs c3">Готовые выгрузки по разделам</span></div>
+<span class="grow"></span>
+<div class="seg"><button type="button">Сегодня</button><button type="button">Неделя</button><button class="is-on" type="button">Месяц</button><button type="button">Свой период</button></div>
+<span class="row g6"><input class="input num" type="text" value="01.10 – 14.10.2026" aria-label="Свой период" style="width: 180px"><span class="badge b-info" style="height: 20px">новое</span></span>
+</header>
+<main class="page">
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+<sc-for list="{{cards}}" as="c" hint-placeholder-count="6">
+<section class="card col g8" style="padding: 18px 20px">
+<div class="row between"><span class="icon-tile t-info"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="{{c.ic}}"></path></svg></span><span class="xs c3">{{c.meta}}</span></div>
+<span class="h3">{{c.t}}</span>
+<span class="s c3">{{c.d}}</span>
+<sc-if value="{{c.excel}}" hint-placeholder-val="{{ true }}"><button class="btn btn-sm" type="button" disabled="{{c.busy}}" style="align-self: flex-start"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"></path></svg>{{c.btn}}</button></sc-if>
+<sc-if value="{{c.open}}" hint-placeholder-val="{{ false }}"><a class="btn btn-sm" href="MgLeadsStats.dc.html" style="align-self: flex-start">Открыть →</a></sc-if>
+</section>
+</sc-for>
+</div>
+<section class="card tbl">
+<div class="card-h"><span class="h3">Последние выгрузки</span><button class="btn btn-ghost btn-sm" type="button">Очистить</button></div>
+<div class="tr th" style="grid-template-columns: 1.6fr 100px 180px 170px"><span>Файл</span><span class="r">Размер</span><span>Когда</span><span></span></div>
+<sc-for list="{{recent}}" as="r" hint-placeholder-count="3">
+<div class="tr" style="grid-template-columns: 1.6fr 100px 180px 170px"><span class="s w6 trunc">{{r.f}}</span><span class="r num c2">{{r.sz}}</span><span class="s c3">{{r.when}}</span><span class="row g6"><button class="btn btn-ghost btn-sm" type="button">Скачать снова</button><span class="badge b-info" style="height: 20px">новое</span></span></div>
+</sc-for>
+</section>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start">
+<div class="col g8"><span class="when">Ещё ничего не скачано</span>
+<section class="card tbl"><div class="card-h"><span class="h3">Последние выгрузки</span></div><div class="empty"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M12 11v6M9 14l3 3 3-3"></path></svg><span class="s">Пока нет скачанных отчётов. Нажмите Excel на любой карточке выше.</span></div></section></div>
+<div class="col g8"><span class="when">Тосты</span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Продажи · 84 КБ</span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: #FF8FA9"><path d="M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3"></path></svg>Нет прав на этот отчёт</span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: #FF8FA9"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg>Отчёт не найден на сервере</span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: #FF8FA9"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg>Не удалось скачать</span>
+</div>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1010}}'>
+class Component extends DCLogic {
+renderVals() {
+const I = { sheet: 'M4 5h16v14H4zM4 10h16M4 15h16M10 5v14', clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2', wallet: 'M4 7h16v12H4zM16 13h.01M4 7l12-3v3', list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01', act: 'M3 12h4l3-8 4 16 3-8h4', ch: 'M4 20V10M10 20V4M16 20v-7M22 20H2' };
+const c = (ic, t, d, meta, busy, open) => ({ ic: ic, t: t, d: d, meta: meta, busy: busy, btn: busy ? '…' : 'Excel', excel: !open, open: open });
+return {
+theme: this.props.theme ?? 'light',
+yes: true,
+cards: [
+c(I.sheet, 'Продажи', 'Все продажи за период — с фильтрами по каналу, партнёру, оператору.', '214 строк за месяц', false, false),
+c(I.clock, 'Посещаемость', 'Кто был на смене, кто опоздал, длительность смен.', '31/34 явок сегодня', true, false),
+c(I.wallet, 'Зарплата', 'Расчёт по операторам за месяц с прогрессом к порогу.', 'актуально за текущий месяц', false, false),
+c(I.list, 'Лиды', 'Полный список лидов с источником, статусом и назначением.', '4 824 лида за месяц', false, false),
+c(I.act, 'Активность операторов', 'Обзвон, покрытие лидов и конверсия по операторам — открывает страницу «Статистика лидов».', 'звонки + лиды + продажи в одном отчёте', false, true),
+c(I.ch, 'Аналитика по каналам', 'Разрез продаж по каналам и партнёрам с конверсией.', '6 каналов', false, false)
+],
+recent: [
+{ f: 'sales_2026-10-01_2026-10-14.xlsx', sz: '84 КБ', when: '5 мин назад' },
+{ f: 'attendance_2026-10.xlsx', sz: '31 КБ', when: 'вчера' },
+{ f: 'channels_2026-10.xlsx', sz: '12 КБ', when: '3 дня назад' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

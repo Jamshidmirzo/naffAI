@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Настройки: статусы лидов</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1960px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="statuses" hint-size="248px,1960px"></dc-import></div>
+<div class="main-col">
+
+<header class="top"><h1 class="h1">Настройки</h1><span class="grow"></span><span class="s c3">Изменения сохраняются в журнал</span></header>
+
+<main class="page">
+<div class="row g24" style="align-items: flex-start; flex-wrap: wrap">
+
+<nav class="sub-nav" aria-label="Разделы настроек">
+<a href="MgSettingsGeneral.dc.html">Общие</a>
+<a href="MgSettingsGeneral.dc.html">Автораздача лидов</a>
+<a href="MgAttSettings.dc.html">Смены и зарплата</a>
+<a class="is-on" href="MgSettings.dc.html" aria-current="page">Статусы лидов</a>
+<a href="MgSheets.dc.html">Источники лидов</a>
+<a href="MgCatalog.dc.html">Каталог и рассрочка</a>
+<a href="MgPartners.dc.html">Партнёры</a>
+<a href="MgBot.dc.html">Telegram-бот</a>
+<a href="MgUsers.dc.html">Пользователи</a>
+<a href="MgTraining.dc.html">Обучение</a>
+</nav>
+
+<div class="col g16 grow" style="min-width: 0">
+
+<section class="card tbl">
+<div class="card-h"><div class="col"><span class="h3">Статусы лидов</span><span class="xs c3">Каталог статусов для карточек и чипов-фильтров · Всего: 16</span></div><button class="btn btn-pri btn-sm" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Добавить статус</button></div>
+<div class="tr th" style="grid-template-columns: 48px 1.9fr 0.9fr 110px 52px 64px 64px 36px"><span>Emoji</span><span>Название (RU)</span><span>UZ</span><span>Цвет</span><span style="text-align: center">Чип</span><span style="text-align: center">Кнопка</span><span style="text-align: center">Активен</span><span></span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="16">
+<div class="tr {{r.cls}}" style="grid-template-columns: 48px 1.9fr 0.9fr 110px 52px 64px 64px 36px; min-height: 42px; opacity: {{r.op}}">
+<span style="font-size: 18px; line-height: 1">{{r.emoji}}</span>
+<span class="col" style="min-width: 0; gap: 3px; padding: 4px 0"><span class="row g6"><span class="badge {{r.tone}}"><i class="dot"></i>{{r.ru}}</span><sc-if value="{{r.builtin}}" hint-placeholder-val="{{ false }}"><span class="badge" style="height: 18px; font-size: 10px; text-transform: uppercase; letter-spacing: .05em">builtin</span></sc-if><sc-if value="{{r.blk}}" hint-placeholder-val="{{ false }}"><span class="badge b-bad" style="height: 18px; font-size: 10.5px" title="Пока оператор держит хоть один лид в этом статусе — новых лидов ему не выдаём"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true" style="width: 11px; height: 11px"><path d="M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3"></path></svg>блокер</span></sc-if></span><span class="num xs c3 trunc">{{r.code}}</span></span>
+<span class="s c3 trunc">{{r.uz}}</span>
+<span class="row g6 xs"><i style="display: block; width: 10px; height: 10px; border-radius: 50%; background: {{r.sw}}"></i>{{r.toneL}}</span>
+<span class="s" style="text-align: center">{{r.chip}}</span><span class="s" style="text-align: center">{{r.btn}}</span><span class="s" style="text-align: center">{{r.act}}</span>
+<span><sc-if value="{{r.del}}" hint-placeholder-val="{{ false }}"><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Удалить: {{r.ru}}" title="Удалить" style="color: var(--bad)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13"></path></svg></button></sc-if></span>
+</div>
+</sc-for>
+</section>
+
+<div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; align-items: start">
+<div class="col g8"><span class="when">Редактировать статус · встроенный</span>
+<form class="dlg">
+<div class="dlg-h"><div class="col g4"><h2 class="h2">Редактировать статус</h2><span class="s c3">Встроенный статус — code изменить нельзя, удалить тоже.</span></div></div>
+<div class="dlg-b">
+<div class="row g12"><div class="field grow"><label for="st-ru">Название (RU)</label><input class="input" id="st-ru" type="text" value="Callback"></div><div class="field grow"><label for="st-uz">Название (UZ)</label><input class="input" id="st-uz" type="text" value="Callback" placeholder="если пусто — покажем RU-вариант"></div></div>
+<div class="row g12"><div class="field grow"><label for="st-code">Code (slug)</label><input class="input num" id="st-code" type="text" value="callback_scheduled" disabled="{{yes}}" style="background: var(--surface-2); color: var(--ink-3)"><span class="hint">Code нельзя менять после создания.</span></div><div class="field" style="width: 90px"><label for="st-em">Emoji</label><input class="input" id="st-em" type="text" value="⏰" style="text-align: center"></div><div class="field" style="width: 110px"><label for="st-ord">Порядок</label><input class="input num" id="st-ord" type="text" value="40"><span class="hint">0–999</span></div></div>
+<fieldset class="col g8" style="border: 0; margin: 0; padding: 0">
+<legend class="flabel" style="margin-bottom: 8px">Цвет badge</legend>
+<div class="row g6 wrap">
+<label class="chip"><input type="radio" name="tone" style="margin: 0"><span class="badge"><i class="dot"></i>нейтральный</span></label>
+<label class="chip is-on"><input type="radio" name="tone" checked="{{yes}}" style="margin: 0"><span class="badge b-info"><i class="dot"></i>синий</span></label>
+<label class="chip"><input type="radio" name="tone" style="margin: 0"><span class="badge b-hot"><i class="dot"></i>оранжевый</span></label>
+<label class="chip"><input type="radio" name="tone" style="margin: 0"><span class="badge b-ok"><i class="dot"></i>зелёный</span></label>
+<label class="chip"><input type="radio" name="tone" style="margin: 0"><span class="badge b-bad"><i class="dot"></i>красный</span></label>
+</div>
+</fieldset>
+<div class="col" style="border: 1px solid var(--line); border-radius: 11px">
+<div class="li"><span class="s grow">Показывать в чипах</span><button class="switch is-on" type="button" aria-label="Показывать в чипах: да"><i></i></button></div>
+<div class="li"><span class="s grow">Кнопка «Отметить»</span><button class="switch is-on" type="button" aria-label="Кнопка «Отметить»: да"><i></i></button></div>
+<div class="li"><span class="s grow">Активен</span><button class="switch is-on" type="button" aria-label="Активен: да"><i></i></button></div>
+<div class="li" style="background: var(--bad-bg); border-radius: 0 0 11px 11px"><span class="col grow"><span class="s w6 c-bad">Блокирует получение новых лидов</span><span class="xs c2">Пока оператор держит хоть один лид в этом статусе — round-robin новых лидов ему не выдаёт. Нужно закрыть/сдвинуть в другой статус.</span></span><button class="switch is-on" type="button" aria-label="Блокирует: да"><i></i></button></div>
+</div>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Сохранить</button></div>
+</form></div>
+
+<div class="col g8"><span class="when">Удаление своего статуса</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2">Удалить этот статус?</h2></div><div class="dlg-b"><p class="s c2">«Ждёт зарплаты» · waiting_salary. Действие необратимо.</p></div><div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-danger" type="button">Удалить</button></div></section>
+<span class="toast" style="align-self: flex-start; margin-top: 4px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Статус удалён</span>
+<p class="xs c3">У встроенных статусов кнопки удаления нет. Неактивные статусы показаны бледными.</p>
+</div>
+</div>
+
+</div>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1960}}'>
+class Component extends DCLogic {
+renderVals() {
+const SW = { info: ['b-info', 'синий', 'var(--brand)'], hot: ['b-hot', 'оранжевый', 'var(--hot-solid)'], neutral: ['', 'нейтральный', 'var(--ink-4)'], ok: ['b-ok', 'зелёный', 'var(--ok-solid)'], bad: ['b-bad', 'красный', 'var(--bad-solid)'] };
+const r = (emoji, ru, uz, code, tone, builtin, blk, chip, btn, act, sel) => ({ emoji: emoji, ru: ru, uz: uz, code: code, tone: SW[tone][0], toneL: SW[tone][1], sw: SW[tone][2], builtin: builtin, blk: blk, chip: chip ? '✓' : '—', btn: btn ? '✓' : '—', act: act ? '✓' : '—', op: act ? '1' : '.55', del: !builtin, cls: sel ? 'is-sel' : '' });
+return {
+theme: this.props.theme ?? 'light',
+yes: true,
+rows: [
+r('📋', 'Новый', 'Yangi', 'new', 'info', true, false, true, false, true),
+r('👤', 'Назначен', 'Tayinlangan', 'assigned', 'info', true, false, false, false, true),
+r('💬', 'В работе', 'Ishda', 'in_progress', 'hot', true, false, true, true, true),
+r('⏰', 'Callback', 'Callback', 'callback_scheduled', 'info', true, true, true, true, true, true),
+r('💬', 'Написали в Telegram', "TGga bog'landi", 'contacted_telegram', 'info', true, false, true, true, true),
+r('💸', 'Показалось дорого', 'Qimmatlik qildi', 'qimmatlik_qildi', 'hot', true, false, true, true, true),
+r('📵', 'Не ответил 1', 'Javob bermadi 1', 'no_answer', 'neutral', true, true, true, true, true),
+r('⚠️', 'Не ответил 2', 'Javob bermadi 2', 'no_answer_2', 'hot', true, true, true, true, true),
+r('📞', 'Телефон включён', 'Telfoni ochiq', 'phone_on', 'info', true, true, true, true, true),
+r('💸', 'Есть долг', 'Qarzi bor', 'has_debt', 'bad', true, false, true, true, true),
+r('💰', 'Продажа', 'Sotildi', 'won', 'ok', true, false, true, false, true),
+r('✖️', 'Потерян', "Yo'qotildi", 'lost', 'bad', true, false, true, true, true),
+r('🚩', 'Требует проверки', 'Tekshirish kerak', 'needs_review', 'hot', true, false, false, false, true),
+r('🏬', 'Придёт в магазин', "Do'konga keladi", 'dokonga_keladi', 'info', false, true, true, true, true),
+r('💳', 'Нет карты', "Kartasi yo'q", 'kartsi_yoq', 'neutral', false, false, true, true, true),
+r('·', 'Ждёт зарплаты', 'Oyliguni kutyapti', 'waiting_salary', 'neutral', false, false, false, true, false)
+]
+};
+}
+}
+</script>
+</body>
+</html>

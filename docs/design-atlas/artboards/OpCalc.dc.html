@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Калькулятор рассрочки</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 960px">
+<div class="rail-wrap"><dc-import name="SideNav" who="operator" at="calc" hint-size="84px,960px"></dc-import></div>
+<div class="main-col">
+
+<header class="top"><h1 class="h1">Калькулятор рассрочки</h1><span class="grow"></span><span class="s c3">Комиссии по тарифам, которые задал менеджер</span></header>
+
+<main class="page">
+<div class="split">
+
+<section class="panel card col" style="flex: 1 1 360px">
+<div class="card-h"><span class="h3">Расчёт</span></div>
+<div class="col g16" style="padding: 18px 20px 20px">
+<div class="field"><label for="c-model">Телефон</label><select class="input" id="c-model"><option>iPhone 15 Pro 256 GB</option><option>Samsung Galaxy S24 256 GB</option></select></div>
+<div class="field"><label for="c-price">Цена, сум</label><input class="input num" id="c-price" type="text" value="{{price}}"></div>
+<div class="field"><label for="c-first">Первый взнос, сум</label><input class="input num" id="c-first" type="text" value="{{first}}"></div>
+<div class="well row between"><span class="s c3">В рассрочку</span><span class="num w6">{{financed}} сум</span></div>
+</div>
+</section>
+
+<section class="list col g12">
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{terms}}" as="t" hint-placeholder-count="6">
+<button class="card col g6 {{t.cls}}" type="button" onClick="{{t.pick}}" style="padding: 16px; text-align: left">
+<span class="row between" style="width: 100%"><span class="h3">{{t.months}} мес</span><span class="badge">комиссия {{t.pct}}%</span></span>
+<span class="kpi" style="font-size: 22px; line-height: 28px">{{t.monthly}}</span>
+<span class="xs c3">сум в месяц · всего {{t.total}}</span>
+</button>
+</sc-for>
+</div>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Текст для клиента</span><button class="btn btn-pri btn-sm" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h11v11H9zM5 15V4h11"></path></svg>Скопировать</button></div>
+<p class="num s" style="padding: 16px 20px; white-space: pre-line; line-height: 22px">{{message}}</p>
+</section>
+</section>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const price = 14500000, first = 2000000, financed = price - first;
+const sel = (this.state && this.state.sel) || 12;
+const plans = [[3, 7], [6, 14], [9, 21], [12, 28], [18, 42], [24, 56]];
+const terms = plans.map((p) => {
+const total = financed * (1 + p[1] / 100);
+const on = p[0] === sel;
+return { months: p[0], pct: p[1], monthly: fmt(total / p[0]), total: fmt(total), cls: on ? 'pick-on' : '', pick: () => this.setState({ sel: p[0] }) };
+});
+const cur = terms.filter((t) => t.months === sel)[0];
+const message = 'iPhone 15 Pro 256 GB\nNarxi: ' + fmt(price) + " so'm\nBoshlang'ich to'lov: " + fmt(first) + " so'm\nMuddat: " + cur.months + ' oy\nOyiga: ' + cur.monthly + " so'm\nJami: " + cur.total + " so'm";
+return { theme: this.props.theme ?? 'light', price: fmt(price), first: fmt(first), financed: fmt(financed), terms: terms, message: message };
+}
+}
+</script>
+</body>
+</html>

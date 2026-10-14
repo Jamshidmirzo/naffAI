@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Продажи: окна</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1160px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6"><h1 class="h1">Продажи: подтверждение, отказ, возврат</h1><p class="c3">Причина обязательна там, где её увидит оператор. Массовые действия всегда спрашивают подтверждение и показывают сумму.</p></div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; align-items: start">
+
+<div class="col g8"><span class="when">Отклонить продажу</span>
+<section class="dlg"><div class="dlg-h"><div class="col g4"><h2 class="h2">Отклонить продажу №1 482</h2><span class="s c3">iPhone 15 Pro · 14 500 000 · Gulnoza Karimova</span></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b"><div class="field"><label for="x1">Причина</label><textarea class="input is-bad" id="x1" rows="2" placeholder="Например: IMEI не совпадает с фото договора"></textarea><span class="err">Напишите причину: оператор увидит её в уведомлении</span></div>
+<div class="row g6 wrap"><button class="chip" type="button">Нет фото договора</button><button class="chip" type="button">IMEI не совпадает</button><button class="chip" type="button">Неверная сумма</button></div></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-danger" type="button" disabled="{{yes}}">Отклонить</button></div></section></div>
+
+<div class="col g8"><span class="when">Оформить возврат</span>
+<section class="dlg"><div class="dlg-h"><div class="col g4"><h2 class="h2">Оформить возврат</h2><span class="s c3">Продажа №1 476 · iPhone 14 128 GB · 10 800 000</span></div></div>
+<div class="dlg-b"><div class="field"><label for="x2">Причина возврата</label><input class="input" id="x2" type="text" value="Брак экрана, клиент вернул в течение 3 дней"></div>
+<div class="banner b-warn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>Сумма уйдёт из продаж Otabek Ergashev за октябрь, зарплата пересчитается.</span></div></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Оформить возврат</button></div></section></div>
+
+<div class="col g8"><span class="when">Удалить продажу</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2" style="color: var(--bad)">Удалить продажу №1 470?</h2></div>
+<div class="dlg-b"><p class="s c2">iPhone 13 128 GB · 8 900 000. Продажа пропадёт из отчётов и зарплаты. Вернуть её сможет только администратор.</p></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-danger" type="button">Удалить</button></div></section></div>
+
+<div class="col g8"><span class="when">Одобрить выбранные</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2">Одобрить 2 продажи?</h2></div>
+<div class="dlg-b">
+<div class="well col g6"><div class="row between s"><span>iPhone 15 Pro · Gulnoza K.</span><span class="num">14 500 000</span></div><div class="row between s"><span>Galaxy S24 · Nilufar S.</span><span class="num">11 900 000</span></div><hr class="hr"><div class="row between s w6"><span>Итого</span><span class="num">26 400 000</span></div></div>
+<p class="xs c3">Суммы сразу попадут в зарплату операторов.</p></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-ok" type="button">Одобрить 2</button></div></section></div>
+
+<div class="col g8"><span class="when">Отклонить выбранные</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2">Отклонить 3 продажи</h2></div>
+<div class="dlg-b"><div class="field"><label for="x5">Причина для всех трёх</label><input class="input" id="x5" type="text" value="Нет фото договора"></div><p class="xs c3">Каждый оператор получит уведомление с этой причиной.</p></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-danger" type="button">Отклонить 3</button></div></section></div>
+
+<div class="col g8"><span class="when">Фото договора на весь экран</span>
+<section class="dlg" style="background: #15132B; border-color: #15132B; color: #F1F0F7; overflow: hidden">
+<div class="row between" style="padding: 12px 16px"><span class="s w6">Договор · продажа №1 482</span><span class="num xs" style="opacity: .7">1 / 2</span></div>
+<div class="row g8" style="padding: 0 12px 16px; align-items: center">
+<button class="btn btn-sq btn-sm" type="button" aria-label="Предыдущее фото"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></button>
+<div style="flex: 1 1 0; height: 200px; border-radius: 10px; background: #24223F; display: flex; align-items: center; justify-content: center; font-size: 12px; opacity: .8">Фото договора</div>
+<button class="btn btn-sq btn-sm" type="button" aria-label="Следующее фото"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button>
+</div>
+</section></div>
+
+<div class="col g8" style="grid-column: span 3"><span class="when">Уведомления</span>
+<div class="row g12 wrap">
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Одобрено 2 продажи на 26 400 000</span>
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--warn-solid)"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg>Одобрено 1 из 2: продажу №1 470 уже отклонил Rustam Yuldashev<span class="t-act">Открыть</span></span>
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Возврат оформлен</span>
+<span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>IMEI скопирован</span>
+</div></div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1160}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light', yes: true };
+}
+}
+</script>
+</body>
+</html>

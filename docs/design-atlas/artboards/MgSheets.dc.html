@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Google-таблицы</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 980px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="sheets" hint-size="248px,980px"></dc-import></div>
+<div class="main-col">
+<header class="top"><div class="col"><h1 class="h1">Google-таблицы</h1><span class="xs c3">Источники лидов и псевдонимы операторов</span></div><span class="grow"></span><a class="btn" href="MgSheetsForm.dc.html">Добавить лист</a><a class="btn btn-pri" href="MgSheetSources.dc.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Добавить из ссылки</a></header>
+<main class="page">
+<div class="card row g12 wrap" style="padding: 12px 16px">
+<i class="dot" style="color: var(--ok-solid); width: 10px; height: 10px"></i>
+<span class="s grow">Google Sheets: <span class="w6">4 таблицы на связи</span> · последняя проверка: <span class="num">14:20</span> · обратная запись: <span class="num">3</span> в очереди</span>
+<button class="btn btn-sm" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-5L4 8M4 4v4h4"></path></svg>Проверить сейчас</button>
+<a class="btn btn-sm" href="MgSheetSources.dc.html">Таблицы</a>
+<a class="btn btn-sm" href="MgOperatorsDiag.dc.html">Операторы</a>
+</div>
+
+<div class="col g12">
+<span class="h3">Активные источники</span>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{health}}" as="h" hint-placeholder-count="4">
+<section class="card col g8 pad">
+<div class="row between"><span class="s w6 trunc">{{h.name}}</span><span class="row g6"><span class="row g6 xs {{h.cls}}"><i class="dot"></i>{{h.state}}</span><a class="btn btn-ghost btn-sq btn-sm" href="MgSheetsForm.dc.html" aria-label="Настроить" title="Настроить" style="width: 26px; height: 26px"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12l2-1-1-3-2 .5-1.5-1.5.5-2-3-1-1 2h-2l-1-2-3 1 .5 2L6 7.5 4 7 3 10l2 1v2l-2 1 1 3 2-.5 1.5 1.5-.5 2 3 1 1-2h2l1 2 3-1-.5-2 1.5-1.5 2 .5 1-3-2-1z"></path></svg></a></span></div>
+<div class="row g8" style="align-items: baseline"><span class="kpi" style="font-size: 22px">{{h.day}}</span><span class="xs c3">лидов за 24 ч</span></div>
+<span class="xs c3 num">sync: {{h.sync}} · всего: {{h.total}}</span>
+<sc-if value="{{h.err}}" hint-placeholder-val="{{ false }}"><span class="col g4"><span class="xs w6 c-bad">Скрыть ошибку</span><span class="err" style="align-items: flex-start">{{h.err}}</span></span></sc-if>
+<div class="row g6"><button class="btn btn-sm grow" type="button">Синхронизировать</button><button class="btn btn-sm btn-ghost" type="button" title="Полный перескан таблицы с 1-й строки">Перескан</button></div>
+</section>
+</sc-for>
+</div>
+</div>
+
+<div class="tabs"><button class="tab is-on" type="button">Листы <span class="num xs c3">5</span></button><a class="tab" href="MgSheetsForm.dc.html#aliases">Псевдонимы операторов <span class="cnt">3</span></a></div>
+<div class="row between"><span class="s"><span class="w6">Всего листов: 5</span> <span class="c3">· Вставьте ссылку на Google-шит — CRM сама разберёт колонки и подключит.</span></span></div>
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: 1.2fr 1.5fr 60px 1fr 1.5fr 120px 120px"><span>Название</span><span>Spreadsheet</span><span>gid</span><span>Оператор по умолчанию</span><span>Режим</span><span>Последняя строка</span><span></span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+<div class="tr" style="grid-template-columns: 1.2fr 1.5fr 60px 1fr 1.5fr 120px 120px; min-height: 64px">
+<span class="row g6" style="min-width: 0"><span class="w6 trunc">{{r.n}}</span><sc-if value="{{r.off}}" hint-placeholder-val="{{ false }}"><span class="badge">off</span></sc-if></span>
+<span class="col" style="min-width: 0"><span class="num xs c2 trunc">{{r.id}}</span><span class="xs c3 trunc">{{r.map}}</span></span>
+<span class="num xs c2">{{r.gid}}</span>
+<span class="s trunc">{{r.op}}</span>
+<span class="row g4 wrap"><span class="badge" style="white-space: normal; height: auto; min-height: 22px; padding: 2px 8px; flex: 0 1 auto; max-width: 100%">{{r.mode}}</span><sc-if value="{{r.pool}}" hint-placeholder-val="{{ false }}"><span class="badge b-hot">Пул: {{r.pool}}</span></sc-if><sc-if value="{{r.hot}}" hint-placeholder-val="{{ false }}"><span class="badge b-bad">ТЕЗ · {{r.hot}} мин</span></sc-if></span>
+<span class="col"><span class="num s">#{{r.row}}</span><span class="num xs c3">{{r.at}}</span></span>
+<a class="btn btn-ghost btn-sm" href="MgSheetsForm.dc.html" style="justify-self: end">Редактировать</a>
+</div>
+</sc-for>
+</section>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+theme: this.props.theme ?? 'light',
+health: [
+{ name: 'Instagram октябрь', state: 'работает', cls: 'c-ok', day: '124', sync: '14.10 14:20', total: '2 140', err: '' },
+{ name: 'Telegram-бот', state: 'работает', cls: 'c-ok', day: '38', sync: '14.10 14:20', total: '780', err: '' },
+{ name: 'Facebook октябрь', state: 'давно не синкался', cls: 'c-warn', day: '0', sync: '14.10 12:14', total: '1 320', err: '' },
+{ name: 'Сайт · заявки', state: 'ошибка sync', cls: 'c-bad', day: '—', sync: '14.10 11:02', total: '412', err: 'The caller does not have permission (403). Выдайте доступ сервисному аккаунту naff-sheets-reader@…' }
+],
+rows: [
+{ n: 'Instagram октябрь', id: '1Bx9Lq0aM2…TzKq2', map: 'Phone → B · Name → A · Product → C · Card → D', gid: '0', op: '—', mode: 'Псевдоним, иначе по кругу', pool: '', hot: '15', row: '2 141', at: '14.10.2026, 14:20', off: false },
+{ n: 'Telegram-бот', id: '1Fa3Wc7uQ1…Hn5P0d', map: 'Phone → phone · Name → name · Op → operator', gid: '128734', op: 'Gulnoza Karimova', mode: 'Псевдоним, иначе оператор по умолчанию', pool: '12', hot: '', row: '781', at: '14.10.2026, 14:20', off: false },
+{ n: 'Facebook октябрь', id: '1Qw8Rt2yU5…Lp1x', map: 'Phone → B · Name → A · Phone 2 → E', gid: '904512', op: '—', mode: 'Только по псевдониму', pool: '', hot: '', row: '1 321', at: '14.10.2026, 12:14', off: false },
+{ n: 'Сайт · заявки', id: '1Mn2Kd8sV4…Wq9a', map: 'Phone → C · Name → B · Product → D', gid: '0', op: 'Aziz Qodirov', mode: 'Только оператор по умолчанию', pool: '', hot: '10', row: '413', at: '14.10.2026, 11:02', off: false },
+{ n: 'Сентябрь (архив)', id: '1Rt5Hj3nB6…Ze7c', map: 'Phone → B · Name → A', gid: '0', op: '—', mode: 'Псевдоним, иначе по кругу', pool: '', hot: '', row: '3 908', at: '30.09.2026, 23:55', off: true }
+]
+};
+}
+}
+</script>
+</body>
+</html>

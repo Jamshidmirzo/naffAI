@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Поиск и команды</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="height: 900px; position: relative; overflow: hidden">
+<div aria-hidden="true"><dc-import name="MgDashboard" hint-size="100%,1120px"></dc-import></div>
+<div class="scrim"></div>
+
+<div style="position: absolute; left: 0; right: 0; top: 88px; display: flex; justify-content: center; padding: 0 24px">
+<section class="palette" role="dialog" aria-label="Поиск и команды">
+<div class="row g12" style="padding: 16px 18px; border-bottom: 1px solid var(--line)">
+<svg class="ic ic-l c3" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg>
+<input class="grow num" type="text" value="93 45" aria-label="Что найти" style="border: 0; outline: 0; background: transparent; font-size: 18px; color: var(--ink)">
+<span class="kbd">Esc</span>
+</div>
+<div class="row g6" style="padding: 10px 18px 0">
+<span class="chip is-on" style="height: 28px">Всё</span><span class="chip" style="height: 28px">Лиды</span><span class="chip" style="height: 28px">Продажи</span><span class="chip" style="height: 28px">Операторы</span><span class="chip" style="height: 28px">Действия</span>
+</div>
+<div class="col" style="padding: 8px 10px 10px; max-height: 520px; overflow-y: auto">
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+<div class="lbl" style="padding: 12px 10px 6px">{{g.title}}</div>
+<sc-for list="{{g.items}}" as="r" hint-placeholder-count="2">
+<a class="queue-item {{r.cls}}" href="{{r.href}}" style="min-height: 52px">
+<span class="icon-tile {{r.tile}}" style="width: 32px; height: 32px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.d}}"></path></svg></span>
+<span class="col grow" style="gap: 1px; min-width: 0"><span class="s w6 trunc">{{r.title}}</span><span class="xs c3 trunc">{{r.note}}</span></span>
+<sc-if value="{{r.key}}" hint-placeholder-val="{{ false }}"><span class="kbd">{{r.key}}</span></sc-if>
+</a>
+</sc-for>
+</sc-for>
+</div>
+<div class="row g16 xs c3" style="padding: 10px 18px; border-top: 1px solid var(--line); background: var(--surface-2)">
+<span class="row g6"><span class="kbd">↑</span><span class="kbd">↓</span>выбрать</span>
+<span class="row g6"><span class="kbd">Enter</span>открыть</span>
+<span class="row g6"><span class="kbd">Tab</span>действия с найденным</span>
+<span class="grow"></span>
+<span>Ищет по телефону, IMEI, имени и названию раздела</span>
+</div>
+</section>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+const I = {
+user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
+receipt: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6',
+users: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 6.5M18 14.5a6 6 0 0 1 3.5 5.5',
+plus: 'M12 5v14M5 12h14',
+inbox: 'M4 13l3-8h10l3 8v6H4zM4 13h5l1 2h4l1-2h5',
+clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2'
+};
+return {
+theme: this.props.theme ?? 'light',
+groups: [
+{ title: 'Лиды · 2', items: [
+{ cls: 'is-next', tile: 't-info', d: I.user, title: 'Dilnoza Yusupova · +998 93 456 78 90', note: 'Callback на 16:30 · оператор Gulnoza Karimova · Samsung Galaxy S24', key: 'Enter', href: 'MgLeadsAll.dc.html' },
+{ cls: '', tile: 't-info', d: I.user, title: 'Kamron Ibragimov · +998 93 220 14 70', note: 'Без оператора · Instagram · iPhone 15 128 GB', key: '', href: 'MgLeads.dc.html' }
+] },
+{ title: 'Продажи · 1', items: [
+{ cls: '', tile: 't-ok', d: I.receipt, title: 'Продажа №1 476 · клиент +998 93 451 10 22', note: 'iPhone 14 128 GB · 10 800 000 · подтверждена 13.10', key: '', href: 'MgSaleDetail.dc.html' }
+] },
+{ title: 'Действия', items: [
+{ cls: '', tile: '', d: I.plus, title: 'Новая продажа', note: 'Открыть форму продажи', key: 'N', href: 'MgSaleForm.dc.html' },
+{ cls: '', tile: '', d: I.inbox, title: 'Раздать свободные лиды', note: '7 лидов ждут оператора', key: '', href: 'MgLeads.dc.html' },
+{ cls: '', tile: '', d: I.clock, title: 'Открыть смену сегодня', note: '31 на смене, 4 опоздали', key: 'G S', href: 'MgAttendance.dc.html' }
+] }
+]
+};
+}
+}
+</script>
+</body>
+</html>

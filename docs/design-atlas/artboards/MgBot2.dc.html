@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Telegram-бот · чаты и аудит</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1270px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="bot" hint-size="248px,1270px"></dc-import></div>
+<div class="main-col">
+<header class="top"><div class="col"><h1 class="h1">Telegram-бот</h1><span class="xs c3">Расписание отчётов, чаты, аудит</span></div><div class="seg"><a href="MgBot.dc.html">Отчёты</a><button class="is-on" type="button">Чаты</button><a href="#audit">Аудит</a></div><span class="grow"></span><a class="btn" href="MgBotSubs.dc.html">Подписчики</a></header>
+<main class="page">
+
+<div class="well row g12" style="align-items: flex-start; background: var(--brand-soft); border-color: transparent">
+<span class="icon-tile t-info" style="background: var(--surface)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3L3 10.5l7 3 3 7z"></path></svg></span>
+<span class="col g4"><span class="s w6">Как добавить группу</span><span class="s c2">Добавьте @naffai_bot в вашу группу Telegram (обычным участником или админом). Через несколько секунд группа появится в этом списке — выберите её в получателях отчёта.</span></span>
+</div>
+
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: 120px 1.6fr 1.3fr 90px 80px"><span>Тип</span><span>Название</span><span>Пользователь</span><span>Язык</span><span>Статус</span></div>
+<sc-for list="{{chats}}" as="c" hint-placeholder-count="8">
+<div class="tr" style="grid-template-columns: 120px 1.6fr 1.3fr 90px 80px; min-height: 54px">
+<span><span class="badge" style="border-radius: 99px">{{c.kind}}</span></span>
+<span class="col" style="min-width: 0"><span class="s w6 trunc">{{c.title}}</span><span class="num xs c3">{{c.id}}</span></span>
+<span class="s c2 trunc">{{c.user}}</span>
+<span class="s c3">{{c.lang}}</span>
+<span class="row g6 xs {{c.stCls}}"><i class="dot" style="width: 8px; height: 8px"></i>{{c.st}}</span>
+</div>
+</sc-for>
+</section>
+
+<div class="seg" style="align-self: flex-start" id="audit"><a href="MgBot.dc.html">Отчёты</a><a href="MgBot2.dc.html">Чаты</a><button class="is-on" type="button">Аудит</button></div>
+<span class="when">Вкладка «Аудит» · команды боту за 7 дней</span>
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: 170px 150px 1.2fr 1fr 150px"><span>Время</span><span>Chat</span><span>Пользователь</span><span>Команда</span><span>Итог</span></div>
+<sc-for list="{{audit}}" as="a" hint-placeholder-count="9">
+<div class="tr" style="grid-template-columns: 170px 150px 1.2fr 1fr 150px; min-height: 42px">
+<span class="num xs c3">{{a.at}}</span>
+<span class="num xs">{{a.chat}}</span>
+<span class="s c2 trunc">{{a.user}}</span>
+<span class="num xs w6">{{a.cmd}}</span>
+<span><span class="badge {{a.tone}}" style="border-radius: 99px; height: 20px; font-size: 11px">{{a.out}}</span></span>
+</div>
+</sc-for>
+</section>
+<p class="xs c3">Итог показан кодом, как в системе: ok и scheduled_sent — зелёные, denied — жёлтый, остальное (error) — красное.</p>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1270}}'>
+class Component extends DCLogic {
+renderVals() {
+const c = (kind, title, id, user, lang, on) => ({ kind: kind, title: title, id: id, user: user, lang: lang, st: on ? 'активен' : 'неактивен', stCls: on ? 'c-ok' : 'c-bad' });
+const a = (at, chat, user, cmd, out) => ({ at: at, chat: chat, user: user, cmd: cmd, out: out, tone: out === 'ok' || out === 'scheduled_sent' ? 'b-ok' : out === 'denied' ? 'b-warn' : 'b-bad' });
+return {
+theme: this.props.theme ?? 'light',
+chats: [
+c('supergroup', 'Naff · продажи', '-1001876543210', '—', 'uz', true),
+c('group', 'Naff · смена', '-4512398870', '—', 'ru', true),
+c('private', 'Bobur Xolmatov', '88938071', 'Bobur Xolmatov', 'ru', true),
+c('private', 'Kamola Ahmedova', '412907733', 'Kamola Ahmedova', 'ru', true),
+c('private', 'Gulnoza Karimova', '590114208', 'Gulnoza Karimova', 'uz', true),
+c('private', 'Jasur Toshmatov', '377265119', 'Jasur Toshmatov', 'uz', true),
+c('group', 'Naff · старый чат', '-4019922731', '—', 'ru', false),
+c('private', 'Bahodir Mirzayev', '602551874', 'Bahodir Mirzayev', 'uz', false)
+],
+audit: [
+a('14.10.2026, 14:02:11', '88938071', '@bobur_x', '/report', 'ok'),
+a('14.10.2026, 09:00:03', '-1001876543210', '—', 'scheduled', 'scheduled_sent'),
+a('14.10.2026, 08:47:40', '590114208', '@gulnoza_k', '/report', 'denied'),
+a('13.10.2026, 20:00:02', '-4019922731', '—', 'scheduled', 'error'),
+a('13.10.2026, 18:15:27', '412907733', '@kamola_a', '/help', 'ok'),
+a('13.10.2026, 11:30:09', '377265119', '@jasur_t', '/start', 'ok'),
+a('12.10.2026, 16:41:55', '602551874', '@bahodir_m', '/link 48213', 'error'),
+a('12.10.2026, 09:00:04', '-1001876543210', '—', 'scheduled', 'scheduled_sent'),
+a('11.10.2026, 10:12:31', '412907733', '@kamola_a', '/report', 'ok')
+]
+};
+}
+}
+</script>
+</body>
+</html>

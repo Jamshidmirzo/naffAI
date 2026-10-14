@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Мои лиды · всё закрыто</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 960px">
+<div class="rail-wrap"><dc-import name="SideNav" who="operator" at="my" hint-size="84px,960px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Мои лиды</h1>
+<div class="seg"><a class="is-on" href="OpMy.dc.html">Фокус</a><a href="OpMyList.dc.html">Список</a></div>
+<span class="badge b-ok" style="height: 28px"><i class="dot"></i>На смене <span class="num">04:41:30</span></span>
+<span class="grow"></span>
+<div class="col g4" style="width: 150px">
+<div class="row between xs"><span class="c3">В работе</span><span class="num w6">0 / 5</span></div>
+<div class="row g4" aria-hidden="true"><i class="slot"></i><i class="slot"></i><i class="slot"></i><i class="slot"></i><i class="slot"></i></div>
+</div>
+<div class="col g4" style="width: 150px">
+<div class="row between xs"><span class="c3">План дня</span><span class="num w6">10 из 10</span></div>
+<div class="bar" style="height: 8px" aria-hidden="true"><i class="ok" style="width: 100%"></i></div>
+</div>
+</header>
+
+<main class="page">
+<div class="dayline" aria-label="Линия дня">
+<i class="done" style="width: 67%"></i>
+<span class="tick" style="left: 2%">10:00</span><span class="tick" style="left: 20%">12:00</span><span class="tick" style="left: 40%">14:00</span><span class="tick" style="left: 60%">16:00</span><span class="tick" style="left: 80%">18:00</span><span class="tick" style="left: 97%">20:00</span>
+<i class="mk mk-in" style="left: 1%"></i><i class="mk mk-sale" style="left: 16%"></i><i class="mk mk-sale" style="left: 31%"></i><i class="mk mk-sale" style="left: 58%"></i><i class="mk mk-cb" style="left: 90%"></i>
+<i class="now" style="left: 67%"></i>
+</div>
+
+<section class="focus" style="align-items: center; text-align: center; padding: 0 0 40px; overflow: hidden">
+<i class="ikat-soft" style="width: 100%; height: 120px" aria-hidden="true"></i>
+<span class="icon-tile t-ok" style="width: 64px; height: 64px; border-radius: 18px; margin-top: -32px; box-shadow: 0 0 0 6px var(--surface)"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span>
+<h2 class="display" style="font-size: 26px; line-height: 34px">Все лиды закрыты</h2>
+<p class="c2" style="max-width: 460px">Новые придут сами, обычно за несколько минут. Экран обновится без перезагрузки, клавиши 1–4 снова заработают с первым лидом.</p>
+<div class="row g8" style="justify-content: center">
+<a class="btn btn-pri" href="OpLessons.dc.html">Пока ждёшь: урок дня</a>
+<a class="btn" href="OpMyList.dc.html">Отложенные · 2</a>
+</div>
+<p class="xs c3">Следующий перезвон: «Без имени», в <span class="num">19:00</span>.</p>
+</section>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light' };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Курсы</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 860px">
+<div class="rail-wrap"><dc-import name="SideNav" who="operator" at="training" hint-size="84px,860px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Обучение</h1>
+<div class="seg"><a href="OpLessons.dc.html">Урок дня</a><a href="OpLessonsHistory.dc.html">История разборов</a><a class="is-on" href="OpTraining.dc.html" aria-current="page">Курсы</a></div>
+<span class="grow"></span>
+<span class="s c3">пройдено <span class="num">2</span> из <span class="num">5</span></span>
+<div class="bar" style="width: 140px"><i class="ok" style="width: 40%"></i></div>
+</header>
+
+<main class="page">
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+<sc-for list="{{courses}}" as="c" hint-placeholder-count="5">
+<a class="card col" href="OpTrainingLesson.dc.html" style="overflow: hidden">
+<div class="ph" style="height: 140px; border-radius: 0; border: 0; border-bottom: 1px solid var(--line)"><svg class="ic ic-xl" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM10 9l5 3-5 3z"></path></svg>{{c.media}}</div>
+<div class="col g8" style="padding: 14px 16px 16px">
+<div class="row between g8"><span class="h3">{{c.title}}</span><span class="badge {{c.tone}}">{{c.status}}</span></div>
+<span class="xs c3">{{c.meta}}</span>
+</div>
+</a>
+</sc-for>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":860}}'>
+class Component extends DCLogic {
+renderVals() {
+const c = (title, meta, media, done, score) => ({ title: title, meta: meta, media: media, status: done ? 'Пройден · ' + score : 'Не пройден', tone: done ? 'b-ok' : '' });
+return {
+theme: this.props.theme ?? 'light',
+courses: [
+c('Первый звонок за 30 секунд', 'Видео 6 мин · 4 вопроса', 'Видео', true, '100%'),
+c('Рассрочка простыми словами', 'Видео 9 мин · файл PDF · 5 вопросов', 'Видео и файл', true, '80%'),
+c('Возражение «дорого»', 'Видео 7 мин · 6 вопросов', 'Видео', false, ''),
+c('Как оформить продажу без ошибок', 'Видео 5 мин · 3 вопроса', 'Видео', false, ''),
+c('Telegram: как писать клиенту', 'Файл PDF · 4 вопроса', 'Файл', false, '')
+]
+};
+}
+}
+</script>
+</body>
+</html>

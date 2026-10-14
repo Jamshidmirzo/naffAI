@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Моя продажа</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 960px">
+<div class="rail-wrap"><dc-import name="SideNav" who="operator" at="sales" hint-size="84px,960px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<a class="btn btn-ghost btn-sq" href="OpSales.dc.html" aria-label="Назад к моим продажам"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
+<h1 class="h1">Продажа №1 482</h1>
+<span class="badge b-warn" style="height: 26px"><i class="dot"></i>Ждёт подтверждения</span>
+<span class="grow"></span>
+<span class="s c3">отправлена сегодня в <span class="num">14:20</span></span>
+</header>
+
+<main class="page">
+<div class="split">
+
+<div class="list col g16">
+<section class="card col g16" style="padding: 20px 24px">
+<span class="lbl">Путь продажи</span>
+<div class="row g8" style="align-items: flex-start">
+<sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+<div class="col g6 grow">
+<i class="bar" style="height: 6px"><i class="{{s.barCls}}" style="width: {{s.w}}%"></i></i>
+<span class="s w6 {{s.txtCls}}">{{s.label}}</span>
+<span class="xs c3">{{s.note}}</span>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section class="card col">
+<div class="card-h"><span class="h3">Что продали</span></div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 18px 20px">
+<div class="col g4"><span class="lbl">Модель</span><span class="w6">iPhone 15 Pro 256 GB</span></div>
+<div class="col g4"><span class="lbl">IMEI</span><span class="num">35 693108 123456 7</span></div>
+<div class="col g4"><span class="lbl">Сумма</span><span class="num w6">14 500 000 сум</span></div>
+<div class="col g4"><span class="lbl">Клиент</span><span>Sardor Aliyev</span><span class="num xs c3">+998 90 123 45 67</span></div>
+<div class="col g4"><span class="lbl">Партнёры</span><span class="num s">Alif 10 000 000</span><span class="num s">Uzum 4 500 000</span></div>
+<div class="col g4"><span class="lbl">Лид</span><span class="s">Instagram, назначен в <span class="num">14:02</span></span></div>
+</div>
+<hr class="hr">
+<div class="row g8" style="padding: 16px 20px">
+<div class="ph" style="width: 120px; height: 88px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01"></path></svg>Договор, стр. 1</div>
+<div class="ph" style="width: 120px; height: 88px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01"></path></svg>Договор, стр. 2</div>
+<div class="col g4 grow" style="padding-left: 8px"><span class="lbl">Комментарий</span><span class="s">Доставка завтра до 12:00</span></div>
+</div>
+</section>
+</div>
+
+<aside class="panel col g16">
+<section class="card col g12" style="padding: 20px">
+<span class="h3">Что дальше</span>
+<p class="s c2">Kamola Ahmedova проверит IMEI, сумму и фото договора. Обычно это занимает до 30 минут. После подтверждения сумма появится в «Зарплате», а лид закроется со статусом «Продажа».</p>
+<div class="banner b-info"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16v-5a6 6 0 1 1 12 0v5l2 2H4zM10 21h4"></path></svg><span>Мы пришлём уведомление, когда менеджер примет решение.</span></div>
+</section>
+
+<section class="card col g12" style="padding: 20px; border-style: dashed">
+<span class="when">Если продажу отклонят</span>
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span class="col g4"><span class="w6">Отклонена: нет фото договора</span><span>Kamola Ahmedova · сегодня в 14:46</span></span></div>
+<a class="btn btn-pri" href="OpSale.dc.html">Исправить и отправить снова</a>
+<span class="xs c3">Откроется та же форма с заполненными полями.</span>
+</section>
+</aside>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+renderVals() {
+const s = (label, note, state) => ({ label: label, note: note, w: state === 'todo' ? 0 : 100, barCls: state === 'done' ? 'ok' : state === 'now' ? 'warn' : '', txtCls: state === 'todo' ? 'c3' : '' });
+return {
+theme: this.props.theme ?? 'light',
+steps: [
+s('Отправлена', 'сегодня в 14:20', 'done'),
+s('На проверке', 'у Kamola Ahmedova, 6 мин', 'now'),
+s('Подтверждена', 'ещё нет', 'todo'),
+s('В зарплате', 'октябрь 2026', 'todo')
+]
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Утреннее приветствие</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="height: 900px; position: relative; overflow: hidden">
+<div aria-hidden="true"><dc-import name="OpMy" hint-size="100%,960px"></dc-import></div>
+<div class="scrim"></div>
+
+<div class="row g12" style="position: absolute; left: 108px; right: 24px; top: 76px; padding: 10px 16px; border-radius: 12px; background: var(--warn-bg); color: var(--warn); box-shadow: var(--shadow)">
+<i class="ikat ikat-mark" aria-hidden="true"></i>
+<span class="s w6 grow">Сегодня день рождения у Malika Tursunova. Поздравь коллегу!</span>
+<button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Скрыть до завтра" style="color: var(--warn)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</div>
+
+<div style="position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; padding: 24px">
+<section class="dlg" role="dialog" aria-labelledby="mg-t" style="width: 520px; overflow: hidden">
+<i class="ikat" style="height: 12px" aria-hidden="true"></i>
+<div class="col g16" style="padding: 28px">
+<span class="lbl" style="color: var(--brand-text)">Вторник, 14 октября</span>
+<h2 class="display" id="mg-t" style="font-size: 26px; line-height: 34px">Доброе утро, Gulnoza!</h2>
+<blockquote class="well" style="margin: 0; font-size: 16px; line-height: 24px">Каждый «перезвоните» — это не отказ, а договорённость. Перезвони вовремя, и клиент вспомнит тебя первым.<span class="xs c3" style="display: block; margin-top: 8px">Мысль дня от AI-наставника</span></blockquote>
+<div class="row g24">
+<div class="col g4"><span class="lbl">Вчера</span><span class="s"><span class="num w6">3</span> продажи · <span class="num w6">22</span> звонка</span></div>
+<div class="col g4"><span class="lbl">Сегодня</span><span class="s">план <span class="num w6">10</span> лидов, <span class="num w6">3</span> перезвона</span></div>
+</div>
+<button class="btn btn-pri btn-lg btn-block" type="button">Начать работу</button>
+<span class="xs c3" style="text-align: center">Показывается один раз в день. Язык — как в профиле.</span>
+</div>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light' };
+}
+}
+</script>
+</body>
+</html>

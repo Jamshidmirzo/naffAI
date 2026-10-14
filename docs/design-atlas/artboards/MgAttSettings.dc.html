@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Настройки смены</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1000px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="attset" hint-size="248px,1000px"></dc-import></div>
+<div class="main-col">
+<header class="top">
+<h1 class="h1">Смена</h1>
+<div class="seg"><a href="MgAttendance.dc.html">Сегодня</a><a href="MgAttReport.dc.html">Отчёт</a><a href="MgAttPhotos.dc.html">Фото</a><a href="MgKiosk.dc.html">Киоск</a><a class="is-on" href="MgAttSettings.dc.html" aria-current="page">Настройки</a></div>
+<span class="grow"></span>
+<span class="s c3">есть несохранённые изменения</span>
+<button class="btn btn-pri" type="button">Сохранить</button>
+</header>
+<main class="page">
+<p class="s c3" style="margin-top: -6px">Глобальные дефолты для расчёта зарплаты. Персональные значения задаются в форме оператора.</p>
+<div class="row g16" style="align-items: flex-start">
+<div class="col g16 grow">
+<section class="card col">
+<div class="card-h"><span class="h3">График работы</span></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 16px 20px 20px">
+<div class="field"><label for="a1">Начало смены</label><input class="input num" id="a1" type="text" value="10:00"></div>
+<div class="field"><label for="a2">Конец смены</label><input class="input num" id="a2" type="text" value="20:00"></div>
+<div class="field"><label for="a3">Выходной день недели</label><select class="input" id="a3"><option>Воскресенье</option></select><span class="hint">Пн=0, Вс=6. Можно переопределить у каждого оператора.</span></div>
+<div class="field"><label for="a4">Авто-закрытие смены</label><input class="input num" id="a4" type="text" value="23:00"><span class="hint">Время, когда открытые смены закрываются автоматически.</span></div>
+</div>
+</section>
+<section class="card col">
+<div class="card-h"><span class="h3">Бонус за посещаемость по умолчанию</span></div>
+<div class="col g14" style="padding: 16px 20px 20px">
+<div class="field"><label for="c1">Бонус за посещаемость (сум)</label><input class="input num" id="c1" type="text" value="1 500 000"><span class="hint">Выдаётся, если посещаемость ≥ гейта. По умолчанию 1 500 000.</span></div>
+</div>
+</section>
+<section class="card col">
+<div class="card-h"><span class="h3">Обязательная отметка</span></div>
+<div class="col g16" style="padding: 16px 20px 20px">
+<div class="row g16 grow" style="align-items: flex-start"><span class="col g4 grow"><span class="s w6">Обязательная отметка при входе</span><span class="xs c3">Если включено — оператор без открытой смены видит блокирующее окно «Сначала отметьтесь» при входе на сайт. Гейт только в интерфейсе, сервер запросы не блокирует. Выключите, если нужно временно снять правило со всей команды.</span></span><button class="switch is-on" type="button" aria-label="Включено"><i></i></button></div>
+<div class="field"><label for="d1">Порог «пора закрыть смену» (часов)</label><input class="input num" id="d1" type="text" value="9"><span class="hint">Через сколько часов после прихода оператор получает напоминание закрыть смену. 0 — выкл. 0–24.</span></div>
+</div>
+</section>
+</div>
+<div class="col g16 grow">
+<section class="card col">
+<div class="card-h"><span class="h3">Штрафы и гейт</span></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 16px 20px 20px">
+<div class="field"><label for="b1">Grace-период (минут)</label><input class="input num" id="b1" type="text" value="15"><span class="hint">Опоздание в пределах этого времени не штрафуется. 0–240.</span></div>
+<div class="field"><label for="b2">Штраф за опоздание (сум)</label><input class="input num" id="b2" type="text" value="50 000"><span class="hint">Фикс. сумма за каждое опоздание сверх grace.</span></div>
+<div class="field"><label for="b3">Прощённых пропусков в неделю</label><input class="input num is-bad" id="b3" type="text" value="9"><span class="err">От 0 до 7</span><span class="hint">Сколько дней пропуска в неделю не вычитаются из оклада.</span></div>
+<div class="field"><label for="b4">Гейт посещаемости (%)</label><input class="input num" id="b4" type="text" value="85"><span class="hint">Если посещаемость ниже — оклад не начисляется.</span></div>
+</div>
+</section>
+<section class="card col">
+<div class="card-h"><span class="h3">Продажи и планы</span></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 16px 20px 20px">
+<div class="field"><label for="c2">Бонус за продажи (сум)</label><input class="input num" id="c2" type="text" value="1 500 000"><span class="hint">Выдаётся, если план выполнен ≥ гейта. По умолчанию 1 500 000.</span></div>
+<div class="field"><label for="c3">Гейт продаж (%)</label><input class="input num" id="c3" type="text" value="85"><span class="hint">Ниже этого % плана — бонус за продажи не начисляется.</span></div>
+<div class="field" style="grid-column: 1 / -1"><label for="c4">План продаж по умолчанию (сум/мес)</label><input class="input num" id="c4" type="text" value="30 000 000"><span class="hint">Используется, если у оператора нет персонального плана на месяц.</span></div>
+</div>
+</section>
+</div>
+</div>
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>Исправьте одно поле, чтобы сохранить: «Прощённых пропусков в неделю» — от 0 до 7.</span></div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light' };
+}
+}
+</script>
+</body>
+</html>

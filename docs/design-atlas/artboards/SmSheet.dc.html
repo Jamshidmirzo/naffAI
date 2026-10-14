@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Доска ветки: окна</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1660px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6"><h1 class="h1">Доска ветки: окна</h1><p class="c3">Добавить менеджера, показать пароль один раз, сбросить пароль, удалить менеджера, команда менеджера и действия в меню колонки. Узбекские тексты добавления теперь по-русски.</p></div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; align-items: start">
+
+<div class="col g8"><span class="when">Добавить менеджера · повысить оператора</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2">Новый менеджер</h2><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b">
+<div class="seg seg-lg"><button class="is-on" type="button">Из сотрудников</button><button type="button">Новый номер</button></div>
+<div class="field"><label for="sm1">Кого сделать менеджером</label><select class="input" id="sm1"><option>Nilufar Saidova · оператор, 27 продаж</option></select></div>
+<div class="banner b-warn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>Nilufar перестанет получать лиды как оператор. Перед этим закройте или переназначьте её 4 открытых лида.</span></div>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Сделать менеджером</button></div></section></div>
+
+<div class="col g8"><span class="when">Добавить менеджера · новый номер</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2">Новый менеджер</h2></div>
+<div class="dlg-b">
+<div class="seg seg-lg"><button type="button">Из сотрудников</button><button class="is-on" type="button">Новый номер</button></div>
+<div class="field"><label for="sm2">Телефон, он же логин</label><div class="row g8"><span class="pfx" style="height: 40px; font-size: 14px; border-radius: 9px" aria-hidden="true">+998</span><input class="input num grow is-bad" id="sm2" type="tel" value="93 555 33"></div><span class="err">Нужно 9 цифр после +998</span></div>
+<div class="field"><label for="sm3">Имя</label><input class="input" id="sm3" type="text" value="Zarina Mahmudova"></div>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button" disabled="{{yes}}">Создать</button></div></section></div>
+
+<div class="col g8"><span class="when">Меню колонки менеджера</span>
+<div class="card col" style="width: 260px; box-shadow: var(--shadow)">
+<button class="li" type="button" style="min-height: 44px; border-left: 0; border-right: 0; border-top: 0; background: none; text-align: left; width: 100%"><span class="s grow">Открыть продажи команды</span></button>
+<button class="li" type="button" style="min-height: 44px; border-left: 0; border-right: 0; border-top: 0; background: none; text-align: left; width: 100%"><span class="s grow">Сбросить пароль</span></button>
+<button class="li" type="button" style="min-height: 44px; border: 0; background: none; text-align: left; width: 100%"><span class="s grow c-bad">Удалить менеджера</span></button>
+</div>
+<span class="toast" style="align-self: flex-start; margin-top: 12px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Otabek Ergashev теперь у Kamola Ahmedova<span class="t-act">Отменить</span></span>
+</div>
+
+<div class="col g8"><span class="when">Пароль нового менеджера · один раз</span>
+<section class="dlg"><div class="dlg-h"><div class="col g4"><h2 class="h2">Менеджер создан</h2><span class="s c3">Zarina Mahmudova · подчиняется вам</span></div></div>
+<div class="dlg-b"><div class="well row between"><span class="col"><span class="xs c3">Логин</span><span class="num w6">+998935553311</span></span><button class="btn btn-sm" type="button">Скопировать</button></div><div class="well row between"><span class="col"><span class="xs c3">Пароль</span><span class="num w6">7Kq-4xT-92m</span></span><button class="btn btn-sm" type="button">Скопировать</button></div><label class="row g8 s"><input class="check" type="checkbox" checked="{{yes}}">Я сохранил пароль</label></div>
+<div class="dlg-f"><button class="btn btn-pri" type="button">Готово</button></div></section></div>
+
+<div class="col g8"><span class="when">Удалить менеджера</span>
+<section class="dlg"><div class="dlg-h"><div class="col g4"><h2 class="h2" style="color: var(--bad)">Удалить менеджера?</h2><span class="s c3">Rustam Yuldashev · +998935402211</span></div></div>
+<div class="dlg-b"><p class="s c2">Аккаунт +998935402211 будет деактивирован. Его операторы (11) станут свободными — назначь их другому менеджеру.</p></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-danger" type="button">Деактивировать</button></div></section></div>
+
+<div class="col g8"><span class="when">Сбросить пароль менеджера</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2">Сгенерировать новый пароль?</h2></div>
+<div class="dlg-b"><p class="s c2">Старый пароль +998901112233 перестанет работать сразу же.</p></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Сгенерировать</button></div></section></div>
+
+<div class="col g8" style="grid-column: span 2"><span class="when">Команда менеджера · добавить оператора (список выбора открыт)</span>
+<section class="dlg"><div class="dlg-h"><div class="row g12"><span class="icon-tile t-info"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 20v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 20v-1a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"></path></svg></span><div class="col"><h2 class="h2">Команда +998901112233</h2><span class="s c3">Kamola Ahmedova · 14 операторов</span></div></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b">
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px">
+<sc-for list="{{team}}" as="t" hint-placeholder-count="6">
+<div class="well row g8" style="padding: 8px 12px"><span class="col grow" style="min-width: 0"><span class="s w5 trunc">{{t.name}}</span><span class="num xs c3">{{t.phone}}</span></span><button class="btn btn-sm btn-sq btn-bad" type="button" aria-label="Убрать из команды"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+</sc-for>
+</div>
+<hr class="hr">
+<div class="field"><label for="sm4">Добавить оператора</label>
+<div class="row g8"><select class="input grow" id="sm4"><option>— выбери оператора —</option></select><button class="btn btn-pri" type="button" disabled="{{yes}}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Добавить</button></div>
+<div class="card col" style="box-shadow: var(--shadow); margin-right: 112px">
+<sc-for list="{{pool}}" as="p" hint-placeholder-count="5">
+<div class="li {{p.cls}}" style="min-height: 40px; padding: 6px 12px"><span class="s grow trunc">{{p.name}} <span class="num c3">({{p.phone}})</span> — <span class="{{p.tone}}">{{p.owner}}</span></span></div>
+</sc-for>
+</div>
+<span class="hint">Если оператор уже у другого менеджера — он автоматически перейдёт сюда.</span>
+</div>
+</div>
+<div class="dlg-f"><button class="btn btn-ghost" type="button">Готово</button></div></section></div>
+
+<div class="col g16">
+<div class="col g8"><span class="when">Нельзя перенести</span>
+<div class="banner b-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>Bahodir Mirzayev деактивирован. Сначала активируйте его в карточке оператора.</span></div>
+</div>
+<div class="col g8"><span class="when">Команда пуста</span>
+<div class="well empty" style="padding: 24px 16px"><span class="s">Пока никого. Добавь оператора из списка ниже.</span></div>
+</div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1660}}'>
+class Component extends DCLogic {
+renderVals() {
+const t = (name, phone) => ({ name: name, phone: phone });
+const p = (name, phone, owner, tone, cls) => ({ name: name, phone: phone, owner: owner, tone: tone, cls: cls || '' });
+return {
+theme: this.props.theme ?? 'light',
+yes: true,
+team: [t('Jasur Toshmatov', '+998 90 123 45 67'), t('Nilufar Saidova', '+998 93 210 44 18'), t('Gulnoza Karimova', '+998 90 777 11 00'), t('Javlon Sobirov', '+998 97 402 18 55'), t('Malika Tursunova', '+998 94 615 30 07'), t('Sardor Nazarov', '+998 91 448 02 76')],
+pool: [p('Otabek Ergashev', '+998 99 845 12 60', 'сейчас у +998935402211', 'c2', 'is-sel'), p('Aziz Qodirov', '+998 90 508 66 21', 'сейчас у +998935402211', 'c2'), p('Madina Rasulova', '+998 90 960 21 34', 'сейчас у +998977001122', 'c2'), p('Sevara Po‘latova', '+998 33 702 55 19', 'свободен', 'c-ok w6'), p('Bahodir Mirzayev', '+998 88 214 63 70', 'свободен', 'c-ok w6')]
+};
+}
+}
+</script>
+</body>
+</html>

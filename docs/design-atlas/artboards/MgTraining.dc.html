@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Обучение: уроки</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 880px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="trmanage" hint-size="248px,880px"></dc-import></div>
+<div class="main-col">
+<header class="top"><h1 class="h1">Управление обучением</h1><span class="s c3">Всего уроков: <span class="num">6</span></span><span class="grow"></span><a class="btn btn-pri" href="MgTrainingForm.dc.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Новый урок</a></header>
+<main class="page">
+<p class="s c3" style="margin-top: -6px">Создавайте уроки, тесты и следите, где команда ошибается.</p>
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: minmax(0, 1fr) 120px 90px 80px 120px 110px 132px"><span>Название</span><span>Медиа</span><span class="r">Вопросов</span><span class="r">Попыток</span><span class="row g6" style="justify-content: flex-end">Ср. балл <span class="badge b-info" style="height: 20px; text-transform: none; letter-spacing: 0">новое</span></span><span>Статус</span><span class="r">Действия</span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+<div class="tr {{r.cls}}" style="grid-template-columns: minmax(0, 1fr) 120px 90px 80px 120px 110px 132px; min-height: 58px">
+<span class="col" style="min-width: 0"><span class="w6 trunc">{{r.t}}</span><span class="xs c3 trunc">{{r.d}}</span></span>
+<span class="s c2">{{r.media}}</span><span class="r num">{{r.q}}</span><span class="r num">{{r.done}}</span><span class="r num w6 {{r.scoreCls}}">{{r.score}}</span>
+<span><button class="badge {{r.stTone}}" type="button" style="border: 0" title="{{r.stTitle}}"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.stIc}}"></path></svg>{{r.st}}</button></span>
+<span class="row g4" style="justify-content: flex-end"><a class="btn btn-sm btn-ghost btn-sq" href="MgTrainingForm.dc.html" aria-label="Статистика" title="Статистика"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"></path></svg></a><a class="btn btn-sm btn-ghost btn-sq" href="MgTrainingForm.dc.html" aria-label="Изменить" title="Изменить"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"></path></svg></a><button class="btn btn-sm btn-ghost btn-sq" type="button" style="color: var(--bad)" aria-label="Удалить" title="Удалить"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13"></path></svg></button></span>
+</div>
+</sc-for>
+</section>
+<div class="row g24" style="align-items: flex-start">
+<div class="col g8" style="width: 520px">
+<span class="when">«Убрать» по строке «Старый скрипт продаж»</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2">Убрать урок?</h2><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Закрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b"><p class="s c2">«Старый скрипт продаж» станет неактивным: операторы его не увидят. Тест, 40 попыток и комментарии сохранятся, вернуть урок можно переключателем «Активен». В коде это то же самое, что «Скрыть», поэтому в новом дизайне одна кнопка.</p></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-danger" type="button">Убрать</button></div></section>
+</div>
+<div class="col g8 grow">
+<span class="when">Пустой список</span>
+<section class="card"><div class="empty"><span class="lbl">Пусто</span><span class="s">Ещё нет уроков. Нажмите «Новый урок», чтобы добавить первый.</span></div></section>
+<span class="when">После удаления</span>
+<span class="toast" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>Урок удалён</span>
+</div>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":880}}'>
+class Component extends DCLogic {
+renderVals() {
+const EYE = 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z';
+const EYE_OFF = 'M3 3l18 18M10.6 6.1A10 10 0 0 1 12 6c6 0 10 6 10 6a17 17 0 0 1-3.2 3.8M6.6 6.6C3.8 8.4 2 12 2 12s4 7 10 7c1.8 0 3.4-.6 4.8-1.4';
+const r = (t, d, media, q, done, score, on, cls) => ({ t: t, d: d, media: media, q: q, done: done, score: score, scoreCls: score === '—' ? 'c3' : parseInt(score) < 70 ? 'c-bad' : '', st: on ? 'Активен' : 'Скрыт', stTone: on ? 'b-ok' : '', stIc: on ? EYE : EYE_OFF, stTitle: on ? 'Скрыть от оператора' : 'Показать оператору', cls: cls || '' });
+return {
+theme: this.props.theme ?? 'light',
+rows: [
+r('Первый звонок за 30 секунд', 'Приветствие, имя, зачем звоним — без пауз', 'Видео', 4, 36, '88%', true),
+r('Рассрочка простыми словами', 'Как объяснить платёж в месяц за 3 фразы', 'Видео · Файл', 5, 31, '81%', true),
+r('Возражение «дорого»', 'Как перевести разговор с цены на ежемесячный платёж', 'Видео', 6, 19, '64%', true),
+r('Как оформить продажу без ошибок', 'IMEI, партнёр, сумма, фото договора', 'Видео', 3, 22, '92%', true),
+r('Telegram: как писать клиенту', 'Шаблоны первых сообщений и follow-up', 'Файл', 4, 12, '75%', true),
+r('Старый скрипт продаж', 'Версия весны 2026', 'Видео', 8, 40, '70%', false, 'is-sel')
+]
+};
+}
+}
+</script>
+</body>
+</html>

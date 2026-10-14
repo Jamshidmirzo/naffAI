@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Исправить продажу</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1040px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="sales" hint-size="248px,1040px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<a class="btn btn-ghost btn-sq" href="MgPending.dc.html" aria-label="Назад к подтверждению"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
+<h1 class="h1">Исправить продажу №1 482</h1>
+<span class="badge b-warn"><i class="dot"></i>ждёт подтверждения</span>
+<span class="grow"></span>
+<a class="btn btn-ghost" href="MgPending.dc.html">Отмена</a>
+</header>
+
+<main class="page">
+<div class="split">
+
+<form class="list col g16">
+<section class="card">
+<div class="card-h"><span class="h3">Товар и клиент</span></div>
+<div class="pad" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 18px 20px">
+<div class="field" style="grid-column: span 2"><label for="m-imei">IMEI</label><input class="input num is-ok" id="m-imei" type="text" value="35 693108 123456 7"><span class="hint">Этот IMEI раньше не продавался.</span></div>
+<div class="field"><label for="m-qty">Количество</label><input class="input num" id="m-qty" type="text" value="1"></div>
+<div class="field" style="grid-column: span 3"><label for="m-model">Модель</label><select class="input" id="m-model"><option>iPhone 15 Pro 256 GB</option></select></div>
+<div class="field"><label for="m-name">Клиент</label><input class="input" id="m-name" type="text" value="Sardor Aliyev"></div>
+<div class="field" style="grid-column: span 2"><label for="m-phone">Телефон клиента</label><div class="row g8"><span class="pfx" style="height: 40px; font-size: 14px; border-radius: 8px" aria-hidden="true">+998</span><input class="input num grow" id="m-phone" type="tel" value="90 123 45 67"><span class="badge b-ok">лид из Instagram</span></div></div>
+</div>
+</section>
+
+<section class="card">
+<div class="card-h"><span class="h3">Кто продал</span><span class="xs c3">сумму можно разделить между операторами</span></div>
+<div class="col g8" style="padding: 16px 20px">
+<div class="row g8"><select class="input grow" aria-label="Оператор 1"><option>Gulnoza Karimova</option></select><input class="input num" type="text" value="10 000 000" aria-label="Доля оператора 1" style="width: 180px"><button class="btn btn-ghost btn-sq" type="button" aria-label="Убрать оператора 1"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="row g8"><select class="input grow" aria-label="Оператор 2"><option>Jasur Toshmatov</option></select><input class="input num" type="text" value="4 500 000" aria-label="Доля оператора 2" style="width: 180px"><button class="btn btn-ghost btn-sq" type="button" aria-label="Убрать оператора 2"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<button class="btn btn-ghost btn-sm" type="button" style="align-self: flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Добавить оператора</button>
+</div>
+</section>
+
+<section class="card">
+<div class="card-h"><span class="h3">Оплата</span><span class="xs c3">не больше двух партнёров</span></div>
+<div class="col g8" style="padding: 16px 20px">
+<div class="row g8"><select class="input grow" aria-label="Партнёр 1"><option>Alif</option></select><input class="input num" type="text" value="10 000 000" aria-label="Сумма партнёра 1" style="width: 180px"></div>
+<div class="row g8"><select class="input grow" aria-label="Партнёр 2"><option>Uzum</option></select><input class="input num" type="text" value="4 500 000" aria-label="Сумма партнёра 2" style="width: 180px"></div>
+<div class="row g12" style="margin-top: 8px">
+<div class="field" style="width: 200px"><label for="m-disc">Скидка, сум</label><input class="input num" id="m-disc" type="text" value="300 000"></div>
+<div class="field grow"><label for="m-note">Комментарий</label><input class="input" id="m-note" type="text" value="Доставка завтра до 12:00"></div>
+</div>
+<label class="row g8 s" style="margin-top: 4px"><input class="check" type="checkbox" checked="{{yes}}">Был бонус или особые условия: <span class="w6">чехол в подарок</span></label>
+</div>
+</section>
+</form>
+
+<aside class="panel card col">
+<div class="card-h"><span class="h3">Сверка сумм</span></div>
+<div class="col g8" style="padding: 16px 20px">
+<div class="row between s"><span class="c3">По операторам</span><span class="num">14 500 000</span></div>
+<div class="row between s"><span class="c3">По партнёрам</span><span class="num">14 500 000</span></div>
+<div class="row between s"><span class="c3">Скидка</span><span class="num c-bad">−300 000</span></div>
+<hr class="hr" style="margin: 6px 0">
+<div class="row between" style="align-items: baseline"><span class="s w6">Итог продажи</span><span class="kpi" style="font-size: 24px">14 200 000</span></div>
+<div class="banner b-ok" style="margin-top: 8px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg><span>Суммы операторов и партнёров совпадают.</span></div>
+</div>
+<hr class="hr">
+<div class="col g8" style="padding: 16px 20px 20px">
+<button class="btn btn-ok btn-lg btn-block" type="button">Сохранить и одобрить</button>
+<button class="btn btn-block" type="button">Только сохранить</button>
+<span class="xs c3">Изменения попадут в журнал. Оператор увидит новую долю в своих продажах.</span>
+</div>
+</aside>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1040}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light', yes: true };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Google-таблицы: мастер и диагностика</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1870px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6"><h1 class="h1">Google-таблицы: подключение и диагностика</h1><p class="c3">Мастер из трёх шагов, проверка синхронизации и перечитывание таблицы с начала. Тексты диагностики теперь по-русски в русском интерфейсе.</p></div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; align-items: start">
+
+<div class="col g8"><span class="when">Шаг 1 из 3 · ссылка и предпросмотр</span>
+<section class="dlg"><div class="dlg-h"><div class="col g4"><span class="xs c3">Подключить таблицу · шаг 1 из 3</span><h2 class="h2">Ссылка на таблицу</h2></div></div>
+<div class="dlg-b">
+<div class="row g8"><input class="input grow" type="text" value="docs.google.com/spreadsheets/d/1Bx9…/edit#gid=0" aria-label="Ссылка на таблицу"><button class="btn" type="button">Проверить</button></div>
+<div class="banner b-warn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>Эта таблица уже подключена как «Instagram октябрь». Продолжив, вы создадите второй источник с теми же лидами.</span></div>
+<div class="card tbl"><div class="tr th" style="grid-template-columns: 1fr 1fr 1fr"><span>A · Имя</span><span>B · Телефон</span><span>C · Товар</span></div><div class="tr" style="grid-template-columns: 1fr 1fr 1fr; font-size: 12px"><span>Sardor</span><span class="num">901234567</span><span>iPhone 15 Pro</span></div><div class="tr" style="grid-template-columns: 1fr 1fr 1fr; font-size: 12px"><span>Dilnoza</span><span class="num">934567890</span><span>S24</span></div></div>
+<span class="xs c3">Строк в листе: <span class="num">2 141</span></span>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Далее</button></div></section></div>
+
+<div class="col g8"><span class="when">Шаг 2 из 3 · колонки</span>
+<section class="dlg"><div class="dlg-h"><div class="col g4"><span class="xs c3">Шаг 2 из 3</span><h2 class="h2">Какая колонка что значит</h2></div></div>
+<div class="dlg-b">
+<div class="field"><label for="w1">Телефон *</label><select class="input" id="w1"><option>B · Телефон</option></select></div>
+<div class="field"><label for="w2">Имя *</label><select class="input is-bad" id="w2"><option>Не выбрано</option></select><span class="err">Выберите колонку с именем клиента</span></div>
+<div class="field"><label for="w3">Что хочет купить</label><select class="input" id="w3"><option>C · Товар</option></select></div>
+<div class="field"><label for="w4">Есть ли карта</label><select class="input" id="w4"><option>D · Карта</option></select></div>
+<div class="field"><label for="w4b">Дополнительный телефон</label><select class="input" id="w4b"><option>— не использовать —</option><option>E · Тел. 2</option></select></div>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Назад</button><button class="btn btn-pri" type="button" disabled="{{yes}}">Далее</button></div></section></div>
+
+<div class="col g8"><span class="when">Шаг 3 из 3 · раздача</span>
+<section class="dlg"><div class="dlg-h"><div class="col g4"><span class="xs c3">Шаг 3 из 3</span><h2 class="h2">Кому раздавать</h2></div></div>
+<div class="dlg-b">
+<div class="field"><label for="w5">Название</label><input class="input" id="w5" type="text" value="Instagram ноябрь"></div>
+<div class="row g8"><div class="field grow"><label for="w6s">Статус по умолчанию</label><select class="input" id="w6s"><option>Новый</option><option>Архив</option><option>Требует проверки</option></select></div><div class="field grow"><label for="w6o">Оператор по умолчанию</label><select class="input" id="w6o"><option>— нет —</option></select></div></div>
+<div class="field"><label for="w6">Режим раздачи</label><select class="input" id="w6"><option>Псевдоним, иначе по кругу</option><option>Только по псевдониму</option><option>Псевдоним, иначе оператор по умолчанию</option><option>Только оператор по умолчанию</option></select><span class="hint">Если псевдоним не нашёлся — по кругу между активными операторами.</span></div>
+<span class="flabel">Пул операторов</span>
+<label class="row g8 s"><input class="check" type="checkbox">Все активные операторы (без ограничения)</label>
+<div class="row g6 wrap"><span class="chip is-on">Gulnoza K.</span><span class="chip is-on">Jasur T.</span><span class="chip">Nilufar S.</span><span class="chip is-on">Aziz Q.</span></div>
+<label class="row g8 s"><input class="check" type="checkbox" checked="{{yes}}">Горячий шит (ТЕЗ), SLA <input class="input num" type="text" value="15" style="width: 56px; height: 30px" aria-label="SLA, минут"> мин</label>
+<label class="row g8 s"><input class="check" type="checkbox" checked="{{yes}}">Писать статусы обратно в лист</label>
+<div class="row g6"><div class="field grow"><label for="wb1" class="xs">Статус</label><select class="input num" id="wb1" style="height: 34px"><option>D</option></select></div><div class="field grow"><label for="wb2" class="xs">Оператор</label><select class="input num" id="wb2" style="height: 34px"><option>E</option></select></div><div class="field grow"><label for="wb3" class="xs">Время</label><select class="input num" id="wb3" style="height: 34px"><option>F</option></select></div><div class="field grow"><label for="wb4" class="xs">Коммент</label><select class="input num" id="wb4" style="height: 34px"><option>G</option></select></div></div>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Назад</button><button class="btn btn-pri" type="button">Подключить</button></div></section></div>
+
+<div class="col g8" style="grid-column: span 3"><span class="when">Диагностика синхронизации · кнопка «Таблицы»</span>
+<section class="dlg"><div class="dlg-h"><div class="col g4"><h2 class="h2">Диагностика Google Sheets и обратной записи</h2><span class="s c3">Проверяется автоматически каждые 5 минут</span></div><span class="row g8"><button class="btn btn-sm" type="button">Проверить всё сейчас</button><button class="btn btn-ghost btn-sm" type="button">Закрыть</button></span></div>
+<div class="dlg-b">
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<div class="well col g4"><span class="lbl">Таблицы</span><span class="s w6">4 активны (3 в порядке)</span><span class="xs c3">последняя проверка: 2 мин назад</span></div>
+<div class="well col g4"><span class="lbl">Обратная запись</span><span class="s w6">3 в очереди (0 ошибок)</span><span class="row between"><span class="xs c3">За последний 1 час: 46</span><button class="btn btn-ghost btn-sm" type="button">Записать сейчас</button></span></div>
+<div class="well col g4" style="border-color: var(--bad-solid)"><span class="lbl">Итог</span><span class="s w6 c-bad">Обнаружена ошибка</span></div>
+</div>
+<sc-for list="{{diag}}" as="d" hint-placeholder-count="4">
+<div class="col g6" style="padding: 12px 14px; border: 1px solid {{d.bd}}; border-radius: 12px">
+<div class="row g8"><i class="dot" style="color: {{d.dot}}; width: 10px; height: 10px"></i><span class="s w6">{{d.n}}</span><span class="xs c3">({{d.ws}})</span><a class="btn btn-ghost btn-sq btn-sm" href="#" aria-label="Открыть таблицу в Google Sheets" title="Открыть таблицу в Google Sheets" style="width: 26px; height: 26px"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"></path></svg></a><span class="grow"></span><button class="btn btn-sm" type="button">Проверить</button><button class="btn btn-sm btn-ghost" type="button" title="Перечитать с 1-й строки">Перечитать</button></div>
+<div class="row g16 wrap xs c3"><span>Последняя проверка: <span class="w6" style="color: var(--ink)">{{d.at}}</span></span><span>Последняя строка: <span class="num w6" style="color: var(--ink)">{{d.row}}</span></span><span>Лидов сегодня: <span class="num w6" style="color: var(--ink)">{{d.today}}</span> (всего {{d.total}})</span><span>Обратная запись: <span class="w6 {{d.wbCls}}">{{d.wb}}</span></span></div>
+<sc-if value="{{d.err}}" hint-placeholder-val="{{ false }}"><div class="banner b-bad" style="padding: 8px 12px"><span class="col g4"><span class="xs w6">Ошибка: {{d.err}}</span><span class="xs">Что сделать: откройте доступ «Редактор» сервисному аккаунту naff-sheets-reader@… и нажмите «Проверить».</span></span></div></sc-if>
+</div>
+</sc-for>
+</div></section></div>
+
+<div class="col g8"><span class="when">Перечитать таблицу с начала</span>
+<section class="dlg"><div class="dlg-h"><h2 class="h2">Перечитать «Facebook октябрь» с первой строки?</h2></div>
+<div class="dlg-b"><p class="s c2">Может занять несколько минут. Уже загруженные лиды обновятся, новые строки добавятся.</p></div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Перечитать</button></div></section>
+<span class="toast" style="align-self: flex-start; margin-top: 8px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Прочитано 1 321 строк: новых 12, обновлено 4</span>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1870}}'>
+class Component extends DCLogic {
+renderVals() {
+const d = (n, ws, at, row, today, total, wb, err) => ({ n: n, ws: ws, at: at, row: row, today: today, total: total, wb: wb ? 'включена (' + wb + ')' : 'выключена', wbCls: wb ? 'c-ok' : 'c3', err: err, bd: err ? 'var(--bad-solid)' : 'var(--line)', dot: err ? 'var(--bad-solid)' : 'var(--ok-solid)' });
+return {
+theme: this.props.theme ?? 'light',
+yes: true,
+diag: [
+d('Instagram октябрь', 'Leads', '2 мин назад', '2 141', '124', '2 140', 'D, E', ''),
+d('Telegram-бот', 'gid: 128734', '2 мин назад', '781', '38', '780', '', ''),
+d('Facebook октябрь', 'FB', '2 мин назад', '1 321', '0', '1 320', 'D, E', ''),
+d('Сайт · заявки', 'Site', '3 ч назад', '413', '0', '412', 'C, D', 'The caller does not have permission (403)')
+]
+};
+}
+}
+</script>
+</body>
+</html>

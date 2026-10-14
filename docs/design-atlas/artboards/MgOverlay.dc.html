@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Поверх пульта</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="height: 1120px; position: relative; overflow: hidden">
+<div aria-hidden="true"><dc-import name="MgDashboard" hint-size="100%,1120px"></dc-import></div>
+
+<div class="row g12" style="position: absolute; left: 272px; right: 24px; top: 80px; padding: 10px 16px; border-radius: 12px; background: var(--warn-bg); color: var(--warn); box-shadow: var(--shadow)">
+<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"></path></svg>
+<span class="s w6 grow">Вход по PIN в раздел «Посещаемость» закроется через 1 минуту</span>
+<button class="btn btn-sm" type="button">Продлить</button>
+</div>
+
+<div class="col" style="position: absolute; right: 24px; bottom: 24px; width: 400px; gap: 10px">
+<span class="when" style="align-self: flex-end">Новые продажи · стопкой, звук один раз</span>
+<section class="card" style="box-shadow: var(--shadow); padding: 10px 14px; opacity: .72"><span class="s c2">Ещё 2 продажи ждут подтверждения</span></section>
+<section class="dlg" role="alertdialog" aria-labelledby="ov1" style="width: 400px">
+<div class="dlg-h"><div class="col g4"><span class="lbl" style="color: var(--ok)">Новая продажа · 14:18</span><h2 class="h3" id="ov1">Jasur Toshmatov · iPhone 15 Pro 256 GB</h2></div><button class="btn btn-ghost btn-sq btn-sm" type="button" aria-label="Скрыть"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+<div class="dlg-b" style="gap: 8px">
+<div class="row between"><span class="kpi" style="font-size: 22px; line-height: 28px">14 500 000</span><span class="s c3">сум</span></div>
+<div class="row g6 wrap"><span class="badge">Alif · 9 000 000</span><span class="badge">Uzum · 5 500 000</span><span class="badge b-ok">2 фото договора</span></div>
+<span class="xs c3">Источник: Instagram октябрь · лид получен вчера в 17:20</span>
+</div>
+<div class="dlg-f"><a class="btn" href="MgSaleDetail.dc.html">Открыть</a><button class="btn btn-ok" type="button">Одобрить</button></div>
+</section>
+</div>
+
+<div class="col g8" style="position: absolute; left: 272px; bottom: 24px; width: 420px">
+<span class="when">День рождения оператора · один раз утром</span>
+<section class="card row g12" style="padding: 14px 16px; box-shadow: var(--shadow); overflow: hidden; position: relative">
+<i class="ikat ikat-mark" aria-hidden="true"></i>
+<span class="col grow"><span class="s w6">Сегодня день рождения у Malika Tursunova</span><span class="xs c3">в команде с марта · 11 продаж в октябре</span></span>
+<a class="btn btn-sm" href="MgOperatorDetail.dc.html">Карточка</a>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1120}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light' };
+}
+}
+</script>
+</body>
+</html>

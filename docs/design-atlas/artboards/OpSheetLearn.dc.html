@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Обучение и инструменты: окна</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf" data-theme="{{theme}}" style="width: 1440px; min-height: 1100px; padding: 40px 48px; display: flex; flex-direction: column; gap: 24px">
+<div class="col g6">
+<h1 class="h1">Обучение, табло и калькулятор</h1>
+<p class="c3">Оценка разбора, результат теста, ошибки загрузки и проверки калькулятора.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; align-items: start">
+
+<div class="col g8">
+<span class="when">Разбор не помог</span>
+<section class="dlg" role="dialog" aria-labelledby="l1">
+<div class="dlg-h"><div class="col g4"><h2 class="h2" id="l1">Что было не так?</h2><span class="s c3">Тренер учтёт это в следующих разборах</span></div></div>
+<div class="dlg-b">
+<div class="row g6 wrap"><button class="chip is-on" type="button">Слишком общий</button><button class="chip" type="button">Не про мои звонки</button><button class="chip" type="button">Длинно</button></div>
+<textarea class="input" rows="3" aria-label="Комментарий">Хочу примеры фраз для рассрочки</textarea>
+</div>
+<div class="dlg-f"><button class="btn" type="button">Отмена</button><button class="btn btn-pri" type="button">Отправить</button></div>
+</section>
+<p class="xs c3">При «Отмене» оценка не ставится, а кнопка «Не помог» не остаётся нажатой, как сейчас.</p>
+</div>
+
+<div class="col g8">
+<span class="when">Результат теста</span>
+<section class="card col">
+<div class="card-h"><span class="h3">Результат</span><span class="kpi" style="font-size: 22px; color: var(--warn)">67%</span></div>
+<div class="col g12" style="padding: 16px 20px">
+<div class="col g4"><span class="s w6">1. С чего начать ответ на «дорого»?</span><span class="row g6 s c-ok"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Назвать ежемесячный платёж</span></div>
+<div class="col g4"><span class="s w6">2. Какой срок предлагать первым?</span><span class="row g6 s c-ok"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>12 месяцев</span></div>
+<div class="col g4"><span class="s w6">3. Когда отправлять фото договора?</span><span class="row g6 s c-bad"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>Ваш ответ: в конце смены</span><span class="row g6 s c-ok" style="padding-left: 20px">Правильно: сразу после продажи</span></div>
+</div>
+<hr class="hr">
+<div class="row g8" style="padding: 14px 20px"><button class="btn btn-pri" type="button">Пройти ещё раз</button><a class="btn btn-ghost" href="OpTraining.dc.html">К курсам</a></div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Урок не загрузился · разбор ещё не готов</span>
+<div class="col g12">
+<section class="card col" style="align-items: center; text-align: center; padding: 28px 20px; gap: 10px">
+<span class="icon-tile t-bad" style="width: 52px; height: 52px; border-radius: 16px"><svg class="ic ic-l" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg></span>
+<span class="h3">Не удалось загрузить урок</span>
+<span class="s c3">Сервер не ответил. Ваш прогресс сохранён.</span>
+<button class="btn btn-pri" type="button">Повторить</button>
+</section>
+<section class="card col" style="align-items: center; text-align: center; padding: 0 0 24px; gap: 10px; overflow: hidden">
+<i class="ikat-soft" style="width: 100%; height: 48px" aria-hidden="true"></i>
+<span class="h3">Разбор за вчера ещё готовится</span>
+<span class="s c3" style="padding: 0 20px">Обычно он готов к 09:00. Если вчера не было звонков, разбора не будет.</span>
+<a class="btn btn-ghost btn-sm" href="OpLessonsHistory.dc.html">История разборов</a>
+</section>
+</div>
+</div>
+
+<div class="col g8">
+<span class="when">Калькулятор · проверки</span>
+<section class="card col g12" style="padding: 20px">
+<div class="field"><label for="l4a">Цена, сум</label><input class="input num" id="l4a" type="text" value="14 500 000"></div>
+<div class="field"><label for="l4b">Первый взнос, сум</label><input class="input num is-bad" id="l4b" type="text" value="15 000 000"><span class="err">Взнос больше цены телефона</span></div>
+<div class="banner b-warn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"></path></svg><span>Тарифы рассрочки ещё не настроены. Попросите менеджера добавить их.</span></div>
+</section>
+</div>
+
+<div class="col g8">
+<span class="when">Табло · загрузка и пусто</span>
+<div class="col g12">
+<section class="card col g8 pad">
+<div class="row g8"><i class="sk" style="display: block; width: 28px; height: 28px"></i><i class="sk" style="display: block; height: 12px; flex: 1 1 0"></i><i class="sk" style="display: block; width: 60px; height: 12px"></i></div>
+<div class="row g8"><i class="sk" style="display: block; width: 28px; height: 28px"></i><i class="sk" style="display: block; height: 12px; flex: 1 1 0"></i><i class="sk" style="display: block; width: 60px; height: 12px"></i></div>
+</section>
+<section class="card col" style="align-items: center; text-align: center; padding: 24px; gap: 8px">
+<span class="h3">Сегодня ещё никто не продал</span>
+<span class="s c3">Первая подтверждённая продажа появится здесь сразу.</span>
+</section>
+</div>
+</div>
+
+<div class="col g8">
+<span class="when">Уведомления · подписки</span>
+<section class="card col">
+<div class="li"><span class="col grow"><span class="s">Перезвоны со звуком</span><span class="xs c3">за 5 минут до времени</span></span><button class="switch is-on" type="button" aria-label="Включено"><i></i></button></div>
+<div class="li"><span class="col grow"><span class="s">Ежедневный отчёт</span><span class="xs c3">в Telegram в 20:30</span></span><button class="switch" type="button" aria-label="Выключено"><i></i></button></div>
+<div class="row g8" style="padding: 12px 16px"><span class="toast"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--ok-solid)"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Подписка сохранена</span></div>
+</section>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+renderVals() {
+return { theme: this.props.theme ?? 'light' };
+}
+}
+</script>
+</body>
+</html>

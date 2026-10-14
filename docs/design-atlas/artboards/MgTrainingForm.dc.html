@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Урок: редактор</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1480px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="trmanage" hint-size="248px,1480px"></dc-import></div>
+<div class="main-col">
+<header class="top"><a class="btn btn-ghost btn-sq" href="MgTraining.dc.html" aria-label="Назад к урокам"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a><h1 class="h1">Возражение «дорого»</h1><div class="seg"><button class="is-on" type="button">Урок</button><button type="button">Статистика</button></div><span class="grow"></span><a class="btn" href="MgTraining.dc.html">Отмена</a><button class="btn btn-pri" type="button">Сохранить</button></header>
+<main class="page">
+<div class="split">
+<form class="list col g16">
+<section class="card col g12" style="padding: 18px 20px">
+<span class="lbl">Основное</span>
+<div class="field"><label for="t1">Название</label><input class="input" id="t1" type="text" value="Возражение «дорого»" placeholder="Например: Как отработать возражение «дорого»"></div>
+<div class="field"><label for="t2">Описание</label><textarea class="input" id="t2" rows="2" placeholder="Короткое пояснение для оператора">Как перевести разговор с цены на ежемесячный платёж. Три фразы, которые работают лучше скидки.</textarea></div>
+<div class="field"><label for="t3">Ссылка на видео</label><input class="input" id="t3" type="text" value="https://youtu.be/k3Vd8xQe1pA"><span class="hint">YouTube-ссылка (watch?v=… или youtu.be/…) или прямой mp4-URL</span></div>
+<div class="field"><span class="flabel">Файл</span>
+<div class="row g8 s"><svg class="ic ic-s c3" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v4h4"></path></svg><span class="trunc">Скрипт ответа.pdf</span><button class="btn btn-ghost btn-sm" type="button" style="color: var(--bad)">Удалить прикреплённый файл</button></div>
+<label class="btn btn-sm" style="align-self: flex-start"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"></path></svg>Выбрать файл<input type="file" style="display: none"></label>
+<span class="hint">PDF/PPTX/DOCX до 15 МБ</span></div>
+<label class="row g8 s"><input class="check" type="checkbox" checked="{{yes}}">Показывать операторам</label>
+</section>
+
+<section class="card col g12" style="padding: 18px 20px">
+<div class="row between"><label class="row g8 h3"><input class="check" type="checkbox" checked="{{yes}}">Добавить тест</label><span class="row g6"><span class="banner b-warn" style="padding: 6px 10px">Тест уже прошли 19 человек: изменения не пересчитают их баллы</span><span class="badge b-info" style="height: 20px">новое</span></span></div>
+<sc-for list="{{qs}}" as="q" hint-placeholder-count="3">
+<div class="well col g8" style="border-color: {{q.border}}">
+<div class="row g8"><span class="num w6 c3">{{q.n}}.</span><input class="input grow" type="text" value="{{q.text}}" placeholder="Текст вопроса" aria-label="Текст вопроса {{q.n}}"><button class="btn btn-ghost btn-sq btn-sm" type="button" title="Удалить вопрос" aria-label="Удалить вопрос {{q.n}}"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13"></path></svg></button></div>
+<sc-for list="{{q.opts}}" as="o" hint-placeholder-count="3"><div class="row g8" style="padding-left: 22px"><input type="radio" name="{{q.name}}" checked="{{o.ok}}" aria-label="Правильный ответ" style="margin: 0"><input class="input grow {{o.cls}}" type="text" value="{{o.t}}" placeholder="Вариант ответа" style="height: 36px"><button class="btn btn-ghost btn-sq btn-sm" type="button" title="Удалить вариант" aria-label="Удалить вариант" disabled="{{q.minA}}"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13"></path></svg></button></div></sc-for>
+<button class="btn btn-ghost btn-sm" type="button" style="align-self: flex-start; margin-left: 16px"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Добавить вариант</button>
+<sc-if value="{{q.err}}" hint-placeholder-val="{{ false }}"><span class="err" style="padding-left: 22px">{{q.err}}</span></sc-if>
+</div>
+</sc-for>
+<button class="btn btn-sm" type="button" style="align-self: flex-start"><svg class="ic ic-s" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Добавить вопрос</button>
+</section>
+</form>
+
+<aside class="panel card col" style="flex: 0 0 440px">
+<div class="card-h"><span class="h3">Статистика</span><span class="xs c3">вкладка «Статистика»</span></div>
+<div class="row g24" style="padding: 16px 20px"><div class="col g4"><span class="lbl">Попыток</span><span class="kpi" style="font-size: 22px">19</span></div><div class="col g4"><span class="lbl">Средний балл</span><span class="kpi" style="font-size: 22px">64%</span></div></div>
+<hr class="hr">
+<div class="col" style="padding: 8px 20px 16px">
+<span class="s w6" style="padding: 8px 0">По вопросам</span>
+<sc-for list="{{st}}" as="x" hint-placeholder-count="3">
+<div class="col g6" style="padding: 12px 0; border-bottom: 1px solid var(--line)">
+<div class="row between" style="align-items: flex-start"><span class="s w6">{{x.n}}. {{x.t}}</span><span class="num xs" style="white-space: nowrap"><span class="c-ok">{{x.ok}}</span><span class="c3"> / </span><span class="c-bad">{{x.bad}}</span></span></div>
+<div class="row g8"><span class="bar grow"><i class="bad" style="width: {{x.pct}}%"></i></span><span class="num xs c3" style="white-space: nowrap">{{x.pct}}% ошибок</span></div>
+<span class="xs c3">Ошиблись: {{x.who}}</span>
+</div>
+</sc-for>
+</div>
+<div class="col g8" style="padding: 4px 20px 20px">
+<span class="when">Нет попыток</span>
+<div class="empty" style="padding: 16px; border: 1px dashed var(--line-2); border-radius: 11px"><span class="s">Никто ещё не прошёл тест.</span></div>
+</div>
+</aside>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1480}}'>
+class Component extends DCLogic {
+renderVals() {
+const q = (n, text, opts, okIdx, err, badA) => ({ n: n, name: 'tq' + n, text: text, opts: opts.map((t, i) => ({ t: t, ok: i === okIdx, cls: i === badA ? 'is-bad' : '' })), minA: opts.length <= 2, err: err, border: err ? 'var(--bad-solid)' : 'var(--line)' });
+const x = (n, t, ok, bad, who) => ({ n: n, t: t, ok: ok, bad: bad, pct: Math.round(bad * 100 / (ok + bad)), who: who });
+return {
+theme: this.props.theme ?? 'light',
+yes: true,
+qs: [
+q(1, 'Клиент говорит «дорого». С чего начать ответ?', ['Сразу дать скидку', 'Назвать ежемесячный платёж', 'Предложить другую модель'], 1, '', -1),
+q(2, 'Какой срок рассрочки предлагать первым?', ['3 месяца', '12 месяцев', '24 месяца'], -1, 'Вопрос №2: ровно один вариант должен быть правильным.', -1),
+q(3, 'Когда отправлять фото договора?', ['Сразу после продажи', ''], 0, 'Вопрос №3, вариант №2: заполните текст.', 1)
+],
+st: [
+x(1, 'Клиент говорит «дорого». С чего начать ответ?', 15, 4, 'Javlon Sobirov, Malika Tursunova, Aziz Qodirov, Bekzod Nurmatov'),
+x(2, 'Какой срок рассрочки предлагать первым?', 12, 7, 'Javlon Sobirov, Shahlo Komilova, Otabek Ergashev, Dilshod Yo‘ldoshev, Malika Tursunova, Zarina Abdullayeva, Aziz Qodirov'),
+x(3, 'Когда отправлять фото договора?', 9, 10, 'Javlon Sobirov, Malika Tursunova, Aziz Qodirov, Shahlo Komilova, Otabek Ergashev, Bekzod Nurmatov, Sardor Rahimov, Madina Xoliqova, Dilshod Yo‘ldoshev, Gulnoza Karimova')
+]
+};
+}
+}
+</script>
+</body>
+</html>

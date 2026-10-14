@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Журнал изменений</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="naff.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="nf shell" data-theme="{{theme}}" style="min-height: 1020px">
+<div class="side-wrap"><dc-import name="SideNav" who="manager" at="audit" hint-size="248px,1020px"></dc-import></div>
+<div class="main-col">
+
+<header class="top">
+<h1 class="h1">Аудит</h1>
+<span class="s c3">Журнал изменений</span>
+<span class="grow"></span>
+<div class="inwrap" style="width: 320px; max-width: 100%"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"></path></svg><input class="input" type="search" placeholder="Поиск: кто / что / когда…" aria-label="Поиск по журналу"></div>
+<select class="input" aria-label="Период" style="width: 140px"><option>Сегодня</option><option>7 дней</option></select><span class="badge b-info" style="height: 20px">новое</span>
+</header>
+
+<main class="page" style="gap: 16px">
+<div class="row g8 wrap">
+<button class="chip is-on" type="button">Все объекты</button>
+<sc-for list="{{ents}}" as="e" hint-placeholder-count="9"><button class="chip" type="button"><span class="num" style="font-size: 12px">{{e}}</span></button></sc-for>
+</div>
+
+<section class="card tbl">
+<div class="tr th" style="grid-template-columns: 112px 140px 190px 210px minmax(0, 1fr)"><span>Когда</span><span>Кто</span><span>Действие</span><span>Объект</span><span>Изменения</span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="9">
+<div class="tr" style="grid-template-columns: 112px 140px 190px 210px minmax(0, 1fr); align-items: start; padding-top: 12px; padding-bottom: 12px">
+<span class="num s c2">{{r.when}}</span>
+<span class="s w6 trunc">{{r.who}}</span>
+<span style="min-width: 0"><span class="badge {{r.tone}}" style="height: auto; min-height: 22px; padding: 3px 8px; white-space: normal; word-break: break-all">{{r.act}}</span></span>
+<span class="num xs c2 trunc" style="padding-top: 2px">{{r.obj}}</span>
+<span class="col g4">
+<sc-for list="{{r.ch}}" as="c" hint-placeholder-count="2"><span class="s"><span class="num xs c3">{{c.f}}:</span> <span class="num xs c3" style="text-decoration: line-through">{{c.o}}</span> <span class="c3">→</span> <span class="num xs w6">{{c.n}}</span></span></sc-for>
+</span>
+</div>
+</sc-for>
+</section>
+
+<div class="row g24" style="align-items: flex-start">
+<div class="row between grow"><span class="s c3">Показаны <span class="num">9</span> из <span class="num">146</span></span><span class="row g8"><span class="badge b-info" style="height: 20px">новое</span><button class="btn" type="button">Загрузить ещё</button></span></div>
+</div>
+<span class="when">Поиск без результатов</span>
+<section class="card"><div class="empty" style="padding: 24px"><span class="s">Пока пусто — измените запрос или фильтр</span></div></section>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1020}}'>
+class Component extends DCLogic {
+renderVals() {
+const r = (when, who, act, tone, obj, ch) => ({ when: when, who: who, act: act, tone: tone, obj: obj, ch: ch.map((x) => ({ f: x[0], o: x[1], n: x[2] })) });
+return {
+theme: this.props.theme ?? 'light',
+ents: ['sales.Sale', 'leads.Lead', 'operators.Operator', 'operators.OperatorDayOff', 'users.OperatorAccount', 'attendance.AttendanceSettings', 'AttendanceLog', 'payroll.PayrollRule', 'system_settings.SystemSetting'],
+rows: [
+r('14.10 14:21', 'Kamola Ahmedova', 'Изменение', '', 'sales.Sale#1481', [['status', 'pending', 'confirmed'], ['confirmed_by', '—', 'Kamola Ahmedova']]),
+r('14.10 14:20', 'Gulnoza Karimova', 'Создание', 'b-info', 'sales.Sale#1482', [['amount', '—', '14 500 000'], ['model', '—', 'iPhone 15 128GB'], ['partner', '—', 'Anor']]),
+r('14.10 14:18', '—', 'Изменение', '', 'leads.Lead#20417', [['operator', 'null', 'Jasur Toshmatov'], ['assigned_at', 'null', '14.10 14:18']]),
+r('14.10 14:05', 'Kamola Ahmedova', 'Изменение', '', 'operators.Operator#31', [['is_paused', 'false', 'true']]),
+r('14.10 13:52', 'Rustam Yuldashev', 'Изменение', '', 'sales.Sale#1476', [['partner_1', 'Alif', 'TBC'], ['partner_1_amount', '9 000 000', '8 500 000'], ['partner_2_amount', '5 000 000', '5 500 000']]),
+r('14.10 13:31', 'Bobur Xolmatov', 'Изменение', '', 'attendance.AttendanceSettings#1', [['default_grace_period_min', '10', '15'], ['default_late_penalty_uzs', '30 000', '50 000']]),
+r('14.10 13:10', 'Kamola Ahmedova', 'Удаление', 'b-bad', 'sales.Sale#1470', [['reason', '—', 'дубль IMEI']]),
+r('14.10 12:58', 'Kamola Ahmedova', 'attendance.log_closed_manually', '', 'AttendanceLog#8812', [['checked_out_at', 'null', '14.10 12:58'], ['closed_by', 'null', 'manager']]),
+r('14.10 12:40', 'Kamola Ahmedova', 'Принудительное действие', 'b-warn', 'payroll.PayrollRule#7', [['threshold', '30 000 000', '25 000 000'], ['payout_value', '3', '3,5']])
+]
+};
+}
+}
+</script>
+</body>
+</html>
