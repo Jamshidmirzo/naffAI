@@ -1,7 +1,7 @@
 import datetime as dt
 from decimal import Decimal
 
-from django.db.models import F
+from django.db.models import F, Q
 from rest_framework import serializers, status
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -136,6 +136,10 @@ class SaleSerializer(serializers.ModelSerializer):
     # detail queryset annotate `total_price`, but we fall back to a
     # Python compute for safety (e.g. after a fresh `sale_create`).
     total_price = serializers.SerializerMethodField()
+    # 2026-10-14 design-atlas follow-up: the lead this sale was converted
+    # from (Sale.lead FK, set by lead_convert_to_sale / SaleCreate lead_id).
+    # Read-only, additive — null for direct/historical sales.
+    lead_id = serializers.IntegerField(read_only=True, allow_null=True)
 
     class Meta:
         model = Sale
@@ -159,6 +163,7 @@ class SaleSerializer(serializers.ModelSerializer):
             "bonus_note",
             "sheet_source",
             "sheet_source_name",
+            "lead_id",
             "sold_at",
             "status",
             "is_returned",
@@ -178,6 +183,7 @@ class SaleSerializer(serializers.ModelSerializer):
             "operator_name",
             "channel_name",
             "sheet_source_name",
+            "lead_id",
             "gifts",
             "operator_lines",
             "partner_lines",
@@ -485,9 +491,15 @@ class SaleDetailApi(RetrieveUpdateDestroyAPIView):
         )
         profile = getattr(self.request.user, "profile", None)
         if getattr(profile, "role", None) == "operator":
-            # Operators can only see sales they themselves created (their own
-            # pending/rejected/confirmed items). Prevents peeking at colleagues.
-            return qs.filter(created_by=self.request.user)
+            # Operators see sales they created, sales where they are the
+            # primary operator, and sales where they appear in a split line
+            # (2026-10-14 follow-up — /my/sales lists split sales, so the
+            # detail must open too). Still no peeking at colleagues' sales.
+            visible = Q(created_by=self.request.user)
+            op_id = getattr(profile, "operator_id", None)
+            if op_id:
+                visible |= Q(operator_id=op_id) | Q(operator_lines__operator_id=op_id)
+            return qs.filter(visible).distinct()
         return qs
 
     def _guard_writes(self):
@@ -702,13 +714,26 @@ class SaleMineListApi(APIView):
     GET /api/sales/mine/ — продажи текущего оператора.
 
     Собираем через SaleOperator, чтобы шеринговые продажи (когда оператор
-    в split-строке, но не главный `sale.operator`) тоже попали. Возвращаем
-    только confirmed, не удалённые, не возвращённые. Отдаём с полями
-    `share_amount` — сколько именно этот оператор заработал по продаже,
-    в отличие от `amount` (общая сумма продажи).
+    в split-строке, но не главный `sale.operator`) тоже попали. Удалённые
+    не отдаём. Возвращённые (is_returned) отдаём с флагом `is_returned` —
+    оператор видит их как «возврат» (2026-10-14 follow-up), но в
+    `total_share` они не входят. Отдаём с полями `share_amount` — сколько
+    именно этот оператор заработал по продаже, в отличие от `amount`
+    (общая сумма продажи).
+
+    Опционально `?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` — локальные
+    даты Asia/Tashkent по `sold_at`, обе границы включительно.
     """
 
     permission_classes = [IsAuthenticatedAnyRole]
+
+    @staticmethod
+    def _local_day_bound(value: str, *, end: bool) -> dt.datetime:
+        from zoneinfo import ZoneInfo
+
+        day = dt.date.fromisoformat(value)
+        boundary = dt.time.max if end else dt.time.min
+        return dt.datetime.combine(day, boundary, tzinfo=ZoneInfo("Asia/Tashkent"))
 
     def get(self, request):
         profile = getattr(request.user, "profile", None)
@@ -717,21 +742,36 @@ class SaleMineListApi(APIView):
             return Response(
                 {"detail": "У пользователя не привязан оператор"}, status=400
             )
-        so_qs = (
-            SaleOperator.objects.filter(
-                operator_id=op_id,
-                sale__is_deleted=False,
-                sale__is_returned=False,
-            )
-            .select_related("sale", "sale__channel")
-            .order_by("-sale__sold_at")[:100]
+        so_qs = SaleOperator.objects.filter(
+            operator_id=op_id,
+            sale__is_deleted=False,
         )
+        qp = request.query_params
+        for param, lookup, is_end in (
+            ("date_from", "sale__sold_at__gte", False),
+            ("date_to", "sale__sold_at__lte", True),
+        ):
+            raw = (qp.get(param) or "").strip()
+            if not raw:
+                continue
+            try:
+                bound = self._local_day_bound(raw, end=is_end)
+            except ValueError:
+                return Response(
+                    {"detail": f"{param} должен быть в формате YYYY-MM-DD"},
+                    status=400,
+                )
+            so_qs = so_qs.filter(**{lookup: bound})
+        so_qs = so_qs.select_related("sale", "sale__channel").order_by(
+            "-sale__sold_at"
+        )[:100]
         results = []
         total_share = 0
         for so in so_qs:
             s = so.sale
             share = so.amount or 0
-            total_share += float(share)
+            if not s.is_returned:
+                total_share += float(share)
             results.append(
                 {
                     "id": s.id,
@@ -744,6 +784,9 @@ class SaleMineListApi(APIView):
                     "channel_name": s.channel.name if s.channel_id else "",
                     "status": s.status,
                     "sold_at": s.sold_at.isoformat(),
+                    "is_returned": s.is_returned,
+                    "returned_at": s.returned_at.isoformat() if s.returned_at else None,
+                    "return_reason": s.return_reason,
                 }
             )
         return Response({

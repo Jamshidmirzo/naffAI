@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from django.db.models import Count, F, Q, QuerySet, Sum
 
-from .models import Sale, SaleOperator
+from .models import Sale, SaleOperator, SaleStatus
 
 
 def sale_queryset(*, include_deleted: bool = False) -> QuerySet[Sale]:
@@ -127,8 +127,15 @@ def sale_get(pk: int) -> Sale | None:
 
 
 def sale_imei_duplicate_count(*, imei: str, exclude_id: int | None = None) -> int:
-    """Counts non-deleted, non-returned sales with the same IMEI."""
-    qs = Sale.objects.filter(imei=imei, is_deleted=False, is_returned=False)
+    """Counts non-deleted, non-returned, non-rejected sales with the same IMEI.
+
+    Rejected sales are ignored (2026-10-14 design-atlas follow-up) so an
+    operator can resubmit a corrected sale with the same IMEI after the
+    manager rejected the first attempt.
+    """
+    qs = Sale.objects.filter(imei=imei, is_deleted=False, is_returned=False).exclude(
+        status=SaleStatus.REJECTED
+    )
     if exclude_id:
         qs = qs.exclude(pk=exclude_id)
     return qs.count()

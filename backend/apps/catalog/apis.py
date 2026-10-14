@@ -82,7 +82,9 @@ class ChannelDetailApi(RetrieveUpdateAPIView):
 
 
 class ImeiLookupApi(APIView):
-    permission_classes = [IsTeamLeadOrManagerReadOnly]
+    # Read-only TAC info — operators need it on /my/sale-new to prefill the
+    # phone model (2026-10-14 design-atlas follow-up). Any known role passes.
+    permission_classes = [IsAuthenticatedAnyRole]
 
     def get(self, request, imei: str):
         result = imei_lookup(imei)

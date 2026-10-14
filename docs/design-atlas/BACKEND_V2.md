@@ -128,3 +128,17 @@ pytest в стиле `apps/*/tests`: на каждый эндпоинт — пр
 
 ### Тесты
 `apps/operators/tests/test_floor_api.py`, `apps/operators/tests/test_bulk_set_manager.py`, `apps/notifications/tests/test_preferences.py`, `apps/sales/tests/test_sale_search_client.py`, `apps/leads/tests/test_my_status_plan.py`, `apps/analytics/tests/test_manager_filter.py`.
+
+## Follow-ups (2026-10-14)
+
+1. **IMEI-дубли игнорируют отклонённые.** `sale_imei_duplicate_count` теперь исключает `status=rejected` (плюс, как и раньше, `is_deleted` и `is_returned`). Оператор может переотправить исправленную продажу с тем же IMEI после отклонения. Pending/confirmed по-прежнему считаются дублем.
+2. **`GET /api/imei/<imei>/lookup/`** — `IsAuthenticatedAnyRole` (раньше только senior). Оператор может подтягивать TAC-модель на `/my/sale-new`. Анонимы по-прежнему 401/403.
+3. **`GET /api/sales/<id>/` для оператора** — видны продажи, где он `created_by`, primary `operator` **или** есть в `operator_lines` (split). Чужие → 404. Запись не изменилась: PATCH/PUT/DELETE оператора → 403, confirm/reject/return — senior-only.
+4. **`SaleSerializer`** (list, detail, pending, confirm/reject/return ответы) — добавлен read-only `lead_id` (int|null, `Sale.lead` FK; заполняется при конверсии лида / `lead_id` в SaleCreate / auto-match по телефону).
+   - `reviewed_by_name` **не добавлен**: у `Sale` нет поля «кто подтвердил/отклонил» (есть только `rejected_at` + `rejection_reason`). Актор есть лишь в `AuditLog` (`entity="sales.Sale"`, `changes.status.new ∈ {confirmed, rejected}`) — если нужно, следующий шаг либо FK `reviewed_by` + миграция, либо выборка из audit на detail.
+5. **`GET /api/sales/mine/`**
+   - Возвращённые продажи (`is_returned=true`) теперь **в выдаче** — рисовать как «возврат». В каждой строке новые ключи `is_returned` (bool), `returned_at` (ISO|null), `return_reason` (str). `total_share` возвраты **не** включает (цифра «заработано» прежняя). Удалённые по-прежнему скрыты.
+   - Новые опциональные `?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` — локальные даты Asia/Tashkent по `sold_at`, обе границы включительно. Неверный формат → 400. Лимит 100 строк сохранён.
+   - Детект старого бэка: ключа `is_returned` в строках нет (`undefined`); date-фильтры старый бэк молча игнорирует.
+
+Тесты: `apps/sales/tests/test_design_atlas_followups.py` (17). Набор падений в `apps/{sales,catalog,leads,users}/tests` до/после изменений идентичен (48 pre-existing: refill/marketing/photo-validation и т.п., к этим правкам не относятся).
