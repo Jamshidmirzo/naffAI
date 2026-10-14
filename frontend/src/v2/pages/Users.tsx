@@ -242,7 +242,7 @@ export default function Users() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <span className="num s c3" title={t("v2.team.people.shownOfTotal")}>
+        <span className="num s c3" style={{ whiteSpace: "nowrap" }} title={t("v2.team.people.shownOfTotal")}>
           {rows.length} / {all.length}
         </span>
         <button className="btn btn-pri" type="button" onClick={openCreate}>
@@ -311,7 +311,7 @@ export default function Users() {
                       </span>
                     </span>
                     <span className="col g4" style={{ alignItems: "flex-start" }}>
-                      <span className={cx("badge", groupOf(u.role) === "manager" && "b-hot")}>{roleLabel(u.role)}</span>
+                      <span className="badge">{roleLabel(u.role)}</span>
                       {u.is_superuser ? <span className="xs c3">superuser</span> : null}
                     </span>
                     <span className="s c2 trunc">{bossName(u)}</span>

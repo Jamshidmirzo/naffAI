@@ -8,7 +8,7 @@ import { useAuth } from "../../store/auth";
 import { useLang } from "../../store/lang";
 import { isLuhnValid } from "../../lib/validation";
 import { useT2 } from "../i18n";
-import { Dialog, EmptyState, ErrorState, LoadingBlock, PageHeader, cx, fmtNum } from "../ui";
+import { CountUp, Dialog, EmptyState, ErrorState, LoadingBlock, PageHeader, cx, fmtNum } from "../ui";
 import { saleActions, useSale, type SaleContractPhoto, type SaleDetailData } from "../api/operatorWork";
 
 type TFn = (key: string, params?: Record<string, string | number>) => string;
@@ -461,7 +461,7 @@ function ManagerView({ s, canManage }: { s: SaleDetailData; canManage: boolean }
                 {t("sale_detail.return_modal_title")}
               </button>
             ) : null}
-            <button className="btn btn-danger" type="button" onClick={() => setDlg("delete")}>
+            <button className="btn btn-bad" type="button" onClick={() => setDlg("delete")}>
               <Trash2 className="ic" />
               {t("v2.saledet.delete")}
             </button>
@@ -486,7 +486,7 @@ function ManagerView({ s, canManage }: { s: SaleDetailData; canManage: boolean }
               </div>
               <div className="col g4" style={{ textAlign: "right" }}>
                 <span className="lbl">{t("sale_detail.amount")}</span>
-                <span className="kpi">{fmtNum(total)}</span>
+                <span className="kpi"><CountUp value={total} /></span>
                 <span className="xs c3">
                   {t("my_sales.currency")} · {t("v2.saledet.qty", { n: s.quantity ?? 1 })}
                   {Number(s.discount) > 0 ? ` · ${t("v2.saledet.discount", { n: fmtNum(s.discount) })}` : ""}

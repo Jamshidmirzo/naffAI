@@ -101,7 +101,7 @@ function LessonView({ lesson, id }: { lesson: TrainingLessonDetail; id: string }
         <Comments id={id} />
       </div>
       {hasTest ? (
-        <aside className="panel card col" style={{ position: "sticky", top: 16 }}>
+        <aside className="panel card col" style={{ position: "sticky", top: 80 }}>
           <TestPanel lesson={lesson} id={id} />
         </aside>
       ) : null}

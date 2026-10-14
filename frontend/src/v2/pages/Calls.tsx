@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ChevronDown, Pause, Phone, Play, Search, User, X } from "lucide-react";
 import { useLang } from "../../store/lang";
 import { useT2 } from "../i18n";
-import { Dialog, EmptyState, ErrorState, LoadingBlock, PageHeader, cx, fmtNum } from "../ui";
+import { CountText, Dialog, EmptyState, ErrorState, LoadingBlock, PageHeader, cx, fmtNum } from "../ui";
 import { useCallsList, useCallsOperators, useCallsStats, type CallRow } from "../api/managerDaily";
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
@@ -308,7 +308,7 @@ export default function Calls() {
   const kpi = (label: string, value: string, sub?: string) => (
     <section className="card col g4 pad">
       <span className="lbl">{label}</span>
-      <span className="kpi">{value}</span>
+      <span className="kpi"><CountText text={value} /></span>
       {sub ? <span className="s c3">{sub}</span> : null}
     </section>
   );

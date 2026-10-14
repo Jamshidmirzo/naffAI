@@ -40,7 +40,7 @@ import {
   type TgMessageItem,
 } from "../../lib/tgUserclient";
 import { useT2 } from "../i18n";
-import { Dialog, EmptyState, ErrorState, LoadingBlock, PageHeader, PageSkeleton, cx, fmtNum, useConfirm } from "../ui";
+import { CountUp, Dialog, EmptyState, ErrorState, LoadingBlock, PageHeader, PageSkeleton, cx, fmtNum, useConfirm } from "../ui";
 import {
   opDetailApi,
   opDetailTashkentDate,
@@ -600,7 +600,7 @@ export default function OperatorDetail() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16 }}>
             <section className="card col g4 pad">
               <span className="lbl">{t("op_detail.sum_period", { period: periodLower })}</span>
-              {stats.isLoading ? sk(160, 34) : <span className="kpi">{fmtNum(s?.totals?.total || 0)}</span>}
+              {stats.isLoading ? sk(160, 34) : <span className="kpi"><CountUp value={s?.totals?.total || 0} /></span>}
               <span className="s c3">{stats.isLoading ? "" : t("op_detail.sales_count", { n: fmtNum(s?.totals?.count || 0) })}</span>
             </section>
             <section className="card col g4 pad">
@@ -694,7 +694,7 @@ export default function OperatorDetail() {
             <div className="col g4" style={{ flex: "1 1 260px" }}>
               <span className="lbl">{t("op_detail.payroll_month")}</span>
               <span className="row g12" style={{ alignItems: "baseline" }}>
-                <span className="kpi">{fmtNum(s.payroll.payout)}</span>
+                <span className="kpi"><CountUp value={s.payroll.payout} /></span>
                 <span className={cx("s", s.payroll.threshold_reached ? "c-ok w6" : "c3")}>
                   {s.payroll.threshold_reached ? t("op_detail.threshold_reached") : t(P + "payrollNotReached")}
                 </span>
@@ -804,9 +804,9 @@ export default function OperatorDetail() {
                         {logsQ.data.map((l) => {
                           const open = !l.checked_out_at && !l.auto_closed;
                           let st: ReactNode;
-                          if (!l.checked_out_at) st = <span className="badge b-hot">{t("op_detail.on_shift")}</span>;
+                          if (!l.checked_out_at) st = <span className="badge b-ok">{t("op_detail.on_shift")}</span>;
                           else if (l.manually_closed) st = <span className="badge" title={l.manual_close_note || undefined}>{t(P + "closedBy", { name: l.manually_closed_by_name || "—" })}</span>;
-                          else if (l.auto_closed) st = <span className="badge b-hot">{t("op_detail.auto_2300")}</span>;
+                          else if (l.auto_closed) st = <span className="badge b-warn">{t("op_detail.auto_2300")}</span>;
                           else st = <span className="badge">{t("op_detail.success_lower")}</span>;
                           return (
                             <div key={l.id} className="tr" style={{ gridTemplateColumns: cols }}>

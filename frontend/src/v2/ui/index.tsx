@@ -7,6 +7,7 @@ import { useT2 } from "../i18n";
 
 export { PageSkeleton, LoadingBlock, EmptyState, ErrorState, NoAccess } from "./states";
 export { Pager } from "./Pager";
+export { CountText, CountUp } from "./motion";
 
 /** cx — tiny className joiner. */
 export function cx(...parts: Array<string | false | null | undefined>) {
@@ -35,14 +36,14 @@ export function PageHeader({ title, meta, back, after, children }: { title: Reac
   const nav = useNavigate();
   const t = useT2();
   return (
-    <header className="top" style={{ flexWrap: "wrap" }}>
+    <header className="top">
       {back ? (
         <button className="btn btn-ghost btn-sq btn-sm" type="button" aria-label={t("common.back")} onClick={() => (typeof back === "function" ? back() : nav(back))}>
           <ArrowLeft className="ic" />
         </button>
       ) : null}
-      <h1 className="h1">{title}</h1>
-      {meta ? <span className="s c3">{meta}</span> : null}
+      <h1 className="h1" style={{ flex: "none", whiteSpace: "nowrap" }}>{title}</h1>
+      {meta ? <span className="s c3 trunc" style={{ flex: "0 1 auto" }} title={typeof meta === "string" ? meta : undefined}>{meta}</span> : null}
       {after}
       <span className="grow" />
       {children}
@@ -51,10 +52,10 @@ export function PageHeader({ title, meta, back, after, children }: { title: Reac
 }
 
 /** Portal root that carries the Атлас tokens (works outside the shell too). */
-function V2Portal({ children }: { children: ReactNode }) {
+function V2Portal({ children, leaving }: { children: ReactNode; leaving?: boolean }) {
   const theme = useTheme((s) => s.theme);
   return createPortal(
-    <div className="nf" data-theme={theme} style={{ position: "fixed", inset: 0, zIndex: 60, background: "transparent" }}>
+    <div className={leaving ? "nf is-leaving" : "nf"} data-theme={theme} style={{ position: "fixed", inset: 0, zIndex: 60, background: "transparent", pointerEvents: leaving ? "none" : undefined }}>
       {children}
     </div>,
     document.body,
@@ -74,18 +75,56 @@ export interface DialogProps {
   danger?: boolean;
 }
 
+/**
+ * Keeps a closing overlay mounted for a short exit animation (`leaving`).
+ * Skipped under prefers-reduced-motion.
+ */
+function usePresence(open: boolean, ms = 170) {
+  const [mounted, setMounted] = useState(open);
+  const [leaving, setLeaving] = useState(false);
+  const shown = useRef(open);
+  useEffect(() => {
+    if (open) {
+      shown.current = true;
+      setMounted(true);
+      setLeaving(false);
+      return;
+    }
+    if (!shown.current) return;
+    shown.current = false;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      setMounted(false);
+      return;
+    }
+    setLeaving(true);
+    const id = window.setTimeout(() => {
+      setMounted(false);
+      setLeaving(false);
+    }, ms);
+    return () => window.clearTimeout(id);
+  }, [open, ms]);
+  return { mounted, leaving };
+}
+
 /** The standard v2 window (.dlg): header with ×, body, footer buttons on the right. */
-export function Dialog({ open, onClose, title, sub, children, footer, width = 480, locked, danger }: DialogProps) {
+export function Dialog(props: DialogProps) {
+  const { open, onClose, width = 480, locked, danger } = props;
   const t = useT2();
+  const { mounted, leaving } = usePresence(open);
+  // While the window animates out, keep showing what it showed last
+  // (callers often clear the data that fills it at the same moment).
+  const last = useRef(props);
+  if (open) last.current = props;
+  const { title, sub, children, footer } = open ? props : last.current;
   useEffect(() => {
     if (!open || locked) return;
     const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, [open, locked, onClose]);
-  if (!open) return null;
+  if (!mounted) return null;
   return (
-    <V2Portal>
+    <V2Portal leaving={leaving}>
       <div className="scrim" onClick={locked ? undefined : onClose} />
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, pointerEvents: "none" }}>
         <section className="dlg" role="dialog" aria-modal="true" style={{ width, maxWidth: "100%", maxHeight: "calc(100vh - 48px)", overflow: "hidden", display: "flex", flexDirection: "column", pointerEvents: "auto" }}>

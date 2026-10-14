@@ -104,16 +104,19 @@ export default function AIChat() {
         {providers.length > 0 ? (
           <>
             <span className="lbl">{t("common.model")}</span>
-            <div className="row g6 wrap">
-              <button className={cx("chip", !providerKey && "is-on")} type="button" title={t("ai_chat.auto_chain_hint")} aria-pressed={!providerKey} onClick={() => persistProvider("")}>
-                {t("ai_chat.auto_chain")}
-              </button>
+            <select
+              className="input"
+              aria-label={t("common.model")}
+              title={activeProvider ? activeProvider.model : t("ai_chat.auto_chain_hint")}
+              value={providerKey}
+              onChange={(e) => persistProvider(e.target.value)}
+              style={{ width: 200, height: 36 }}
+            >
+              <option value="">{t("ai_chat.auto_chain")}</option>
               {providers.map((p) => (
-                <button key={p.key} className={cx("chip", providerKey === p.key && "is-on")} type="button" title={p.model} aria-pressed={providerKey === p.key} onClick={() => persistProvider(p.key)}>
-                  {p.label}
-                </button>
+                <option key={p.key} value={p.key}>{p.label}</option>
               ))}
-            </div>
+            </select>
             {activeProvider ? <span className="num xs c3 trunc" style={{ maxWidth: 180 }}>{activeProvider.model}</span> : null}
           </>
         ) : null}

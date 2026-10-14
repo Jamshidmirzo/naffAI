@@ -27,7 +27,7 @@ import { isSaleSoundMuted } from "../../store/saleSound";
 import { LEAD_STATUS_LABEL } from "../../lib/leads";
 import { toast } from "../../components/ui";
 import { useT2 } from "../i18n";
-import { Dialog, EmptyState, ErrorState, LoadingBlock, cx, fmtMln, fmtNum, useConfirm } from "../ui";
+import { CountText, CountUp, Dialog, EmptyState, ErrorState, LoadingBlock, cx, fmtMln, fmtNum, useConfirm } from "../ui";
 import {
   api,
   apiErrorText,
@@ -326,7 +326,7 @@ function Pult({ isSuper }: { isSuper: boolean }) {
           ))}
         </div>
         <span className="row g4">
-          <select className="input" aria-label={t("v2.home.monthPicker")} style={{ width: 230, height: 36 }} value={month} onChange={(e) => setMonth(e.target.value)}>
+          <select className="input" aria-label={t("v2.home.monthPicker")} style={{ width: 260, height: 36 }} value={month} onChange={(e) => setMonth(e.target.value)}>
             <option value="">{t("v2.home.monthPicker")}</option>
             {months.map((m) => (
               <option key={m.key} value={m.key}>{m.label}</option>
@@ -499,7 +499,7 @@ function Tablo({ summary, loading, calls }: { summary?: DashboardSummary; loadin
       {items.map((k) => (
         <Link key={k.label} to={k.to} className="col g4" style={{ flex: "1 1 180px", padding: "16px 20px", borderRight: "1px solid var(--line)" }}>
           <span className="lbl">{k.label}</span>
-          <span className="kpi">{k.value}</span>
+          <span className="kpi"><CountText text={k.value} /></span>
           <span className="row g6 xs">
             {k.badge ? <span className={cx("badge", k.tone)} style={{ height: 20 }}>{k.badge}</span> : null}
             {k.note ? <span className="c3">{k.note}</span> : null}
@@ -1218,8 +1218,8 @@ function SalesChart({ summary, loading }: { summary?: DashboardSummary; loading:
                     const c = isToday ? "var(--brand)" : isRec ? "var(--ok-solid)" : "var(--line-2)";
                     return (
                       <span key={d.day} className="col" style={{ flex: "1 1 0", height: "100%", justifyContent: "flex-end", alignItems: "center", gap: 3, minWidth: 0 }} title={`${label(d.day)}: ${d.count}`}>
-                        <span className={cx("num xs w6", isToday ? "c-brand" : isRec ? "c-ok" : "c2")} style={{ position: "relative", zIndex: 2, background: "var(--surface)", padding: "0 3px", borderRadius: 4 }}>{d.count}</span>
-                        <i style={{ display: "block", width: "100%", maxWidth: 34, height: `${((d.count / top) * 100).toFixed(1)}%`, minHeight: d.count > 0 ? 2 : 0, borderRadius: "5px 5px 0 0", background: c }} />
+                        <span className={cx("num xs w6", isToday ? "c-brand" : isRec ? "c-ok" : "c2")} style={{ position: "relative", zIndex: 2, background: "var(--surface)", padding: "0 3px", borderRadius: 4, visibility: d.count > 0 || isToday ? "visible" : "hidden" }}>{d.count}</span>
+                        <i className="grow-y" style={{ display: "block", width: "100%", maxWidth: 34, height: `${((d.count / top) * 100).toFixed(1)}%`, minHeight: d.count > 0 ? 2 : 0, borderRadius: "5px 5px 0 0", background: c }} />
                       </span>
                     );
                   })}
@@ -1371,7 +1371,7 @@ function MorningDialog({
           {kpis.map((k) => (
             <div key={k.label} className="well col g4">
               <span className="lbl">{k.label}</span>
-              <span className="kpi">{k.value}</span>
+              <span className="kpi"><CountText text={k.value} /></span>
               {k.note ? <span className={cx("xs", k.cls)}>{k.note}</span> : null}
             </div>
           ))}
@@ -1505,7 +1505,7 @@ function SaleOverlay() {
         <div className="dlg-b" style={{ gap: 8 }}>
           {cur.amount !== null ? (
             <div className="row between">
-              <span className="kpi" style={{ fontSize: 22, lineHeight: "28px" }}>{fmtNum(cur.amount)}</span>
+              <span className="kpi" style={{ fontSize: 22, lineHeight: "28px" }}><CountUp value={cur.amount} /></span>
               <span className="s c3">{t("common.uzs")}</span>
             </div>
           ) : null}

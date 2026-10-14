@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowLeft, Camera, Check, ImagePlus, Link2, Upload, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Camera, Check, Circle, ImagePlus, Link2, Upload, X } from "lucide-react";
 import { api } from "../../lib/api";
 import { toast } from "../../components/ui";
 import NumericInput from "../../components/NumericInput";
@@ -231,6 +231,9 @@ export default function MySaleNew() {
     return serverErrors[f] ?? null;
   };
   const problems = FIELD_ORDER.filter((f) => errors[f] !== null || !!serverErrors[f]);
+  // A problem is shown in red only once the field was touched or a submit was attempted;
+  // before that it is a calm grey "to fill" item.
+  const loud = (f: FieldName) => submitted || !!touched[f] || !!serverErrors[f];
 
   const jump = (f: FieldName) => {
     touch(f);
@@ -758,11 +761,11 @@ export default function MySaleNew() {
             <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
           </form>
 
-          <aside className="panel card col" style={{ position: "sticky", top: 16 }}>
+          <aside className="panel card col" style={{ position: "sticky", top: 80 }}>
             <div className="card-h">
               <span className="h3">{t("v2.opsale.summary")}</span>
               {problems.length ? (
-                <span className="badge b-bad">{t(`v2.opsale.problems.${plural(problems.length)}`, { n: problems.length })}</span>
+                <span className={cx("badge", problems.some(loud) && "b-bad")}>{t(`v2.opsale.problems.${plural(problems.length)}`, { n: problems.length })}</span>
               ) : (
                 <span className="badge b-warn"><i className="dot" />{t("v2.opsale.toReview")}</span>
               )}
@@ -784,7 +787,12 @@ export default function MySaleNew() {
               <div className="col g6">
                 {checks.map((c) => {
                   const bad = errors[c.f] !== null || !!serverErrors[c.f];
-                  return bad ? (
+                  return bad && !loud(c.f) ? (
+                    <button key={c.f} type="button" className="row g8 s c3" style={{ background: "none", border: 0, padding: 0, textAlign: "left", cursor: "pointer" }} onClick={() => jump(c.f)}>
+                      <Circle className="ic" style={{ flex: "none" }} />
+                      <span>{t(`v2.opsale.f.${c.f}`)}</span>
+                    </button>
+                  ) : bad ? (
                     <button key={c.f} type="button" className="row g8 s c-bad" style={{ background: "none", border: 0, padding: 0, textAlign: "left", cursor: "pointer" }} onClick={() => jump(c.f)}>
                       <X className="ic" style={{ flex: "none" }} />
                       <span>{t(`v2.opsale.f.${c.f}`)}: {serverErrors[c.f] ?? msg(c.f)}</span>

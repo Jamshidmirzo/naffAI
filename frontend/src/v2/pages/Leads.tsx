@@ -498,7 +498,7 @@ function LeadPanel({ lead, onReassign, onClose }: { lead: LeadExtra; onReassign:
   if (lead.callback_at) fields.push([t("leads.col_callback"), <span className={cx("num", isOverdue(lead.callback_at) && "c-hot w6")}>{fmtWhen(lead.callback_at)}</span>]);
 
   return (
-    <aside className="panel card col" style={{ flex: "0 1 340px", position: "sticky", top: 16 }} aria-label={lead.full_name || lead.phone || "—"}>
+    <aside className="panel card col" style={{ flex: "0 1 340px", position: "sticky", top: 80 }} aria-label={lead.full_name || lead.phone || "—"}>
       <div className="card-h" style={{ alignItems: "flex-start" }}>
         <div className="col" style={{ minWidth: 0 }}>
           <span className="h3 trunc">{lead.full_name || "—"}</span>
@@ -656,47 +656,46 @@ export default function Leads() {
             {t("leads.tab_unassigned")}
             {orphansCount.data ? <span className="cnt">{orphansCount.data}</span> : null}
           </Link>
+          <span className="row g8" style={{ marginLeft: "auto", alignSelf: "center", paddingLeft: 16 }}>
+            <select
+              className="input"
+              aria-label={t("v2.leads.filterOperator")}
+              value={operator}
+              onChange={(e) => setFilter("operator", e.target.value || null)}
+              style={{ width: 190, height: 32, borderRadius: 99, fontSize: 13, borderColor: "var(--line-2)" }}
+            >
+              <option value="">{t("v2.leads.allOperators")}</option>
+              {(operators.data ?? []).map((o) => (
+                <option key={o.id} value={o.id}>{o.full_name}</option>
+              ))}
+            </select>
+            <select
+              className="input"
+              aria-label={t("v2.leads.filterStatus")}
+              value={status}
+              onChange={(e) => setFilter("status", e.target.value || null)}
+              style={{ width: 170, height: 32, borderRadius: 99, fontSize: 13, borderColor: "var(--line-2)" }}
+            >
+              <option value="">{t("v2.leads.allStatuses")}</option>
+              {statusOptions.map((s) => (
+                <option key={s.code} value={s.code}>{lang === "uz" && s.label_uz ? s.label_uz : s.label_ru}</option>
+              ))}
+            </select>
+          </span>
         </div>
 
-        <div className="row g8 wrap">
-          {(sources.data?.length ?? 0) > 0 ? (
-            <>
-              <button className={cx("chip", sheetSourceId === null && "is-on")} type="button" onClick={() => setFilter("sheet_source", null)}>
-                {t("leads.all_sources")}
+        {(sources.data?.length ?? 0) > 0 ? (
+          <div className="row g8 wrap">
+            <button className={cx("chip", sheetSourceId === null && "is-on")} type="button" onClick={() => setFilter("sheet_source", null)}>
+              {t("leads.all_sources")}
+            </button>
+            {(sources.data ?? []).map((s) => (
+              <button key={s.id} className={cx("chip", sheetSourceId === s.id && "is-on")} type="button" onClick={() => setFilter("sheet_source", s.id)}>
+                {s.name}
               </button>
-              {(sources.data ?? []).map((s) => (
-                <button key={s.id} className={cx("chip", sheetSourceId === s.id && "is-on")} type="button" onClick={() => setFilter("sheet_source", s.id)}>
-                  {s.name}
-                </button>
-              ))}
-            </>
-          ) : null}
-          <span className="grow" />
-          <select
-            className="input"
-            aria-label={t("v2.leads.filterOperator")}
-            value={operator}
-            onChange={(e) => setFilter("operator", e.target.value || null)}
-            style={{ width: 190, height: 32, borderRadius: 99, fontSize: 13, borderColor: "var(--line-2)" }}
-          >
-            <option value="">{t("v2.leads.allOperators")}</option>
-            {(operators.data ?? []).map((o) => (
-              <option key={o.id} value={o.id}>{o.full_name}</option>
             ))}
-          </select>
-          <select
-            className="input"
-            aria-label={t("v2.leads.filterStatus")}
-            value={status}
-            onChange={(e) => setFilter("status", e.target.value || null)}
-            style={{ width: 170, height: 32, borderRadius: 99, fontSize: 13, borderColor: "var(--line-2)" }}
-          >
-            <option value="">{t("v2.leads.allStatuses")}</option>
-            {statusOptions.map((s) => (
-              <option key={s.code} value={s.code}>{lang === "uz" && s.label_uz ? s.label_uz : s.label_ru}</option>
-            ))}
-          </select>
-        </div>
+          </div>
+        ) : null}
 
         <div className="split">
           <section className="list col g8">
@@ -769,7 +768,7 @@ export default function Leads() {
                           ) : (
                             <span className="num xs c-bad w6 trunc">{lead.phone_raw || t("leads.no_phone")}</span>
                           )}
-                          {lead.product_hint ? <span className="xs w5 c-hot trunc" title={lead.product_hint}>{lead.product_hint}</span> : null}
+                          {lead.product_hint ? <span className="xs w5 c2 trunc" title={lead.product_hint}>{lead.product_hint}</span> : null}
                         </button>
                         <span className="c2 trunc">{src}</span>
                         <span className="trunc">{lead.operator_name || <span className="c3">{t("leads.unassigned_lower")}</span>}</span>

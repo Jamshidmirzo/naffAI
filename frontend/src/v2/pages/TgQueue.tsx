@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Loader2, PauseCircle, Play, RefreshCw } from "lucide-react";
 import { toast } from "../../components/ui";
 import { useT2 } from "../i18n";
-import { EmptyState, ErrorState, LoadingBlock, PageHeader, cx, fmtNum } from "../ui";
+import { CountUp, EmptyState, ErrorState, LoadingBlock, PageHeader, cx, fmtNum } from "../ui";
 import { useTgqQueue, useTgqRetry, type TgqRow, type TgqSessionStatus } from "../api/admin";
 
 const COLS = "minmax(170px,1.2fr) minmax(200px,1.5fr) minmax(200px,1.5fr) 60px 90px 50px 130px";
@@ -71,7 +71,7 @@ export default function TgQueue() {
   const tile = (label: string, value: number, opts: { color?: string; sub?: string; bad?: boolean } = {}) => (
     <section className="card col g4 pad" style={opts.bad ? { borderColor: "var(--bad-solid)" } : undefined}>
       <span className="lbl">{label}</span>
-      <span className="kpi" style={{ fontSize: 22, color: opts.color }}>{fmtNum(value)}</span>
+      <span className="kpi" style={{ fontSize: 22, color: opts.color }}><CountUp value={value} /></span>
       {opts.sub ? <span className="xs c3">{opts.sub}</span> : null}
     </section>
   );

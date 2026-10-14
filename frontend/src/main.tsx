@@ -7,6 +7,7 @@ import App from "./App";
 import "./index.css";
 import "./v2/styles/atlas.css";
 import "./v2/styles/app.css";
+import "./v2/styles/motion.css";
 import "./store/design";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

@@ -272,7 +272,7 @@ export default function Calculator() {
                           <span className="h3">{t("v2.personal.calc.monthsN", { n: r.months })}</span>
                           <span className="badge">{t("v2.personal.calc.pct", { pct: pct(r.commission_pct) })}</span>
                         </span>
-                        <span className="kpi" style={{ fontSize: 22, lineHeight: "28px" }}>{fmtNum(r.sum_per_month)}</span>
+                        <span className={cx("kpi", !Number(r.sum_per_month) && "c3")} style={{ fontSize: 22, lineHeight: "28px" }}>{Number(r.sum_per_month) ? fmtNum(r.sum_per_month) : "—"}</span>
                         <span className="xs c3">{t("v2.personal.calc.perMonthTotal", { total: fmtNum(r.total) })}</span>
                       </button>
                     ))}

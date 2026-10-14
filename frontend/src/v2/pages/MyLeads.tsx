@@ -13,7 +13,6 @@ import {
   Lock,
   MessageCircle,
   Phone,
-  CheckCircle2,
   Plus,
   RotateCcw,
   Search,
@@ -1006,7 +1005,7 @@ function ShiftBadge({ checkedInAt, loaded }: { checkedInAt: string | null; loade
   const s = `${String(Math.floor(sec / 3600)).padStart(2, "0")}:${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
   return (
     <button type="button" className="badge b-ok" style={{ height: 28, border: 0, cursor: "pointer" }} onClick={scroll} title={t("v2.op.shiftSince", { time: hm(checkedInAt) })}>
-      <i className="dot" />
+      <i className="dot live" />
       {t("v2.op.shiftOn")} <span className="num">{s}</span>
     </button>
   );
@@ -1449,8 +1448,11 @@ function EmptyFocus({ postponed, nextCallback, onPostponed }: { postponed: numbe
   const t = useT2();
   return (
     <section className="focus" style={{ alignItems: "center", textAlign: "center", padding: "56px 32px 48px", gap: 16 }}>
-      <span className="icon-tile t-ok" style={{ width: 56, height: 56, borderRadius: 16 }}>
-        <CheckCircle2 className="ic ic-l" />
+      <span className="glow-tile c-ok" style={{ display: "inline-flex" }}>
+        <svg className="draw-check" width="64" height="64" viewBox="0 0 52 52" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <circle cx="26" cy="26" r="24" />
+          <path d="M15 27l7.5 7.5L37 19.5" />
+        </svg>
       </span>
       <h2 className="h1">{t("my.empty.title")}</h2>
       <p className="c2" style={{ maxWidth: 460 }}>{t("v2.op.empty.body")}</p>

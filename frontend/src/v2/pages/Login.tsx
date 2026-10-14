@@ -70,9 +70,14 @@ export default function Login() {
   const showPhoneErr = mode === "phone" && phoneTouched && digits.length > 0 && !phoneValid;
 
   return (
-    <div className="nf" data-theme={theme} style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)" }}>
+    <div className="nf" data-theme={theme} style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)", position: "relative", isolation: "isolate" }}>
+      <div className="aurora" aria-hidden>
+        <i />
+        <i />
+        <i />
+      </div>
 
-      <div className="row between" style={{ padding: "20px clamp(16px, 4vw, 32px)", gap: 12 }}>
+      <div className="row between" style={{ padding: "20px clamp(16px, 4vw, 32px)", gap: 12, position: "relative", zIndex: 1 }}>
         <div className="wordmark" style={{ padding: 0 }}>
           <i className="logo-mark" aria-hidden />naff<b>AI</b>
         </div>
@@ -86,8 +91,8 @@ export default function Login() {
         </div>
       </div>
 
-      <div style={{ flex: "1 1 auto", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px 64px" }}>
-        <form className="card col g20" style={{ width: 440, maxWidth: "100%", padding: "clamp(20px, 5vw, 32px)" }} onSubmit={onSubmit} noValidate>
+      <div style={{ flex: "1 1 auto", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px 64px", position: "relative", zIndex: 1 }}>
+        <form className="card glass col g20" style={{ width: 440, maxWidth: "100%", padding: "clamp(20px, 5vw, 32px)" }} onSubmit={onSubmit} noValidate>
           <div className="col g6">
             <h1 className="h1">{t("login.title")}</h1>
             <p className="c3">{t("v2.personal.login.subtitle")}</p>

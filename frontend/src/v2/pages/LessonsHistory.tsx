@@ -123,7 +123,7 @@ export default function LessonsHistory() {
                 );
               })}
             </section>
-            <aside className="panel card col" style={{ position: "sticky", top: 16 }}>
+            <aside className="panel card col" style={{ position: "sticky", top: 80 }}>
               {sel ? <DetailPanel operatorId={operatorId} date={sel} /> : <EmptyState title={t("v2.personal.history.pick")} />}
             </aside>
           </div>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, matchPath, useLocation, useNavigate } from "react-router-dom";
-import { Bell, ChevronDown, ChevronUp, LogOut, Moon, Search, Sun, Volume2, VolumeX, Palette, Languages } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Bell, ChevronDown, LogOut, Moon, Search, Sun, Volume2, VolumeX, Palette, Languages } from "lucide-react";
 import { useAuth } from "../../store/auth";
 import { useTheme } from "../../store/theme";
 import { useLang } from "../../store/lang";
@@ -37,13 +38,24 @@ function Badge({ n, mute }: { n: number; mute?: boolean }) {
   return <span className={`cnt${mute ? " cnt-mute" : ""}`}>{n > 99 ? "99+" : n}</span>;
 }
 
+/** The selection pill glides between menu items (shared layout animation). */
+const PILL_SPRING = { type: "spring", stiffness: 520, damping: 42, mass: 0.9 } as const;
+function NavPill() {
+  return <motion.span layoutId="v2-nav-pill" className="nav-pill" transition={PILL_SPRING} aria-hidden />;
+}
+
 function RailItem({ item, badges }: { item: NavItem; badges: Record<string, number> }) {
   const t = useT2();
   return (
     <NavLink to={item.to} end={item.end} className={({ isActive: a }) => `rail-item${a ? " is-on" : ""}`}>
-      <item.icon className="ic ic-l" aria-hidden />
-      <span>{t(item.short ?? item.label)}</span>
-      {item.badge ? <Badge n={badges[item.badge] ?? 0} mute={item.muteBadge} /> : null}
+      {({ isActive: a }) => (
+        <>
+          {a ? <NavPill /> : null}
+          <item.icon className="ic ic-l" aria-hidden />
+          <span>{t(item.short ?? item.label)}</span>
+          {item.badge ? <Badge n={badges[item.badge] ?? 0} mute={item.muteBadge} /> : null}
+        </>
+      )}
     </NavLink>
   );
 }
@@ -67,7 +79,12 @@ function SideItem({ item, badges }: { item: NavItem; badges: Record<string, numb
   }
   return (
     <NavLink to={item.to} end={item.end} className={({ isActive: a }) => `side-item${a ? " is-on" : ""}`}>
-      {inner}
+      {({ isActive: a }) => (
+        <>
+          {a ? <NavPill /> : null}
+          {inner}
+        </>
+      )}
     </NavLink>
   );
 }
@@ -173,10 +190,24 @@ export function SideNav() {
                 <span className="grow">{t(g.title)}</span>
                 {!open ? <span className="side-n">{g.items.length}</span> : null}
                 {!open && groupCount ? <span className="cnt">{groupCount}</span> : null}
-                {open ? <ChevronUp className="ic" /> : <ChevronDown className="ic" />}
+                <ChevronDown className="ic chev" />
               </button>
             ) : null}
-            {open ? g.items.map((x) => <SideItem key={x.id} item={x} badges={badges} />) : null}
+            <AnimatePresence initial={false}>
+              {open ? (
+                <motion.div
+                  key="items"
+                  className="col"
+                  style={{ gap: 2, overflow: "hidden" }}
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.24, ease: [0.2, 0.8, 0.2, 1] }}
+                >
+                  {g.items.map((x) => <SideItem key={x.id} item={x} badges={badges} />)}
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </div>
         );
       })}

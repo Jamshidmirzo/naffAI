@@ -497,7 +497,7 @@ function SourcesTable({ q, onEdit }: { q: ReturnType<typeof useSheetSources>; on
                       <span className="badge" style={{ whiteSpace: "normal", height: "auto", minHeight: 22, padding: "2px 8px", flex: "0 1 auto", maxWidth: "100%" }}>
                         {SHEET_MODES.includes(s.distribution_mode) ? t(`v2.admin.sheets.mode.${s.distribution_mode}`) : s.distribution_mode}
                       </span>
-                      {(s.allowed_operator_ids?.length ?? 0) > 0 ? <span className="badge b-hot">{t("v2.admin.sheets.pool", { n: s.allowed_operator_ids!.length })}</span> : null}
+                      {(s.allowed_operator_ids?.length ?? 0) > 0 ? <span className="badge b-info">{t("v2.admin.sheets.pool", { n: s.allowed_operator_ids!.length })}</span> : null}
                       {s.is_hot ? <span className="badge b-bad">{t("v2.admin.sheets.hotChip", { n: s.hot_sla_minutes ?? 10 })}</span> : null}
                     </span>
                     <span className="col">

@@ -4,7 +4,7 @@ import { AlertTriangle, Check, ChevronDown, ChevronRight, Download, Lightbulb, P
 import { toast } from "../../components/ui";
 import { formatUZS, toDateInputValue } from "../../lib/format";
 import { useT2 } from "../i18n";
-import { EmptyState, ErrorState, LoadingBlock, PageHeader, cx, fmtNum, useConfirm } from "../ui";
+import { CountText, EmptyState, ErrorState, LoadingBlock, PageHeader, cx, fmtNum, useConfirm } from "../ui";
 import {
   mktExport,
   useMktAdSpend,
@@ -215,7 +215,7 @@ function KpiRow({ d }: { d: MktDashboard }) {
       {cards.map((c) => (
         <section key={c.label} className="card col g6" style={{ padding: "16px 18px" }}>
           <span className="lbl">{c.label}</span>
-          <span className="kpi" style={{ fontSize: 24 }}>{c.value}</span>
+          <span className="kpi" style={{ fontSize: 24 }}><CountText text={c.value} /></span>
           <span className="row g8 xs">
             {c.delta ? <span className={cx("num w6", c.dCls)}>{c.delta}</span> : null}
             <span className="c3 trunc">{c.sub}</span>

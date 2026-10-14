@@ -4,7 +4,7 @@ import { Link, NavLink } from "react-router-dom";
 import { Calendar, Camera, Clock, Lock, LogOut, Moon, QrCode, RefreshCw, User, UserX, X } from "lucide-react";
 import { toast } from "../../components/ui";
 import { useT2 } from "../i18n";
-import { Dialog, EmptyState, ErrorState, LoadingBlock, PageHeader, cx } from "../ui";
+import { CountUp, Dialog, EmptyState, ErrorState, LoadingBlock, PageHeader, cx } from "../ui";
 import {
   attFmtTime,
   attMediaUrl,
@@ -129,11 +129,11 @@ function liveMinutes(iso: string): number {
   return ms < 0 ? 0 : Math.floor(ms / 60000);
 }
 
-function ColCard({ title, dot, badge, count, loading, children }: { title: string; dot: string; badge?: string; count: number; loading: boolean; children: ReactNode }) {
+function ColCard({ title, dot, badge, count, loading, children, live }: { title: string; dot: string; badge?: string; count: number; loading: boolean; children: ReactNode; live?: boolean }) {
   return (
     <section className="card col">
       <div className="card-h">
-        <span className="row g8"><span className="dot" style={{ color: dot }} /><span className="h3">{title}</span></span>
+        <span className="row g8"><span className={cx("dot", live && count > 0 && "live")} style={{ color: dot }} /><span className="h3">{title}</span></span>
         <span className={cx("badge", badge)}><span className="num">{loading ? "…" : count}</span></span>
       </div>
       {children}
@@ -211,17 +211,17 @@ export default function AttendanceToday() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
             <section className="card pad col g4">
               <span className="lbl">{t("attendance.today.kpi_present")}</span>
-              <span className="kpi" style={{ color: "var(--ok)" }}>{report.counts.present}</span>
+              <span className="kpi" style={{ color: "var(--ok)" }}><CountUp value={report.counts.present} /></span>
               <span className="s c3">{t("v2.team.attendance.kpiPresentHint", { n: report.total_active_operators })}</span>
             </section>
             <section className="card pad col g4">
               <span className="lbl">{t("attendance.today.kpi_late")}</span>
-              <span className="kpi" style={report.counts.late ? { color: "var(--bad)" } : undefined}>{report.counts.late}</span>
+              <span className="kpi" style={report.counts.late ? { color: "var(--bad)" } : undefined}><CountUp value={report.counts.late} /></span>
               <span className="s c3">{lateHint}</span>
             </section>
             <section className="card pad col g4">
               <span className="lbl">{t("attendance.today.kpi_absent")}</span>
-              <span className="kpi">{report.counts.absent}</span>
+              <span className="kpi"><CountUp value={report.counts.absent} /></span>
               <span className="s c3">{t("attendance.today.kpi_absent_hint")}</span>
             </section>
           </div>
@@ -250,7 +250,7 @@ export default function AttendanceToday() {
         </div>
 
         {/* On shift now — photo cards */}
-        <ColCard title={t("attendance.today.col_on_shift")} dot="var(--ok-solid)" badge="b-ok" count={onShift.length} loading={loading}>
+        <ColCard title={t("attendance.today.col_on_shift")} dot="var(--ok-solid)" badge="b-ok" count={onShift.length} loading={loading} live>
           {loading ? (
             <LoadingBlock rows={3} onRetry={() => q.refetch()} />
           ) : onShift.length === 0 ? (
@@ -283,7 +283,7 @@ export default function AttendanceToday() {
                       </span>
                       <span className="xs c3">{t("v2.team.attendance.durationShort")} <span className="num">{attFmtDur(t, liveMinutes(e.checked_in_at))}</span></span>
                       <div className="row g6" style={{ marginTop: 4 }}>
-                        <span className="badge b-hot" style={{ height: 20 }}>{t("op_detail.on_shift")}</span>
+                        <span className="badge b-ok" style={{ height: 20 }}>{t("op_detail.on_shift")}</span>
                         <SrcLabel src={e.source} />
                         <span className="grow" />
                         <button
@@ -348,7 +348,7 @@ export default function AttendanceToday() {
             ) : (
               absent.map((op) => (
                 <div key={op.id} className="row-item" style={{ minHeight: 52 }}>
-                  <span className="icon-tile t-bad" style={{ width: 32, height: 32, borderRadius: "50%" }}><UserX className="ic ic-s" /></span>
+                  <span className="icon-tile" style={{ width: 32, height: 32, borderRadius: "50%" }}><UserX className="ic ic-s" /></span>
                   <Link className="s w5 grow trunc" to={`/operators/${op.id}`} style={{ color: "inherit" }}>{op.full_name}</Link>
                 </div>
               ))

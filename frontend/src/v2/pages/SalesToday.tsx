@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useT2 } from "../i18n";
-import { PageHeader, EmptyState, ErrorState, LoadingBlock, cx, fmtMln, fmtNum } from "../ui";
+import { CountUp, EmptyState, ErrorState, LoadingBlock, PageHeader, cx, fmtMln, fmtNum } from "../ui";
 import { useSalesChannelsToday, useSalesDailyTarget, useSalesKpiToday, useSalesTodayList, type SaleListRow } from "../api/managerDaily";
 
 const COLS = "90px minmax(0,1.6fr) minmax(0,1.4fr) minmax(0,160px) 150px 130px";
@@ -21,7 +21,7 @@ function hhmm(iso: string | number): string {
 function statusOf(s: SaleListRow, t: (k: string) => string) {
   if (s.is_returned) return { label: t("v2.sales.st.returned"), tone: "b-bad" };
   if (s.status === "rejected") return { label: t("v2.sales.st.rejected"), tone: "b-bad" };
-  if (s.status === "pending") return { label: t("v2.sales.st.pending"), tone: "b-hot" };
+  if (s.status === "pending") return { label: t("v2.sales.st.pending"), tone: "b-warn" };
   return { label: t("v2.sales.st.paid"), tone: "b-ok" };
 }
 
@@ -105,7 +105,7 @@ export default function SalesToday() {
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 24 }}>
                   <div className="col g4">
                     <span className="lbl">{t("sales_today.mini_units")}</span>
-                    <span className="kpi" style={{ fontSize: 22 }}>{count}</span>
+                    <span className="kpi" style={{ fontSize: 22 }}><CountUp value={count} /></span>
                   </div>
                   <div className="col g4">
                     <span className="lbl">{t("sales_today.mini_avg_check")}</span>
@@ -113,7 +113,7 @@ export default function SalesToday() {
                   </div>
                   <div className="col g4">
                     <span className="lbl">{t("sales_today.mini_operators")}</span>
-                    <span className="kpi" style={{ fontSize: 22 }}>{uniqOps}</span>
+                    <span className="kpi" style={{ fontSize: 22 }}><CountUp value={uniqOps} /></span>
                   </div>
                   {planPct !== null ? (
                     <div className="col g4" title={t("v2.today.planHint", { n: planCount ?? 0 })}>

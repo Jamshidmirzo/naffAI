@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { MotionConfig } from "framer-motion";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, Menu } from "lucide-react";
 import { useAuth } from "../../store/auth";
@@ -67,8 +68,30 @@ export function V2Shell() {
     setMenuOpen(false);
   }, [pathname]);
 
+  // Soft cross-fade on every route change without remounting the page
+  // (Web Animations API, nothing lingers on the element afterwards).
+  const routeRef = useRef<HTMLDivElement>(null);
+  const firstRoute = useRef(true);
+  useLayoutEffect(() => {
+    if (firstRoute.current) {
+      firstRoute.current = false;
+      return;
+    }
+    const el = routeRef.current;
+    if (!el || typeof el.animate !== "function") return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    el.animate(
+      [
+        { opacity: 0, transform: "translateY(6px)" },
+        { opacity: 1, transform: "none" },
+      ],
+      { duration: 240, easing: "cubic-bezier(.2,.8,.2,1)" },
+    );
+  }, [pathname]);
+
   const isOperator = role === "operator";
   return (
+    <MotionConfig reducedMotion="user">
     <div className={`nf shell${menuOpen ? " menu-open" : ""}${isOperator ? " is-operator" : ""}`} data-theme={theme} style={{ minHeight: "100vh" }}>
       {!isOperator ? (
         <>
@@ -84,11 +107,14 @@ export function V2Shell() {
       <div className="main-col">
         {isOperator ? <CheckoutReminderBannerV2 /> : null}
         {isOperator ? <BirthdayCelebrationV2 /> : null}
-        <CompatHeader />
-        <Outlet />
+        <div ref={routeRef} className="v2-route">
+          <CompatHeader />
+          <Outlet />
+        </div>
       </div>
       {isOperator ? <OperatorOverlays livestream={!!me.data?.livestream_enabled} language={(me.data?.preferred_language ?? "uz") as "ru" | "uz"} /> : null}
       <CommandPalette />
     </div>
+    </MotionConfig>
   );
 }

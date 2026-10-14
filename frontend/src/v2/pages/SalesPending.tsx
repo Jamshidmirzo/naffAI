@@ -190,7 +190,7 @@ export default function SalesPending() {
           <div className="split">
             <section className="list col g12">
               {validSel.length > 0 ? (
-                <div className="card row g12 wrap" style={{ padding: "10px 16px", background: "var(--ink)", color: "var(--surface)", borderColor: "var(--ink)", position: "sticky", top: 8, zIndex: 5 }}>
+                <div className="card row g12 wrap" style={{ padding: "10px 16px", background: "var(--ink)", color: "var(--surface)", borderColor: "var(--ink)", position: "sticky", top: 72, zIndex: 5 }}>
                   <input className="check" type="checkbox" checked aria-label={t("v2.pending.clear")} onChange={() => setSelected(new Set())} />
                   <span className="s w6 grow">
                     {t("sales_pending.bulk_selected", { count: validSel.length })} · <span className="num">{fmtNum(selSum)}</span> {t("v2.pending.sum")}
@@ -298,13 +298,13 @@ export default function SalesPending() {
             </section>
 
             {focus ? (
-              <aside className="panel card col" aria-label={t("v2.pending.panelAria")} style={{ position: "sticky", top: 8 }}>
+              <aside className="panel card col" aria-label={t("v2.pending.panelAria")} style={{ position: "sticky", top: 72 }}>
                 <div className="card-h">
                   <div className="col" style={{ minWidth: 0 }}>
                     <span className="lbl">{t("v2.pending.saleNo", { id: focus.id })}</span>
                     <span className="h3 trunc">{focus.phone_model}</span>
                   </div>
-                  <span className="badge b-hot">
+                  <span className="badge b-warn">
                     <i className="dot" />
                     {t("v2.sales.st.pending")}
                   </span>

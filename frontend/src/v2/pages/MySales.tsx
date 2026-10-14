@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { ChevronRight, PhoneCall, Users2 } from "lucide-react";
 import { useLang } from "../../store/lang";
 import { useT2 } from "../i18n";
-import { EmptyState, ErrorState, LoadingBlock, PageHeader, cx, fmtNum } from "../ui";
+import { CountUp, EmptyState, ErrorState, LoadingBlock, PageHeader, cx, fmtNum } from "../ui";
 import { useLeadStatuses, useMyActivity, useMySales, type MySaleRow } from "../api/operatorWork";
 
 type Tab = "sales" | "activity";
@@ -137,7 +137,7 @@ function SalesTab({ period }: { period: Period }) {
   const kpi = (label: string, v: { n: number; sum: number }, sub: string, color?: string) => (
     <div className="card pad col g4">
       <span className="lbl">{label}</span>
-      <span className="kpi" style={color ? { color } : undefined}>{fmtNum(v.sum)}</span>
+      <span className="kpi" style={color && v.n > 0 ? { color } : undefined}>{fmtNum(v.sum)}</span>
       <span className="s c3">
         {t(`v2.mysales.count.${plural(v.n)}`, { n: v.n })} · {sub}
       </span>
@@ -312,19 +312,19 @@ function ActivityTab() {
               <span className="icon-tile"><Users2 className="ic" /></span>
               <span className="col g4">
                 <span className="lbl">{t("reports.activity.col.unique_leads")}</span>
-                <span className="kpi">{fmtNum(row.unique_leads_touched)}</span>
+                <span className="kpi"><CountUp value={row.unique_leads_touched} /></span>
               </span>
             </div>
             <div className="card pad row g12">
               <span className="icon-tile"><PhoneCall className="ic" /></span>
               <span className="col g4">
                 <span className="lbl">{t("reports.activity.col.calls_total")}</span>
-                <span className="kpi">{fmtNum(row.calls_total)}</span>
+                <span className="kpi"><CountUp value={row.calls_total} /></span>
               </span>
             </div>
             <Link className="card pad col g4" to="/my/sales" style={{ color: "inherit" }}>
               <span className="lbl">{t("my_activity.my_sales_title")}</span>
-              <span className="kpi">{fmtNum(periodSales.length)}</span>
+              <span className="kpi"><CountUp value={periodSales.length} /></span>
               <span className="s c3">
                 {t("v2.mysales.shareSum", { sum: fmtNum(periodShare) })} · {t("v2.mysales.openAll")}
               </span>

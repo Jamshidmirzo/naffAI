@@ -88,7 +88,7 @@ function initials(name: string | null | undefined): string {
 function saleStatusBadge(s: Pick<SaleListRow, "is_returned" | "status">, t: (k: string) => string) {
   if (s.is_returned) return { label: t("v2.sales.st.returned"), tone: "b-bad" };
   if (s.status === "rejected") return { label: t("v2.sales.st.rejected"), tone: "b-bad" };
-  if (s.status === "pending") return { label: t("v2.sales.st.pending"), tone: "b-hot" };
+  if (s.status === "pending") return { label: t("v2.sales.st.pending"), tone: "b-warn" };
   return { label: t("v2.sales.st.paid"), tone: "b-ok" };
 }
 

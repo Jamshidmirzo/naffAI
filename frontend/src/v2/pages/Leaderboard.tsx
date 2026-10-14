@@ -4,7 +4,7 @@ import { Monitor, Trophy } from "lucide-react";
 import { useAuth } from "../../store/auth";
 import { normaliseRole } from "../../components/RoleGate";
 import { useT2 } from "../i18n";
-import { EmptyState, ErrorState, LoadingBlock, PageHeader, cx, fmtMln, fmtNum } from "../ui";
+import { CountUp, EmptyState, ErrorState, LoadingBlock, PageHeader, cx, fmtMln, fmtNum } from "../ui";
 import { tashkentHM, useLbMe, useLeaderboard, type LbPeriod, type LbRow } from "../api/personal";
 
 const REFRESH_SEC = 60;
@@ -137,7 +137,7 @@ function OperatorBoard() {
                         <span className="h3 trunc">{r.operator_name}</span>
                       </div>
                       <div className="row between" style={{ alignItems: "baseline" }}>
-                        <span className="kpi">{fmtNum(r.count)}</span>
+                        <span className="kpi"><CountUp value={r.count} /></span>
                         <span className="num s c2">{fmtNum(r.total)} {t("v2.personal.lb.sumUnit")}</span>
                       </div>
                     </section>

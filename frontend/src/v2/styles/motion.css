@@ -1,0 +1,171 @@
+/* v2 motion & material layer — hand-written, loaded after atlas.css/app.css.
+   Principles (Apple-like): short, spring-ish easing; only transform/opacity are
+   animated (bars also ease their width on data updates); entrance animations use
+   `backwards` fill so no transform lingers on ancestors of position:fixed UI;
+   everything is switched off under prefers-reduced-motion. */
+
+:where(html[data-design="v2"]) .nf {
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --ease-spring: cubic-bezier(.34, 1.36, .64, 1);
+  --dur-1: .15s;
+  --dur-2: .25s;
+  --dur-3: .45s;
+}
+
+@keyframes v2-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes v2-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes v2-pop { from { opacity: 0; transform: translateY(6px) scale(.965); } to { opacity: 1; transform: none; } }
+@keyframes v2-pop-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(4px) scale(.975); } }
+@keyframes v2-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes v2-slide-l { from { opacity: .4; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes v2-slide-up { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes v2-grow-x { from { transform: scaleX(0); } to { transform: none; } }
+@keyframes v2-grow-y { from { transform: scaleY(0); } to { transform: none; } }
+@keyframes v2-shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+@keyframes v2-ring { 0% { box-shadow: 0 0 0 0 var(--ring, rgba(52, 199, 89, .45)); } 70%, 100% { box-shadow: 0 0 0 7px transparent; } }
+@keyframes v2-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@keyframes v2-draw { from { stroke-dashoffset: var(--len, 60); } to { stroke-dashoffset: 0; } }
+@keyframes v2-aurora-a { from { transform: translate(-6%, -4%) scale(1); } to { transform: translate(8%, 6%) scale(1.15); } }
+@keyframes v2-aurora-b { from { transform: translate(6%, 4%) scale(1.1); } to { transform: translate(-8%, -6%) scale(.95); } }
+@keyframes v2-aurora-c { from { transform: translate(0, 8%) scale(.95); } to { transform: translate(-4%, -8%) scale(1.12); } }
+
+/* ── page & content entrance ─────────────────────────────────────────────── */
+:where(html[data-design="v2"]) .v2-route { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; animation: v2-fade var(--dur-2) var(--ease) backwards; }
+:where(html[data-design="v2"]) .page > * { animation: v2-rise .42s var(--ease) backwards; }
+:where(html[data-design="v2"]) .page > :nth-child(2) { animation-delay: .04s; }
+:where(html[data-design="v2"]) .page > :nth-child(3) { animation-delay: .08s; }
+:where(html[data-design="v2"]) .page > :nth-child(4) { animation-delay: .12s; }
+:where(html[data-design="v2"]) .page > :nth-child(5) { animation-delay: .16s; }
+:where(html[data-design="v2"]) .page > :nth-child(6) { animation-delay: .2s; }
+:where(html[data-design="v2"]) .page > :nth-child(n+7) { animation-delay: .24s; }
+
+/* ── material: glass header, blurred scrims ─────────────────────────────── */
+:where(html[data-design="v2"]) .main-col .top {
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+}
+:where(html[data-design="v2"]) .scrim {
+  -webkit-backdrop-filter: blur(6px) saturate(120%);
+  backdrop-filter: blur(6px) saturate(120%);
+  animation: v2-fade var(--dur-2) var(--ease) backwards;
+}
+
+/* ── overlays ───────────────────────────────────────────────────────────── */
+:where(html[data-design="v2"]) .dlg,
+:where(html[data-design="v2"]) .palette,
+:where(html[data-design="v2"]) .modal { animation: v2-pop .32s var(--ease-spring) backwards; }
+:where(html[data-design="v2"]) .drawer { animation: v2-slide-l .3s var(--ease) backwards; }
+:where(html[data-design="v2"]) .bulkbar { animation: v2-slide-up .3s var(--ease-spring) backwards; }
+:where(html[data-design="v2"]) .v2-menu { animation: v2-pop .18s var(--ease) backwards; transform-origin: top right; }
+:where(html[data-design="v2"]) .is-leaving .scrim { animation: v2-fade-out .16s var(--ease) forwards; }
+:where(html[data-design="v2"]) .is-leaving .dlg { animation: v2-pop-out .16s var(--ease) forwards; }
+
+/* ── navigation ─────────────────────────────────────────────────────────── */
+:where(html[data-design="v2"]) .side-item,
+:where(html[data-design="v2"]) .rail-item { position: relative; isolation: isolate; }
+:where(html[data-design="v2"]) .side-item.is-on,
+:where(html[data-design="v2"]) .rail-item.is-on { background: transparent; }
+:where(html[data-design="v2"]) .nav-pill { position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--line); }
+:where(html[data-design="v2"]) .side-grp .chev { transition: transform var(--dur-2) var(--ease); }
+:where(html[data-design="v2"]) .side-grp.is-open .chev { transform: rotate(180deg); }
+:where(html[data-design="v2"]) .rail-item .ic,
+:where(html[data-design="v2"]) .side-item .ic { transition: color var(--dur-1) var(--ease), transform var(--dur-2) var(--ease-spring); }
+:where(html[data-design="v2"]) .rail-item:active .ic,
+:where(html[data-design="v2"]) .side-item:active .ic { transform: scale(.9); }
+
+/* ── controls ───────────────────────────────────────────────────────────── */
+:where(html[data-design="v2"]) .btn { transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease), box-shadow var(--dur-2) var(--ease), transform var(--dur-1) var(--ease); }
+:where(html[data-design="v2"]) .btn:not([disabled]):active,
+:where(html[data-design="v2"]) .keycap:active,
+:where(html[data-design="v2"]) .chip:active { transform: scale(.97); }
+:where(html[data-design="v2"]) .btn-pri:not([disabled]):hover { box-shadow: 0 4px 14px color-mix(in srgb, var(--brand) 32%, transparent); }
+:where(html[data-design="v2"]) .btn-ok:not([disabled]):hover { box-shadow: 0 6px 20px color-mix(in srgb, var(--ok-solid) 38%, transparent); }
+:where(html[data-design="v2"]) .seg > * { transition: background-color var(--dur-2) var(--ease), color var(--dur-1) var(--ease), box-shadow var(--dur-2) var(--ease); }
+:where(html[data-design="v2"]) .tab { position: relative; transition: color var(--dur-1) var(--ease), border-color var(--dur-2) var(--ease); }
+:where(html[data-design="v2"]) .switch { justify-content: flex-start !important; transition: background-color var(--dur-2) var(--ease); }
+:where(html[data-design="v2"]) .switch > i { transition: transform var(--dur-2) var(--ease-spring); }
+:where(html[data-design="v2"]) .switch.is-on > i { transform: translateX(16px); }
+:where(html[data-design="v2"]) .check { transition: transform var(--dur-1) var(--ease); }
+:where(html[data-design="v2"]) .check:active { transform: scale(.88); }
+
+/* ── surfaces that react ────────────────────────────────────────────────── */
+:where(html[data-design="v2"]) a.card,
+:where(html[data-design="v2"]) button.card,
+:where(html[data-design="v2"]) .seat,
+:where(html[data-design="v2"]) .bcard,
+:where(html[data-design="v2"]) .queue-item { transition: transform var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease), border-color var(--dur-2) var(--ease), background-color var(--dur-3) var(--ease); }
+:where(html[data-design="v2"]) a.card:hover,
+:where(html[data-design="v2"]) button.card:hover,
+:where(html[data-design="v2"]) button.seat:hover,
+:where(html[data-design="v2"]) a.seat:hover,
+:where(html[data-design="v2"]) .bcard:hover { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(0, 0, 0, .04), 0 10px 24px rgba(0, 0, 0, .08); }
+:where(html[data-design="v2"]) .queue-item:hover { background: var(--surface); border-color: var(--line); }
+:where(html[data-design="v2"]) .seat::before { transition: background-color var(--dur-3) var(--ease); }
+:where(html[data-design="v2"]) .seat.st-call::before { animation: v2-breathe 2.4s ease-in-out infinite; }
+
+/* ── data: bars, charts, numbers, skeletons ─────────────────────────────── */
+:where(html[data-design="v2"]) .bar > i { transform-origin: left center; animation: v2-grow-x .7s var(--ease) backwards; transition: width .5s var(--ease); }
+:where(html[data-design="v2"]) .dayline .done { transform-origin: left center; animation: v2-grow-x .9s var(--ease) backwards; transition: width .6s var(--ease); }
+:where(html[data-design="v2"]) .slot.on { transform-origin: left center; animation: v2-grow-x .5s var(--ease) backwards; }
+:where(html[data-design="v2"]) .chart > span > i,
+:where(html[data-design="v2"]) .grow-y { transform-origin: center bottom; animation: v2-grow-y .7s var(--ease) backwards; transition: height .5s var(--ease); }
+:where(html[data-design="v2"]) .chart > span:nth-child(2n) > i,
+:where(html[data-design="v2"]) .grow-y:nth-child(2n) { animation-delay: .03s; }
+:where(html[data-design="v2"]) .hm > i { animation: v2-fade .6s var(--ease) backwards; }
+:where(html[data-design="v2"]) .sk {
+  background: linear-gradient(90deg, var(--surface-3) 0%, var(--surface-3) 35%, color-mix(in srgb, var(--surface-3) 40%, var(--surface)) 50%, var(--surface-3) 65%, var(--surface-3) 100%);
+  background-size: 300% 100%;
+  animation: v2-shimmer 1.4s linear infinite;
+}
+
+/* ── live indicators ────────────────────────────────────────────────────── */
+:where(html[data-design="v2"]) .ava[data-s="call"]::after { --ring: color-mix(in srgb, var(--brand) 55%, transparent); animation: v2-ring 1.8s var(--ease) infinite; }
+:where(html[data-design="v2"]) .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok-solid); flex: none; --ring: color-mix(in srgb, var(--ok-solid) 50%, transparent); animation: v2-ring 2s var(--ease) infinite; }
+:where(html[data-design="v2"]) .dot.live { --ring: color-mix(in srgb, currentColor 50%, transparent); animation: v2-ring 2s var(--ease) infinite; }
+:where(html[data-design="v2"]) .dayline .now { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 22%, transparent); animation: v2-breathe 2.6s ease-in-out infinite; }
+
+/* ── empty states & success marks ───────────────────────────────────────── */
+:where(html[data-design="v2"]) .empty > :first-child,
+:where(html[data-design="v2"]) .glow-tile { animation: v2-pop .5s var(--ease-spring) backwards; }
+:where(html[data-design="v2"]) .glow-tile { position: relative; isolation: isolate; }
+:where(html[data-design="v2"]) .glow-tile::before {
+  content: ""; position: absolute; inset: -18px; z-index: -1; border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, currentColor 22%, transparent), transparent);
+  filter: blur(6px);
+}
+:where(html[data-design="v2"]) .draw-check circle { stroke-dasharray: 152; --len: 152; animation: v2-draw .7s var(--ease) .1s backwards; }
+:where(html[data-design="v2"]) .draw-check path { stroke-dasharray: 40; --len: 40; animation: v2-draw .45s var(--ease) .6s backwards; }
+
+/* ── login aurora ───────────────────────────────────────────────────────── */
+:where(html[data-design="v2"]) .aurora { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+:where(html[data-design="v2"]) .aurora > i {
+  position: absolute; display: block; width: 52vmax; height: 52vmax; border-radius: 50%;
+  filter: blur(80px); opacity: .55; will-change: transform;
+}
+:where(html[data-design="v2"]) .aurora > i:nth-child(1) { left: -12vmax; top: -18vmax; background: radial-gradient(closest-side, #5AC8FA, transparent); animation: v2-aurora-a 22s ease-in-out infinite alternate; }
+:where(html[data-design="v2"]) .aurora > i:nth-child(2) { right: -16vmax; top: 4vmax; background: radial-gradient(closest-side, #5E5CE6, transparent); animation: v2-aurora-b 26s ease-in-out infinite alternate; }
+:where(html[data-design="v2"]) .aurora > i:nth-child(3) { left: 18vmax; bottom: -26vmax; background: radial-gradient(closest-side, #30D5C8, transparent); animation: v2-aurora-c 30s ease-in-out infinite alternate; }
+:where(html[data-design="v2"]) .nf[data-theme="dark"] .aurora > i { opacity: .28; }
+:where(html[data-design="v2"]) .glass {
+  background: color-mix(in srgb, var(--surface) 72%, transparent) !important;
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+  border-color: color-mix(in srgb, var(--line) 70%, transparent) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 24px 60px rgba(0, 0, 0, .10) !important;
+}
+
+/* ── reduced motion ─────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  :where(html[data-design="v2"]) *,
+  :where(html[data-design="v2"]) *::before,
+  :where(html[data-design="v2"]) *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0s !important;
+    transition-duration: .001ms !important;
+  }
+}
+
+:where(html[data-design="v2"]) .palette .li { transition: background-color .12s var(--ease); }

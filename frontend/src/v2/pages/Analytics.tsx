@@ -178,7 +178,7 @@ export default function Analytics() {
                       <span className="w6">{s.label}</span>
                       <span className="row g8"><span className="num w6">{fmtNum(s.n)}</span><span className="xs c3">{i === 0 ? (s.n ? "100%" : "—") : pct1(s.n, team.leads)}</span></span>
                     </div>
-                    <span className="bar" style={{ height: 22, borderRadius: 7 }}>
+                    <span className="bar" style={{ height: 10, borderRadius: 5 }}>
                       <i className={s.ok ? "ok" : undefined} style={{ width: `${team.leads ? Math.max(s.n ? 2 : 0, Math.min(100, (s.n / team.leads) * 100)) : 0}%`, borderRadius: 7 }} />
                     </span>
                   </div>

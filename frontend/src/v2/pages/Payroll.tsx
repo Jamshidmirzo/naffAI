@@ -3,7 +3,7 @@ import { ArrowDown, Check, ChevronDown, CircleX, Download, FileText, Lock, Searc
 import { toast } from "../../components/ui";
 import { useLang } from "../../store/lang";
 import { useT2 } from "../i18n";
-import { Dialog, EmptyState, ErrorState, LoadingBlock, PageHeader, cx, fmtNum, useConfirm } from "../ui";
+import { CountUp, Dialog, EmptyState, ErrorState, LoadingBlock, PageHeader, cx, fmtNum, useConfirm } from "../ui";
 import {
   payrollDownload,
   usePayrollDetail,
@@ -131,7 +131,7 @@ export default function Payroll() {
     }, 50);
   };
 
-  const cols = "minmax(160px, 1fr) 104px 104px 84px 84px 112px";
+  const cols = "minmax(140px, 1fr) 96px 84px 72px 72px 104px";
 
   return (
     <>
@@ -185,7 +185,7 @@ export default function Payroll() {
         <div className="split">
           <section className="list card tbl">
             <div style={{ overflowX: "auto" }}>
-              <div style={{ minWidth: 640 }}>
+              <div style={{ minWidth: 690 }}>
                 <div className="tr th" style={{ gridTemplateColumns: cols }}>
                   <span>{t("v2.team.payroll.colOperator")}</span>
                   <span className="r">{t("v2.team.payroll.colPlan")}</span>
@@ -434,7 +434,7 @@ function PayrollBreakdown({ d }: { d: PayrollDetail }) {
         <div className="well row between">
           <div className="col g4">
             <span className="lbl">{t("v2.team.payroll.toPay")}</span>
-            <span className="kpi" style={zero ? { color: "var(--ink-3)" } : undefined}>{fmtNum(d.total_earned)}</span>
+            <span className="kpi" style={zero ? { color: "var(--ink-3)" } : undefined}><CountUp value={d.total_earned} /></span>
           </div>
           <span className="num xs c3">{t("v2.team.payroll.of", { v: fmtNum(d.max_possible) })}</span>
         </div>

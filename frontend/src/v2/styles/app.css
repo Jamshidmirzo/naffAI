@@ -17,7 +17,8 @@
   :where(html[data-design="v2"]) .v2-burger { display: inline-flex; position: fixed; top: 12px; left: 12px; z-index: 56; }
   :where(html[data-design="v2"]) .shell.menu-open .v2-menu-scrim { display: block; position: fixed; inset: 0; z-index: 54; background: var(--scrim); }
   :where(html[data-design="v2"]) .shell:not(.is-operator) .main-col > .top,
-  :where(html[data-design="v2"]) .shell:not(.is-operator) .main-col > main > .top:first-child { padding-left: 64px; }
+  :where(html[data-design="v2"]) .shell:not(.is-operator) .main-col > .v2-route > .top,
+  :where(html[data-design="v2"]) .shell:not(.is-operator) .main-col > .v2-route > main > .top:first-child { padding-left: 64px; }
 }
 @media (max-width: 640px) {
   :where(html[data-design="v2"]) .rail-wrap { flex-basis: 64px; }
@@ -37,9 +38,14 @@
 :where(html[data-design="v2"]) .v2-menu > a:hover { background: var(--surface-2); }
 :where(html[data-design="v2"]) .bulkbar { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 40; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-radius: 14px; background: var(--ink); color: var(--surface); box-shadow: var(--shadow); max-width: calc(100vw - 32px); }
 /* keep the menu column painted on very long pages */
-:where(html[data-design="v2"]) .shell { background: linear-gradient(to right, var(--surface) 248px, var(--line) 248px, var(--line) 249px, var(--bg) 249px); }
-:where(html[data-design="v2"]) .shell.is-operator { background: linear-gradient(to right, var(--surface) 84px, var(--line) 84px, var(--line) 85px, var(--bg) 85px); }
+:where(html[data-design="v2"]) .shell { background: linear-gradient(to right, var(--surface-2) 248px, var(--line) 248px, var(--line) 249px, var(--bg) 249px); }
+:where(html[data-design="v2"]) .shell.is-operator { background: linear-gradient(to right, var(--surface-2) 84px, var(--line) 84px, var(--line) 85px, var(--bg) 85px); }
 @media (max-width: 900px) { :where(html[data-design="v2"]) .shell:not(.is-operator) { background: var(--bg); } }
-@media (max-width: 640px) { :where(html[data-design="v2"]) .shell.is-operator { background: linear-gradient(to right, var(--surface) 64px, var(--line) 64px, var(--line) 65px, var(--bg) 65px); } }
+@media (max-width: 640px) { :where(html[data-design="v2"]) .shell.is-operator { background: linear-gradient(to right, var(--surface-2) 64px, var(--line) 64px, var(--line) 65px, var(--bg) 65px); } }
 @keyframes v2-spin { to { transform: rotate(360deg); } }
 :where(html[data-design="v2"]) .v2-spin { animation: v2-spin 0.9s linear infinite; }
+
+/* page header keeps title, meta and actions on one line on desktop; meta truncates */
+@media (min-width: 1100px) { :where(html[data-design="v2"]) .top { flex-wrap: nowrap; } }
+/* operator rail labels: a touch larger for legibility */
+:where(html[data-design="v2"]) .rail-item { font-size: 11px; }

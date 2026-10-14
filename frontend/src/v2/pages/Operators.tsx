@@ -635,7 +635,7 @@ export function OperatorsPage({ scope }: { scope: "manager" | "super" }) {
         <div className="split">
           <section className="list card tbl" style={{ overflow: "hidden" }}>{listBody}</section>
 
-          <aside className="panel card col" style={{ flex: "0 1 400px", position: "sticky", top: 16 }}>
+          <aside className="panel card col" style={{ flex: "0 1 400px", position: "sticky", top: 80 }}>
             {selected ? (
               <SidePanel
                 o={selected}
@@ -755,7 +755,7 @@ function SidePanel(p: SidePanelProps) {
             {o.birth_date ? ` · ${t("op_detail.birthday_manager_prefix")} ${fmtDay(o.birth_date)}` : ""}
           </span>
           <div className="row g6 wrap">
-            <span className={cx("badge", o.status === "active" ? "b-hot" : "")}>{statusLabel}</span>
+            <span className={cx("badge", o.status === "active" ? "b-ok" : "")}>{statusLabel}</span>
             {o.is_paused ? (
               <span className="badge b-warn" title={t("operators.paused_badge_title")}>
                 <Pause className="ic ic-s" />

@@ -38,7 +38,7 @@ function initials(name: string) {
 }
 
 function badgeFor(t: T, row: DistributionOperatorRow): { cls: string; label: string; s?: string } {
-  if (row.eligible) return { cls: "b-hot", label: t("orphans.dist.badge.ok"), s: "on" };
+  if (row.eligible) return { cls: "b-ok", label: t("orphans.dist.badge.ok"), s: "on" };
   if (row.reason.startsWith("Квота")) return { cls: "", label: t("orphans.dist.badge.quota"), s: "on" };
   if (row.reason.includes("morning-gate")) return { cls: "b-bad", label: t("orphans.dist.badge.gate"), s: "late" };
   if (row.reason.includes("не в статусе")) return { cls: "b-bad", label: t("orphans.dist.badge.disabled") };

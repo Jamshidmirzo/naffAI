@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from "lucide-react";
 import { useAuth } from "../../store/auth";
 import { useT2 } from "../i18n";
-import { EmptyState, ErrorState, LoadingBlock, PageHeader, cx, fmtMln, fmtNum } from "../ui";
+import { CountUp, EmptyState, ErrorState, LoadingBlock, PageHeader, cx, fmtMln, fmtNum } from "../ui";
 import {
   barCls,
   initials,
@@ -258,17 +258,17 @@ export default function TeamSales() {
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16 }}>
       <section className="card pad col g4">
         <span className="lbl">{t("super_manager.kpi_period_total")}</span>
-        <span className="kpi num">{fmtNum(kTotal)}</span>
+        <span className="kpi num"><CountUp value={kTotal} /></span>
         <span className="s c3">{salesWord(kCount)}</span>
       </section>
       <section className="card pad col g4">
         <span className="lbl">{t("super_manager.kpi_ops_active")}</span>
-        <span className="kpi num">{fmtNum(kActive)}</span>
+        <span className="kpi num"><CountUp value={kActive} /></span>
         <span className="s c3">{t(pluralKey("v2.branch.trainees", kTrainee), { n: kTrainee })}</span>
       </section>
       <section className="card pad col g4">
         <span className="lbl">{t("super_manager.kpi_my_managers")}</span>
-        <span className="kpi num">{fmtNum(managers.length)}</span>
+        <span className="kpi num"><CountUp value={managers.length} /></span>
         <span className="s c3">{t("v2.tsales.opsTotal", { ops: opsWord(ops.length) })}</span>
       </section>
       <section className="card pad col g4">
