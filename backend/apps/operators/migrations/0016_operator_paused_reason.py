@@ -3,7 +3,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("operators", "0017_require_checkin_default_true"),
+        ("operators", "0015_livestream_default_true"),
     ]
 
     operations = [
