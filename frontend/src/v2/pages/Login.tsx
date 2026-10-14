@@ -71,11 +71,10 @@ export default function Login() {
 
   return (
     <div className="nf" data-theme={theme} style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)" }}>
-      <i className="ikat" style={{ height: 10 }} aria-hidden />
 
       <div className="row between" style={{ padding: "20px clamp(16px, 4vw, 32px)", gap: 12 }}>
         <div className="wordmark" style={{ padding: 0 }}>
-          <i className="ikat ikat-mark" aria-hidden />naff<b>AI</b>
+          <i className="logo-mark" aria-hidden />naff<b>AI</b>
         </div>
         <div className="seg" role="group" aria-label={t("v2.personal.login.lang")}>
           <button className={cx(lang.lang === "ru" && "is-on")} type="button" aria-pressed={lang.lang === "ru"} onClick={() => lang.set("ru")}>

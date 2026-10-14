@@ -41,7 +41,6 @@ export default function Scan() {
 function Card({ children, center }: { children: ReactNode; center?: boolean }) {
   return (
     <section className="card col" style={{ overflow: "hidden" }}>
-      <i className="ikat" style={{ height: 10 }} aria-hidden />
       <div className="col g16" style={{ padding: 24, ...(center ? { alignItems: "center", textAlign: "center" } : {}) }}>
         {children}
       </div>

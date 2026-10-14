@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import confetti from "canvas-confetti";
-import { X } from "lucide-react";
+import { Cake, X } from "lucide-react";
 import { toast } from "../../components/ui";
 import { useMe } from "../../hooks/useMe";
 import { useAuth } from "../../store/auth";
@@ -70,7 +70,7 @@ export default function BirthdayCelebrationV2() {
         aria-live="polite"
         style={{ padding: "10px 16px", borderRadius: 12, background: "var(--warn-bg)", color: "var(--warn)", boxShadow: "var(--shadow)" }}
       >
-        <i className="ikat ikat-mark" aria-hidden />
+        <Cake className="ic" aria-hidden />
         <span className="s w6 grow">{t("v2.ov.bday.banner", { name })}</span>
         <button
           className="btn btn-ghost btn-sq btn-sm"

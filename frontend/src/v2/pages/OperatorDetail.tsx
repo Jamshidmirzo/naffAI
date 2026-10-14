@@ -1136,7 +1136,7 @@ export default function OperatorDetail() {
           ) : qrQ.data ? (
             <img src={qrQ.data} alt="QR" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
           ) : (
-            <span className="xs" style={{ color: "#6B6880" }}>{t("op_detail.generating")}</span>
+            <span className="xs" style={{ color: "var(--ink-3)" }}>{t("op_detail.generating")}</span>
           )}
         </div>
         <p className="xs c3" style={{ textAlign: "center", margin: 0 }}>{t("op_detail.qr_personal_hint")}</p>
@@ -1336,7 +1336,7 @@ function BreakdownCard({ t, title, sub, colLabel, rows, loading, avatars }: { t:
 
 const HEAT: Record<OpDetailHeatDay["status"], { bg: string; fg: string; key: string }> = {
   on_time: { bg: "var(--ok-solid)", fg: "#FFFFFF", key: "attendance.stats.status_on_time" },
-  late: { bg: "var(--warn-solid)", fg: "#15132B", key: "attendance.stats.status_late" },
+  late: { bg: "var(--warn-solid)", fg: "#1D1D1F", key: "attendance.stats.status_late" },
   absent: { bg: "var(--bad-solid)", fg: "#FFFFFF", key: "attendance.stats.legend_absent_short" },
   weekend: { bg: "var(--line-2)", fg: "var(--ink-3)", key: "attendance.stats.status_weekend" },
   auto_closed: { bg: "repeating-linear-gradient(45deg, #D97706, #D97706 4px, #F59E0B 4px, #F59E0B 8px)", fg: "#FFFFFF", key: "attendance.stats.status_auto_closed" },

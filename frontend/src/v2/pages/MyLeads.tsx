@@ -1448,12 +1448,11 @@ function QueueCard({
 function EmptyFocus({ postponed, nextCallback, onPostponed }: { postponed: number; nextCallback: CallbackRow | null; onPostponed: () => void }) {
   const t = useT2();
   return (
-    <section className="focus" style={{ alignItems: "center", textAlign: "center", padding: "0 0 40px", overflow: "hidden" }}>
-      <i className="ikat-soft" style={{ width: "100%", height: 120, display: "block" }} aria-hidden="true" />
-      <span className="icon-tile t-ok" style={{ width: 64, height: 64, borderRadius: 18, marginTop: -32, boxShadow: "0 0 0 6px var(--surface)" }}>
-        <CheckCircle2 className="ic ic-xl" />
+    <section className="focus" style={{ alignItems: "center", textAlign: "center", padding: "56px 32px 48px", gap: 16 }}>
+      <span className="icon-tile t-ok" style={{ width: 56, height: 56, borderRadius: 16 }}>
+        <CheckCircle2 className="ic ic-l" />
       </span>
-      <h2 className="display" style={{ fontSize: 26, lineHeight: "34px" }}>{t("my.empty.title")}</h2>
+      <h2 className="h1">{t("my.empty.title")}</h2>
       <p className="c2" style={{ maxWidth: 460 }}>{t("v2.op.empty.body")}</p>
       <div className="row g8 wrap" style={{ justifyContent: "center" }}>
         <Link className="btn btn-pri" to="/lessons/today">{t("v2.op.empty.lesson")}</Link>

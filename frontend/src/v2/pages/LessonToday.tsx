@@ -83,7 +83,6 @@ export default function LessonToday() {
             <section className="list card" style={{ overflow: "hidden" }}>
               {notReady ? (
                 <>
-                  <i className="ikat-soft" style={{ width: "100%", height: 48 }} aria-hidden="true" />
                   <EmptyState
                     title={t("v2.personal.lesson.notReadyTitle")}
                     body={t("v2.personal.lesson.notReadyBody")}

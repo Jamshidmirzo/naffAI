@@ -129,9 +129,8 @@ export default function CheckoutBackfillGateV2() {
   return (
     <Layer z={310} style={{ background: "var(--bg)", overflowY: "auto" }}>
       <div role="dialog" aria-modal="true" aria-labelledby="v2-bf-title" style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
-        <i className="ikat" style={{ height: 10, flex: "none" }} aria-hidden />
         <div className="row between g12" style={{ padding: "16px clamp(16px, 3vw, 32px)" }}>
-          <div className="wordmark" style={{ padding: 0 }}><i className="ikat ikat-mark" aria-hidden />naff<b>AI</b></div>
+          <div className="wordmark" style={{ padding: 0 }}><i className="logo-mark" aria-hidden />naff<b>AI</b></div>
           {name ? (
             <div className="row g8" style={{ minWidth: 0 }}>
               <span className="ava">{initials(name)}</span>

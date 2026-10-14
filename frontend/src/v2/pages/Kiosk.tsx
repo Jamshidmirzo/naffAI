@@ -334,7 +334,6 @@ function SuccessCard({ r, onReset }: { r: KioskScanResult; onReset: () => void }
   const at = isOut ? r.checked_out_at : r.checked_in_at;
   return (
     <section className="card col" role="status" aria-live="polite" style={{ overflow: "hidden", alignItems: "center", textAlign: "center", paddingBottom: 24, maxWidth: 420, width: "100%", alignSelf: "center" }}>
-      <i className="ikat" style={{ height: 10, alignSelf: "stretch" }} aria-hidden="true" />
       <span className="icon-tile" style={{ width: 64, height: 64, borderRadius: 18, marginTop: 24, background: c.bg, color: c.fg }}><Check className="ic ic-l" /></span>
       <span className="display" style={{ fontSize: 20, marginTop: 12 }}>{t("attendance.kiosk.done_title")}</span>
       <span className="s w6" style={{ color: c.fg }}>{isOut ? t("attendance.kiosk.done_checkout") : t("attendance.kiosk.done_checkin")}</span>

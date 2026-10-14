@@ -57,7 +57,6 @@ export default function Screen() {
       data-theme="dark"
       style={{ position: "fixed", inset: 0, zIndex: 100, overflow: "auto", display: "flex", flexDirection: "column", background: "var(--bg)", userSelect: "none" }}
     >
-      <i className="ikat" style={{ height: 16, flex: "none" }} aria-hidden />
       <div className="row between wrap" style={{ padding: "32px 56px 8px", alignItems: "flex-start" }}>
         <div className="col g6" style={{ minWidth: 0 }}>
           <span className="lbl" style={{ color: "var(--brand-text)" }}>{t("v2.admin.screen.title")}</span>

@@ -552,7 +552,7 @@ export default function Branch() {
             <>
               <div className="row g6" style={{ minWidth: 0 }}>
                 <span className="num xs c2 trunc grow">{c.user.username}</span>
-                <span className="badge b-hot" style={{ height: 20 }}>{t("v2.branch.roleManager")}</span>
+                <span className="badge" style={{ height: 20 }}>{t("v2.branch.roleManager")}</span>
               </div>
               <span className="xs c3">
                 {t("v2.branch.created")} <span className="num">{fmtDate(c.user.date_joined)}</span>
@@ -602,7 +602,6 @@ export default function Branch() {
           {cols.map(renderCol)}
           {noManagers ? (
             <div className="ph" style={{ minHeight: 360, gap: 10, padding: 20 }}>
-              <i className="ikat-soft" style={{ width: 96, height: 56, borderRadius: 12, display: "block" }} aria-hidden="true" />
               <span className="s w6" style={{ color: "var(--ink)" }}>{t("v2.branch.firstRunTitle")}</span>
               <span className="xs" style={{ maxWidth: 240 }}>{t("v2.branch.firstRunBody")}</span>
               <button className="btn btn-pri btn-sm" type="button" onClick={() => setAddOpen(true)}>

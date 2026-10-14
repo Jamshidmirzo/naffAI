@@ -129,7 +129,7 @@ export function SideNav() {
     return (
       <nav className="rail" aria-label={t("v2.nav.sections")}>
         <div className="col" style={{ alignItems: "center", gap: 4, padding: "2px 0 10px" }}>
-          <i className="ikat ikat-mark" style={{ width: 22, height: 30, borderRadius: 6 }} aria-hidden />
+          <i className="logo-mark" aria-hidden />
           <span className="display" style={{ fontSize: 13 }}>naff</span>
         </div>
         <button className="rail-item" type="button" onClick={openPalette} aria-label={t("v2.nav.search")}>
@@ -157,7 +157,7 @@ export function SideNav() {
 
   return (
     <nav className="side" aria-label={t("v2.nav.sections")}>
-      <div className="wordmark"><i className="ikat ikat-mark" aria-hidden />naff<b>AI</b></div>
+      <div className="wordmark"><i className="logo-mark" aria-hidden />naff<b>AI</b></div>
       <button className="cmd" type="button" style={{ minWidth: 0, margin: "0 2px 6px" }} onClick={openPalette}>
         <Search className="ic" />
         {t("v2.nav.search")}

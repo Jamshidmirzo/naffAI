@@ -54,8 +54,8 @@ const OVERLAY_MS = 4000;
 const POLL_MS = 30_000;
 const APPLAUSE_SRC = "/sounds/applause-office.mp3";
 const APPLAUSE_VOLUME = 0.6;
-// Атлас palette (brand, ikat gold, ok, hot, ikat red, brand-dark).
-const CONFETTI_COLORS = ["#2D2A8C", "#F2B01E", "#11805A", "#E8771C", "#C62F57", "#5550D6"];
+// Apple system colours (blue, green, orange, yellow, pink, indigo).
+const CONFETTI_COLORS = ["#0071E3", "#34C759", "#FF9F0A", "#FFD60A", "#FF375F", "#5E5CE6"];
 
 function isFresh(createdAt: string): boolean {
   const ts = Date.parse(createdAt);
@@ -217,7 +217,6 @@ export default function SaleCelebrationV2() {
           aria-live="polite"
           style={{ width: 460, maxWidth: "100%", padding: "32px 28px 24px", alignItems: "center", textAlign: "center", boxShadow: "var(--shadow)", border: 0, overflow: "hidden", pointerEvents: "auto", animation: "v2-sale-pop 300ms ease-out" }}
         >
-          <i className="ikat" style={{ height: 12, alignSelf: "stretch", margin: "-32px -28px 8px", flex: "none" }} aria-hidden />
           {current.avatarUrl ? (
             <img src={current.avatarUrl} alt="" className="ava ava-xl" style={{ objectFit: "cover" }} />
           ) : (

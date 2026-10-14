@@ -72,12 +72,10 @@ export interface DialogProps {
   /** One-time secrets: no close on backdrop/Esc/×; only an explicit footer action closes. */
   locked?: boolean;
   danger?: boolean;
-  /** Ikat stripe on top (celebration / morning windows). */
-  stripe?: boolean;
 }
 
 /** The standard v2 window (.dlg): header with ×, body, footer buttons on the right. */
-export function Dialog({ open, onClose, title, sub, children, footer, width = 480, locked, danger, stripe }: DialogProps) {
+export function Dialog({ open, onClose, title, sub, children, footer, width = 480, locked, danger }: DialogProps) {
   const t = useT2();
   useEffect(() => {
     if (!open || locked) return;
@@ -91,7 +89,6 @@ export function Dialog({ open, onClose, title, sub, children, footer, width = 48
       <div className="scrim" onClick={locked ? undefined : onClose} />
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, pointerEvents: "none" }}>
         <section className="dlg" role="dialog" aria-modal="true" style={{ width, maxWidth: "100%", maxHeight: "calc(100vh - 48px)", overflow: "hidden", display: "flex", flexDirection: "column", pointerEvents: "auto" }}>
-          {stripe ? <i className="ikat" style={{ height: 12, flex: "none" }} aria-hidden /> : null}
           <div className="dlg-h" style={{ flex: "none" }}>
             <div className="col g4">
               <h2 className="h2" style={danger ? { color: "var(--bad)" } : undefined}>{title}</h2>

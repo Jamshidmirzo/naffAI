@@ -14,8 +14,8 @@ import { useLiveGlobalStatus, useLiveGlobalToggle, useLiveNow } from "../api/tea
 
 type LivekitSDK = typeof import("livekit-client");
 
-const TILE_BG = "#15132B";
-const PLAYER_BG = "#0E0D1A";
+const TILE_BG = "#1C1C1E";
+const PLAYER_BG = "#000000";
 
 type Tile = { identity: string; operatorName: string; operatorId: number };
 

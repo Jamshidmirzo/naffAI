@@ -139,9 +139,9 @@ export function QrBox({ token, isPending, isError, error, size = 240 }: { token?
       {token ? (
         <canvas ref={ref} aria-label="QR" style={{ width: "100%", height: "100%", imageRendering: "pixelated" }} />
       ) : isError ? (
-        <span className="s" style={{ color: "#B8204A", textAlign: "center", padding: 8 }}>{apiErrorMessage(error)}</span>
+        <span className="s" style={{ color: "var(--bad)", textAlign: "center", padding: 8 }}>{apiErrorMessage(error)}</span>
       ) : isPending ? (
-        <span className="s" style={{ color: "#6B6880" }}>{t("v2.ov.qr.loading")}</span>
+        <span className="s" style={{ color: "var(--ink-3)" }}>{t("v2.ov.qr.loading")}</span>
       ) : null}
     </div>
   );
@@ -238,7 +238,6 @@ export function ShiftResultCard({ result, onClose, z = 200 }: { result: ShiftRes
       <div className="scrim" onClick={onClose} />
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, pointerEvents: "none" }}>
         <section className="card col" role="status" aria-live="polite" onClick={(e) => e.stopPropagation()} style={{ width: 400, maxWidth: "100%", overflow: "hidden", alignItems: "center", textAlign: "center", paddingBottom: 20, gap: 6, pointerEvents: "auto", boxShadow: "var(--shadow)" }}>
-          <i className="ikat" style={{ height: 8, alignSelf: "stretch" }} aria-hidden />
           <span className="icon-tile t-ok" style={{ width: 52, height: 52, borderRadius: 16, marginTop: 18 }}>
             <Check className="ic ic-l" />
           </span>

@@ -111,9 +111,8 @@ export default function CheckinGateV2() {
     <>
       <Layer z={300} style={{ background: "var(--bg)", overflowY: "auto" }}>
         <div role="dialog" aria-modal="true" aria-labelledby="v2-gate-title" style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
-          <i className="ikat" style={{ height: 10, flex: "none" }} aria-hidden />
           <div className="row between g12" style={{ padding: "16px clamp(16px, 3vw, 32px)", flexWrap: "wrap" }}>
-            <div className="wordmark" style={{ padding: 0 }}><i className="ikat ikat-mark" aria-hidden />naff<b>AI</b></div>
+            <div className="wordmark" style={{ padding: 0 }}><i className="logo-mark" aria-hidden />naff<b>AI</b></div>
             <div className="row g12">
               <span className="ava">{initials(name)}</span>
               <span className="col" style={{ minWidth: 0 }}>

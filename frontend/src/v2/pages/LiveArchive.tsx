@@ -7,8 +7,8 @@ import { useLiveOperatorOptions, useLiveRecordings } from "../api/team/trainingL
 import { LiveTabs } from "./LiveWall";
 
 const COLS = "minmax(0, 1fr) 168px 92px 84px 104px";
-const TILE_BG = "#15132B";
-const PLAYER_BG = "#0E0D1A";
+const TILE_BG = "#1C1C1E";
+const PLAYER_BG = "#000000";
 
 const fmtStart = (iso: string | null) =>
   iso

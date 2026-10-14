@@ -57,7 +57,6 @@ export default function MorningGreetingV2({ language = "uz" }: { language?: "ru"
       <div className="scrim" onClick={onClose} />
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, pointerEvents: "none" }}>
         <section className="dlg" role="dialog" aria-modal="true" aria-labelledby="v2-mg-title" style={{ width: 520, maxWidth: "100%", overflow: "hidden", pointerEvents: "auto" }}>
-          <i className="ikat" style={{ height: 12, flex: "none" }} aria-hidden />
           <div className="col g16" style={{ padding: "clamp(20px, 3vw, 28px)" }}>
             <span className="lbl" style={{ color: "var(--brand-text)" }}>{date}</span>
             <h2 className="display" id="v2-mg-title" style={{ fontSize: 26, lineHeight: "34px", margin: 0 }}>

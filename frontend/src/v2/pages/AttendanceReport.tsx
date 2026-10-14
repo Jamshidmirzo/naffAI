@@ -21,7 +21,7 @@ type T2 = ReturnType<typeof useT2>;
 
 const HEAT: Record<AttHeatStatus, { bg: string; fg: string; key: string; legendKey: string }> = {
   on_time: { bg: "var(--ok-solid)", fg: "#FFFFFF", key: "attendance.stats.status_on_time", legendKey: "attendance.stats.status_on_time" },
-  late: { bg: "var(--warn-solid)", fg: "#15132B", key: "attendance.stats.status_late", legendKey: "attendance.stats.status_late" },
+  late: { bg: "var(--warn-solid)", fg: "#1D1D1F", key: "attendance.stats.status_late", legendKey: "attendance.stats.status_late" },
   absent: { bg: "var(--bad-solid)", fg: "#FFFFFF", key: "attendance.stats.status_absent", legendKey: "attendance.stats.legend_absent_short" },
   weekend: { bg: "var(--line-2)", fg: "var(--ink-3)", key: "attendance.stats.status_weekend", legendKey: "attendance.stats.status_weekend" },
   auto_closed: {

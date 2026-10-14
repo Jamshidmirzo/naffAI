@@ -590,7 +590,6 @@ function FloorCard({
   else if (allCount === 0)
     body = (
       <div className="empty" style={{ flex: "1 1 0", justifyContent: "center", minHeight: 360 }}>
-        <i className="ikat-soft" style={{ width: 120, height: 72, borderRadius: 14 }} aria-hidden="true" />
         <span className="h3" style={{ color: "var(--ink)" }}>{t("v2.home.emptyTeamTitle")}</span>
         <span className="s" style={{ maxWidth: 380 }}>{isSuper ? t("v2.home.emptyBranchBody") : t("v2.home.emptyTeamBody")}</span>
         <div className="row g8 wrap" style={{ justifyContent: "center" }}>
