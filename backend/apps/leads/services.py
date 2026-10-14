@@ -1069,6 +1069,7 @@ def release_leads_of_absent_operators(*, after_minutes: int | None = None, dry_r
     not postponed, never called and automatically assigned go back to the pool
     (operator=NULL, status NEW). The refill watcher then hands them to
     operators who are working. Covers both «never came» and «left early».
+    Only leads assigned to them today are taken back.
 
     Returns ``{operator_id: released_count}``.
     """
@@ -1096,8 +1097,14 @@ def release_leads_of_absent_operators(*, after_minutes: int | None = None, dry_r
         .exclude(Exists(CallAttempt.objects.filter(lead=OuterRef("pk"))))
         .filter(
             Exists(
+                # Only today's automatic assignments: an older backlog of
+                # untouched leads is a manager's call, and bringing it back
+                # here would push month-old leads ahead of fresh ones.
                 LeadAssignment.objects.filter(
-                    lead=OuterRef("pk"), active=True, source__in=_RELEASABLE_SOURCES
+                    lead=OuterRef("pk"),
+                    active=True,
+                    source__in=_RELEASABLE_SOURCES,
+                    created_at__date=today,
                 )
             )
         )
