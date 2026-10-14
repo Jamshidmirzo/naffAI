@@ -1,22 +1,35 @@
 # naffAI — deploy assets
 
-Артефакты для развёртывания на prod-VPS `46.101.112.215` (`/opt/naffAI`).
+Prod: AWS Lightsail `63.186.179.240`, `/opt/naffAI`, сайт https://naff.flek.uz.
+Demo: https://demo.naff.flek.uz — отдельный стек (свой web на 8001, своя БД `naffai_demo`).
 
-Все юниты пишут логи в `/var/log/naffAI/` — убедитесь, что каталог существует
-и доступен на запись пользователю `root` (`sudo mkdir -p /var/log/naffAI`).
+## Правило: `main` == prod
 
-## Обычный релиз
+* На prod выкатывается **только `origin/main`** и **только скриптом** `deploy/deploy-prod.sh`.
+* На сервере **никаких ручных правок** в отслеживаемых файлах: скрипт остановится и
+  покажет их. Нужна правка (compose, код) — коммит в `main`, потом деплой.
+* Новые фичи живут в своих ветках и проверяются на demo; в `main` — когда готовы для prod.
+
+## Релиз prod
 
 ```bash
-# на локальной машине
-git push origin main
-# на VPS
-cd /opt/naffAI && bash deploy/deploy.sh
+# с локальной машины, из любой ветки этого репо
+bash deploy/deploy-prod.sh --dry-run   # что поедет, чистый ли сервер
+bash deploy/deploy-prod.sh             # backend
+bash deploy/deploy-prod.sh --frontend  # backend + фронт (только если фронт тоже надо)
 ```
 
-Скрипт `deploy.sh` подтягивает код, ставит зависимости, применяет миграции и
-перезапускает контейнеры web/api. Фронт деплоится отдельно (`deploy-frontend.sh`
-→ Vercel).
+Скрипт: бэкап БД + образ `naffai-backend:rollback-<TS>` → сервер на `origin/main` →
+одна сборка образа → перезапуск **всех** backend-сервисов и бота на нём (никаких
+«web на новом коде, фоновые на старом») → проверка; если web не поднялся —
+автоматический откат. Команды ручного отката печатаются в конце.
+
+`deploy.sh` (старый, `git reset --hard` + stash) — **не использовать**.
+
+## Demo
+
+`bash deploy/deploy-demo-atlas.sh [frontend|backend|all]` из ветки `feat/design-atlas` —
+prod не трогает.
 
 ## Systemd юниты
 
