@@ -30,34 +30,6 @@ from apps.common.validators import normalize_uz_phone
 from apps.operators.models import Operator, OperatorStatus
 
 
-def _operator_has_open_shift(operator: Operator) -> bool:
-    """
-    «Оператор сейчас на смене» (есть открытый AttendanceLog на сегодня,
-    `checked_out_at IS NULL`). Используется как gate в автораздаче:
-    если `operator.require_checkin_enabled=True` и смены нет — не выдаём
-    этому оператору новых лидов.
-
-    Операторы с `require_checkin_enabled=False` НЕ блокируются (prod-safe
-    default до раскатки флага).
-    """
-    if not getattr(operator, "require_checkin_enabled", False):
-        return True
-    try:
-        from apps.attendance.models import AttendanceLog
-
-        today = timezone.localdate()
-        return AttendanceLog.objects.filter(
-            operator=operator,
-            checked_in_at__date=today,
-            checked_out_at__isnull=True,
-        ).exists()
-    except Exception:  # pragma: no cover
-        logging.getLogger(__name__).warning(
-            "has_open_shift check failed for op=%s", operator.id, exc_info=True
-        )
-        return True
-
-
 from .models import (
     DistributionMode,
     Lead,
@@ -681,6 +653,18 @@ def lead_create_from_sheet_row(
         # alias пуст, mode=alias_only → историческое поведение: round-robin.
         use_round_robin = True
 
+    if assigned_op is not None:
+        # The alias / default operator may be absent, paused or off shift:
+        # then the lead goes through round-robin (which keeps the sheet's
+        # operator pool) instead of waiting on someone who is not working.
+        from .availability import operator_unavailable_reason
+
+        unavailable = operator_unavailable_reason(assigned_op)
+        if unavailable is not None:
+            assignment_reason = f"{assignment_reason}: {unavailable} → round-robin"
+            assigned_op = None
+            use_round_robin = True
+
     if not valid:
         # Кривой телефон всегда перебивает автоматическое распределение.
         needs_review = True
@@ -948,21 +932,15 @@ def refill_operator_leads(
     if not auto_distribution_enabled():
         return []
 
-    # Paused-оператор не должен получать новых лидов ни через один
-    # auto-канал (включая on_commit-хук refill после закрытия лида и
-    # docker-watcher `refill_idle_operators`). Возвращаем пустой список
-    # молча — вызывающие места (watcher, on_commit) уже толерантны
-    # к «ничего не долилось».
-    if operator.is_paused:
-        return []
+    # Only operators who may get leads automatically right now: active, not
+    # paused, on shift (see apps.leads.availability). Re-read the flags — the
+    # caller's instance can be minutes old (watcher loop, on_commit hook).
+    from .availability import operator_unavailable_reason
 
-    # Checkin-gate: оператор с require_checkin_enabled=True должен быть на
-    # смене (есть открытый AttendanceLog), иначе лиды ему не доливаем.
-    # Prod-safe: operator'ы с flag=False проходят мимо (see helper).
-    if not _operator_has_open_shift(operator):
-        logging.getLogger(__name__).info(
-            "refill skipped: operator=%s has no open shift", operator.id
-        )
+    operator.refresh_from_db(fields=["status", "is_paused", "require_checkin_enabled"])
+    reason = operator_unavailable_reason(operator)
+    if reason is not None:
+        logging.getLogger(__name__).info("refill skipped: operator=%s %s", operator.id, reason)
         return []
 
     size = size or int(getattr(settings, "RR_BATCH_SIZE", 5))
@@ -1069,6 +1047,98 @@ def refill_operator_leads(
     return pool
 
 
+# Assignment sources the system made on its own — only these are taken back
+# from an absent operator; a manager's explicit reassign stays.
+_RELEASABLE_SOURCES = (
+    LeadAssignmentSource.AUTO_ROUND_ROBIN,
+    LeadAssignmentSource.AUTO_REFILL,
+    LeadAssignmentSource.MORNING_SPLIT,
+    LeadAssignmentSource.QIMMATLIK_RETRY,
+    LeadAssignmentSource.SHEET_MANUAL,
+)
+
+
+@transaction.atomic
+def release_leads_of_absent_operators(*, after_minutes: int | None = None, dry_run: bool = False) -> dict[int, int]:
+    """
+    Take untouched automatic leads back from operators who are not on shift.
+
+    For every active operator who must check in (apps.leads.availability)
+    but has no open shift now, once ``shift_start + after_minutes`` has passed
+    (their own shift start, via resolve_operator_config): leads in NEW/ASSIGNED,
+    not postponed, never called and automatically assigned go back to the pool
+    (operator=NULL, status NEW). The refill watcher then hands them to
+    operators who are working. Covers both «never came» and «left early».
+
+    Returns ``{operator_id: released_count}``.
+    """
+    from datetime import datetime, timedelta
+
+    from django.conf import settings
+    from django.db.models import Exists, OuterRef
+
+    from apps.attendance.models import AttendanceLog
+    from apps.attendance.services import resolve_operator_config
+    from apps.calls.models import CallAttempt
+    from apps.system_settings.selectors import auto_distribution_enabled
+
+    from .availability import shift_required_for
+
+    if not auto_distribution_enabled():
+        return {}
+    delay = int(after_minutes if after_minutes is not None else getattr(settings, "LEADS_ABSENT_RELEASE_AFTER_MIN", 60))
+    now = timezone.now()
+    now_local = timezone.localtime(now)
+    today = now_local.date()
+
+    untouched = (
+        Lead.objects.filter(status__in=(LeadStatus.NEW, LeadStatus.ASSIGNED), postponed_at__isnull=True)
+        .exclude(Exists(CallAttempt.objects.filter(lead=OuterRef("pk"))))
+        .filter(
+            Exists(
+                LeadAssignment.objects.filter(
+                    lead=OuterRef("pk"), active=True, source__in=_RELEASABLE_SOURCES
+                )
+            )
+        )
+    )
+    holders = Operator.objects.filter(
+        status=OperatorStatus.ACTIVE, pk__in=untouched.filter(operator__isnull=False).values("operator_id")
+    ).order_by("id")
+
+    released: dict[int, int] = {}
+    for op in holders:
+        if not shift_required_for(op):
+            continue
+        if AttendanceLog.objects.filter(
+            operator=op, checked_in_at__date=today, checked_out_at__isnull=True
+        ).exists():
+            continue
+        shift_start = resolve_operator_config(op)["shift_start"]
+        start_dt = timezone.make_aware(datetime.combine(today, shift_start), now_local.tzinfo)
+        if now_local < start_dt + timedelta(minutes=delay):
+            continue
+        ids = list(untouched.filter(operator=op).select_for_update().values_list("pk", flat=True))
+        if not ids:
+            continue
+        released[op.id] = len(ids)
+        if dry_run:
+            continue
+        LeadAssignment.objects.filter(lead_id__in=ids, active=True).update(active=False)
+        Lead.objects.filter(pk__in=ids).update(operator=None, status=LeadStatus.NEW, updated_at=now)
+        audit_log_create(
+            user=None,
+            action=AuditAction.UPDATE,
+            entity="operators.Operator",
+            entity_id=op.id,
+            changes={"released_absent": {"operator_id": op.id, "lead_ids": ids}},
+            comment=f"released {len(ids)} untouched leads: {op.full_name} not on shift",
+        )
+        _schedule_writeback_batch(ids)
+        logger.info("released %s untouched leads of absent operator=%s", len(ids), op.id)
+    return released
+
+
 @transaction.atomic
 def morning_distribute_leads(
     *,
@@ -1104,26 +1174,12 @@ def morning_distribute_leads(
     if not auto_distribution_enabled():
         return {}
 
-    operators = list(
-        Operator.objects.filter(status=OperatorStatus.ACTIVE, is_paused=False).order_by("id")
-    )
-    if not operators:
-        return {}
+    # Only operators on shift right now (see apps.leads.availability): at
+    # 08:30 that is usually nobody, so the pool waits and the refill watcher
+    # hands it out as operators check in.
+    from .availability import operators_available_for_auto_leads
 
-    # Checkin-gate: исключаем из утренней раздачи операторов, у которых
-    # включён `require_checkin_enabled`, но нет открытой смены на сегодня.
-    # Для operator'ов с flag=False поведение не меняется (prod-safe).
-    _logger = logging.getLogger(__name__)
-    skipped: list[int] = []
-    allowed_operators: list[Operator] = []
-    for op in operators:
-        if _operator_has_open_shift(op):
-            allowed_operators.append(op)
-        else:
-            skipped.append(op.id)
-    if skipped:
-        _logger.info("morning_distribute: skipped (no open shift) operators=%s", skipped)
-    operators = allowed_operators
+    operators = list(operators_available_for_auto_leads().order_by("id"))
     if not operators:
         return {}
 
@@ -1307,14 +1363,13 @@ def leads_bulk_reassign(
         # «не раздавать новых лидов». Если менеджер знает что делает и
         # хочет назначить конкретно paused-оператору — это targeted путь
         # `operator_id=...`, там мы paused не блокируем.
-        active_ops = list(
-            Operator.objects.filter(
-                status=OperatorStatus.ACTIVE, is_paused=False
-            ).order_by("id")
-        )
+        # …and only to operators on shift right now (apps.leads.availability).
+        from .availability import operators_available_for_auto_leads
+
+        active_ops = list(operators_available_for_auto_leads().order_by("id"))
         if not active_ops:
             raise ApplicationError(
-                "Нет активных операторов для round-robin",
+                "Нет операторов на смене для round-robin",
                 {"reason": "no_active_operators"},
             )
         _random.shuffle(active_ops)
@@ -1680,9 +1735,11 @@ def lead_qimmatlik_retry(lead: Lead) -> Operator | None:
     # «тёплый» и может остыть, если ждать пока оператор пройдёт morning-gate
     # / batch-quota. Поэтому берём всех ACTIVE операторов минус тех кто уже
     # пробовал, и раскидываем по наименьшей загрузке.
+    from .availability import operators_available_for_auto_leads
+
+    untried = Operator.objects.filter(status=OperatorStatus.ACTIVE).exclude(pk__in=previous_ids)
     candidate = (
-        Operator.objects.filter(status=OperatorStatus.ACTIVE, is_paused=False)
-        .exclude(pk__in=previous_ids)
+        operators_available_for_auto_leads(untried)
         .annotate(
             active_leads_count=Count(
                 "leads", filter=Q(leads__status__in=active_lead_status_codes())
@@ -1691,6 +1748,12 @@ def lead_qimmatlik_retry(lead: Lead) -> Operator | None:
         .order_by("active_leads_count", "id")
         .first()
     )
+    if candidate is None and untried.exists():
+        # Someone has not tried this lead yet but nobody of them is on shift
+        # (e.g. the 09:30 retry before the shift starts). Keep the retry mark:
+        # the qimmatlik-retry watcher tries again on its next tick.
+        logger.info("qimmatlik retry postponed lead=%s: no untried operator on shift", lead.pk)
+        return None
     if candidate is None:
         # Все операторы уже пробовали → закрываем как LOST. Ключ
         # metadata.qimmatlik_retry_at чистим ДО рекурсивного вызова

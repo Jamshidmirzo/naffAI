@@ -215,6 +215,16 @@ class Operator(TimestampedModel):
         blank=True,
         help_text="Когда оператора поставили на паузу (для аудита/отчётов).",
     )
+    paused_reason = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        help_text=(
+            "Why paused: manual (manager — survives check-in), checkout / "
+            "auto_close (end of shift — lifted by the next check-in), day_off. "
+            "Empty = legacy pause, treated like checkout."
+        ),
+    )
 
     # 2026-10-08: opt-in флаг для WebRTC-живого стрима (apps.livestream).
     # По умолчанию False — новые операторы не стримят, пока менеджер

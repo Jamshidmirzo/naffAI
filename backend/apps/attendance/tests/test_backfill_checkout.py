@@ -241,6 +241,10 @@ def test_backfill_forbidden_when_flag_off(client, op, op_user, att_settings):
     """
     op.require_checkin_enabled = False
     op.save(update_fields=["require_checkin_enabled"])
+    # Since 2026-10-14 the global enforce_daily_checkin also allows it (same
+    # rule that shows the window) — so switch it off for this case.
+    att_settings.enforce_daily_checkin = False
+    att_settings.save(update_fields=["enforce_daily_checkin"])
     log = _make_yesterday_auto_closed_log(op)
     real = log.checked_in_at + dt.timedelta(hours=8)
     client.force_authenticate(op_user)

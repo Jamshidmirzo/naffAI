@@ -359,10 +359,12 @@ def _apply_rescue_touched_if_needed(
     # Paused-операторов исключаем: у них весь смысл флага — не получать
     # новых/чужих лидов; rescue-target это тот же «новый лид с чужой
     # историей», но всё равно чужой.
-    pool = list(
-        Operator.objects.filter(status=_OpStatus.ACTIVE, is_paused=False)
-        .exclude(pk=operator.id)
-    )
+    # Prefer operators on shift right now; if nobody is (evening, weekend)
+    # keep the old pool rather than marking the leads system-lost.
+    from apps.leads.availability import operators_available_for_auto_leads
+
+    base = Operator.objects.filter(status=_OpStatus.ACTIVE, is_paused=False).exclude(pk=operator.id)
+    pool = list(operators_available_for_auto_leads(base)) or list(base)
     if not pool:
         # Никому раздать — fallback: помечаем как system-lost
         # (лучше, чем оставлять висеть на уволенном).
@@ -527,6 +529,14 @@ def operator_reactivate(*, operator: Operator, user=None) -> Operator:
 
     operator_update(operator=operator, user=user, status=OperatorStatus.ACTIVE)
     operator.rebalanced_count = 0
+
+    # Leads are pulled to the reactivated operator only if they can work them
+    # now (not paused, on shift); otherwise refill hands them out on check-in.
+    from apps.leads.availability import operator_is_available
+
+    operator.refresh_from_db(fields=["status", "is_paused", "require_checkin_enabled"])
+    if not operator_is_available(operator):
+        return operator
 
     donors = list(operators_eligible_for_new_leads().exclude(pk=operator.id))
     if not donors:
@@ -819,9 +829,14 @@ def operator_delete(*, operator: Operator, user=None, note: str = "") -> dict:
     return deleted_related
 
 
+# Pauses the next check-in lifts by itself; a manager's manual pause and a
+# day-off pause stay until removed explicitly. "" = legacy row (pre-reason).
+AUTO_LIFTED_PAUSE_REASONS = ("checkout", "auto_close", "")
+
+
 @transaction.atomic
 @transaction.atomic
-def operator_set_paused(*, operator: Operator, paused: bool, user=None) -> Operator:
+def operator_set_paused(*, operator: Operator, paused: bool, user=None, reason: str = "manual") -> Operator:
     """
     Toggle оператора в/из «паузы».
 
@@ -847,12 +862,18 @@ def operator_set_paused(*, operator: Operator, paused: bool, user=None) -> Opera
     Параметр `paused` — целевое состояние (True → ставим, False → снимаем).
     """
     if operator.is_paused == paused:
+        # A manager pausing an operator who is already auto-paused (checkout)
+        # turns it into a manual pause that the next check-in must respect.
+        if paused and reason == "manual" and operator.paused_reason != "manual":
+            operator.paused_reason = "manual"
+            operator.save(update_fields=["paused_reason", "updated_at"])
         return operator
 
     old_paused = operator.is_paused
     operator.is_paused = paused
     operator.paused_at = timezone.now() if paused else None
-    operator.save(update_fields=["is_paused", "paused_at", "updated_at"])
+    operator.paused_reason = reason if paused else ""
+    operator.save(update_fields=["is_paused", "paused_at", "paused_reason", "updated_at"])
 
     audit_log_create(
         user=user,
@@ -1085,7 +1106,7 @@ def day_off_request_approve(
     # attendance_apply_day_offs в 00:05 нужного дня поставит паузу.
     if request.date == timezone.localdate():
         try:
-            operator_set_paused(operator=request.operator, paused=True, user=decided_by)
+            operator_set_paused(operator=request.operator, paused=True, user=decided_by, reason="day_off")
         except Exception:
             pass
 
@@ -1213,7 +1234,7 @@ def day_offs_apply_for_today() -> int:
         if not op or op.is_paused:
             continue
         try:
-            operator_set_paused(operator=op, paused=True, user=None)
+            operator_set_paused(operator=op, paused=True, user=None, reason="day_off")
             count += 1
         except Exception:
             pass
