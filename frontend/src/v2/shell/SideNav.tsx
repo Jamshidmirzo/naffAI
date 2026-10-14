@@ -79,19 +79,22 @@ function SettingsRow() {
   const sound = useSaleSound();
   const design = useDesign();
   return (
-    <div className="row g4" style={{ padding: "6px 6px 0", justifyContent: "space-between" }}>
-      <button className="btn btn-ghost btn-sq btn-sm" type="button" onClick={theme.toggle} aria-label={t("v2.nav.theme")} title={t("v2.nav.theme")}>
-        {theme.theme === "dark" ? <Sun className="ic" /> : <Moon className="ic" />}
-      </button>
-      <button className="btn btn-ghost btn-sm" type="button" onClick={lang.toggle} aria-label={t("v2.nav.lang")} title={t("v2.nav.lang")}>
-        <Languages className="ic" />
-        <span className="xs w6">{lang.lang === "ru" ? "RU" : "UZ"}</span>
-      </button>
-      <button className="btn btn-ghost btn-sq btn-sm" type="button" onClick={sound.toggle} aria-label={t("v2.nav.sound")} title={t("v2.nav.sound")}>
-        {sound.muted ? <VolumeX className="ic" /> : <Volume2 className="ic" />}
-      </button>
-      <button className="btn btn-ghost btn-sq btn-sm" type="button" onClick={() => design.set("v1")} aria-label={t("v2.nav.design.toOld")} title={t("v2.nav.design.toOld")}>
+    <div className="col g4" style={{ padding: "6px 6px 0" }}>
+      <div className="row g4" style={{ justifyContent: "space-between" }}>
+        <button className="btn btn-ghost btn-sq btn-sm" type="button" onClick={theme.toggle} aria-label={t("v2.nav.theme")} title={t("v2.nav.theme")}>
+          {theme.theme === "dark" ? <Sun className="ic" /> : <Moon className="ic" />}
+        </button>
+        <button className="btn btn-ghost btn-sm" type="button" onClick={lang.toggle} aria-label={t("v2.nav.lang")} title={t("v2.nav.lang")}>
+          <Languages className="ic" />
+          <span className="xs w6">{lang.lang === "ru" ? "RU" : "UZ"}</span>
+        </button>
+        <button className="btn btn-ghost btn-sq btn-sm" type="button" onClick={sound.toggle} aria-label={t("v2.nav.sound")} title={t("v2.nav.sound")}>
+          {sound.muted ? <VolumeX className="ic" /> : <Volume2 className="ic" />}
+        </button>
+      </div>
+      <button className="btn btn-ghost btn-sm" type="button" onClick={() => design.set("v1")} style={{ justifyContent: "flex-start" }}>
         <Palette className="ic" />
+        <span className="xs w6">{t("v2.nav.design.toOld")}</span>
       </button>
     </div>
   );

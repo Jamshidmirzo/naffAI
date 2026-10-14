@@ -103,9 +103,9 @@ export function Header() {
           onClick={() => useDesign.getState().set("v2")}
           className="nf-btn nf-btn--ghost"
           style={{ padding: "9px 14px" }}
-          title="Переключиться на новый дизайн «Атлас»"
+          title={t("common.design_new_hint")}
         >
-          Новый дизайн
+          {t("common.design_new")}
         </button>
         <div className="nf-tabs" role="tablist" aria-label={t("common.language")}>
           <button
