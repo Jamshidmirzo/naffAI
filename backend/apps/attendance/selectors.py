@@ -414,8 +414,6 @@ def attendance_payroll_summary(
     shift_start_t = _time_to_time(cfg["shift_start"])
     shift_end_t = _time_to_time(cfg["shift_end"])
 
-    working_days = working_days_in_month(int(year), int(month), weekly_day_off)
-    working_days_planned = len(working_days)
 
     tz = timezone.get_current_timezone()
     period_start = dt.datetime.combine(
@@ -451,9 +449,54 @@ def attendance_payroll_summary(
     days_late = 0
     late_minutes_sum = 0
 
+    # 2026-10-14: days that are not the operator's to work are not absences:
+    # approved day-offs and days before the hire date. Future days of the
+    # current month are "upcoming", not absences, and the attendance rate of
+    # an unfinished month is measured on the working days elapsed so far.
+    from apps.operators.models import DayOffStatus, OperatorDayOff
+
+    today = timezone.localdate()
+    hired_at = getattr(operator, "hired_at", None)
+    approved_day_offs = set(
+        OperatorDayOff.objects.filter(
+            operator=operator,
+            status=DayOffStatus.APPROVED,
+            date__gte=all_days[0],
+            date__lte=all_days[-1],
+        ).values_list("date", flat=True)
+    )
+    working_days_planned = 0
+    working_days_elapsed = 0
+
     for day in all_days:
         weekday = day.weekday()
         is_working = weekday != weekly_day_off
+
+        not_employed = hired_at is not None and day < hired_at
+        if is_working and (not_employed or day in approved_day_offs) and not logs_by_date.get(day):
+            days_out.append(
+                {
+                    "date": day.isoformat(),
+                    "weekday": weekday,
+                    "is_working_day": False,
+                    "checked_in_at": None,
+                    "checked_out_at": None,
+                    # `status` stays in the set old clients know (no crash on
+                    # unknown values); the precise kind is in `day_kind`.
+                    "status": "weekend",
+                    "day_kind": "not_employed" if not_employed else "day_off",
+                    "minutes_late": 0,
+                    "minutes_early": 0,
+                    "deduction_uzs": "0",
+                    "note": "До даты найма" if not_employed else "Одобренный выходной",
+                }
+            )
+            continue
+
+        if is_working:
+            working_days_planned += 1
+            if day <= today:
+                working_days_elapsed += 1
 
         if not is_working:
             days_out.append(
@@ -465,6 +508,7 @@ def attendance_payroll_summary(
                     "checked_out_at": None,
                     "status": "weekend",
                     "minutes_late": 0,
+                    "minutes_early": 0,
                     "deduction_uzs": "0",
                     "note": "Личный выходной",
                 }
@@ -497,6 +541,19 @@ def attendance_payroll_summary(
                 minutes_late = 0
                 deduction = Decimal("0")
                 note = ""
+            # Early leave is shown (not fined): last checkout of the day vs the
+            # operator's shift end. Auto-closed shifts are «forgot to check out».
+            last_log = day_logs[-1]
+            minutes_early = 0
+            if last_log.checked_out_at and not last_log.auto_closed:
+                local_out = timezone.localtime(last_log.checked_out_at)
+                shift_end_dt = local_out.replace(
+                    hour=shift_end_t.hour, minute=shift_end_t.minute, second=0, microsecond=0
+                )
+                if local_out.date() == day and local_out < shift_end_dt:
+                    minutes_early = int((shift_end_dt - local_out).total_seconds() / 60)
+                    early_note = f"Ушёл раньше на {minutes_early} мин"
+                    note = f"{note}; {early_note}" if note else early_note
             days_out.append(
                 {
                     "date": day.isoformat(),
@@ -508,10 +565,14 @@ def attendance_payroll_summary(
                     ),
                     "status": status,
                     "minutes_late": minutes_late,
+                    "minutes_early": minutes_early,
                     "deduction_uzs": str(deduction.quantize(Decimal("1"))),
                     "note": note,
                 }
             )
+        elif day > today:
+            # Not happened yet: neither an absence nor a row in the day list.
+            continue
         else:
             days_absent += 1
             days_out.append(
@@ -523,28 +584,30 @@ def attendance_payroll_summary(
                     "checked_out_at": None,
                     "status": "absent",
                     "minutes_late": 0,
+                    "minutes_early": 0,
                     "deduction_uzs": "0",
                     "note": "Пропуск",
                 }
             )
 
-    attendance_rate_pct_raw = (
-        (days_attended / working_days_planned * 100.0)
-        if working_days_planned
-        else 0.0
-    )
+    # Finished month: attended / all its working days. Current month: on the
+    # working days elapsed so far, so the page shows where the operator is now.
+    rate_base = working_days_elapsed if all_days[-1] >= today else working_days_planned
+    attendance_rate_pct_raw = (days_attended / rate_base * 100.0) if rate_base else 0.0
     attendance_rate_pct = round(attendance_rate_pct_raw, 2)
     # Гейт-сравнение делаем на округлённом до сотых значении — чтобы
     # 84.999... не отсекалось из-за float-хвоста; ровно 85% проходит.
     attendance_gate_passed = attendance_rate_pct >= attendance_gate_pct
 
+    # Fines are always shown as accrued (same numbers as the day rows); they
+    # are subtracted from the attendance bonus, which is paid only when the
+    # attendance gate is passed.
+    late_penalty_total = late_penalty * days_late
     if attendance_gate_passed:
-        late_penalty_total = late_penalty * days_late
         attendance_block_earned = attendance_bonus - late_penalty_total
         if attendance_block_earned < 0:
             attendance_block_earned = Decimal("0")
     else:
-        late_penalty_total = Decimal("0")
         attendance_block_earned = Decimal("0")
 
     avg_late_minutes = int(late_minutes_sum / days_late) if days_late else 0
@@ -644,6 +707,7 @@ def attendance_payroll_summary(
         # ---- Attendance block ----
         "attendance": {
             "working_days_planned": working_days_planned,
+            "working_days_elapsed": working_days_elapsed,
             "days_attended": days_attended,
             "days_absent": days_absent,
             "days_late": days_late,
@@ -770,6 +834,10 @@ def attendance_statistics_report(
                 has_auto = any(l.auto_closed for l in day_logs)
                 has_late = any(l.was_late for l in day_logs)
 
+                # A late arrival is counted as late even if the shift was
+                # later closed by a manager or by the nightly auto-close.
+                if has_late:
+                    late_count += 1
                 if has_manual:
                     status = "manually_closed"
                     manually_closed_count += 1
@@ -778,7 +846,6 @@ def attendance_statistics_report(
                     auto_closed_count += 1
                 elif has_late:
                     status = "late"
-                    late_count += 1
                 else:
                     status = "on_time"
 
@@ -787,8 +854,10 @@ def attendance_statistics_report(
                         total_shift_seconds += l.duration_seconds
 
                     if l.was_late:
-                        settings_obj = attendance_settings_get()
-                        shift_start_time = settings_obj.shift_start
+                        # The operator's own shift start (second shift etc.).
+                        from .services import resolve_operator_config
+
+                        shift_start_time = resolve_operator_config(op)["shift_start"]
                         local_in_dt = timezone.localtime(l.checked_in_at)
                         if isinstance(shift_start_time, str):
                             h, m = map(int, shift_start_time.split(":")[:2])

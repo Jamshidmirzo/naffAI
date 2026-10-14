@@ -18,8 +18,8 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from apps.leads.selectors import operator_working_lead_count
-from apps.leads.services import refill_operator_leads
-from apps.operators.models import Operator, OperatorStatus
+from apps.leads.availability import operators_available_for_auto_leads
+from apps.leads.services import refill_operator_leads, release_leads_of_absent_operators
 from apps.system_settings.selectors import auto_distribution_enabled
 
 
@@ -54,11 +54,18 @@ class Command(BaseCommand):
         verbose = bool(opts.get("verbose"))
         target = int(getattr(settings, "RR_BATCH_SIZE", 5))
 
-        # Paused-операторы исключаются — watcher не должен доливать
-        # им лиды, пока менеджер не снимет паузу.
-        qs = Operator.objects.filter(
-            status=OperatorStatus.ACTIVE, is_paused=False
-        ).order_by("id")
+        # First take untouched leads back from operators who did not come /
+        # already left, so the refill below can hand them to people at work.
+        try:
+            released = release_leads_of_absent_operators()
+        except Exception as exc:  # pragma: no cover — telemetry only
+            released = {}
+            self.stderr.write(f"[refill] release of absent operators failed: {exc!r}")
+        for op_id, n in released.items():
+            self.stdout.write(f"[refill] released op={op_id} count={n} (not on shift)")
+
+        # Only operators who may get leads now: active, not paused, on shift.
+        qs = operators_available_for_auto_leads().order_by("id")
         processed = 0
         total_delivered = 0
 

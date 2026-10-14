@@ -143,10 +143,12 @@ def test_scan_ip_whitelist(operator, user):
 
 @pytest.mark.django_db
 def test_scan_lateness_indicators(operator, user):
-    # Set shift start to 10:00, threshold 15 min (late if > 10:15)
+    # Set shift start to 10:00, grace 15 min (late if > 10:15). Since
+    # 2026-10-14 the flag uses the same per-operator grace as payroll
+    # (default_grace_period_min), not late_threshold_min.
     settings = AttendanceSettings.objects.get_or_create(pk=1)[0]
     settings.shift_start = dt.time(10, 0)
-    settings.late_threshold_min = 15
+    settings.default_grace_period_min = 15
     settings.save()
 
     qr = operator_qr_rotate(operator=operator, actor=user)
@@ -184,8 +186,14 @@ def test_auto_close_logs(operator, user):
     count = auto_close_open_logs(at=close_time)
     assert count == 1
 
+    # Closed at the operator's shift end if that moment is already past,
+    # otherwise at the run time (2026-10-14: no inflated hours).
     log.refresh_from_db()
-    assert log.checked_out_at == close_time
+    local_in = timezone.localtime(log.checked_in_at)
+    shift_end = AttendanceSettings.objects.get(pk=1).shift_end
+    end_dt = timezone.make_aware(dt.datetime.combine(local_in.date(), shift_end), local_in.tzinfo)
+    expected = end_dt if log.checked_in_at < end_dt < close_time else close_time
+    assert log.checked_out_at == expected
     assert log.auto_closed is True
     assert not Token.objects.filter(key=log.token_key).exists()
 

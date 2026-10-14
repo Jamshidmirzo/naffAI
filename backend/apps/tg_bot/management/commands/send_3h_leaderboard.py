@@ -62,11 +62,27 @@ def _short_date(day: dt.date, *, lang: str) -> str:
 # --- report rendering --------------------------------------------------
 
 
+def attach_pending_sales(snapshot: dict, *, date_from: dt.datetime, date_to: dt.datetime) -> dict:
+    """Add the count of sales still waiting for a manager in the window
+    (operators' sales are created as pending; `sold_total` counts confirmed only)."""
+    from apps.sales.models import Sale
+
+    snapshot["pending_sales"] = Sale.objects.filter(
+        is_deleted=False,
+        is_returned=False,
+        status="pending",
+        sold_at__gte=date_from,
+        sold_at__lte=date_to,
+    ).count()
+    return snapshot
+
+
 def _sort_leaderboard(rows: list[dict]) -> list[dict]:
     """
     Order operators for the leaderboard:
-      1) total DESC — touched leads (union of CallAttempt + Lead-update path),
-         same source `lead_stats_snapshot` uses for its by_operator.total field.
+      1) total DESC — leads the operator worked: called (CallAttempt) or changed
+         the status of (audit trail), same source `lead_stats_snapshot` uses
+         for its by_operator.total field. Assigning a lead is not work.
          Was `unique_leads_touched` (CallAttempt only) до 2026-09-24 — но
          часть операторов работает только через смену статуса без нажатия
          «позвонить», из-за чего они выпадали из отчёта и totals занижались
@@ -108,8 +124,11 @@ def _build_report(
     hh_mm = now.strftime("%H:%M")
     day_str = _short_date(now.date(), lang=lang)
 
+    # Totals over every operator, not just the top_n shown.
     total_touched = sum(int(r.get("total", 0) or 0) for r in rows)
     total_sold = sum(int(r.get("sold_total", 0) or 0) for r in rows)
+    pending_sales = snapshot.get("pending_sales")
+    hidden_ops = max(0, len(active_rows) - top_n)
 
     if lang == "uz":
         header = f"📊 <b>3 soatlik hisobot · {hh_mm}</b>"
@@ -118,9 +137,11 @@ def _build_report(
         empty_line = "Hozircha faoliyat yo'q"
         calls_word = "obzvon"
         sold_word = "sotuv"
-        total_calls_lbl = "📞 Jami qo'ng'iroqlar"
-        total_sold_lbl = "💰 Jami sotuvlar"
-        statuses_label = "📋 Statuslar:"
+        total_calls_lbl = "📞 Jami obzvon"
+        total_sold_lbl = "💰 Tasdiqlangan sotuvlar"
+        pending_lbl = "kutilmoqda"
+        hidden_tpl = "… va yana {n} ta operator"
+        statuses_label = "📥 Bugun kelgan lidlar"
     else:
         header = f"📊 <b>Оперативная сводка · {hh_mm}</b>"
         subhdr = f"За сегодня, {day_str}"
@@ -128,9 +149,11 @@ def _build_report(
         empty_line = "Пока нет обзвонов"
         calls_word = "обзвонил"
         sold_word = "продажи"
-        total_calls_lbl = "📞 Всего звонков"
-        total_sold_lbl = "💰 Всего продаж"
-        statuses_label = "📋 Статусы:"
+        total_calls_lbl = "📞 Всего обзвонено"
+        total_sold_lbl = "💰 Подтверждённые продажи"
+        pending_lbl = "ждут подтверждения"
+        hidden_tpl = "… и ещё {n} операторов"
+        statuses_label = "📥 Пришло лидов сегодня"
 
     # Hardcoded UZ/RU display labels — fallback если в
     # LeadStatusLabel.label_uz/label_ru пусто, чтобы в отчёте не было
@@ -203,6 +226,9 @@ def _build_report(
                 emoji = f"{meta['emoji']} " if meta["emoji"] else ""
                 lines.append(f"   {emoji}{meta['label']}: <b>{int(cnt)}</b>")
             lines.append("")  # blank line between operators
+        if hidden_ops:
+            lines.append(hidden_tpl.format(n=hidden_ops))
+            lines.append("")
 
     # Overall statuses breakdown (across all operators, top 10).
     by_status = snapshot.get("by_status") or []
@@ -212,7 +238,8 @@ def _build_report(
         reverse=True,
     )[:10]
     if status_rows:
-        lines.append(statuses_label)
+        incoming_total = sum(int(s.get("count", 0) or 0) for s in by_status)
+        lines.append(f"{statuses_label} ({incoming_total}):")
         for s in status_rows:
             code = s.get("code") or ""
             db_label = (s.get("label_uz") if lang == "uz" else s.get("label_ru")) or ""
@@ -223,7 +250,10 @@ def _build_report(
         lines.append("")
 
     lines.append(f"{total_calls_lbl}: <b>{total_touched}</b>")
-    lines.append(f"{total_sold_lbl}: <b>{total_sold}</b>")
+    sold_line = f"{total_sold_lbl}: <b>{total_sold}</b>"
+    if pending_sales:
+        sold_line += f" ({pending_lbl}: {int(pending_sales)})"
+    lines.append(sold_line)
     return "\n".join(lines)
 
 
@@ -317,6 +347,7 @@ class Command(BaseCommand):
         # into asyncio.run(), otherwise the ORM raises SynchronousOnlyOperation
         # when a coroutine touches the DB from inside the event loop.
         snapshot = lead_stats_snapshot(date_from=date_from, date_to=date_to)
+        attach_pending_sales(snapshot, date_from=date_from, date_to=date_to)
         # 2026-08-28: switched from raw `is_active` filter to the
         # `bot_broadcast_recipients()` selector so each subscription's
         # `receives_broadcasts` toggle is honoured. Operators who only

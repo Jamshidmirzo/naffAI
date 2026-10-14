@@ -403,7 +403,7 @@ class OperatorPauseApi(APIView):
         op = operator_get(pk)
         if not op:
             return Response({"detail": "Not found"}, status=404)
-        operator_set_paused(operator=op, paused=self.paused, user=request.user)
+        operator_set_paused(operator=op, paused=self.paused, user=request.user, reason="manual")
         return Response(OperatorSerializer(op).data)
 
 

@@ -209,7 +209,7 @@ def test_late_penalties_reduce_attendance_block(operator, settings_obj):
 
 
 @pytest.mark.django_db
-def test_late_penalties_ignored_when_gate_fails(operator, settings_obj):
+def test_late_penalties_shown_but_bonus_zero_when_gate_fails(operator, settings_obj):
     year, month = 2026, 3
     weekdays = _weekdays_of_month(year, month, day_off=6)
     # 21/26 с опозданиями — гейт провален.
@@ -219,8 +219,9 @@ def test_late_penalties_ignored_when_gate_fails(operator, settings_obj):
     summary = attendance_payroll_summary(operator, year, month)
     assert summary["attendance"]["gate_passed"] is False
     assert summary["attendance"]["block_earned"] == "0"
-    # Штрафов быть не должно — гейт всё равно провален.
-    assert summary["attendance"]["late_penalty_total"] == "0"
+    # 2026-10-14: fines are shown as accrued (same as the day rows) even when
+    # the gate fails; the attendance bonus is 0 either way.
+    assert summary["attendance"]["late_penalty_total"] == str(Decimal(settings_obj.default_late_penalty_uzs) * 21)
 
 
 # ---------------------------------------------------------------------------

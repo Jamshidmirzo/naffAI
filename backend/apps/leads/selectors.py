@@ -1174,8 +1174,12 @@ def operators_eligible_for_new_leads(*, bypass_gate: bool = False) -> QuerySet[O
     batch = _rr_batch_size()
     active_today = _leads_active_today_filter()
 
+    from .availability import operators_available_for_auto_leads
+
+    # Active, not paused and on shift right now — also for hot sheets:
+    # `bypass_gate` lifts only the batch cap and the morning gate.
     qs = (
-        Operator.objects.filter(status=OperatorStatus.ACTIVE, is_paused=False)
+        operators_available_for_auto_leads()
         .annotate(
             _working_count=Count(
                 "leads",

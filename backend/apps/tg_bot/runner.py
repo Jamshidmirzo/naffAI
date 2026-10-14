@@ -2073,8 +2073,10 @@ def _bot_attendance_scan_with_photo(
         chk_time = timezone.localtime(timezone.now()).strftime("%H:%M")
         late_txt = ""
         if res.get("was_late"):
-            settings_obj = attendance_settings_get()
-            shift_start_time = settings_obj.shift_start
+            # The operator's own shift start (second shift etc.), not the global one.
+            from apps.attendance.services import resolve_operator_config
+
+            shift_start_time = resolve_operator_config(operator)["shift_start"]
             now_local = timezone.localtime(timezone.now())
             if isinstance(shift_start_time, str):
                 h, m = map(int, shift_start_time.split(":")[:2])
@@ -2571,6 +2573,9 @@ def _bot_leaders_snapshot(tg_user_id: int, chat_id: int, arg: str = "") -> str:
     date_to = _dt.datetime.combine(dt_, _dt.time.max, tzinfo=tz)
 
     snapshot = lead_stats_snapshot(date_from=date_from, date_to=date_to)
+    from apps.tg_bot.management.commands.send_3h_leaderboard import attach_pending_sales
+
+    attach_pending_sales(snapshot, date_from=date_from, date_to=date_to)
     lang = _get_lang_sync(chat_id)
     # anchor времени в шапке отчёта = конец периода (позволяет отчёту
     # сказать «за N дней, по состоянию на 14:00 сегодня»).
