@@ -1,4 +1,5 @@
 import hmac
+import logging
 import hashlib
 import secrets
 import ipaddress
@@ -370,18 +371,16 @@ def process_attendance_event(
             raise ScanRateLimitError("Подождите 30 секунд.")
 
     if source == "qr" and ip and user_agent:
-        # Auto-close ONLY truly stale sessions of other operators from the
-        # same device. Cutoff = 3 hours so an operator whose colleague
-        # checks in from the same office WiFi + similar phone doesn't get
-        # their fresh session ripped out from under them. Two operators
-        # actually sharing one phone within a shift is rare; a forgotten
-        # session from the morning is the case this branch exists for.
-        stale_cutoff = timezone.now() - dt.timedelta(hours=3)
+        # Auto-close forgotten sessions of other operators from the same
+        # device — but only from previous days. Same-day sessions are never
+        # touched: in the office everyone shares one NAT IP and many have the
+        # same phone/browser, so "same IP + UA" does not mean "same device"
+        # and closing a colleague's shift mid-day broke their attendance.
         stale_logs = AttendanceLog.objects.filter(
             checked_out_at__isnull=True,
             checked_in_ip=ip,
             checked_in_user_agent=user_agent,
-            checked_in_at__lt=stale_cutoff,
+            checked_in_at__date__lt=timezone.localdate(),
         ).exclude(operator=operator)
         for stale_log in stale_logs:
             _force_close_stale_log(stale_log, current_ip=ip, current_user_agent=user_agent)
@@ -418,6 +417,10 @@ def _force_close_stale_log(log: AttendanceLog, current_ip: str, current_user_age
     log.checked_out_at = now
     log.auto_closed = True
     log.save(update_fields=["checked_out_at", "auto_closed"])
+    try:
+        operator_set_paused(operator=log.operator, paused=True, user=None, reason="auto_close")
+    except Exception:
+        logging.getLogger(__name__).warning("auto-pause on stale close failed log=%s", log.pk, exc_info=True)
 
     if log.token_key:
         Token.objects.filter(key=log.token_key).delete()
@@ -508,9 +511,10 @@ def _attendance_check_in(
     # «опоздание» в 13:50. `resolve_operator_config` уже сливает
     # per-op override с глобальным дефолтом.
     #
-    # `late_threshold_min` (grace для флага was_late) пока остаётся
-    # глобальным — per-op поля для него в модели нет; `grace_period_min`
-    # на Operator относится к payroll-штрафу и семантически отделён.
+    # 2026-10-14: one late rule everywhere — shift_start + grace_period_min
+    # of this operator (default AttendanceSettings.default_grace_period_min),
+    # exactly what payroll uses for the fine. The global late_threshold_min
+    # is no longer used for the flag (it disagreed with payroll: 15 vs 20).
     cfg = resolve_operator_config(operator)
     now_local = timezone.localtime(now)
     shift_start_time = cfg["shift_start"]
@@ -524,7 +528,7 @@ def _attendance_check_in(
             second=0,
             microsecond=0,
         )
-    late_threshold = shift_start_dt + dt.timedelta(minutes=settings_obj.late_threshold_min)
+    late_threshold = shift_start_dt + dt.timedelta(minutes=int(cfg["grace_period_min"] or 0))
     was_late = now_local > late_threshold
 
     # Get profile & User to issue token if required
@@ -575,7 +579,11 @@ def _attendance_check_in(
     # 2026-09-23 EXCEPTION: если у оператора сегодня одобренный day-off,
     # НЕ снимаем паузу — иначе он получит лиды, а менеджер думал что
     # он в выходной. Пусть сначала попросит менеджера отменить day-off.
-    if operator.is_paused:
+    # 2026-10-14: only end-of-shift pauses are lifted; a manager's manual
+    # pause (paused_reason="manual") and a day-off pause stay.
+    from apps.operators.services import AUTO_LIFTED_PAUSE_REASONS
+
+    if operator.is_paused and operator.paused_reason in AUTO_LIFTED_PAUSE_REASONS:
         from apps.operators.models import DayOffStatus, OperatorDayOff
         has_approved_day_off = OperatorDayOff.objects.filter(
             operator=operator,
@@ -660,9 +668,9 @@ def _attendance_check_out(
     # Auto-pause on checkout: no new leads should flow to an operator who
     # ended their shift. Cleared on next check-in.
     try:
-        operator_set_paused(operator=op_ref, paused=True, user=None)
+        operator_set_paused(operator=op_ref, paused=True, user=None, reason="checkout")
     except Exception:
-        pass
+        logging.getLogger(__name__).warning("auto-pause on checkout failed op=%s", op_ref.pk, exc_info=True)
     transaction.on_commit(
         lambda: _notify_managers_attendance(
             operator=op_ref, action="check_out", duration_min=duration_min
@@ -697,7 +705,21 @@ def auto_close_open_logs(*, at: dt.datetime | None = None) -> int:
     # RR doesn't hand them fresh leads until they check in again.
     op_ids = list(open_logs.values_list("operator_id", flat=True).distinct())
 
-    open_logs.update(checked_out_at=target_time, auto_closed=True)
+    # The operator forgot to check out: count the shift up to the end of
+    # *their* shift (resolve_operator_config) when that moment is already
+    # past, not up to the moment this job runs (23:00) — otherwise worked
+    # hours are inflated. They can still correct it via the backfill window.
+    for log in open_logs.select_related("operator"):
+        closed_at = target_time
+        if log.operator is not None:
+            shift_end = resolve_operator_config(log.operator)["shift_end"]
+            local_in = timezone.localtime(log.checked_in_at)
+            end_dt = timezone.make_aware(dt.datetime.combine(local_in.date(), shift_end), local_in.tzinfo)
+            if log.checked_in_at < end_dt < target_time:
+                closed_at = end_dt
+        log.checked_out_at = closed_at
+        log.auto_closed = True
+        log.save(update_fields=["checked_out_at", "auto_closed"])
 
     # Auto-pause each closed operator. Best-effort — a single failure
     # (e.g. operator row deleted mid-flight) must not abort the batch.
@@ -706,9 +728,9 @@ def auto_close_open_logs(*, at: dt.datetime | None = None) -> int:
             continue
         try:
             op = Operator.objects.get(pk=op_id)
-            operator_set_paused(operator=op, paused=True, user=None)
+            operator_set_paused(operator=op, paused=True, user=None, reason="auto_close")
         except Exception:
-            pass
+            logging.getLogger(__name__).warning("auto-pause on auto-close failed op=%s", op_id, exc_info=True)
     return count
 
 
@@ -750,7 +772,10 @@ def attendance_log_backfill_checkout(
     # Иначе кто угодно с валидным auto_closed логом мог бы через прямой
     # POST переписать время своего ухода — не то, что мы хотим на prod до
     # массового rollout'a.
-    if not getattr(operator, "require_checkin_enabled", False):
+    # 2026-10-14: same rule as the gate that shows the «во сколько ушли»
+    # window (/me/current/): global enforce_daily_checkin OR per-operator flag
+    # — otherwise the window is shown but can never be saved.
+    if not (getattr(operator, "require_checkin_enabled", False) or attendance_settings_get().enforce_daily_checkin):
         raise PermissionDenied(
             "Backfill недоступен: для вашего профиля не включена обязательная отметка прихода/ухода"
         )
@@ -1220,18 +1245,24 @@ def payroll_pdf_bytes(
     }
     days_source = attendance.get("days") or summary.get("days") or []
     day_rows = [day_header]
+
+    def _hhmm(iso: str | None) -> str:
+        # ISO strings are UTC ("…05:05:12+00:00"): show Tashkent HH:MM.
+        if not iso:
+            return "—"
+        try:
+            return timezone.localtime(dt.datetime.fromisoformat(iso)).strftime("%H:%M")
+        except ValueError:
+            return "—"
+
     for d in days_source:
         day_rows.append(
             [
                 d.get("date", ""),
                 weekday_ru[int(d.get("weekday", 0))] if d.get("weekday") is not None else "",
                 status_ru.get(d.get("status", ""), d.get("status", "")),
-                (d.get("checked_in_at") or "—")[-8:-3]
-                if d.get("checked_in_at")
-                else "—",
-                (d.get("checked_out_at") or "—")[-8:-3]
-                if d.get("checked_out_at")
-                else "—",
+                _hhmm(d.get("checked_in_at")),
+                _hhmm(d.get("checked_out_at")),
                 str(d.get("minutes_late", 0) or 0),
                 fmt_uzs(d.get("deduction_uzs", 0) or 0),
             ]
@@ -1307,5 +1338,10 @@ def attendance_log_manual_close(*, log: AttendanceLog, user, note: str = "") -> 
             "note": note,
         },
     )
+    # Closed shift = end of work: same auto-pause as a normal checkout.
+    try:
+        operator_set_paused(operator=log.operator, paused=True, user=None, reason="checkout")
+    except Exception:
+        logging.getLogger(__name__).warning("auto-pause on manual close failed log=%s", log.pk, exc_info=True)
     return log
 

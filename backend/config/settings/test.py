@@ -26,3 +26,7 @@ TG_SESSION_ENCRYPTION_KEYS = {"1": TG_SESSION_ENCRYPTION_KEY}
 TG_SESSION_ENCRYPTION_CURRENT_VERSION = 1
 QR_ATTENDANCE_HMAC_KEY = "test-hmac-key-for-attendance"
 
+
+# Old distribution tests create operators without a shift; the availability
+# tests switch this on explicitly with override_settings.
+LEADS_REQUIRE_OPEN_SHIFT = False

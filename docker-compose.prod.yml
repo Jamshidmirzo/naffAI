@@ -105,7 +105,26 @@ services:
       - "127.0.0.1:8001:8000"
     volumes:
       - /var/www/naffai-media:/app/media
-    command: ["/app/scripts/entrypoint.sh"]
+    # 2026-10-12: демо запускается через uvicorn-воркер gunicorn'a, чтобы
+    # async view-эндпоинт `/api/notifications/stream/` (SSE) мог отдавать
+    # StreamingHttpResponse. На prod остаётся обычный sync-worker до
+    # явного green-light от владельца.
+    command:
+      - "bash"
+      - "-c"
+      - |
+        set -e
+        cd /app
+        python manage.py migrate --noinput
+        python manage.py seed_channels || true
+        python manage.py seed_tac --builtin || true
+        python manage.py collectstatic --noinput --clear || true
+        exec gunicorn config.asgi:application \
+          -k uvicorn.workers.UvicornWorker \
+          --bind 0.0.0.0:8000 \
+          --workers 2 \
+          --timeout 120 \
+          --access-logfile -
 
   bot:
     image: naffai-backend:latest

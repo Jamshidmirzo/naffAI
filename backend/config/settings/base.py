@@ -258,6 +258,15 @@ PAYROLL_DEFAULT_PAYOUT_VALUE = config("PAYROLL_DEFAULT_PAYOUT_VALUE", default="3
 
 # --- IMEI online lookup ---
 IMEI_ONLINE_LOOKUP_ENABLED = config("IMEI_ONLINE_LOOKUP_ENABLED", default=False, cast=bool)
+
+# Automatic lead distribution only to operators who are on shift right now
+# (open AttendanceLog today) whenever the daily check-in is required globally
+# (AttendanceSettings.enforce_daily_checkin) or for that operator
+# (Operator.require_checkin_enabled). Emergency switch: LEADS_REQUIRE_OPEN_SHIFT=false.
+LEADS_REQUIRE_OPEN_SHIFT = config("LEADS_REQUIRE_OPEN_SHIFT", default=True, cast=bool)
+# An operator who is not on shift this many minutes after their shift start
+# loses untouched automatic leads back to the pool (see release_leads_of_absent_operators).
+LEADS_ABSENT_RELEASE_AFTER_MIN = config("LEADS_ABSENT_RELEASE_AFTER_MIN", default=60, cast=int)
 IMEI_ONLINE_API_URL = config(
     "IMEI_ONLINE_API_URL",
     default="https://alpha.imeicheck.com/api/modelBrandName",

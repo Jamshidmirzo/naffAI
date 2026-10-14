@@ -630,18 +630,33 @@ def lead_stats_snapshot(
     ):
         by_op_leads[int(op_id)].add(int(lead_id))
 
-    # Also include leads updated in window where operator is current owner —
+    # Also include leads whose status the operator changed in the window —
     # covers status changes done via the lead card dropdown (без CallAttempt).
-    # Operator complained that her "Limit chiqmadi / has_debt / phone_on"
-    # actions weren't showing in her per-op status breakdown because they
-    # were logged without going through the call-button flow.
-    lead_updates_qs = Lead.objects.filter(operator__isnull=False)
-    if date_from:
-        lead_updates_qs = lead_updates_qs.filter(updated_at__gte=date_from)
-    if date_to:
-        lead_updates_qs = lead_updates_qs.filter(updated_at__lte=date_to)
-    for op_id, lead_id in lead_updates_qs.values_list("operator_id", "id"):
-        by_op_leads[int(op_id)].add(int(lead_id))
+    # 2026-10-14: taken from the audit trail of lead_update_status (who made
+    # the change), not from Lead.updated_at: updated_at also moves when the
+    # system *assigns* a lead (refill / morning split / sync), so 5 freshly
+    # given, never-called leads used to count as 5 «обзвон».
+    from apps.audit.models import AuditLog
+    from apps.users.models import Profile
+
+    user_to_op = dict(
+        Profile.objects.filter(operator__isnull=False).values_list("user_id", "operator_id")
+    )
+    if user_to_op:
+        status_changes_qs = AuditLog.objects.filter(
+            entity="leads.Lead",
+            changes__has_key="status",
+            user_id__in=list(user_to_op),
+        )
+        if date_from:
+            status_changes_qs = status_changes_qs.filter(created_at__gte=date_from)
+        if date_to:
+            status_changes_qs = status_changes_qs.filter(created_at__lte=date_to)
+        for user_id, entity_id in status_changes_qs.values_list("user_id", "entity_id").distinct():
+            try:
+                by_op_leads[int(user_to_op[user_id])].add(int(entity_id))
+            except (KeyError, TypeError, ValueError):
+                continue
 
     all_touched: set[int] = set()
     for lead_ids in by_op_leads.values():

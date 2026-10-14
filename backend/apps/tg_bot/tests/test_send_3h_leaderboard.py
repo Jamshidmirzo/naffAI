@@ -125,7 +125,7 @@ def test_build_report_skips_zero_activity_rows():
     assert "Bonu" in txt
     assert "Dostik" not in txt
     # But total sold accumulates over ALL rows (1 + 10 = 11).
-    assert "Всего продаж</b>: <b>11" in txt or "Всего продаж: <b>11</b>" in txt
+    assert "Подтверждённые продажи: <b>11</b>" in txt
 
 
 def test_build_report_top_n_cap():

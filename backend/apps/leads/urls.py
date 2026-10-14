@@ -23,9 +23,13 @@ from .apis import (
     OrphanLeadsApi,
     RetryExportApi,
     SheetSourceDetailApi,
+    SheetSourceFlushWritebacksApi,
+    SheetSourceHealthOverviewApi,
     SheetSourceListCreateApi,
     SheetSourcePreviewApi,
+    SheetSourceResetWatermarkApi,
     SheetSourceStatsApi,
+    SheetSourceSyncAllApi,
     SheetSourceSyncNowApi,
     SystemLostLeadsApi,
     TelegramLookupApi,
@@ -63,10 +67,14 @@ urlpatterns = [
 
 sheet_source_urlpatterns = [
     path("", SheetSourceListCreateApi.as_view()),
-    # Static paths ПЕРЕД <int:pk>/ — иначе `preview` матчится как id.
+    # Static paths ПЕРЕД <int:pk>/ — иначе `preview` / `health-overview` матчатся как id.
+    path("health-overview/", SheetSourceHealthOverviewApi.as_view()),
+    path("sync-all/", SheetSourceSyncAllApi.as_view()),
+    path("flush-writebacks/", SheetSourceFlushWritebacksApi.as_view()),
     path("preview/", SheetSourcePreviewApi.as_view()),
     path("<int:pk>/", SheetSourceDetailApi.as_view()),
     path("<int:pk>/sync-now/", SheetSourceSyncNowApi.as_view()),
+    path("<int:pk>/reset-watermark/", SheetSourceResetWatermarkApi.as_view()),
     path("<int:pk>/stats/", SheetSourceStatsApi.as_view()),
 ]
 

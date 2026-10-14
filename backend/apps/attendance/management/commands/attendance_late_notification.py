@@ -84,10 +84,11 @@ class Command(BaseCommand):
         # глобально в AttendanceSettings.
         for log in qs:
             cfg = resolve_operator_config(log.operator)
+            # Same rule as the was_late flag and payroll: per-operator grace.
             self._process_one(
                 log,
                 shift_start=cfg["shift_start"],
-                late_threshold_min=int(settings_obj.late_threshold_min or 0),
+                late_threshold_min=int(cfg["grace_period_min"] or 0),
             )
 
     def _process_one(self, log: AttendanceLog, *, shift_start, late_threshold_min: int) -> None:
