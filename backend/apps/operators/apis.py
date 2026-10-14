@@ -54,7 +54,6 @@ class OperatorSerializer(serializers.ModelSerializer):
     account = serializers.SerializerMethodField()
     sticker = serializers.SerializerMethodField()
     forgotten_checkouts_count = serializers.SerializerMethodField()
-    avatar_url = serializers.SerializerMethodField()
     managed_by_id = serializers.PrimaryKeyRelatedField(
         source="managed_by",
         queryset=__import__("django.contrib.auth", fromlist=["get_user_model"]).get_user_model().objects.all(),
@@ -86,8 +85,6 @@ class OperatorSerializer(serializers.ModelSerializer):
             "account",
             "sticker",
             "forgotten_checkouts_count",
-            # 2026-10-12: avatar snapshot (absolute URL + updated_at).
-            "avatar_url",
             # 2026-10-06: 3-level hierarchy ownership.
             "managed_by_id",
             # 2026-08-31: payroll overrides (см. миграцию 0008).
@@ -110,7 +107,6 @@ class OperatorSerializer(serializers.ModelSerializer):
             "account",
             "sticker",
             "forgotten_checkouts_count",
-            "avatar_url",
             # Pause состояние меняется ТОЛЬКО через отдельные POST-эндпоинты
             # /pause/ и /unpause/ (proходят через `operator_set_paused` — там
             # audit-лог и timestamps). Не даём тихо править через PATCH.
@@ -195,21 +191,6 @@ class OperatorSerializer(serializers.ModelSerializer):
             {"managed_by_id": "Недостаточно прав для изменения ownership"}
         )
 
-    def get_avatar_url(self, obj: Operator) -> str | None:
-        if not obj.avatar:
-            return None
-        request = self.context.get("request") if self.context else None
-        try:
-            raw = obj.avatar.url
-        except Exception:
-            return None
-        if request is not None:
-            try:
-                return request.build_absolute_uri(raw)
-            except Exception:
-                return raw
-        return raw
-
     def get_account(self, obj: Operator) -> dict:
         return account_state(user_by_operator(obj))
 
@@ -258,9 +239,6 @@ class OperatorListCreateApi(ListCreateAPIView):
             # + все operators своих managers), обычный manager видит свои +
             # legacy unassigned (NULL) pool. Superadmin — всех.
             visible_operator_ids=visible_operator_ids(self.request.user),
-            # Secondary filter поверх scope: super_manager-дропдаун
-            # «фильтр по менеджеру». `managed_by=null` → unassigned pool.
-            managed_by=self.request.query_params.get("managed_by"),
         )
 
     def get_serializer_context(self):
@@ -287,21 +265,7 @@ class OperatorListCreateApi(ListCreateAPIView):
         return context
 
     def perform_create(self, serializer):
-        # Ownership autoset для обычного manager'а: если он не указал
-        # `managed_by_id` в payload'е, backend сам подставляет self —
-        # так новый оператор сразу попадает в scope своего создателя и
-        # не висит в legacy «общем пуле». super_manager/superadmin —
-        # явно выбирают dropdown'ом; если None, оставляем None (legacy).
-        validated = dict(serializer.validated_data)
-        actor = self.request.user
-        if "managed_by" not in validated or validated.get("managed_by") is None:
-            from apps.users.models import Role as _Role
-
-            profile = getattr(actor, "profile", None)
-            role = profile.role if profile else None
-            if role in (_Role.MANAGER, _Role.TEAM_LEAD):
-                validated["managed_by"] = actor
-        instance = operator_create(user=actor, **validated)
+        instance = operator_create(user=self.request.user, **serializer.validated_data)
         serializer.instance = instance
 
 
@@ -795,99 +759,3 @@ class DayOffRejectApi(APIView):
         except ApplicationError as exc:
             return Response({"detail": exc.message, **exc.extra}, status=400)
         return Response(DayOffRequestSerializer(req).data)
-
-
-# ---------------------------------------------------------------------------
-# Avatar / snapshot APIs (2026-10-12).
-# ---------------------------------------------------------------------------
-
-from rest_framework.parsers import FormParser, MultiPartParser  # noqa: E402
-
-from .services import (  # noqa: E402
-    operator_set_avatar,
-    operator_snapshot_request,
-)
-
-
-def _operator_avatar_payload(operator: Operator, request) -> dict:
-    url = ""
-    if operator.avatar:
-        try:
-            raw = operator.avatar.url
-            url = request.build_absolute_uri(raw) if request else raw
-        except Exception:
-            url = ""
-    return {
-        "operator_id": operator.id,
-        "avatar_url": url or None,
-        "avatar_updated_at": (
-            operator.avatar_updated_at.isoformat()
-            if operator.avatar_updated_at
-            else None
-        ),
-    }
-
-
-class OperatorMeAvatarApi(APIView):
-    """
-    POST /api/operators/me/avatar/ — оператор загружает свой аватар
-    (file picker или webcam-snapshot). Multipart, поле `avatar`.
-    """
-
-    permission_classes = [IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]
-
-    def post(self, request):
-        profile = getattr(request.user, "profile", None)
-        op_id = getattr(profile, "operator_id", None) if profile else None
-        if not op_id:
-            raise NotFound("Доступно только операторам")
-        op = operator_get(op_id)
-        if not op:
-            raise NotFound("Оператор не найден")
-        f = request.FILES.get("avatar")
-        if not f:
-            raise ValidationError({"avatar": "Файл обязателен"})
-        op = operator_set_avatar(operator=op, image_file=f, user=request.user)
-        return Response(_operator_avatar_payload(op, request))
-
-
-class OperatorAvatarApi(APIView):
-    """
-    POST /api/operators/<pk>/avatar/ — менеджер+ грузит аватар за
-    конкретного оператора (file picker в карточке).
-    """
-
-    permission_classes = [IsManager]
-    parser_classes = [MultiPartParser, FormParser]
-
-    def post(self, request, pk: int):
-        op = operator_get(pk)
-        if not op:
-            return Response({"detail": "Not found"}, status=404)
-        f = request.FILES.get("avatar")
-        if not f:
-            raise ValidationError({"avatar": "Файл обязателен"})
-        op = operator_set_avatar(operator=op, image_file=f, user=request.user)
-        return Response(_operator_avatar_payload(op, request))
-
-
-class OperatorSnapshotRequestApi(APIView):
-    """
-    POST /api/operators/<pk>/snapshot/request/ — менеджер+ шлёт пуш
-    оператору «сделай снимок». Фронт у оператора открывает consent-
-    модалку и после подтверждения грузит снимок через me/avatar/.
-    """
-
-    permission_classes = [IsManager]
-
-    def post(self, request, pk: int):
-        op = operator_get(pk)
-        if not op:
-            return Response({"detail": "Not found"}, status=404)
-        sent = operator_snapshot_request(operator=op, requested_by=request.user)
-        if sent == 0:
-            return Response(
-                {"detail": "У оператора нет связанного пользователя"}, status=400
-            )
-        return Response({"sent": sent}, status=202)
