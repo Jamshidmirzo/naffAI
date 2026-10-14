@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import qrcode from "qrcode-generator";
-import { QrCode as QrCodeIcon, Smartphone } from "lucide-react";
+import { QrCode as QrCodeIcon, Smartphone, PlayCircle } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { api } from "../lib/api";
 import { apiErrorMessage } from "../lib/api-types";
@@ -92,6 +92,36 @@ export default function CheckinGate() {
   const qc = useQueryClient();
   const loc = useLocation();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [selfErr, setSelfErr] = useState<string | null>(null);
+  const [needsPhoto, setNeedsPhoto] = useState(false);
+
+  // Self-checkin без фото. Используется, когда `require_photo=False` в
+  // AttendanceSettings (demo). Если бэк отвечает `photo_required` —
+  // прячем кнопку, показываем fallback (QR + селфи — как раньше).
+  const selfCheckin = useMutation({
+    mutationFn: async () => {
+      const res = await api.post("/attendance/me/toggle/", {});
+      return res.data;
+    },
+    onSuccess: () => {
+      setSelfErr(null);
+      qc.invalidateQueries({ queryKey: ["me-attendance-current"] });
+    },
+    onError: (err: unknown) => {
+      // DRF возвращает `{ error, code: "photo_required" }` когда фото
+      // обязательно.
+      const anyErr = err as {
+        response?: { data?: { code?: string; error?: string } };
+      };
+      const code = anyErr?.response?.data?.code;
+      if (code === "photo_required") {
+        setNeedsPhoto(true);
+        setSelfErr(null);
+      } else {
+        setSelfErr(apiErrorMessage(err));
+      }
+    },
+  });
 
   const { data: current } = useQuery<MeCurrent>({
     queryKey: ["me-attendance-current"],
@@ -181,6 +211,40 @@ export default function CheckinGate() {
             {t("checkin_gate.subtitle")}
           </div>
         </div>
+
+        {!needsPhoto && (
+          <div className="mt-5">
+            <button
+              type="button"
+              onClick={() => selfCheckin.mutate()}
+              disabled={selfCheckin.isPending}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-2xl font-semibold text-white disabled:opacity-60"
+              style={{
+                background: "#16a34a",
+                padding: "14px 20px",
+                fontSize: 16,
+                minHeight: 52,
+                boxShadow: "0 10px 24px -8px rgba(22,163,74,.4)",
+              }}
+            >
+              <PlayCircle className="w-5 h-5" />
+              {selfCheckin.isPending
+                ? t("attendance.self_checkin_pending")
+                : t("attendance.self_checkin_button")}
+            </button>
+            {selfErr && (
+              <div className="mt-2 text-[12.5px] text-red-500 text-center">
+                {selfErr}
+              </div>
+            )}
+            <div
+              className="mt-4 text-center text-[11px] uppercase tracking-widest font-semibold"
+              style={{ color: "var(--muted)" }}
+            >
+              {t("attendance.or_scan_qr")}
+            </div>
+          </div>
+        )}
 
         <div
           className="mt-5 mx-auto grid place-items-center"

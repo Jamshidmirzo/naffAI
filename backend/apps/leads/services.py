@@ -29,6 +29,35 @@ from apps.common.exceptions import ApplicationError
 from apps.common.validators import normalize_uz_phone
 from apps.operators.models import Operator, OperatorStatus
 
+
+def _operator_has_open_shift(operator: Operator) -> bool:
+    """
+    «Оператор сейчас на смене» (есть открытый AttendanceLog на сегодня,
+    `checked_out_at IS NULL`). Используется как gate в автораздаче:
+    если `operator.require_checkin_enabled=True` и смены нет — не выдаём
+    этому оператору новых лидов.
+
+    Операторы с `require_checkin_enabled=False` НЕ блокируются (prod-safe
+    default до раскатки флага).
+    """
+    if not getattr(operator, "require_checkin_enabled", False):
+        return True
+    try:
+        from apps.attendance.models import AttendanceLog
+
+        today = timezone.localdate()
+        return AttendanceLog.objects.filter(
+            operator=operator,
+            checked_in_at__date=today,
+            checked_out_at__isnull=True,
+        ).exists()
+    except Exception:  # pragma: no cover
+        logging.getLogger(__name__).warning(
+            "has_open_shift check failed for op=%s", operator.id, exc_info=True
+        )
+        return True
+
+
 from .models import (
     DistributionMode,
     Lead,
@@ -927,6 +956,15 @@ def refill_operator_leads(
     if operator.is_paused:
         return []
 
+    # Checkin-gate: оператор с require_checkin_enabled=True должен быть на
+    # смене (есть открытый AttendanceLog), иначе лиды ему не доливаем.
+    # Prod-safe: operator'ы с flag=False проходят мимо (see helper).
+    if not _operator_has_open_shift(operator):
+        logging.getLogger(__name__).info(
+            "refill skipped: operator=%s has no open shift", operator.id
+        )
+        return []
+
     size = size or int(getattr(settings, "RR_BATCH_SIZE", 5))
     if size <= 0:
         return []
@@ -1069,6 +1107,23 @@ def morning_distribute_leads(
     operators = list(
         Operator.objects.filter(status=OperatorStatus.ACTIVE, is_paused=False).order_by("id")
     )
+    if not operators:
+        return {}
+
+    # Checkin-gate: исключаем из утренней раздачи операторов, у которых
+    # включён `require_checkin_enabled`, но нет открытой смены на сегодня.
+    # Для operator'ов с flag=False поведение не меняется (prod-safe).
+    _logger = logging.getLogger(__name__)
+    skipped: list[int] = []
+    allowed_operators: list[Operator] = []
+    for op in operators:
+        if _operator_has_open_shift(op):
+            allowed_operators.append(op)
+        else:
+            skipped.append(op.id)
+    if skipped:
+        _logger.info("morning_distribute: skipped (no open shift) operators=%s", skipped)
+    operators = allowed_operators
     if not operators:
         return {}
 

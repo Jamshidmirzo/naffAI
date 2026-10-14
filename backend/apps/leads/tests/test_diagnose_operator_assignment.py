@@ -218,3 +218,29 @@ def test_find_operators_by_freetext_ambiguous():
     hits = find_operators_by_freetext("mu")
     # Оба матчатся по 'mu'.
     assert len(hits) == 2
+
+
+@pytest.mark.django_db
+def test_diagnose_operator_paused():
+    op = _mk_op(active=True)
+    op.is_paused = True
+    op.save(update_fields=["is_paused"])
+    _mk_orphan_pool(5)
+
+    diag = diagnose_operator_assignment(op)
+    assert diag["verdict"] == "operator_paused"
+    assert "паузе" in diag["verdict_title_ru"]
+    assert diag["counters"]["is_paused"] is True
+
+
+@pytest.mark.django_db
+def test_diagnose_yesterday_unclosed_leads():
+    op = _mk_op(active=True)
+    _mk_working_lead(op, 1)  # updated_at is yesterday
+    _mk_orphan_pool(5)
+
+    diag = diagnose_operator_assignment(op)
+    assert diag["counters"]["yesterday_unclosed_leads"] == 1
+    assert len(diag["yesterday_leads"]) == 1
+    assert diag["yesterday_leads"][0]["phone"] == "+998900000001"
+

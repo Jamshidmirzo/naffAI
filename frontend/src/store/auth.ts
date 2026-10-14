@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { queryClient } from "../lib/queryClient";
 
 type AuthState = {
   token: string | null;
@@ -16,12 +17,14 @@ export const useAuth = create<AuthState>((set) => ({
     localStorage.setItem("naffai_token", token);
     localStorage.setItem("naffai_username", username);
     localStorage.setItem("naffai_role", role);
+    queryClient.clear();
     set({ token, username, role });
   },
   logout: () => {
     localStorage.removeItem("naffai_token");
     localStorage.removeItem("naffai_username");
     localStorage.removeItem("naffai_role");
+    queryClient.clear();
     set({ token: null, username: null, role: null });
   },
 }));

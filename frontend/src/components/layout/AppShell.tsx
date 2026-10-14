@@ -11,9 +11,11 @@ import CheckoutBackfillGate from "../CheckoutBackfillGate";
 import CheckoutReminderBanner from "../CheckoutReminderBanner";
 import BirthdayCelebration from "../BirthdayCelebration";
 import SaleCelebration from "../SaleCelebration";
+import SnapshotRequestPrompt from "../SnapshotRequestPrompt";
 import LiveStreamPublisher from "../LiveStreamPublisher";
 import { useT } from "../../lib/i18n";
 import { useMe } from "../../hooks/useMe";
+import { useNotificationStream } from "../../hooks/useNotificationStream";
 
 /**
  * Sidebar layout — sections grouped with lightweight headers so the
@@ -198,6 +200,11 @@ export default function AppShell() {
     ? [...superManagerGroups, ...managerGroups]
     : managerGroups;
 
+  // 2026-10-12: единый SSE-поток для celebration + snapshot-request пушей.
+  // Хук молча не делает ничего если токен не выставлен или сервер отдал
+  // 503 (нет redis) — polling-ветки компонентов продолжат работать.
+  useNotificationStream(true);
+
   // Read the operator's preferred content language from the profile so
   // MorningGreeting fetches the correct RU/UZ daily quote. Default 'uz'
   // — phone-shop team is UZ-first; manager can flip individual operators
@@ -243,6 +250,9 @@ export default function AppShell() {
             показа. Автор своей продажи overlay не видит (backend
             исключает `sale.operator_id` из recipients). */}
         {role === "operator" && <SaleCelebration />}
+        {/* 2026-10-12 — on-demand snapshot: менеджер жмёт «📷» на карточке,
+            у оператора открывается consent-модалка getUserMedia. */}
+        {role === "operator" && <SnapshotRequestPrompt />}
         <main
           className="flex-1"
           style={{ padding: "30px 40px 70px" }}

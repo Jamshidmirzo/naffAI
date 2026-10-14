@@ -663,6 +663,15 @@ def _broadcast_new_sale(sale, primary_op, operator_lines, total) -> None:
         if peer_user_ids:
             display_name = (primary_op.full_name if primary_op else "") or op_names
             device_label = (sale.phone_model or "").strip()
+            # 2026-10-12: аватар продавца в overlay. Если avatar пустой —
+            # фронт нарисует fallback-инициалы на градиенте.
+            seller_avatar_url = None
+            try:
+                avatar = getattr(primary_op, "avatar", None) if primary_op else None
+                if avatar:
+                    seller_avatar_url = avatar.url
+            except Exception:
+                seller_avatar_url = None
             notification_broadcast(
                 kind=NotificationKind.SALE_CELEBRATION,
                 # Title/body are stored but the overlay renders from
@@ -677,6 +686,7 @@ def _broadcast_new_sale(sale, primary_op, operator_lines, total) -> None:
                     "sale_id": sale.id,
                     "seller_id": primary_op.id if primary_op else None,
                     "seller_name": display_name,
+                    "seller_avatar_url": seller_avatar_url,
                     "amount": amount_int,
                     "device": device_label,
                     "created_at": sale.sold_at.isoformat() if sale.sold_at else None,

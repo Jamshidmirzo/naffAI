@@ -56,6 +56,10 @@ export type Lead = {
   // Горячий лид (ТЕЗ): дедлайн первого контакта.
   // null = не горячий / уже обработан / уже остыл.
   hot_until?: string | null;
+  // Когда текущий оператор получил этот лид (из активной LeadAssignment).
+  // Используется для группировки /my «Сегодня / Вчера / DD.MM / Давно».
+  // Может быть null у очень старых лидов без LeadAssignment-истории.
+  assigned_at?: string | null;
   created_at: string;
   updated_at: string;
 };

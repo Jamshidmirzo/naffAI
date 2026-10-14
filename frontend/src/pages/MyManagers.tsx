@@ -5,7 +5,10 @@ import { api } from "../lib/api";
 import {
   Button,
   Modal,
+  PhoneInput,
   StatusBadge,
+  TabPill,
+  normalizeUzPhone,
   toast,
 } from "../components/ui";
 import { usePageHeader } from "../store/page";
@@ -26,12 +29,16 @@ import { apiErrorMessage } from "../lib/api-types";
 interface UserRow {
   id: number;
   username: string;
+  full_name?: string;
   role: string;
   is_active: boolean;
   is_superuser: boolean;
   date_joined: string | null;
   last_login: string | null;
   reports_to_id: number | null;
+  operator_id?: number | null;
+  operator_name?: string | null;
+  operator_phone?: string | null;
 }
 
 interface Creds {
@@ -61,6 +68,18 @@ function fmtDate(iso: string | null) {
   }
 }
 
+function initials(name: string) {
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0])
+      .join("")
+      .toUpperCase() || "?"
+  );
+}
+
 export default function MyManagers() {
   const qc = useQueryClient();
   const t = useT();
@@ -72,7 +91,10 @@ export default function MyManagers() {
   );
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [newUsername, setNewUsername] = useState("");
+  const [createMode, setCreateMode] = useState<"existing" | "new">("existing");
+  const [selectedExistingUserId, setSelectedExistingUserId] = useState<number | "">("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newFullName, setNewFullName] = useState("");
   const [createError, setCreateError] = useState("");
   const [credsModal, setCredsModal] = useState<Creds | null>(null);
   const [confirmReset, setConfirmReset] = useState<UserRow | null>(null);
@@ -93,21 +115,46 @@ export default function MyManagers() {
     (u) => u.username !== meUsername && (u.role === "manager" || u.role === "team_lead")
   );
 
-  const createMut = useMutation({
+  // Кандидаты для назначения из существующих (операторы, смм и т.д.)
+  const existingCandidates = useMemo(() => {
+    return (usersQ.data ?? []).filter(
+      (u) =>
+        u.username !== meUsername &&
+        u.role !== "manager" &&
+        u.role !== "team_lead" &&
+        u.role !== "super_manager" &&
+        u.role !== "superadmin"
+    );
+  }, [usersQ.data, meUsername]);
+
+  const promoteMut = useMutation({
+    mutationFn: (userId: number) =>
+      api.patch(`/users/${userId}/`, { role: "manager" }).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      setCreateOpen(false);
+      setSelectedExistingUserId("");
+      toast.success("Menejer qilib tayinlandi");
+    },
+    onError: (err: unknown) => setCreateError(apiErrorMessage(err)),
+  });
+
+  const phoneParsed = useMemo(() => normalizeUzPhone(newPhone), [newPhone]);
+
+  const createNewMut = useMutation({
     mutationFn: () =>
       api
         .post<Creds & { role: string; is_active: boolean }>("/users/", {
-          username: newUsername.trim(),
+          username: phoneParsed.canonical,
+          full_name: newFullName.trim(),
           role: "manager",
-          // reports_to не ставим — super_managers общий tier, manager'ы
-          // не привязываются к конкретному super_manager'у. Scope у
-          // manager'ов идёт по managed_by на operator-уровне.
         })
         .then((r) => r.data),
     onSuccess: async (data) => {
       qc.invalidateQueries({ queryKey: ["users"] });
       setCreateOpen(false);
-      setNewUsername("");
+      setNewPhone("");
+      setNewFullName("");
       setCredsModal({
         id: data.id,
         username: data.username,
@@ -228,7 +275,10 @@ export default function MyManagers() {
           </div>
         ) : (
           <div>
-            {rows.map((u, i) => (
+            {rows.map((u, i) => {
+              const displayName = u.operator_name || u.full_name || u.username;
+              const hasDistinctPhone = u.username !== displayName;
+              return (
               <div
                 key={u.id}
                 className="nf-row animate-nfFadeUp"
@@ -238,7 +288,7 @@ export default function MyManagers() {
                   cursor: "default",
                 }}
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <div
                     className="grid place-items-center text-white text-[11px] font-semibold shrink-0"
                     style={{
@@ -248,9 +298,14 @@ export default function MyManagers() {
                       background: "var(--accent-grad)",
                     }}
                   >
-                    {u.username.slice(0, 2).toUpperCase()}
+                    {initials(displayName)}
                   </div>
-                  <div className="font-medium">{u.username}</div>
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{displayName}</div>
+                    {hasDistinctPhone && (
+                      <div className="text-[11.5px] text-muted truncate">{u.username}</div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <StatusBadge tone="hot">
@@ -300,16 +355,17 @@ export default function MyManagers() {
                   </button>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
       </section>
 
-      {/* Create modal */}
+      {/* Create / Assign modal */}
       <Modal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        width={460}
+        width={480}
       >
         <div className="p-7">
           <div className="flex items-center gap-2.5 mb-2">
@@ -325,48 +381,112 @@ export default function MyManagers() {
               <UserCog className="w-4 h-4" />
             </div>
             <div className="text-[16px] font-semibold tracking-tight">
-              {t("super_manager.new_manager")}
+              {t("super_manager.add_manager")}
             </div>
           </div>
-          <p className="text-[13px] text-muted mt-1">
-            {t("super_manager.new_manager_hint")}
-          </p>
 
-          <div className="mt-5 flex flex-col gap-4">
-            <div>
-              <div className="nf-col mb-1.5">{t("common.login")}</div>
-              <input
-                className="nf-input"
-                value={newUsername}
-                onChange={(e) => setNewUsername(e.target.value)}
-                placeholder={t("users.login_ph")}
-                autoFocus
-                autoComplete="off"
-              />
-            </div>
-            {createError && (
-              <div
-                className="text-[13px] rounded-xl px-3.5 py-2.5"
-                style={{
-                  background: "rgba(220,60,40,.08)",
-                  color: "var(--danger)",
-                  border: "1px solid rgba(220,60,40,.2)",
-                }}
-              >
-                {createError}
-              </div>
-            )}
+          <div className="mt-4 mb-5">
+            <TabPill
+              value={createMode}
+              onChange={(m) => {
+                setCreateMode(m);
+                setCreateError("");
+              }}
+              items={[
+                { value: "existing", label: "Mavjud xodimdan" },
+                { value: "new", label: "Yangi raqam bilan" },
+              ]}
+            />
           </div>
+
+          {createMode === "existing" ? (
+            <div className="flex flex-col gap-3">
+              <div>
+                <div className="nf-col mb-1.5">Xodimni tanlang</div>
+                <select
+                  className="nf-input"
+                  value={selectedExistingUserId}
+                  onChange={(e) => setSelectedExistingUserId(e.target.value ? Number(e.target.value) : "")}
+                >
+                  <option value="">— Xodimni tanlang ({existingCandidates.length} ta) —</option>
+                  {existingCandidates.map((cand) => {
+                    const name = cand.operator_name || cand.full_name || cand.username;
+                    const label = cand.username !== name ? `${name} (${cand.username})` : name;
+                    return (
+                      <option key={cand.id} value={cand.id}>
+                        {label}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              <p className="text-[12.5px] text-muted">
+                Tanlangan xodimga menejer roli beriladi va u sizning jamoangizga qo'shiladi.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3.5">
+              <div>
+                <div className="nf-col mb-1.5">Telefon raqami (Login)</div>
+                <PhoneInput
+                  value={newPhone}
+                  onChange={setNewPhone}
+                  placeholder="+998"
+                  invalid={newPhone.length > 0 && !phoneParsed.valid}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <div className="nf-col mb-1.5">F.I.SH / Ismi</div>
+                <input
+                  className="nf-input"
+                  value={newFullName}
+                  onChange={(e) => setNewFullName(e.target.value)}
+                  placeholder="masalan: Sardor"
+                />
+              </div>
+              <p className="text-[12.5px] text-muted">
+                Yangi menejer shu raqam orqali tizimga kiradi. Parol avtomatik generatsiya qilinadi.
+              </p>
+            </div>
+          )}
+
+          {createError && (
+            <div
+              className="mt-4 text-[13px] rounded-xl px-3.5 py-2.5"
+              style={{
+                background: "rgba(220,60,40,.08)",
+                color: "var(--danger)",
+                border: "1px solid rgba(220,60,40,.2)",
+              }}
+            >
+              {createError}
+            </div>
+          )}
+
           <div className="mt-7 flex gap-2 justify-end">
             <Button variant="ghost" onClick={() => setCreateOpen(false)}>
               {t("common.cancel")}
             </Button>
-            <Button
-              onClick={() => createMut.mutate()}
-              disabled={createMut.isPending || !newUsername.trim()}
-            >
-              {createMut.isPending ? t("common.creating") : t("common.create")}
-            </Button>
+            {createMode === "existing" ? (
+              <Button
+                onClick={() => {
+                  if (selectedExistingUserId) {
+                    promoteMut.mutate(Number(selectedExistingUserId));
+                  }
+                }}
+                disabled={promoteMut.isPending || !selectedExistingUserId}
+              >
+                {promoteMut.isPending ? "Tayinlanmoqda…" : "Menejer qilish"}
+              </Button>
+            ) : (
+              <Button
+                onClick={() => createNewMut.mutate()}
+                disabled={createNewMut.isPending || !phoneParsed.valid}
+              >
+                {createNewMut.isPending ? t("common.creating") : t("common.create")}
+              </Button>
+            )}
           </div>
         </div>
       </Modal>

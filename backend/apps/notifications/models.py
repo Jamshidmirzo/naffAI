@@ -18,6 +18,7 @@ class NotificationKind(models.TextChoices):
     LEAD_ASSIGNED = "lead_assigned", "Новый лид"
     BIRTHDAY = "birthday", "День рождения оператора"
     SALE_CELEBRATION = "sale_celebration", "Овация за продажу коллеги"
+    SNAPSHOT_REQUEST = "snapshot_request", "Запрос снимка с камеры"
     SYSTEM = "system", "Системное сообщение"
 
 

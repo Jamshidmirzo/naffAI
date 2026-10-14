@@ -28,6 +28,7 @@ def operator_list(
     include_inactive: bool = True,
     with_plan: bool = False,
     visible_operator_ids: list[int] | None = None,
+    managed_by: int | str | None = None,
 ) -> QuerySet[Operator]:
     """
     Base queryset for the operators list. Optional ownership filter.
@@ -37,12 +38,30 @@ def operator_list(
     queryset is sliced to that set. An empty list intentionally returns
     zero rows so a user without any visible operators sees nothing. Pass
     `None` to skip the gate.
+
+    `managed_by` — секундарный фильтр поверх visible-scope:
+      * int (user_id) → `managed_by_id=<id>`;
+      * строка "null"/"none"/"unassigned" → `managed_by_id IS NULL`
+        (legacy pool, не привязанный ни к одному менеджеру);
+      * None → не фильтровать.
     """
     qs = Operator.objects.all()
     if visible_operator_ids is not None:
         if not visible_operator_ids:
             return qs.none()
         qs = qs.filter(id__in=visible_operator_ids)
+    if managed_by is not None:
+        if isinstance(managed_by, str):
+            s = managed_by.strip().lower()
+            if s in ("null", "none", "unassigned", ""):
+                qs = qs.filter(managed_by__isnull=True)
+            else:
+                try:
+                    qs = qs.filter(managed_by_id=int(s))
+                except (TypeError, ValueError):
+                    pass
+        else:
+            qs = qs.filter(managed_by_id=managed_by)
     if not include_inactive:
         qs = qs.exclude(status="inactive")
     if status:

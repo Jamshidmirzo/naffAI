@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, LogIn, LogOut, PlayCircle, QrCode } from "lucide-react";
@@ -32,6 +32,7 @@ type Me = {
   telegram_user_id: number | null;
   birth_date: string | null;
   is_birthday_today: boolean;
+  avatar_url?: string | null;
 };
 
 type Preferences = {
@@ -184,19 +185,34 @@ export default function Profile() {
         }}
       >
         <div className="flex items-center gap-5 flex-wrap">
-          <div
-            className="grid place-items-center text-white font-semibold shrink-0"
-            style={{
-              width: 62,
-              height: 62,
-              borderRadius: 18,
-              background: "var(--accent-grad)",
-              fontSize: 22,
-              boxShadow: "0 14px 30px -14px var(--accent)",
-            }}
-          >
-            {initials(displayName)}
-          </div>
+          {me.data?.avatar_url ? (
+            <img
+              src={me.data.avatar_url}
+              alt=""
+              className="shrink-0"
+              style={{
+                width: 62,
+                height: 62,
+                borderRadius: 18,
+                objectFit: "cover",
+                boxShadow: "0 14px 30px -14px var(--accent)",
+              }}
+            />
+          ) : (
+            <div
+              className="grid place-items-center text-white font-semibold shrink-0"
+              style={{
+                width: 62,
+                height: 62,
+                borderRadius: 18,
+                background: "var(--accent-grad)",
+                fontSize: 22,
+                boxShadow: "0 14px 30px -14px var(--accent)",
+              }}
+            >
+              {initials(displayName)}
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <div
               className="font-semibold truncate"
@@ -344,6 +360,16 @@ export default function Profile() {
             // Profile.tsx (["me"]), и общий (["auth","me"] в useMe),
             // чтобы AppShell → BirthdayCelebration сразу увидел
             // is_birthday_today=true, если оператор ввёл сегодняшнюю дату.
+            qc.invalidateQueries({ queryKey: ["me"] });
+            qc.invalidateQueries({ queryKey: ["auth", "me"] });
+          }}
+        />
+      )}
+
+      {me.data?.operator_id && (
+        <AvatarSection
+          currentUrl={me.data.avatar_url || null}
+          onSaved={() => {
             qc.invalidateQueries({ queryKey: ["me"] });
             qc.invalidateQueries({ queryKey: ["auth", "me"] });
           }}
@@ -968,5 +994,211 @@ function PasswordModal({
         </div>
       </form>
     </Modal>
+  );
+}
+
+// -------------------------------------------------------------------------
+
+function AvatarSection({
+  currentUrl,
+  onSaved,
+}: {
+  currentUrl: string | null;
+  onSaved: () => void;
+}) {
+  const qc = useQueryClient();
+  const [mode, setMode] = useState<"idle" | "webcam" | "uploading">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const stopStream = () => {
+    try {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    } catch {
+      /* ignore */
+    }
+    streamRef.current = null;
+  };
+
+  const upload = async (file: Blob) => {
+    setMode("uploading");
+    setErrorMsg("");
+    try {
+      const fd = new FormData();
+      fd.append("avatar", file, file instanceof File ? file.name : `snapshot-${Date.now()}.jpg`);
+      await api.post("/operators/me/avatar/", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      toast.success("Аватар обновлён");
+      onSaved();
+      qc.invalidateQueries({ queryKey: ["operators"] });
+    } catch {
+      setErrorMsg("Не удалось загрузить. Попробуйте ещё раз.");
+      toast.error("Не удалось загрузить аватар");
+    } finally {
+      setMode("idle");
+    }
+  };
+
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (f) void upload(f);
+  };
+
+  const startWebcam = async () => {
+    setErrorMsg("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480, facingMode: "user" },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setMode("webcam");
+      // mount — attach stream in next tick when <video> is in DOM
+      window.setTimeout(async () => {
+        if (videoRef.current && streamRef.current) {
+          videoRef.current.srcObject = streamRef.current;
+          try {
+            await videoRef.current.play();
+          } catch {
+            /* ignore */
+          }
+        }
+      }, 0);
+    } catch (err) {
+      const name = (err as { name?: string } | undefined)?.name;
+      setErrorMsg(
+        name === "NotAllowedError" || name === "SecurityError"
+          ? "Доступ к камере запрещён в браузере."
+          : "Камера недоступна.",
+      );
+    }
+  };
+
+  const snap = async () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    const w = video.videoWidth || 640;
+    const h = video.videoHeight || 480;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, w, h);
+    const blob: Blob | null = await new Promise((resolve) =>
+      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.85),
+    );
+    stopStream();
+    if (blob) await upload(blob);
+    else setMode("idle");
+  };
+
+  const cancelWebcam = () => {
+    stopStream();
+    setMode("idle");
+  };
+
+  return (
+    <section
+      className="nf-card animate-nfFadeUp"
+      style={{ padding: "22px 26px", animationDelay: "0.045s" }}
+    >
+      <Eyebrow>Аватар</Eyebrow>
+      <div className="text-[15px] font-semibold mt-2">Фото профиля</div>
+      <p className="text-[13px] text-muted mt-1.5 max-w-md">
+        Виден коллегам в overlay-овациях и в карточке оператора.
+      </p>
+
+      <div className="mt-4 flex items-center gap-5 flex-wrap">
+        {currentUrl ? (
+          <img
+            src={currentUrl}
+            alt=""
+            style={{
+              width: 86,
+              height: 86,
+              borderRadius: 22,
+              objectFit: "cover",
+              border: "1px solid var(--border)",
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: 86,
+              height: 86,
+              borderRadius: 22,
+              background: "var(--faint)",
+              border: "1px dashed var(--border)",
+              display: "grid",
+              placeItems: "center",
+              color: "var(--text-muted, #94a3b8)",
+              fontSize: 11,
+            }}
+          >
+            нет фото
+          </div>
+        )}
+
+        {mode === "idle" && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="nf-btn nf-btn--secondary cursor-pointer">
+              Загрузить файл
+              <input type="file" accept="image/*" hidden onChange={onFile} />
+            </label>
+            <Button variant="secondary" onClick={startWebcam}>
+              📷 Сделать с камеры
+            </Button>
+          </div>
+        )}
+
+        {mode === "uploading" && (
+          <div className="text-[13px] text-muted">Загрузка…</div>
+        )}
+      </div>
+
+      {mode === "webcam" && (
+        <div className="mt-5 flex flex-col items-center gap-3">
+          <video
+            ref={videoRef}
+            muted
+            playsInline
+            style={{
+              width: "100%",
+              maxWidth: 360,
+              borderRadius: 16,
+              background: "#000",
+              aspectRatio: "4 / 3",
+              objectFit: "cover",
+            }}
+          />
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={cancelWebcam}>
+              Отмена
+            </Button>
+            <Button onClick={snap}>Снять</Button>
+          </div>
+        </div>
+      )}
+
+      {errorMsg && (
+        <div
+          className="mt-3 text-[13px] rounded-xl px-3.5 py-2.5"
+          style={{
+            background: "rgba(220,60,40,.08)",
+            color: "var(--danger)",
+            border: "1px solid rgba(220,60,40,.2)",
+          }}
+        >
+          {errorMsg}
+        </div>
+      )}
+
+      <canvas ref={canvasRef} style={{ display: "none" }} />
+    </section>
   );
 }

@@ -55,11 +55,11 @@ class Operator(TimestampedModel):
     # никакие endpoints не блокирует — enforcement только на UI. По
     # умолчанию False, чтобы включать выборочно (demo / после обучения).
     require_checkin_enabled = models.BooleanField(
-        default=False,
+        default=True,
         help_text=(
             "UI-гейт: показывать оператору блокирующий модал «Отметьтесь чтобы работать» "
             "пока open AttendanceLog не создан. Backend API остаётся открытым. "
-            "По умолчанию OFF — включайте выборочно для обкатки."
+            "По умолчанию ON — чек-ин обязателен для новых операторов."
         ),
     )
     # День рождения оператора — ДД.ММ.ГГГГ. Год виден только менеджеру
@@ -254,6 +254,22 @@ class Operator(TimestampedModel):
             "Manager или super_manager, который напрямую владеет этим "
             "оператором. NULL = legacy «общий пул», виден всем менеджерам."
         ),
+    )
+
+    # 2026-10-12: аватарка оператора. Хранится ОДИН актуальный снимок —
+    # upload (file / webcam / manager-on-demand snapshot) перезаписывает
+    # предыдущий. История не ведётся. NULL = нет фото (fallback —
+    # инициалы на градиенте в UI).
+    avatar = models.ImageField(
+        upload_to="operators/avatars/",
+        null=True,
+        blank=True,
+        help_text="Актуальный снимок оператора (file / webcam / snapshot).",
+    )
+    avatar_updated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Когда последний раз обновлялся avatar.",
     )
 
     class Meta:

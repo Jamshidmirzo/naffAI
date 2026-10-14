@@ -52,6 +52,7 @@ from .selectors import (
     operator_quota_blocking_leads,
     operator_yesterday_backlog_count,
     operators_distribution_status,
+    operators_distribution_diagnostics,
     orphan_leads,
     stranded_on_inactive_operators,
     system_lost_leads_qs,
@@ -92,6 +93,26 @@ class LeadSerializer(serializers.ModelSerializer):
     )
     previous_operator_name = serializers.SerializerMethodField()
     is_retry = serializers.SerializerMethodField()
+    # Когда текущий оператор получил этот лид. Из активной LeadAssignment
+    # (created_at). Если annotate'нуто в селекторе — отдадим без доп-запроса,
+    # иначе fallback через `lead.assignments`. На фронте используется для
+    # группировки «Сегодня / Вчера / DD.MM / Давно» на /my.
+    assigned_at = serializers.SerializerMethodField()
+
+    def get_assigned_at(self, lead: Lead):
+        # Fast path — селектор уже annotate'нул поле.
+        pre = getattr(lead, "assigned_at_annot", None)
+        if pre is not None:
+            return pre.isoformat() if hasattr(pre, "isoformat") else pre
+        if lead.operator_id is None:
+            return None
+        a = (
+            lead.assignments.filter(active=True, operator_id=lead.operator_id)
+            .order_by("-created_at")
+            .values_list("created_at", flat=True)
+            .first()
+        )
+        return a.isoformat() if a else None
 
     def get_previous_operator_name(self, lead: Lead) -> str:
         prev = (
@@ -139,6 +160,7 @@ class LeadSerializer(serializers.ModelSerializer):
             "previous_operator_name",
             "is_retry",
             "hot_until",
+            "assigned_at",
             "created_at",
             "updated_at",
         ]
@@ -154,6 +176,7 @@ class LeadSerializer(serializers.ModelSerializer):
             "previous_operator_name",
             "is_retry",
             "hot_until",
+            "assigned_at",
             "created_at",
             "updated_at",
         ]
@@ -1048,7 +1071,33 @@ class LeadsBulkReassignApi(APIView):
         return Response(result)
 
 
-# ---- Distribution-status panel (менеджерский диагностический виджет) ----
+# ---- Distribution-status & Diagnostics panel (менеджерский диагностический виджет) ----
+
+
+class DistributionDiagnosticsApi(APIView):
+    """
+    GET /api/leads/distribution-diagnostics/
+
+    Комплексная диагностика автораздачи операторам:
+    - Общий статус команды (сколько получают лиды, сколько заблокировано/на паузе)
+    - Персональная диагностика каждого оператора (причина блокировки на UZ и RU)
+    - ?operator_id=<id> — детальный разбор: лиды в квоте, вчерашние незакрытые лиды, история раздачи за день
+    """
+
+    permission_classes = [IsManager]
+
+    def get(self, request):
+        op_id_raw = request.query_params.get("operator_id")
+        operator_id = int(op_id_raw) if op_id_raw and op_id_raw.isdigit() else None
+        filter_status = request.query_params.get("filter_status")
+        search = request.query_params.get("search")
+
+        data = operators_distribution_diagnostics(
+            operator_id=operator_id,
+            filter_status=filter_status,
+            search=search,
+        )
+        return Response(data)
 
 
 class DistributionStatusApi(APIView):
@@ -1396,6 +1445,162 @@ class SheetSourceStatsApi(APIView):
                 "is_healthy": healthy,
             }
         )
+
+
+class SheetSourceHealthOverviewApi(APIView):
+    """
+    GET /api/sheet-sources/health-overview/ — full diagnostics of Google Sheets sync & writeback.
+    """
+    permission_classes = [IsTeamLead]
+
+    def get(self, request):
+        from datetime import timedelta
+        from django.utils import timezone
+        from apps.leads.models import SheetSource, SheetWritebackJob
+
+        now = timezone.now()
+        sources_data = []
+        all_sources = SheetSource.objects.filter(active=True).order_by("name")
+
+        for s in all_sources:
+            wb = s.writeback_columns or {}
+            ago_seconds = int((now - s.last_synced_at).total_seconds()) if s.last_synced_at else None
+            is_healthy = not bool(s.last_sync_error)
+            leads_today = Lead.objects.filter(sheet_source=s, created_at__date=timezone.localdate()).count()
+            leads_total = Lead.objects.filter(sheet_source=s).count()
+
+            sources_data.append({
+                "id": s.id,
+                "name": s.name,
+                "worksheet_name": s.worksheet_name or "",
+                "spreadsheet_id": s.spreadsheet_id,
+                "gid": s.gid,
+                "active": s.active,
+                "last_synced_at": s.last_synced_at.isoformat() if s.last_synced_at else None,
+                "last_synced_ago_seconds": ago_seconds,
+                "last_synced_row": s.last_synced_row,
+                "last_sync_error": s.last_sync_error or None,
+                "is_healthy": is_healthy,
+                "writeback_enabled": bool(wb.get("enabled", False)),
+                "writeback_status_col": wb.get("status_col") or "",
+                "writeback_operator_col": wb.get("operator_col") or "",
+                "leads_today": leads_today,
+                "leads_total": leads_total,
+            })
+
+        pending_jobs = SheetWritebackJob.objects.filter(done_at__isnull=True).count()
+        failed_jobs = SheetWritebackJob.objects.filter(done_at__isnull=True, attempts__gte=3).count()
+        done_last_1h = SheetWritebackJob.objects.filter(done_at__gte=now - timedelta(hours=1)).count()
+        failed_samples = list(
+            SheetWritebackJob.objects.filter(done_at__isnull=True, attempts__gt=0)
+            .values("lead_id", "last_error", "attempts")[:5]
+        )
+
+        overall_healthy = (
+            all(s["is_healthy"] for s in sources_data)
+            and failed_jobs == 0
+        )
+        latest_sync = max((s["last_synced_at"] for s in sources_data if s["last_synced_at"]), default=None)
+
+        return Response({
+            "overall_healthy": overall_healthy,
+            "total_active_sources": len(sources_data),
+            "latest_sync_at": latest_sync,
+            "sources": sources_data,
+            "writeback": {
+                "is_healthy": failed_jobs == 0,
+                "pending_count": pending_jobs,
+                "failed_count": failed_jobs,
+                "done_last_1h": done_last_1h,
+                "failed_samples": failed_samples,
+            },
+        })
+
+
+class SheetSourceSyncAllApi(APIView):
+    """
+    POST /api/sheet-sources/sync-all/ — run sync immediately across all active sources.
+    """
+    permission_classes = [IsTeamLead]
+
+    def post(self, request):
+        from .integrations.google_sheets.sync import sync_all
+        force = bool(request.data.get("force", False))
+        results = sync_all(force_full_scan=force)
+
+        total_read = sum(r.read for r in results)
+        total_imported = sum(r.imported for r in results)
+        total_created = sum(r.created for r in results)
+        total_merged = sum(r.merged for r in results)
+        total_errors = sum(r.errors for r in results)
+
+        return Response({
+            "total_sources": len(results),
+            "total_read": total_read,
+            "total_imported": total_imported,
+            "total_created": total_created,
+            "total_merged": total_merged,
+            "total_errors": total_errors,
+            "results": [
+                {
+                    "sheet_source_id": r.sheet_source_id,
+                    "read": r.read,
+                    "imported": r.imported,
+                    "created": r.created,
+                    "merged": r.merged,
+                    "errors": r.errors,
+                    "max_row": r.max_row,
+                }
+                for r in results
+            ],
+        })
+
+
+class SheetSourceFlushWritebacksApi(APIView):
+    """
+    POST /api/sheet-sources/flush-writebacks/ — immediately process pending writeback jobs.
+    """
+    permission_classes = [IsTeamLead]
+
+    def post(self, request):
+        from apps.leads.management.commands.process_sheet_writebacks import process_due_jobs
+        from apps.leads.models import SheetWritebackJob
+
+        stats = process_due_jobs(limit=100, pause_s=0.05)
+        remaining = SheetWritebackJob.objects.filter(done_at__isnull=True).count()
+        return Response({
+            "stats": stats,
+            "remaining_pending": remaining,
+        })
+
+
+class SheetSourceResetWatermarkApi(APIView):
+    """
+    POST /api/sheet-sources/{id}/reset-watermark/ — reset watermark row and re-scan.
+    """
+    permission_classes = [IsTeamLead]
+
+    def post(self, request, pk: int):
+        from .integrations.google_sheets.sync import sync_single_source
+
+        src = SheetSource.objects.filter(pk=pk).first()
+        if not src:
+            return Response({"detail": "Not found"}, status=404)
+
+        row = int(request.data.get("row", 0))
+        src.last_synced_row = row
+        src.save(update_fields=["last_synced_row", "updated_at"])
+
+        res = sync_single_source(src, force_full_scan=True)
+        return Response({
+            "id": src.id,
+            "name": src.name,
+            "last_synced_row": src.last_synced_row,
+            "read": res.read,
+            "created": res.created,
+            "merged": res.merged,
+            "errors": res.errors,
+        })
 
 
 class OperatorSheetAliasListCreateApi(ListCreateAPIView):

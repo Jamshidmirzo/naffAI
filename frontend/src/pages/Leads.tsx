@@ -10,6 +10,7 @@ import { Paginator } from "../components/Paginator";
 import { formatDate } from "../lib/format";
 import { Button, Checkbox, Chip, Modal, StatusBadge, toast } from "../components/ui";
 import { Select } from "../components/Select";
+import { SheetSyncBar } from "../components/sheet-sources/SheetSyncBar";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
 
@@ -150,6 +151,9 @@ export default function Leads() {
 
   return (
     <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
+      {/* Real-time Google Sheets Sync & Health Bar */}
+      <SheetSyncBar />
+
       {/* Sheet-source tabs */}
       {(sheetSources.data?.length ?? 0) > 0 && (
         <section className="flex flex-wrap gap-2 animate-nfFadeUp">

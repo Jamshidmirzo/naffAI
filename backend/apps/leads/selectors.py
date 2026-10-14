@@ -11,7 +11,18 @@ from __future__ import annotations
 import datetime as dt
 
 from django.conf import settings
-from django.db.models import Case, Count, IntegerField, Q, QuerySet, Value, When
+from django.db.models import (
+    Case,
+    Count,
+    DateTimeField,
+    IntegerField,
+    OuterRef,
+    Q,
+    QuerySet,
+    Subquery,
+    Value,
+    When,
+)
 from django.utils import timezone
 
 from apps.operators.models import Operator, OperatorStatus
@@ -493,7 +504,24 @@ def leads_for_operator(
                     `-updated_at` (последнее закрытое сверху).
       - "all":       no postpone filter
     """
-    qs = Lead.objects.select_related("operator", "sheet_source").filter(operator=operator)
+    # Annotate когда оператор получил лид — активная LeadAssignment.created_at.
+    # Используется в LeadSerializer.get_assigned_at (fast path без доп-запроса).
+    from .models import LeadAssignment
+
+    assigned_at_sq = (
+        LeadAssignment.objects.filter(
+            lead=OuterRef("pk"),
+            operator_id=operator.id,
+            active=True,
+        )
+        .order_by("-created_at")
+        .values("created_at")[:1]
+    )
+    qs = (
+        Lead.objects.select_related("operator", "sheet_source")
+        .annotate(assigned_at_annot=Subquery(assigned_at_sq, output_field=DateTimeField()))
+        .filter(operator=operator)
+    )
 
     # `closed` — история терминальных лидов. Обходим общий active-filter
     # ниже, потому что include_archived/status там сузили бы выборку до
@@ -1271,6 +1299,8 @@ def operators_distribution_status() -> list[dict]:
         postponed = op._postponed_count  # type: ignore[attr-defined]
 
         reasons: list[str] = []
+        if getattr(op, "is_paused", False):
+            reasons.append("Оператор на паузе (новых лидов не получает)")
         if working >= batch:
             reasons.append(f"Квота: {working}/{batch} — освободите слот, закрыв лид")
         if morning_gate and operator_has_open_callbacks(op):
@@ -1414,6 +1444,7 @@ AUTO_DIAG_REASON_ORDER = (
     "empty_pool",
     # Per-operator: сначала статус, потом квота, потом gate.
     "operator_not_active",
+    "operator_paused",
     "quota_full",
     "morning_gate_backlog",
     "morning_gate_callback",
@@ -1460,6 +1491,62 @@ def _orphan_pool_size() -> int:
     ).count()
 
 
+def operator_yesterday_unclosed_count(operator: Operator) -> int:
+    """
+    Количество лидов у оператора, которые были назначены/обновлены
+    до сегодняшнего дня (updated_at < today_start) и всё ещё не
+    закрыты (статус НЕ в terminal_lead_status_codes).
+    """
+    today_start = _today_start_local()
+    terminal = set(terminal_lead_status_codes())
+    return Lead.objects.exclude(status__in=terminal).filter(
+        operator=operator, updated_at__lt=today_start
+    ).count()
+
+
+def operator_yesterday_unclosed_leads(operator: Operator, limit: int = 50) -> list[dict]:
+    """
+    Список незакрытых лидов с прошлых дней для оператора.
+    Старейшие первыми — чтобы менеджер мог показать оператору
+    «вот твои 7 вчерашних лидов, закрой их».
+    """
+    from apps.leads.models import LeadStatusLabel
+
+    today_start = _today_start_local()
+    terminal = set(terminal_lead_status_codes())
+    now = timezone.localtime()
+    labels = {
+        l.code: {"ru": l.label_ru, "uz": l.label_uz or l.label_ru}
+        for l in LeadStatusLabel.objects.all()
+    }
+
+    leads = (
+        Lead.objects.exclude(status__in=terminal)
+        .filter(operator=operator, updated_at__lt=today_start)
+        .order_by("updated_at")[:limit]
+        .values("id", "full_name", "phone", "status", "updated_at", "created_at")
+    )
+    result: list[dict] = []
+    for r in leads:
+        lbl = labels.get(r["status"], {"ru": r["status"], "uz": r["status"]})
+        upd = r["updated_at"]
+        days = int((now - upd).total_seconds() // 86400) if upd else 1
+        result.append(
+            {
+                "id": r["id"],
+                "full_name": r["full_name"],
+                "phone": r["phone"],
+                "status": r["status"],
+                "status_label_ru": lbl["ru"],
+                "status_label_uz": lbl["uz"],
+                "updated_at": upd.isoformat() if upd else None,
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                "days_ago": max(1, days),
+            }
+        )
+    return result
+
+
 def diagnose_operator_assignment(operator: Operator) -> dict:
     """
     «Почему у оператора нет / есть автораздача прямо сейчас?»
@@ -1467,29 +1554,15 @@ def diagnose_operator_assignment(operator: Operator) -> dict:
     Возвращает приоритетный вердикт + диагностические цифры. Порядок
     проверок соответствует boiled-down code path:
       1. Глобальный killswitch `auto_distribution_enabled`.
-      2. Пустой пул сирот — доливать нечего никому.
-      3. Оператор не ACTIVE (уволен / стажёр в инактиве).
-      4. Квота: `working_count >= RR_BATCH_SIZE`.
-      5. Morning gate — просроченный callback (если effective для op).
-      6. Morning gate — блокирующие статусы (если effective для op).
-      7. healthy_but_idle: всё ок, но за последние 24ч авто-раздача (source
-         in {auto_refill, auto_round_robin, morning_split, qimmatlik_retry})
-         не давала ничего → диагностика подсказывает менеджеру: скорее всего
-         утренняя раздача уже прошла и пул пуст сейчас.
-      8. healthy: всё зелёное, недавно приходили лиды — жалоба, вероятно,
-         про восприятие («сегодня меньше чем вчера»), а не про поломку.
-
-    Возвращаемый dict:
-        {
-            "operator": {"id", "full_name", "status", "blocking_gate_enabled"},
-            "verdict": одна из строк AUTO_DIAG_REASON_ORDER,
-            "verdict_title_ru": короткий заголовок для UI/бота,
-            "verdict_body_ru": подробное объяснение с цифрами,
-            "next_action_ru": что рекомендуем менеджеру / оператору,
-            "counters": {...},        # working, quota, pool, backlog и т.д.
-            "recent_assignments": {...},  # по source за 24ч
-            "blocking_leads": [...],      # top-5 лидов, которые «держат» квоту
-        }
+      2. Оператор не ACTIVE (уволен / стажёр в инактиве).
+      3. Оператор на паузе (`is_paused=True`).
+      4. Пустой пул сирот — доливать нечего никому.
+      5. Квота: `working_count >= RR_BATCH_SIZE`.
+      6. Morning gate — просроченный callback (если effective для op).
+      7. Morning gate — блокирующие статусы (если effective для op).
+      8. healthy_but_idle: всё ок, но за последние 24ч авто-раздача
+         не давала ничего.
+      9. healthy: всё зелёное, недавно приходили лиды.
     """
     from apps.system_settings.selectors import auto_distribution_enabled
 
@@ -1501,10 +1574,9 @@ def diagnose_operator_assignment(operator: Operator) -> dict:
     pool_size = _orphan_pool_size()
     recent_assignments = _lookup_leads_recent_source_counts(operator, hours=24)
     now = timezone.now()
+    yesterday_unclosed = operator_yesterday_unclosed_count(operator)
+    is_paused = bool(getattr(operator, "is_paused", False))
 
-    # Топ-5 «старейших» лидов, которые сейчас забивают квоту — чтобы бот
-    # мог показать «вот эти нужно закрыть». Тот же фильтр, что использует
-    # `operator_working_lead_count()`, чтобы список 1-в-1 совпадал.
     terminal = set(terminal_lead_status_codes())
     carry = set(carry_over_status_codes())
     all_active = set(active_lead_status_codes())
@@ -1532,21 +1604,26 @@ def diagnose_operator_assignment(operator: Operator) -> dict:
             for r in blk
         ]
 
+    yesterday_sample = operator_yesterday_unclosed_leads(operator, limit=10)
+
     counters = {
         "working": working,
         "quota": quota,
         "pool_size": pool_size,
         "backlog_blocking_leads": operator_yesterday_backlog_count(operator),
+        "yesterday_unclosed_leads": yesterday_unclosed,
         "open_callbacks": operator_open_callbacks_count(operator),
         "global_gate_on": global_gate,
         "operator_gate_flag": op_gate_flag,
         "gate_active": gate_active,
+        "is_paused": is_paused,
     }
     op_payload = {
         "id": operator.id,
         "full_name": operator.full_name,
         "status": operator.status,
         "blocking_gate_enabled": op_gate_flag,
+        "is_paused": is_paused,
     }
 
     # -------------- 1. Global killswitch ----------------------------------
@@ -1564,11 +1641,49 @@ def diagnose_operator_assignment(operator: Operator) -> dict:
             "counters": counters,
             "recent_assignments": recent_assignments,
             "blocking_leads": blocking_leads,
+            "yesterday_leads": yesterday_sample,
         }
 
-    # -------------- 2. Empty pool ----------------------------------------
-    # Пустой пул — не «баг», а «нечего раздавать». Ставим второй проверкой,
-    # т.к. это самая частая причина «утром раздали, днём ничего нет».
+    # -------------- 2. Operator not ACTIVE -------------------------------
+    if operator.status != OperatorStatus.ACTIVE:
+        return {
+            "operator": op_payload,
+            "verdict": "operator_not_active",
+            "verdict_title_ru": "Оператор не активен",
+            "verdict_body_ru": (
+                f"Статус оператора: {operator.status}. Автораздача работает "
+                "только для операторов со статусом «active»."
+            ),
+            "next_action_ru": (
+                "Переведи оператора в active в /operators/, если он снова "
+                "на смене."
+            ),
+            "counters": counters,
+            "recent_assignments": recent_assignments,
+            "blocking_leads": blocking_leads,
+            "yesterday_leads": yesterday_sample,
+        }
+
+    # -------------- 3. Operator on pause ---------------------------------
+    if is_paused:
+        return {
+            "operator": op_payload,
+            "verdict": "operator_paused",
+            "verdict_title_ru": "Оператор на паузе",
+            "verdict_body_ru": (
+                "Оператор временно поставлен на паузу (is_paused=True). "
+                "Пока пауза не снята, автораздача не выдаёт ему новых лидов."
+            ),
+            "next_action_ru": (
+                "Сними паузу в карточке оператора (кнопка «Снять с паузы»)."
+            ),
+            "counters": counters,
+            "recent_assignments": recent_assignments,
+            "blocking_leads": blocking_leads,
+            "yesterday_leads": yesterday_sample,
+        }
+
+    # -------------- 4. Empty pool ----------------------------------------
     if pool_size == 0 and working < quota:
         return {
             "operator": op_payload,
@@ -1587,25 +1702,7 @@ def diagnose_operator_assignment(operator: Operator) -> dict:
             "counters": counters,
             "recent_assignments": recent_assignments,
             "blocking_leads": blocking_leads,
-        }
-
-    # -------------- 3. Operator not ACTIVE -------------------------------
-    if operator.status != OperatorStatus.ACTIVE:
-        return {
-            "operator": op_payload,
-            "verdict": "operator_not_active",
-            "verdict_title_ru": "Оператор не активен",
-            "verdict_body_ru": (
-                f"Статус оператора: {operator.status}. Автораздача работает "
-                "только для операторов со статусом «active»."
-            ),
-            "next_action_ru": (
-                "Переведи оператора в active в /operators/, если он снова "
-                "на смене."
-            ),
-            "counters": counters,
-            "recent_assignments": recent_assignments,
-            "blocking_leads": blocking_leads,
+            "yesterday_leads": yesterday_sample,
         }
 
     # -------------- 4. Quota full ----------------------------------------
@@ -1637,6 +1734,7 @@ def diagnose_operator_assignment(operator: Operator) -> dict:
             "counters": counters,
             "recent_assignments": recent_assignments,
             "blocking_leads": blocking_leads,
+            "yesterday_leads": yesterday_sample,
         }
 
     # -------------- 5-6. Morning gate ------------------------------------
@@ -1659,6 +1757,7 @@ def diagnose_operator_assignment(operator: Operator) -> dict:
             "counters": counters,
             "recent_assignments": recent_assignments,
             "blocking_leads": blocking_leads,
+            "yesterday_leads": yesterday_sample,
         }
     if gate_active and counters["backlog_blocking_leads"] > 0:
         return {
@@ -1678,6 +1777,7 @@ def diagnose_operator_assignment(operator: Operator) -> dict:
             "counters": counters,
             "recent_assignments": recent_assignments,
             "blocking_leads": blocking_leads,
+            "yesterday_leads": yesterday_sample,
         }
 
     # -------------- 7. Healthy but idle ----------------------------------
@@ -1702,6 +1802,7 @@ def diagnose_operator_assignment(operator: Operator) -> dict:
             "counters": counters,
             "recent_assignments": recent_assignments,
             "blocking_leads": blocking_leads,
+            "yesterday_leads": yesterday_sample,
         }
 
     # -------------- 8. Healthy -------------------------------------------
@@ -1723,6 +1824,7 @@ def diagnose_operator_assignment(operator: Operator) -> dict:
         "counters": counters,
         "recent_assignments": recent_assignments,
         "blocking_leads": blocking_leads,
+        "yesterday_leads": yesterday_sample,
     }
 
 
@@ -1973,3 +2075,416 @@ def find_operators_by_freetext(query: str, *, limit: int = 5) -> list[Operator]:
     ]
     matched.sort(key=lambda o: (o.status, o.id))
     return matched[:limit]
+
+
+def operators_distribution_diagnostics(
+    *,
+    operator_id: int | None = None,
+    filter_status: str | None = None,
+    search: str | None = None,
+) -> dict:
+    """
+    Комплексная диагностика автораздачи по всем операторам (и детально
+    по выбранному operator_id).
+
+    Даёт менеджеру мгновенный ответ на вопрос оператора «Почему мне не
+    дают лидов?»:
+      - оператор на паузе (is_paused=True)
+      - квота заполнена (рабочих лидов >= RR_BATCH_SIZE)
+      - вчерашние незакрытые лиды / спец-лиды (yesterday_unclosed_leads)
+      - просроченный callback
+      - нет отметки в табеле (AttendanceLog)
+      - пустой пул сирот
+      - глобальный killswitch выключен
+    """
+    from django.db.models import Max
+    from apps.system_settings.selectors import auto_distribution_enabled
+    from apps.leads.models import LeadAssignment, LeadStatusLabel, SheetSource
+    from apps.calls.models import CallbackReminder, CallbackReminderStatus, CallAttempt
+    from apps.attendance.models import AttendanceLog
+
+    auto_on = auto_distribution_enabled()
+    batch = _rr_batch_size()
+    pool_size = _orphan_pool_size()
+    morning_gate = _morning_gate_enabled()
+    today_start = _today_start_local()
+    now = timezone.localtime()
+
+    terminal_codes = set(terminal_lead_status_codes())
+    carry_codes = set(carry_over_status_codes())
+    workable_codes = list(set(active_lead_status_codes()) - terminal_codes - carry_codes)
+    all_non_terminal = list(set(active_lead_status_codes()) - terminal_codes)
+    active_today = _leads_active_today_filter()
+    labels = {
+        l.code: {"ru": l.label_ru, "uz": l.label_uz or l.label_ru}
+        for l in LeadStatusLabel.objects.all()
+    }
+
+    # Все операторы с аннотациями working и postponed
+    qs = Operator.objects.all().annotate(
+        _working_count=Count(
+            "leads",
+            filter=Q(
+                leads__status__in=workable_codes,
+                leads__postponed_at__isnull=True,
+            )
+            & active_today,
+        ),
+        _postponed_count=Count(
+            "leads",
+            filter=Q(
+                leads__status__in=all_non_terminal,
+                leads__postponed_at__isnull=False,
+            ),
+        ),
+    )
+
+    # Поиск если передан
+    if search and search.strip():
+        s = search.strip()
+        matched_ops = find_operators_by_freetext(s, limit=100)
+        matched_ids = [o.id for o in matched_ops]
+        qs = qs.filter(id__in=matched_ids)
+
+    ops = list(qs)
+    op_ids = [o.id for o in ops]
+
+    # Bulk агрегации
+    unclosed_yesterday_map = dict(
+        Lead.objects.exclude(status__in=terminal_codes)
+        .filter(updated_at__lt=today_start, operator_id__in=op_ids)
+        .values("operator_id")
+        .annotate(c=Count("id"))
+        .values_list("operator_id", "c")
+    )
+
+    carry_map = (
+        dict(
+            Lead.objects.filter(
+                status__in=carry_codes,
+                updated_at__lt=today_start,
+                operator_id__in=op_ids,
+                postponed_at__isnull=True,
+            )
+            .values("operator_id")
+            .annotate(c=Count("id"))
+            .values_list("operator_id", "c")
+        )
+        if carry_codes
+        else {}
+    )
+
+    blocking_codes = [c for c in blocking_lead_status_codes() if c != "callback_scheduled"]
+    blocking_map = (
+        dict(
+            Lead.objects.filter(status__in=blocking_codes, operator_id__in=op_ids)
+            .values("operator_id")
+            .annotate(c=Count("id"))
+            .values_list("operator_id", "c")
+        )
+        if blocking_codes
+        else {}
+    )
+
+    cb_cutoff = _callback_due_cutoff()
+    callbacks_map = dict(
+        CallbackReminder.objects.filter(
+            status__in=(
+                CallbackReminderStatus.PENDING,
+                CallbackReminderStatus.OVERDUE,
+                CallbackReminderStatus.SNOOZED,
+            ),
+            remind_at__lte=cb_cutoff,
+            operator_id__in=op_ids,
+        )
+        .values("operator_id")
+        .annotate(c=Count("id"))
+        .values_list("operator_id", "c")
+    )
+
+    today_received_map = dict(
+        LeadAssignment.objects.filter(
+            created_at__gte=today_start,
+            operator_id__in=op_ids,
+        )
+        .values("operator_id")
+        .annotate(c=Count("id"))
+        .values_list("operator_id", "c")
+    )
+
+    last_assigned_map = dict(
+        LeadAssignment.objects.filter(operator_id__in=op_ids)
+        .values("operator_id")
+        .annotate(last_at=Max("created_at"))
+        .values_list("operator_id", "last_at")
+    )
+
+    today_calls_map = dict(
+        CallAttempt.objects.filter(
+            created_at__gte=today_start,
+            operator_id__in=op_ids,
+        )
+        .values("operator_id")
+        .annotate(c=Count("id"))
+        .values_list("operator_id", "c")
+    )
+
+    checked_in_set = set(
+        AttendanceLog.objects.filter(
+            checked_in_at__gte=today_start,
+            operator_id__in=op_ids,
+        ).values_list("operator_id", flat=True)
+    )
+    has_open_checkin_set = set(
+        AttendanceLog.objects.filter(
+            checked_in_at__gte=today_start,
+            checked_out_at__isnull=True,
+            operator_id__in=op_ids,
+        ).values_list("operator_id", flat=True)
+    )
+
+    # SheetSource allowed_operators mapping
+    sheet_sources = list(SheetSource.objects.filter(active=True).prefetch_related("allowed_operators"))
+    allowed_sheets_map: dict[int, list[str]] = {}
+    restricted_sheet_names: list[str] = []
+    for ss in sheet_sources:
+        allowed_ops = list(ss.allowed_operators.all())
+        if allowed_ops:
+            restricted_sheet_names.append(ss.name)
+            for a_op in allowed_ops:
+                allowed_sheets_map.setdefault(a_op.id, []).append(ss.name)
+
+    operator_rows = []
+    summary_counts = {
+        "total_operators": len(ops),
+        "eligible_count": 0,
+        "blocked_count": 0,
+        "paused_count": 0,
+        "quota_full_count": 0,
+        "yesterday_backlog_count": 0,
+        "gate_blocked_count": 0,
+        "not_checked_in_count": 0,
+    }
+
+    selected_op_obj = None
+
+    for op in ops:
+        if operator_id and op.id == operator_id:
+            selected_op_obj = op
+
+        working = op._working_count
+        postponed = op._postponed_count
+        is_paused = bool(getattr(op, "is_paused", False))
+        is_active = (op.status == OperatorStatus.ACTIVE)
+        gate_flag = bool(getattr(op, "blocking_gate_enabled", False))
+        gate_effective = morning_gate and gate_flag
+        req_checkin = bool(getattr(op, "require_checkin_enabled", False))
+
+        unclosed_yd = unclosed_yesterday_map.get(op.id, 0)
+        carry_c = carry_map.get(op.id, 0)
+        open_cb = callbacks_map.get(op.id, 0)
+        backlog_c = blocking_map.get(op.id, 0)
+        today_recv = today_received_map.get(op.id, 0)
+        today_calls = today_calls_map.get(op.id, 0)
+        last_at = last_assigned_map.get(op.id)
+        checked_in = (op.id in checked_in_set)
+        open_shift = (op.id in has_open_checkin_set)
+
+        blockers = []
+        reasons_uz = []
+        reasons_ru = []
+
+        if not auto_on:
+            blockers.append("auto_off")
+            reasons_uz.append("Avtotizim o'chirilgan")
+            reasons_ru.append("Автораздача выключена глобально")
+
+        if not is_active:
+            blockers.append("not_active")
+            reasons_uz.append(f"Operator faol emas ({op.status})")
+            reasons_ru.append(f"Оператор не активен ({op.status})")
+
+        if is_paused:
+            blockers.append("paused")
+            reasons_uz.append("Operator pauzada (yangi lidlar berilmaydi)")
+            reasons_ru.append("Оператор на паузе (новых лидов не получает)")
+            summary_counts["paused_count"] += 1
+
+        if working >= batch:
+            blockers.append("quota_full")
+            reasons_uz.append(f"Joriy kvota to'lgan ({working}/{batch}) — yangi lid olish uchun faol lidlarni yopishi kerak")
+            reasons_ru.append(f"Квота {working}/{batch} заполнена — нужно закрыть текущие лиды")
+            summary_counts["quota_full_count"] += 1
+
+        if gate_effective and open_cb > 0:
+            blockers.append("overdue_callback")
+            reasons_uz.append(f"Muddati o'tgan callback bor ({open_cb} ta) — geyt yoqilgan")
+            reasons_ru.append(f"Просроченный callback ({open_cb} шт) — гейт активен")
+            summary_counts["gate_blocked_count"] += 1
+
+        if gate_effective and backlog_c > 0:
+            blockers.append("morning_gate_backlog")
+            reasons_uz.append(f"Kechagi maxsus lidlar to'smoqda ({backlog_c} ta) — geyt yoqilgan")
+            reasons_ru.append(f"Блокирующие спец-лиды ({backlog_c} шт) — гейт активен")
+            summary_counts["gate_blocked_count"] += 1
+
+        if req_checkin and not checked_in:
+            blockers.append("not_checked_in")
+            reasons_uz.append("Bugun davomatda check-in qilinmagan")
+            reasons_ru.append("Сегодня нет check-in в табеле")
+            summary_counts["not_checked_in_count"] += 1
+
+        if unclosed_yd > 0:
+            summary_counts["yesterday_backlog_count"] += 1
+
+        is_eligible = (len(blockers) == 0)
+
+        # Primary blocker
+        if not is_eligible:
+            primary = blockers[0]
+            summary_counts["blocked_count"] += 1
+        elif pool_size == 0:
+            primary = "empty_pool"
+            summary_counts["eligible_count"] += 1
+        else:
+            primary = "none"
+            summary_counts["eligible_count"] += 1
+
+        primary_titles = {
+            "none": {"uz": "Lidlar taqsimoti OCHIQ", "ru": "Раздача открыта"},
+            "empty_pool": {"uz": "Bazada bo'sh lidlar yo'q", "ru": "Пул пуст (ожидание заявок)"},
+            "paused": {"uz": "Operator pauzada", "ru": "Оператор на паузе"},
+            "quota_full": {"uz": f"Kvota to'lgan ({working}/{batch})", "ru": f"Квота заполнена ({working}/{batch})"},
+            "yesterday_backlog": {"uz": f"Kechagi lidlar to'smoqda ({backlog_c} ta)", "ru": f"Вчерашние лиды ({backlog_c} шт)"},
+            "morning_gate_backlog": {"uz": f"Kechagi maxsus lidlar ({backlog_c} ta)", "ru": f"Спец-лиды гейта ({backlog_c} шт)"},
+            "overdue_callback": {"uz": f"Muddati o'tgan callback ({open_cb} ta)", "ru": f"Просроченный звонок ({open_cb} шт)"},
+            "not_checked_in": {"uz": "Check-in qilinmagan", "ru": "Нет check-in в табеле"},
+            "not_active": {"uz": f"Holati: {op.status}", "ru": f"Статус: {op.status}"},
+            "auto_off": {"uz": "Avtotizim o'chirilgan", "ru": "Автораздача выключена"},
+        }
+        pt = primary_titles.get(primary, {"uz": primary, "ru": primary})
+
+        row = {
+            "id": op.id,
+            "full_name": op.full_name,
+            "phone": op.phone,
+            "status": op.status,
+            "is_paused": is_paused,
+            "paused_at": op.paused_at.isoformat() if op.paused_at else None,
+            "blocking_gate_enabled": gate_flag,
+            "require_checkin_enabled": req_checkin,
+            "checked_in_today": checked_in,
+            "has_open_shift": open_shift,
+            "working_count": working,
+            "quota_limit": batch,
+            "postponed_count": postponed,
+            "carry_count": carry_c,
+            "yesterday_unclosed_count": unclosed_yd,
+            "open_callbacks_count": open_cb,
+            "blocking_leads_count": backlog_c,
+            "today_received_count": today_recv,
+            "today_calls_count": today_calls,
+            "last_lead_assigned_at": last_at.isoformat() if last_at else None,
+            "allowed_sheets": allowed_sheets_map.get(op.id, []),
+            "has_sheet_restrictions": len(restricted_sheet_names) > 0 and op.id not in allowed_sheets_map,
+            "eligible": is_eligible,
+            "primary_blocker": primary,
+            "primary_blocker_title_uz": pt["uz"],
+            "primary_blocker_title_ru": pt["ru"],
+            "reasons_uz": reasons_uz if reasons_uz else ["Taqsimot ochiq — yangi lid berishga tayyor"],
+            "reasons_ru": reasons_ru if reasons_ru else ["Раздача открыта — готов к приёму"],
+        }
+        operator_rows.append(row)
+
+    # Сортировка: eligible первыми (working ASC), затем non-eligible (working DESC)
+    operator_rows.sort(
+        key=lambda r: (
+            0 if r["eligible"] else 1,
+            r["working_count"] if r["eligible"] else -r["working_count"],
+            r["full_name"].lower(),
+        )
+    )
+
+    if filter_status == "eligible":
+        operator_rows = [r for r in operator_rows if r["eligible"]]
+    elif filter_status == "blocked":
+        operator_rows = [r for r in operator_rows if not r["eligible"]]
+    elif filter_status == "paused":
+        operator_rows = [r for r in operator_rows if r["is_paused"]]
+
+    selected_detail = None
+    if selected_op_obj is None and operator_id:
+        selected_op_obj = Operator.objects.filter(id=operator_id).first()
+    elif selected_op_obj is None and operator_rows:
+        first_id = operator_rows[0]["id"]
+        selected_op_obj = next((op for op in ops if op.id == first_id), None)
+
+    if selected_op_obj:
+        sel_row = next((r for r in operator_rows if r["id"] == selected_op_obj.id), None)
+        if not sel_row:
+            sel_diag = operators_distribution_diagnostics(operator_id=selected_op_obj.id)
+            sel_row = sel_diag["operators"][0] if sel_diag["operators"] else None
+
+        working_leads_detail = []
+        w_qs = (
+            Lead.objects.filter(
+                operator=selected_op_obj,
+                status__in=workable_codes,
+                postponed_at__isnull=True,
+            )
+            .filter(_active_today_filter())
+            .order_by("updated_at")[:15]
+        )
+        for l in w_qs:
+            lbl = labels.get(l.status, {"ru": l.status, "uz": l.status})
+            hours = int((now - l.updated_at).total_seconds() // 3600) if l.updated_at else 0
+            working_leads_detail.append({
+                "id": l.id,
+                "full_name": l.full_name,
+                "phone": l.phone,
+                "status": l.status,
+                "status_label_ru": lbl["ru"],
+                "status_label_uz": lbl["uz"],
+                "updated_at": l.updated_at.isoformat() if l.updated_at else None,
+                "created_at": l.created_at.isoformat() if l.created_at else None,
+                "hours_since_update": hours,
+            })
+
+        yesterday_leads_detail = operator_yesterday_unclosed_leads(selected_op_obj, limit=50)
+
+        recent_assignments = []
+        ra_qs = (
+            LeadAssignment.objects.filter(
+                operator=selected_op_obj,
+                created_at__gte=today_start,
+            )
+            .select_related("lead")
+            .order_by("-created_at")[:10]
+        )
+        for a in ra_qs:
+            recent_assignments.append({
+                "assignment_id": a.id,
+                "lead_id": a.lead_id,
+                "lead_name": a.lead.full_name if a.lead else "—",
+                "source": a.source,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+            })
+
+        selected_detail = {
+            "operator": sel_row,
+            "working_leads": working_leads_detail,
+            "yesterday_leads": yesterday_leads_detail,
+            "recent_assignments": recent_assignments,
+        }
+
+    return {
+        "summary": {
+            **summary_counts,
+            "orphans_count": pool_size,
+            "auto_distribution_enabled": auto_on,
+            "rr_batch_size": batch,
+        },
+        "operators": operator_rows,
+        "selected_detail": selected_detail,
+    }
+

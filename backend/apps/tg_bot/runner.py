@@ -1848,6 +1848,13 @@ async def main() -> None:
                 except Exception:
                     logger.exception("crash_watch: send to %s failed", chat_id)
 
+    # 2026-10-07: ROP agent approval/briefing callback handlers.
+    try:
+        from apps.tg_bot.rop_handlers import register_rop_handlers
+        register_rop_handlers(dp)
+    except Exception:
+        logger.exception("Failed to register ROP agent handlers")
+
     logger.info("Bot started — polling…")
     # Save refs so python GC doesn't cancel background tasks (RUF006).
     _bg_daily_task = asyncio.create_task(daily_report_scheduler())

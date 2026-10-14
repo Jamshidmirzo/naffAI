@@ -197,3 +197,31 @@ def test_distribution_status_api_anonymous_401_or_403():
     # DRF default: 401 при отсутствии auth-credentials, но некоторые
     # проекты гоняют через session-only → 403. Обе трактовки корректны.
     assert r.status_code in (401, 403)
+
+
+@pytest.mark.django_db
+def test_distribution_diagnostics_api_manager_200():
+    op = _mk_op("DiagnosticOp")
+    _mk_leads(op, 2)
+
+    mgr = _mgr()
+    c = APIClient()
+    c.force_authenticate(user=mgr)
+
+    r = c.get("/api/leads/distribution-diagnostics/")
+    assert r.status_code == 200, r.content
+    body = r.data
+    assert "summary" in body
+    assert body["summary"]["total_operators"] >= 1
+    assert "operators" in body
+    op_row = next((o for o in body["operators"] if o["id"] == op.id), None)
+    assert op_row is not None
+    assert op_row["working_count"] == 2
+    assert op_row["eligible"] is True
+
+    # With operator_id drilldown
+    r_detail = c.get(f"/api/leads/distribution-diagnostics/?operator_id={op.id}")
+    assert r_detail.status_code == 200
+    assert r_detail.data["selected_detail"] is not None
+    assert r_detail.data["selected_detail"]["operator"]["id"] == op.id
+

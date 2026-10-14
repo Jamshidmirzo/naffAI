@@ -9,13 +9,16 @@ from .apis import (
     DeletedOperatorsListApi,
     MePreferencesApi,
     MyDayOffListApi,
+    OperatorAvatarApi,
     OperatorDeactivateApi,
     OperatorDeleteApi,
     OperatorDetailApi,
     OperatorListCreateApi,
+    OperatorMeAvatarApi,
     OperatorPauseApi,
     OperatorPlanApi,
     OperatorReactivateApi,
+    OperatorSnapshotRequestApi,
     OperatorStatsApi,
     OperatorsBirthdayTodayApi,
 )
@@ -32,6 +35,12 @@ urlpatterns = [
     path("day-off/<int:pk>/context/", DayOffContextApi.as_view()),
     path("day-off/<int:pk>/approve/", DayOffApproveApi.as_view()),
     path("day-off/<int:pk>/reject/", DayOffRejectApi.as_view()),
+    # Avatar / snapshot — static-ish paths перед generic <int:pk>/.
+    # `me/avatar/` ловится здесь напрямую (строковый сегмент не
+    # подойдёт под <int:pk>) — оператор загружает свой снимок.
+    path("me/avatar/", OperatorMeAvatarApi.as_view(), name="operator-me-avatar"),
+    path("<int:pk>/avatar/", OperatorAvatarApi.as_view()),
+    path("<int:pk>/snapshot/request/", OperatorSnapshotRequestApi.as_view()),
     path("<int:pk>/", OperatorDetailApi.as_view()),
     path("<int:pk>/stats/", OperatorStatsApi.as_view()),
     path("<int:pk>/plan/", OperatorPlanApi.as_view()),
@@ -50,3 +59,5 @@ me_urlpatterns = [
     path("preferences/", MePreferencesApi.as_view(), name="me-preferences"),
     path("day-off/", MyDayOffListApi.as_view(), name="me-day-off"),
 ]
+
+

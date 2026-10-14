@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search } from "lucide-react";
+import { Activity, Plus, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../store/auth";
-import { normaliseRole, isManagerLevel } from "../components/RoleGate";
+import { normaliseRole, isManagerLevel, isSuperManager } from "../components/RoleGate";
 import { formatUZS } from "../lib/format";
 import NumericInput from "../components/NumericInput";
 import { StickerPicker } from "../components/StickerPicker";
@@ -21,6 +21,7 @@ import {
 } from "../components/ui";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
+import { OperatorDiagnosticsModal } from "../components/operators/OperatorDiagnosticsModal";
 
 type OperatorStatus = "active" | "trainee" | "inactive";
 type StatusFilter = "all" | OperatorStatus;
@@ -62,6 +63,21 @@ interface OperatorRow {
   attendance_bonus_uzs?: string | null;
   sales_bonus_uzs?: string | null;
   sales_gate_pct?: number | null;
+  // 2026-10-12 avatar/snapshot.
+  avatar_url?: string | null;
+  // 2026-10-13 ownership (super_manager hierarchy): FK на User-id менеджера.
+  // null = legacy «общий пул» (ещё не передан под конкретного manager'а).
+  managed_by_id?: number | null;
+}
+
+/** Super_manager-овский dropdown «фильтр по менеджеру» в toolbar'е. */
+type ManagerFilter = "all" | "unassigned" | number;
+
+interface ManagerUserRow {
+  id: number;
+  username: string;
+  full_name?: string;
+  role: string;
 }
 
 /**
@@ -142,6 +158,7 @@ export default function Operators() {
   const nav = useNavigate();
   const role = useAuth((s) => s.role);
   const isManager = isManagerLevel(role);
+  const isSuper = isSuperManager(role);
   const t = useT();
 
   usePageHeader({ title: t("operators.title"), subtitle: t("operators.subtitle") });
@@ -161,13 +178,24 @@ export default function Operators() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  // Super_manager-овский фильтр «по менеджеру». "all" — показать всех
+  // видимых; "unassigned" — только legacy pool (managed_by IS NULL);
+  // число — операторы конкретного менеджера.
+  const [managerFilter, setManagerFilter] = useState<ManagerFilter>("all");
 
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    full_name: string;
+    phone: string;
+    status: OperatorStatus;
+    note: string;
+    managed_by_id: number | null;
+  }>({
     full_name: "",
     phone: "",
     status: "active" as OperatorStatus,
     note: "",
+    managed_by_id: null,
   });
 
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
@@ -207,18 +235,46 @@ export default function Operators() {
     isRare: boolean;
   } | null>(null);
 
+  const [diagnosticsModal, setDiagnosticsModal] = useState<{
+    open: boolean;
+    operatorId: number | null;
+  }>({ open: false, operatorId: null });
+
   const ops = useQuery({
     queryKey: ["operators", true],
     queryFn: () =>
       api.get("/operators/", { params: { include_inactive: 1 } }).then((r) => r.data),
   });
 
+  // Для super_manager — список менеджеров системы (видит всех через
+  // visible_manager_user_ids). Используется и в toolbar-фильтре, и в
+  // dropdown «Назначить менеджеру» внутри create-modal. Для обычного
+  // manager не грузим — ему фильтр не нужен (видит только своих).
+  const managersQ = useQuery<ManagerUserRow[]>({
+    queryKey: ["users", "role=manager"],
+    queryFn: () =>
+      api.get<ManagerUserRow[]>("/users/", { params: { role: "manager" } }).then((r) => r.data),
+    enabled: isSuper,
+    staleTime: 60_000,
+  });
+  const managers: ManagerUserRow[] = Array.isArray(managersQ.data) ? managersQ.data : [];
+
   const create = useMutation({
-    mutationFn: (data: typeof form) => api.post("/operators/", data),
+    mutationFn: (data: typeof form) => {
+      // Для обычного manager'а backend сам подставит managed_by=self
+      // (см. operator_create service), поэтому можно слать null без вреда.
+      // Super_manager'у шлём то, что он выбрал в dropdown'е.
+      const { managed_by_id, ...rest } = data;
+      const payload: Record<string, unknown> = { ...rest };
+      if (isSuper) {
+        payload.managed_by_id = managed_by_id;
+      }
+      return api.post("/operators/", payload);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["operators"] });
       setShowCreate(false);
-      setForm({ full_name: "", phone: "", status: "active", note: "" });
+      setForm({ full_name: "", phone: "", status: "active", note: "", managed_by_id: null });
       toast.success(t("operators.op_added"));
     },
     onError: () => toast.error(t("operators.op_add_failed")),
@@ -276,6 +332,37 @@ export default function Operators() {
       );
     },
     onError: () => toast.error(t("operators.status_update_failed") || "Не удалось обновить статус"),
+  });
+
+  // 2026-10-12: on-demand snapshot — менеджер шлёт пуш, оператору откроется
+  // consent-модалка getUserMedia. Backend создаёт Notification; оператор
+  // сам грузит снимок через /operators/me/avatar/.
+  const snapshotReq = useMutation({
+    mutationFn: (id: number) =>
+      api.post(`/operators/${id}/snapshot/request/`).then((r) => r.data),
+    onSuccess: () => toast.success("Запрос снимка отправлен оператору"),
+    onError: (err: unknown) => {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(detail || "Не удалось отправить запрос");
+    },
+  });
+
+  // 2026-10-12: загрузить аватар за оператора (file picker).
+  const avatarUpload = useMutation({
+    mutationFn: ({ id, file }: { id: number; file: File }) => {
+      const fd = new FormData();
+      fd.append("avatar", file);
+      return api
+        .post(`/operators/${id}/avatar/`, fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+        })
+        .then((r) => r.data);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["operators"] });
+      toast.success("Аватар обновлён");
+    },
+    onError: () => toast.error("Не удалось загрузить аватар"),
   });
 
   // 2026-10-07: delete-with-comment. API требует `comment` (min 10 chars)
@@ -387,6 +474,18 @@ export default function Operators() {
     } else if (statusFilter === "inactive") {
       out = out.filter((o) => o.status === "inactive");
     }
+    // Super_manager-овский фильтр по менеджеру (client-side):
+    // "all" → без фильтра; "unassigned" → только managed_by_id IS NULL;
+    // число → строгое совпадение managed_by_id. Обычный manager видит
+    // уже отфильтрованный scope от backend'a (visible_operator_ids),
+    // поэтому дополнительно его не трогаем.
+    if (isSuper && managerFilter !== "all") {
+      if (managerFilter === "unassigned") {
+        out = out.filter((o) => o.managed_by_id == null);
+      } else {
+        out = out.filter((o) => o.managed_by_id === managerFilter);
+      }
+    }
     if (search.trim()) {
       const s = search.trim().toLowerCase();
       out = out.filter(
@@ -396,7 +495,7 @@ export default function Operators() {
       );
     }
     return out;
-  }, [rows, statusFilter, search]);
+  }, [rows, statusFilter, search, isSuper, managerFilter]);
 
   const selected = useMemo(
     () => filtered.find((o) => o.id === selectedId) || null,
@@ -429,8 +528,52 @@ export default function Operators() {
             </Chip>
           ))}
         </div>
+        {/* Super_manager-овский фильтр «по менеджеру». Простой native-select
+            чтобы не раздувать toolbar на N менеджеров: при 5+ командах
+            chip-row занимает две строки. */}
+        {isSuper && managers.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-muted uppercase tracking-wide">
+              {t("operators.filter_manager_label")}
+            </span>
+            <select
+              className="nf-input"
+              style={{ width: "auto", minWidth: 180, paddingTop: 7, paddingBottom: 7 }}
+              value={
+                managerFilter === "all"
+                  ? "all"
+                  : managerFilter === "unassigned"
+                  ? "unassigned"
+                  : String(managerFilter)
+              }
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "all") setManagerFilter("all");
+                else if (v === "unassigned") setManagerFilter("unassigned");
+                else setManagerFilter(Number(v));
+              }}
+            >
+              <option value="all">{t("operators.filter_manager_all")}</option>
+              <option value="unassigned">
+                {t("operators.filter_manager_unassigned")}
+              </option>
+              {managers.map((m) => (
+                <option key={m.id} value={String(m.id)}>
+                  {m.full_name || m.username}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {isManager && (
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => setDiagnosticsModal({ open: true, operatorId: null })}
+            >
+              <Activity className="w-3.5 h-3.5 text-accent" />
+              Taqsimot diagnostikasi
+            </Button>
             <Button onClick={() => setShowCreate(true)}>
               <Plus className="w-3.5 h-3.5" /> {t("operators.add_op")}
             </Button>
@@ -574,17 +717,31 @@ export default function Operators() {
           {selected ? (
             <Card padded className="animate-nfFadeUp">
               <div className="flex items-start gap-3">
-                <div
-                  className="grid place-items-center text-white font-semibold text-[16px] shrink-0"
-                  style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: 16,
-                    background: "var(--accent-grad)",
-                  }}
-                >
-                  {initials(selected.full_name)}
-                </div>
+                {selected.avatar_url ? (
+                  <img
+                    src={selected.avatar_url}
+                    alt=""
+                    className="shrink-0"
+                    style={{
+                      width: 52,
+                      height: 52,
+                      borderRadius: 16,
+                      objectFit: "cover",
+                    }}
+                  />
+                ) : (
+                  <div
+                    className="grid place-items-center text-white font-semibold text-[16px] shrink-0"
+                    style={{
+                      width: 52,
+                      height: 52,
+                      borderRadius: 16,
+                      background: "var(--accent-grad)",
+                    }}
+                  >
+                    {initials(selected.full_name)}
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="text-[19px] font-semibold tracking-tight truncate flex items-center gap-2">
                     <span className="truncate">{selected.full_name}</span>
@@ -757,6 +914,44 @@ export default function Operators() {
                     >
                       {t("operators.tile_plan")}
                     </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() =>
+                        setDiagnosticsModal({
+                          open: true,
+                          operatorId: selected.id,
+                        })
+                      }
+                    >
+                      <Activity className="w-3.5 h-3.5 text-accent" />
+                      Taqsimot holati
+                    </Button>
+                    {/* 2026-10-12: on-demand snapshot. */}
+                    <Button
+                      variant="secondary"
+                      onClick={() => snapshotReq.mutate(selected.id)}
+                      disabled={snapshotReq.isPending}
+                      title="Отправить запрос снимка оператору"
+                    >
+                      📷 Попросить снимок
+                    </Button>
+                    <label
+                      className="nf-btn nf-btn--secondary cursor-pointer"
+                      style={{ display: "inline-flex", alignItems: "center" }}
+                      title="Загрузить файл аватара за оператора"
+                    >
+                      🖼 Загрузить фото
+                      <input
+                        type="file"
+                        accept="image/*"
+                        hidden
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) avatarUpload.mutate({ id: selected.id, file: f });
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
                     {/* Пауза — доступна только для НЕинактивных операторов
                         (у inactive и так лидов не будет). Отдельная от
                         Активировать/Деактивировать: пауза не двигает лиды. */}
@@ -1316,6 +1511,31 @@ export default function Operators() {
                 ariaLabel={t("common.status")}
               />
             </div>
+            {/* Super_manager-овский dropdown «Назначить менеджеру». Обычному
+                manager'у поле не показываем — у него managed_by_id
+                подставляется backend'ом автоматически в self. */}
+            {isSuper && (
+              <div>
+                <div className="nf-col mb-1.5">{t("operators.assign_manager")}</div>
+                <select
+                  className="nf-input"
+                  value={form.managed_by_id == null ? "" : String(form.managed_by_id)}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      managed_by_id: e.target.value ? Number(e.target.value) : null,
+                    })
+                  }
+                >
+                  <option value="">{t("operators.assign_manager_none")}</option>
+                  {managers.map((m) => (
+                    <option key={m.id} value={String(m.id)}>
+                      {m.full_name || m.username}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <div className="mt-6 flex gap-2 justify-end">
             <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>
@@ -1339,6 +1559,12 @@ export default function Operators() {
           setPinPrompt(null);
           if (vars) toggle.mutate(vars);
         }}
+      />
+
+      <OperatorDiagnosticsModal
+        open={diagnosticsModal.open}
+        onClose={() => setDiagnosticsModal({ open: false, operatorId: null })}
+        initialOperatorId={diagnosticsModal.operatorId}
       />
     </div>
   );

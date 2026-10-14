@@ -46,6 +46,10 @@ import { GaugeScene } from "../components/three/GaugeScene";
 import AttendanceStatusWidget from "../components/AttendanceStatusWidget";
 import CallOutcomeModal from "../components/CallOutcomeModal";
 import { useTrackedCall } from "../hooks/useTrackedCall";
+import SectionHeader, {
+  type SectionTone,
+} from "../components/leads/SectionHeader";
+import DayStrip, { type DayChip } from "../components/leads/DayStrip";
 
 type MyLeadsView = "active" | "postponed" | "all" | "closed";
 // «quota» — виртуальный таб «Блокирующие»: под капотом view=active +
@@ -436,6 +440,9 @@ export default function MyLeads() {
   // лидов»): бэк возвращает ТОЛЬКО лиды, занимающие квоту RR — без
   // carry-хвоста и recall. Сверху баннер «закройте минимум N».
   const [quotaMode, setQuotaMode] = useState(searchParams.get("quota") === "1");
+  // День, выбранный в горизонтальной полосе-фильтре над списком лидов
+  // (активный таб `/my`). 'today' по умолчанию; 'all' = не фильтровать.
+  const [selectedDay, setSelectedDay] = useState<string>("today");
 
   // Keep state in sync when URL query changes on the fly (helper panel
   // navigate to the same pathname with different query = React Router
@@ -1371,19 +1378,37 @@ export default function MyLeads() {
           // Полностью пусто — оператор всё разобрал, ждём refill.
           const workingCount = myStatus.data?.working_count ?? 0;
           if (view === "active" && workingCount === 0) {
+            // DayStrip должен быть виден всегда на активном табе,
+            // даже при пустом списке — чтобы UI не схлопывался и
+            // оператор видел полоску фильтра дней.
+            const emptyChips: DayChip[] = [
+              { key: "all", count: 0 },
+              { key: "today", count: 0 },
+            ];
             return (
-              <div
-                className="rounded-2xl py-12 text-center animate-nfFadeUp"
-                style={{ border: "1.5px dashed var(--border)" }}
-              >
-                <div className="text-[36px] leading-none mb-2">✅</div>
-                <div className="text-[16px] font-semibold">
-                  {t("my.empty.title")}
+              <>
+                <DayStrip
+                  chips={emptyChips}
+                  activeKey={
+                    emptyChips.some((c) => c.key === selectedDay)
+                      ? selectedDay
+                      : "today"
+                  }
+                  onPick={setSelectedDay}
+                />
+                <div
+                  className="rounded-2xl py-12 text-center animate-nfFadeUp"
+                  style={{ border: "1.5px dashed var(--border)" }}
+                >
+                  <div className="text-[36px] leading-none mb-2">✅</div>
+                  <div className="text-[16px] font-semibold">
+                    {t("my.empty.title")}
+                  </div>
+                  <div className="text-[13px] text-muted mt-1.5 max-w-[420px] mx-auto px-4">
+                    {t("my.empty.subtitle")}
+                  </div>
                 </div>
-                <div className="text-[13px] text-muted mt-1.5 max-w-[420px] mx-auto px-4">
-                  {t("my.empty.subtitle")}
-                </div>
-              </div>
+              </>
             );
           }
           // Специальный empty для «Закрытых» — новичок, ничего не закрыл.
@@ -1472,35 +1497,138 @@ export default function MyLeads() {
           );
         }
 
-        // Секционный вид: 🔴 carry → 🟠 recall → 🟢 today. Пустые
-        // группы не рендерим.
-        const groups: {
-          key: "carry" | "recall" | "today";
-          leads: Lead[];
-          labelKey: string;
-        }[] = [
-          { key: "carry", leads: sections.carry, labelKey: "my.section.carry" },
-          { key: "recall", leads: sections.recall, labelKey: "my.section.recall" },
-          { key: "today", leads: sections.today, labelKey: "my.section.today" },
+        // Горизонтальная полоса-фильтр по дням назначения:
+        //   «Все дни | Сегодня | Вчера | DD.MM | Давно (>7 дней)».
+        // По клику — показываем плоский список лидов за выбранный день.
+        // Внутри дня: carry/recall-блокирующие наверх, остальные ниже.
+        const dayMs = 24 * 3600 * 1000;
+        const yesterdayStartMs = todayStartMs - dayMs;
+        const weekAgoMs = todayStartMs - 7 * dayMs;
+        const groupKeyOf = (lead: Lead): string => {
+          // Используем assigned_at, fallback — created_at (у очень старых
+          // лидов до LeadAssignment-эпохи поле null).
+          const src = lead.assigned_at || lead.created_at;
+          const ts = src ? Date.parse(src) : 0;
+          if (!ts) return "very_old";
+          if (ts >= todayStartMs) return "today";
+          if (ts >= yesterdayStartMs) return "yesterday";
+          if (ts >= weekAgoMs) {
+            const d = new Date(ts);
+            const dd = String(d.getDate()).padStart(2, "0");
+            const mm = String(d.getMonth() + 1).padStart(2, "0");
+            return `d:${dd}.${mm}`;
+          }
+          return "very_old";
+        };
+
+        const byKey = new Map<string, Lead[]>();
+        for (const lead of visibleLeads) {
+          const k = groupKeyOf(lead);
+          const arr = byKey.get(k) || [];
+          arr.push(lead);
+          byKey.set(k, arr);
+        }
+
+        const prioritize = (leads: Lead[]): Lead[] => {
+          const prio: Lead[] = [];
+          const rest: Lead[] = [];
+          for (const l of leads) {
+            const updMs = l.updated_at ? Date.parse(l.updated_at) : 0;
+            const isCarry = CARRY_STATUSES.has(l.status) && updMs < todayStartMs;
+            const isRecall =
+              recallActiveNow &&
+              RECALL_STATUSES.has(l.status) &&
+              updMs >= todayStartMs &&
+              updMs < lunchStartMs;
+            if (isCarry || isRecall) prio.push(l);
+            else rest.push(l);
+          }
+          return [...prio, ...rest];
+        };
+
+        // Порядок дней в strip: Все → Сегодня → Вчера → DD.MM (свежее к старому) → Давно.
+        const dKeys = Array.from(byKey.keys())
+          .filter((k) => k.startsWith("d:"))
+          .sort((a, b) => {
+            const parse = (s: string) => {
+              const [dd, mm] = s.slice(2).split(".");
+              const now = new Date();
+              return new Date(now.getFullYear(), Number(mm) - 1, Number(dd)).getTime();
+            };
+            return parse(b) - parse(a);
+          });
+
+        const chips: DayChip[] = [
+          { key: "all", count: visibleLeads.length },
+          { key: "today", count: byKey.get("today")?.length ?? 0 },
         ];
+        if (byKey.has("yesterday")) {
+          chips.push({ key: "yesterday", count: byKey.get("yesterday")!.length });
+        }
+        for (const k of dKeys) {
+          chips.push({ key: k, count: byKey.get(k)!.length });
+        }
+        if (byKey.has("very_old")) {
+          chips.push({ key: "very_old", count: byKey.get("very_old")!.length });
+        }
+
+        // Активный chip: если выбранный день отсутствует в наборе —
+        // остаёмся на нём и показываем «пусто» (для 'today' — отдельная CTA).
+        const activeKey = chips.some((c) => c.key === selectedDay)
+          ? selectedDay
+          : "today";
+
+        const filtered: Lead[] =
+          activeKey === "all"
+            ? // Для 'all' сохраняем порядок дней: сегодня → вчера → DD.MM → давно,
+              // внутри каждого — prioritize().
+              [
+                ...prioritize(byKey.get("today") || []),
+                ...prioritize(byKey.get("yesterday") || []),
+                ...dKeys.flatMap((k) => prioritize(byKey.get(k) || [])),
+                ...prioritize(byKey.get("very_old") || []),
+              ]
+            : prioritize(byKey.get(activeKey) || []);
 
         return (
           <>
-            {groups.map((g) =>
-              g.leads.length === 0 ? null : (
+            <DayStrip
+              chips={chips}
+              activeKey={activeKey}
+              onPick={setSelectedDay}
+            />
+            {filtered.length === 0 ? (
+              activeKey === "today" ? (
                 <section
-                  key={g.key}
-                  className="flex flex-col gap-[9px] animate-nfFadeUp"
+                  className="rounded-2xl py-6 px-5 animate-nfFadeUp"
+                  style={{
+                    border: "1.5px dashed var(--border)",
+                    background:
+                      "color-mix(in srgb, var(--accent) 6%, var(--bg-card))",
+                  }}
                 >
-                  <div
-                    className="text-[12.5px] uppercase tracking-[.06em] font-semibold px-1"
-                    style={{ color: "var(--muted)" }}
-                  >
-                    {t(g.labelKey, { n: g.leads.length })}
+                  <div className="text-[15.5px] font-semibold">
+                    {t("my.group.empty_today_title")}
                   </div>
-                  {g.leads.map(renderCard)}
+                  <div className="text-[13px] text-muted mt-1">
+                    {t("my.group.empty_today")}
+                  </div>
                 </section>
-              ),
+              ) : (
+                <div
+                  className="rounded-2xl py-10 text-center text-[13.5px] text-muted animate-nfFadeUp"
+                  style={{ border: "1.5px dashed var(--border)" }}
+                >
+                  {t("my.group.empty_day")}
+                </div>
+              )
+            ) : (
+              <section
+                key={activeKey}
+                className="flex flex-col gap-[9px] animate-nfFadeUp"
+              >
+                {filtered.map(renderCard)}
+              </section>
             )}
           </>
         );

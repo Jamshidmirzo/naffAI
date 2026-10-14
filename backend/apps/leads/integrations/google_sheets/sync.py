@@ -139,14 +139,17 @@ def sync_one(
             if actual_highest_row > 0 and actual_highest_row < max_row:
                 max_row = actual_highest_row
 
+            sheet_source.last_synced_at = timezone.now()
+            fields_to_update = ["last_synced_at", "updated_at"]
             if max_row != sheet_source.last_synced_row:
                 sheet_source.last_synced_row = max_row
-                sheet_source.last_synced_at = timezone.now()
-                sheet_source.save(update_fields=["last_synced_row", "last_synced_at", "updated_at"])
+                fields_to_update.append("last_synced_row")
 
             if sheet_source.last_sync_error:
                 sheet_source.last_sync_error = ""
-                sheet_source.save(update_fields=["last_sync_error", "updated_at"])
+                fields_to_update.append("last_sync_error")
+
+            sheet_source.save(update_fields=fields_to_update)
 
             return SyncResult(
                 sheet_source.id,

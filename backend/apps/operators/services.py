@@ -1218,3 +1218,81 @@ def day_offs_apply_for_today() -> int:
         except Exception:
             pass
     return count
+
+
+# ---------------------------------------------------------------------------
+# Avatar / snapshot services (2026-10-12).
+# ---------------------------------------------------------------------------
+
+
+def operator_set_avatar(*, operator: Operator, image_file, user=None) -> Operator:
+    """
+    Перезаписывает `operator.avatar` новым файлом + обновляет
+    `avatar_updated_at`. Старый файл удаляется из FS (django-storage).
+
+    `image_file` — UploadedFile из request.FILES. Валидация формата идёт
+    штатно через ImageField (Pillow).
+    """
+    from django.utils import timezone as _tz
+
+    # Удаляем старый файл перед сохранением нового, чтобы не захламлять
+    # MEDIA_ROOT (один актуальный снимок на оператора).
+    if operator.avatar:
+        try:
+            operator.avatar.delete(save=False)
+        except Exception:
+            pass
+    operator.avatar = image_file
+    operator.avatar_updated_at = _tz.now()
+    operator.save(update_fields=["avatar", "avatar_updated_at", "updated_at"])
+    try:
+        audit_log_create(
+            user=user,
+            action=AuditAction.UPDATE,
+            entity="operators.Operator",
+            entity_id=operator.id,
+            changes={"avatar": "updated"},
+        )
+    except Exception:
+        pass
+    return operator
+
+
+def operator_snapshot_request(*, operator: Operator, requested_by) -> int:
+    """
+    Отправляет оператору push-уведомление `snapshot_request` — в UI
+    открывается модалка с consent'ом на getUserMedia. Возвращает
+    количество созданных Notification (0 если у оператора нет user'a).
+    """
+    from apps.notifications.services import (
+        NotificationKind,
+        notification_broadcast,
+    )
+
+    # Находим User оператора через Profile.operator_id.
+    from apps.users.models import Profile
+
+    user_ids = list(
+        Profile.objects.filter(operator_id=operator.id).values_list("user_id", flat=True)
+    )
+    user_ids = [u for u in user_ids if u]
+    if not user_ids:
+        return 0
+
+    requester_name = (
+        (requested_by.get_full_name() if requested_by else "")
+        or (requested_by.username if requested_by else "")
+        or "Менеджер"
+    )
+    return notification_broadcast(
+        kind=NotificationKind.SNAPSHOT_REQUEST,
+        title="📷 Запрос снимка",
+        body=f"{requester_name} просит сделать снимок с камеры",
+        link="/profile",
+        recipient_ids=user_ids,
+        metadata={
+            "operator_id": operator.id,
+            "requested_by": requested_by.id if requested_by else None,
+            "requested_by_name": requester_name,
+        },
+    )

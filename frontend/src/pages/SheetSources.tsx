@@ -20,6 +20,7 @@ import { useT } from "../lib/i18n";
 import { Select } from "../components/Select";
 import { SheetSourceWizard } from "../components/sheet-sources/SheetSourceWizard";
 import { SheetSourceHealthCard } from "../components/sheet-sources/SheetSourceHealthCard";
+import { SheetSyncBar } from "../components/sheet-sources/SheetSyncBar";
 
 type DistributionMode =
   | "alias_only"
@@ -91,6 +92,7 @@ export default function SheetSources() {
 
   return (
     <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
+      <SheetSyncBar />
       <div className="animate-nfFadeUp">
         <TabPill value={tab} onChange={setTab} items={TABS} />
       </div>

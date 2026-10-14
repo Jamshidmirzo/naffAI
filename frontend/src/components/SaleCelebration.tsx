@@ -4,6 +4,10 @@ import confetti from "canvas-confetti";
 import { api } from "../lib/api";
 import { useT } from "../lib/i18n";
 import { isSaleSoundMuted } from "../store/saleSound";
+import {
+  NAFFAI_NOTIF_EVENT,
+  type NaffaiNotificationEventDetail,
+} from "../hooks/useNotificationStream";
 
 /**
  * Peer-operator celebration overlay.
@@ -30,6 +34,7 @@ interface CelebrationMeta {
   sale_id?: number;
   seller_id?: number | null;
   seller_name?: string;
+  seller_avatar_url?: string | null;
   device?: string;
   amount?: number;
   created_at?: string | null;
@@ -54,6 +59,30 @@ interface QueueItem {
   id: number;
   sellerName: string;
   device: string;
+  avatarUrl?: string | null;
+}
+
+/** Детерминированный градиент из имени — fallback для карточек без аватара. */
+function nameGradient(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  }
+  const h1 = hash % 360;
+  const h2 = (h1 + 50) % 360;
+  return `linear-gradient(135deg, hsl(${h1} 70% 55%), hsl(${h2} 70% 45%))`;
+}
+
+function nameInitials(name: string): string {
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0])
+      .join("")
+      .toUpperCase() || "?"
+  );
 }
 
 const FRESH_WINDOW_MS = 2 * 60 * 1000; // 2 min — старше выкидываем без показа
@@ -170,19 +199,58 @@ export function SaleCelebration() {
     },
   });
 
-  // Enqueue fresh unseen celebrations; show them one at a time.
+  // Shared trigger: показать overlay + mark-read'ить соответствующую
+  // notification (если id > 0 — он есть только для polling-ветки).
+  const showItem = (item: QueueItem) => {
+    if (current) {
+      // Уже показываем другую овагию — mark-read и выходим без дубля.
+      if (item.id > 0) markRead.mutate(item.id);
+      return;
+    }
+    setCurrent(item);
+    fireConfetti();
+    stopApplause(audioRef.current);
+    audioRef.current = playApplause();
+    window.setTimeout(() => {
+      setCurrent(null);
+      stopApplause(audioRef.current);
+      audioRef.current = null;
+      if (item.id > 0) markRead.mutate(item.id);
+    }, OVERLAY_MS);
+  };
+
+  // SSE push-ветка — моментальный показ без ожидания polling.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<NaffaiNotificationEventDetail>).detail;
+      if (!detail || detail.kind !== "sale_celebration") return;
+      const meta = (detail.metadata || {}) as CelebrationMeta;
+      // created_at — опционально; у SSE события оно всегда есть, но
+      // проверка на свежесть пропускаем (SSE по определению real-time).
+      const item: QueueItem = {
+        id: -1, // SSE: нет notification.id в payload — mark-read сделает polling-ветка
+        sellerName: meta.seller_name?.trim() || t("sale_celebration.someone"),
+        device: (meta.device as string | undefined)?.trim() || "",
+        avatarUrl: (meta.seller_avatar_url as string | null | undefined) ?? null,
+      };
+      showItem(item);
+    };
+    window.addEventListener(NAFFAI_NOTIF_EVENT, handler);
+    return () => window.removeEventListener(NAFFAI_NOTIF_EVENT, handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current]);
+
+  // Legacy polling-ветка — fallback если SSE не работает. Также mark-read'ит
+  // всё что пришло через SSE (у SSE-пути id<0, не трогается).
   useEffect(() => {
     const rows = q.data?.results ?? [];
     if (!rows.length) return;
-    // Backend отдаёт `-created_at`; для показа берём в хронологическом
-    // порядке, чтобы «первый пришёл — первым показался».
     const chrono = [...rows].reverse();
     for (const n of chrono) {
       if (n.kind !== "sale_celebration") continue;
       if (shownIds.current.has(n.id)) continue;
       shownIds.current.add(n.id);
       if (!isFresh(n.created_at)) {
-        // Протухшие тихо dismiss'им — mark-read чтобы не всплывали снова.
         markRead.mutate(n.id);
         continue;
       }
@@ -191,23 +259,9 @@ export function SaleCelebration() {
         id: n.id,
         sellerName: meta.seller_name?.trim() || t("sale_celebration.someone"),
         device: meta.device?.trim() || "",
+        avatarUrl: meta.seller_avatar_url ?? null,
       };
-      if (!current) {
-        setCurrent(item);
-        fireConfetti();
-        stopApplause(audioRef.current);
-        audioRef.current = playApplause();
-        window.setTimeout(() => {
-          setCurrent(null);
-          stopApplause(audioRef.current);
-          audioRef.current = null;
-          markRead.mutate(item.id);
-        }, OVERLAY_MS);
-      } else {
-        // Уже показываем другую овагию — не дублируем экран, просто
-        // mark-read'им «пропущенную», чтобы не всплыла на следующем poll.
-        markRead.mutate(n.id);
-      }
+      showItem(item);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q.data]);
@@ -275,7 +329,48 @@ export function SaleCelebration() {
         >
           ×
         </button>
-        <div style={{ fontSize: 44, lineHeight: 1, marginBottom: 12 }}>🎉</div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            marginBottom: 10,
+          }}
+        >
+          {current.avatarUrl ? (
+            <img
+              src={current.avatarUrl}
+              alt=""
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: "50%",
+                objectFit: "cover",
+                border: "3px solid rgba(255,255,255,.9)",
+                boxShadow: "0 6px 20px rgba(0,0,0,.3)",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: "50%",
+                background: nameGradient(current.sellerName),
+                border: "3px solid rgba(255,255,255,.9)",
+                boxShadow: "0 6px 20px rgba(0,0,0,.3)",
+                color: "#fff",
+                fontSize: 24,
+                fontWeight: 700,
+                display: "grid",
+                placeItems: "center",
+                letterSpacing: 0.5,
+              }}
+            >
+              {nameInitials(current.sellerName)}
+            </div>
+          )}
+        </div>
+        <div style={{ fontSize: 32, lineHeight: 1, marginBottom: 8 }}>🎉</div>
         <div style={{ fontSize: 15, opacity: 0.9, letterSpacing: 0.4 }}>
           {t("sale_celebration.title")}
         </div>
