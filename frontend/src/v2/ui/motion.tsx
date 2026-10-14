@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { animate, useReducedMotion } from "framer-motion";
-import { fmtNum } from "./index";
+import { fmtNum } from "./format";
 
 /**
  * A number that counts up to its value on first show and glides to the new

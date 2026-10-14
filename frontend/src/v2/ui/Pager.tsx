@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useT2 } from "../i18n";
-import { cx, fmtNum } from "./index";
+import { cx, fmtNum } from "./format";
 
 /** Numbered pager: «1–50 из 214», Назад / 1 … 4 5 6 … 9 / Вперёд. */
 export function Pager({ page, total, pageSize, onChange, left }: { page: number; total: number; pageSize: number; onChange: (p: number) => void; left?: ReactNode }) {

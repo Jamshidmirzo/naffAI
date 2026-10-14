@@ -9,27 +9,9 @@ export { PageSkeleton, LoadingBlock, EmptyState, ErrorState, NoAccess } from "./
 export { Pager } from "./Pager";
 export { CountText, CountUp } from "./motion";
 
-/** cx — tiny className joiner. */
-export function cx(...parts: Array<string | false | null | undefined>) {
-  return parts.filter(Boolean).join(" ");
-}
+import { cx } from "./format";
 
-/** Number formatting used across the design: «14 500 000». */
-export function fmtNum(n: number | string | null | undefined): string {
-  if (n === null || n === undefined || n === "") return "—";
-  const v = typeof n === "string" ? Number(n) : n;
-  if (!Number.isFinite(v)) return String(n);
-  return Math.round(v).toLocaleString("ru-RU").replace(/ /g, " ");
-}
-
-/** «241,6 млн» style for big sums. */
-export function fmtMln(n: number | string | null | undefined): string {
-  const v = typeof n === "string" ? Number(n) : n ?? 0;
-  if (!Number.isFinite(v)) return "—";
-  if (Math.abs(v) >= 1e9) return (v / 1e9).toFixed(2).replace(".", ",") + " млрд";
-  if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(1).replace(".", ",") + " млн";
-  return fmtNum(v);
-}
+export { cx, fmtNum, fmtMln } from "./format";
 
 /** Page header as on the artboards: back button, h1, meta, actions on the right. */
 export function PageHeader({ title, meta, back, after, children }: { title: ReactNode; meta?: ReactNode; back?: string | (() => void); after?: ReactNode; children?: ReactNode }) {
