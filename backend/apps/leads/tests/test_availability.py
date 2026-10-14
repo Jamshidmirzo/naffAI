@@ -224,3 +224,33 @@ def test_old_backlog_is_not_released_automatically():
     fresh.refresh_from_db()
     assert old.operator_id == absent.id
     assert fresh.operator_id is None
+
+
+@SHIFT_ON
+def test_old_calls_by_others_do_not_make_a_lead_touched():
+    from apps.calls.models import CallAttempt
+
+    _enforce(True)
+    s = attendance_settings_get()
+    s.shift_start = dt.time(10, 0)
+    s.save(update_fields=["shift_start"])
+    absent = _op("absent")
+    colleague = _op("colleague")
+    tz = timezone.get_current_timezone()
+    with freeze_time(dt.datetime(2026, 10, 10, 15, 0, tzinfo=tz)):
+        recycled = _assign(absent, 1)
+        CallAttempt.objects.create(lead=recycled, operator=colleague)  # days ago, someone else
+    with freeze_time(dt.datetime(2026, 10, 14, 8, 30, tzinfo=tz)):  # re-dealt this morning
+        LeadAssignment.objects.filter(lead=recycled).update(active=False)
+        LeadAssignment.objects.create(lead=recycled, operator=absent, source=LeadAssignmentSource.MORNING_SPLIT)
+        called = _assign(absent, 2)
+    with freeze_time(dt.datetime(2026, 10, 14, 9, 0, tzinfo=tz)):
+        CallAttempt.objects.create(lead=called, operator=absent)  # they did call this one today
+    with freeze_time(dt.datetime(2026, 10, 14, 12, 0, tzinfo=tz)):
+        released = release_leads_of_absent_operators(after_minutes=60)
+
+    assert released == {absent.id: 1}
+    recycled.refresh_from_db()
+    called.refresh_from_db()
+    assert recycled.operator_id is None
+    assert called.operator_id == absent.id

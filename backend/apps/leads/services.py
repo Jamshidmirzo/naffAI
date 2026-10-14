@@ -1094,7 +1094,15 @@ def release_leads_of_absent_operators(*, after_minutes: int | None = None, dry_r
 
     untouched = (
         Lead.objects.filter(status__in=(LeadStatus.NEW, LeadStatus.ASSIGNED), postponed_at__isnull=True)
-        .exclude(Exists(CallAttempt.objects.filter(lead=OuterRef("pk"))))
+        # «Untouched» = this operator has not called it today. Old calls by
+        # other operators do not count: the morning split re-deals such leads.
+        .exclude(
+            Exists(
+                CallAttempt.objects.filter(
+                    lead=OuterRef("pk"), operator=OuterRef("operator"), created_at__date=today
+                )
+            )
+        )
         .filter(
             Exists(
                 # Only today's automatic assignments: an older backlog of
