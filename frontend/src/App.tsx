@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import AppShell from "./components/layout/AppShell";
+import { ShellSwitch } from "./v2/shell/ShellSwitch";
+import { Pick } from "./v2/registry";
 import Dashboard from "./pages/Dashboard";
 import Sales from "./pages/Sales";
 import SaleCreate from "./pages/SaleCreate";
@@ -87,105 +88,106 @@ export default function App() {
     <>
       <ToastHost />
       <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/scan" element={<Scan />} />
+        <Route path="/login" element={<Pick k="/login" v1={<Login />} />} />
+        <Route path="/scan" element={<Pick k="/scan" v1={<Scan />} />} />
         {/* /kiosk = same public poster page as /scan (no ?qr=), separated
             path so future kiosk-specific behaviour has its own URL. */}
-        <Route path="/kiosk" element={<Scan />} />
-        <Route path="/screen" element={<Protected><Screen /></Protected>} />
+        <Route path="/kiosk" element={<Pick k="/kiosk" v1={<Scan />} />} />
+        <Route path="/screen" element={<Protected><Pick k="/screen" v1={<Screen />} /></Protected>} />
         <Route
           element={
             <Protected>
-              <AppShell />
+              <ShellSwitch />
             </Protected>
           }
         >
-          <Route path="/" element={<RoleAwareHome />} />
-          <Route path="/my" element={<MyLeads />} />
-          <Route path="/my/sale-new" element={<RoleGate allow={["operator"]}><OperatorSaleCreate /></RoleGate>} />
-          <Route path="/sales/pending" element={<RoleGate allow={["manager"]}><SalesPending /></RoleGate>} />
-          <Route path="/bot" element={<RoleGate allow={["manager"]}><BotConfig /></RoleGate>} />
-          <Route path="/bot-subscribers" element={<RoleGate allow={["manager"]}><BotSubscribers /></RoleGate>} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/notifications" element={<Notifications />} />
-          <Route path="/lessons/today" element={<DailyLesson />} />
-          <Route path="/lessons/history" element={<LessonsHistory />} />
+          <Route path="/" element={<Pick k="/" v1={<RoleAwareHome />} />} />
+          <Route path="/my" element={<Pick k="/my" v1={<MyLeads />} />} />
+          <Route path="/my/sale-new" element={<RoleGate allow={["operator"]}><Pick k="/my/sale-new" v1={<OperatorSaleCreate />} /></RoleGate>} />
+          <Route path="/sales/pending" element={<RoleGate allow={["manager"]}><Pick k="/sales/pending" v1={<SalesPending />} /></RoleGate>} />
+          <Route path="/bot" element={<RoleGate allow={["manager"]}><Pick k="/bot" v1={<BotConfig />} /></RoleGate>} />
+          <Route path="/bot-subscribers" element={<RoleGate allow={["manager"]}><Pick k="/bot-subscribers" v1={<BotSubscribers />} /></RoleGate>} />
+          <Route path="/profile" element={<Pick k="/profile" v1={<Profile />} />} />
+          <Route path="/notifications" element={<Pick k="/notifications" v1={<Notifications />} />} />
+          <Route path="/lessons/today" element={<Pick k="/lessons/today" v1={<DailyLesson />} />} />
+          <Route path="/lessons/history" element={<Pick k="/lessons/history" v1={<LessonsHistory />} />} />
           {/* Обучение (manager-authored) — /training. Не путать с /lessons/*,
               там AI-generated DailyLesson. */}
-          <Route path="/training" element={<TrainingList />} />
-          <Route path="/training/:id" element={<TrainingLessonView />} />
+          <Route path="/training" element={<Pick k="/training" v1={<TrainingList />} />} />
+          <Route path="/training/:id" element={<Pick k="/training/:id" v1={<TrainingLessonView />} />} />
           <Route
             path="/training/manage"
-            element={<RoleGate allow={["manager"]}><TrainingManage /></RoleGate>}
+            element={<RoleGate allow={["manager"]}><Pick k="/training/manage" v1={<TrainingManage />} /></RoleGate>}
           />
           <Route
             path="/training/manage/new"
-            element={<RoleGate allow={["manager"]}><TrainingLessonForm /></RoleGate>}
+            element={<RoleGate allow={["manager"]}><Pick k="/training/manage/new" v1={<TrainingLessonForm />} /></RoleGate>}
           />
           <Route
             path="/training/manage/:id"
-            element={<RoleGate allow={["manager"]}><TrainingLessonForm /></RoleGate>}
+            element={<RoleGate allow={["manager"]}><Pick k="/training/manage/:id" v1={<TrainingLessonForm />} /></RoleGate>}
           />
-          <Route path="/leads" element={<RoleGate allow={["manager"]}><Leads /></RoleGate>} />
-          <Route path="/leads/orphans" element={<RoleGate allow={["manager"]}><OrphanLeads /></RoleGate>} />
-          <Route path="/leads/system-lost" element={<SuperadminGate><SystemLostLeads /></SuperadminGate>} />
-          <Route path="/settings" element={<RoleGate allow={["manager"]}><Settings /></RoleGate>} />
-          <Route path="/calls" element={<RoleGate allow={["manager"]}><Calls /></RoleGate>} />
-          <Route path="/reports" element={<RoleGate allow={["manager"]}><Reports /></RoleGate>} />
-          <Route path="/my/activity" element={<RoleGate allow={["operator"]}><MyActivity /></RoleGate>} />
-          <Route path="/catalog" element={<RoleGate allow={["manager", "operator"]}><Catalog /></RoleGate>} />
-          <Route path="/catalog/banks" element={<RoleGate allow={["manager"]}><CatalogBanks /></RoleGate>} />
-          <Route path="/catalog/marketing-settings" element={<RoleGate allow={["manager"]}><MarketingSettingsPage /></RoleGate>} />
-          <Route path="/catalog/tiers" element={<RoleGate allow={["manager"]}><InstallmentTiersPage /></RoleGate>} />
-          <Route path="/calculator" element={<RoleGate allow={["manager", "operator"]}><Calculator /></RoleGate>} />
-          <Route path="/stickers" element={<RoleGate allow={["manager"]}><Placeholder title="Стикеры" /></RoleGate>} />
-          <Route path="/users" element={<RoleGate allow={["manager"]}><Users /></RoleGate>} />
+          <Route path="/leads" element={<RoleGate allow={["manager"]}><Pick k="/leads" v1={<Leads />} /></RoleGate>} />
+          <Route path="/leads/orphans" element={<RoleGate allow={["manager"]}><Pick k="/leads/orphans" v1={<OrphanLeads />} /></RoleGate>} />
+          <Route path="/leads/system-lost" element={<SuperadminGate><Pick k="/leads/system-lost" v1={<SystemLostLeads />} /></SuperadminGate>} />
+          <Route path="/settings" element={<RoleGate allow={["manager"]}><Pick k="/settings" v1={<Settings />} /></RoleGate>} />
+          <Route path="/calls" element={<RoleGate allow={["manager"]}><Pick k="/calls" v1={<Calls />} /></RoleGate>} />
+          <Route path="/reports" element={<RoleGate allow={["manager"]}><Pick k="/reports" v1={<Reports />} /></RoleGate>} />
+          <Route path="/my/activity" element={<RoleGate allow={["operator"]}><Pick k="/my/activity" v1={<MyActivity />} /></RoleGate>} />
+          <Route path="/catalog" element={<RoleGate allow={["manager", "operator"]}><Pick k="/catalog" v1={<Catalog />} /></RoleGate>} />
+          <Route path="/catalog/banks" element={<RoleGate allow={["manager"]}><Pick k="/catalog/banks" v1={<CatalogBanks />} /></RoleGate>} />
+          <Route path="/catalog/marketing-settings" element={<RoleGate allow={["manager"]}><Pick k="/catalog/marketing-settings" v1={<MarketingSettingsPage />} /></RoleGate>} />
+          <Route path="/catalog/tiers" element={<RoleGate allow={["manager"]}><Pick k="/catalog/tiers" v1={<InstallmentTiersPage />} /></RoleGate>} />
+          <Route path="/calculator" element={<RoleGate allow={["manager", "operator"]}><Pick k="/calculator" v1={<Calculator />} /></RoleGate>} />
+          <Route path="/stickers" element={<RoleGate allow={["manager"]}><Pick k="/stickers" v1={<Placeholder title="Стикеры" />} /></RoleGate>} />
+          <Route path="/users" element={<RoleGate allow={["manager"]}><Pick k="/users" v1={<Users />} /></RoleGate>} />
           {/* 2026-10-06: super_manager admin pages. Поддоменом /team/* чтобы
               не коллизировать с существующими /sales / /operators (их тоже
               даём super_manager'у, но scope-ed данные через backend
               visible_operator_ids). */}
-          <Route path="/team/managers" element={<RoleGate allow={["super_manager"]}><MyManagers /></RoleGate>} />
-          <Route path="/team/operators" element={<RoleGate allow={["super_manager"]}><Operators /></RoleGate>} />
-          <Route path="/team/sales" element={<RoleGate allow={["super_manager"]}><MyTeamSales /></RoleGate>} />
-          <Route path="/team/deleted-operators" element={<RoleGate allow={["super_manager"]}><DeletedOperators /></RoleGate>} />
-          <Route path="/sales-today" element={<RoleGate allow={["manager"]}><SalesToday /></RoleGate>} />
-          <Route path="/tg-queue" element={<RoleGate allow={["manager"]}><TgQueue /></RoleGate>} />
-          <Route path="/sheet-sources" element={<RoleGate allow={["manager"]}><SheetSources /></RoleGate>} />
-          <Route path="/statuses" element={<RoleGate allow={["manager"]}><LeadStatuses /></RoleGate>} />
-          <Route path="/sales" element={<RoleGate allow={["manager"]}><Sales /></RoleGate>} />
-          <Route path="/sales/new" element={<RoleGate allow={["manager"]}><SaleCreate /></RoleGate>} />
-          <Route path="/sales/:id" element={<SaleDetail />} />
-          <Route path="/sales/:id/edit" element={<RoleGate allow={["manager"]}><SaleCreate /></RoleGate>} />
-          <Route path="/operators" element={<RoleGate allow={["manager"]}><Operators /></RoleGate>} />
-          <Route path="/operators/:id" element={<RoleGate allow={["manager"]}><OperatorDetail /></RoleGate>} />
-          <Route path="/partners" element={<RoleGate allow={["manager"]}><Partners /></RoleGate>} />
-          <Route path="/analytics" element={<RoleGate allow={["manager"]}><Analytics /></RoleGate>} />
-          <Route path="/leads-stats" element={<RoleGate allow={["manager"]}><LeadsStats /></RoleGate>} />
-          <Route path="/payroll" element={<RoleGate allow={["manager"]}><Payroll /></RoleGate>} />
-          <Route path="/leaderboard" element={<RoleGate allow={["manager", "operator"]}><Leaderboard /></RoleGate>} />
-          <Route path="/audit" element={<RoleGate allow={["manager"]}><Audit /></RoleGate>} />
-          <Route path="/ai-chat" element={<RoleGate allow={["manager"]}><AIChat /></RoleGate>} />
-          <Route path="/marketing" element={<RoleGate allow={["manager"]}><Marketing /></RoleGate>} />
-          <Route path="/marketing/sources" element={<RoleGate allow={["manager"]}><MarketingSources /></RoleGate>} />
-          <Route path="/attendance/today" element={<RoleGate allow={["manager"]}><PinGate><AttendanceToday /></PinGate></RoleGate>} />
-          <Route path="/attendance/report" element={<RoleGate allow={["manager"]}><PinGate><AttendanceReport /></PinGate></RoleGate>} />
-          <Route path="/attendance/photos" element={<RoleGate allow={["manager"]}><PinGate><AttendancePhotos /></PinGate></RoleGate>} />
-          <Route path="/attendance/kiosk" element={<RoleGate allow={["manager"]}><PinGate><AttendanceKiosk /></PinGate></RoleGate>} />
+          <Route path="/team/managers" element={<RoleGate allow={["super_manager"]}><Pick k="/team/managers" v1={<MyManagers />} /></RoleGate>} />
+          <Route path="/team/operators" element={<RoleGate allow={["super_manager"]}><Pick k="/team/operators" v1={<Operators />} /></RoleGate>} />
+          <Route path="/team/sales" element={<RoleGate allow={["super_manager"]}><Pick k="/team/sales" v1={<MyTeamSales />} /></RoleGate>} />
+          <Route path="/team/deleted-operators" element={<RoleGate allow={["super_manager"]}><Pick k="/team/deleted-operators" v1={<DeletedOperators />} /></RoleGate>} />
+          <Route path="/sales-today" element={<RoleGate allow={["manager"]}><Pick k="/sales-today" v1={<SalesToday />} /></RoleGate>} />
+          <Route path="/tg-queue" element={<RoleGate allow={["manager"]}><Pick k="/tg-queue" v1={<TgQueue />} /></RoleGate>} />
+          <Route path="/sheet-sources" element={<RoleGate allow={["manager"]}><Pick k="/sheet-sources" v1={<SheetSources />} /></RoleGate>} />
+          <Route path="/statuses" element={<RoleGate allow={["manager"]}><Pick k="/statuses" v1={<LeadStatuses />} /></RoleGate>} />
+          <Route path="/sales" element={<RoleGate allow={["manager"]}><Pick k="/sales" v1={<Sales />} /></RoleGate>} />
+          <Route path="/sales/new" element={<RoleGate allow={["manager"]}><Pick k="/sales/new" v1={<SaleCreate />} /></RoleGate>} />
+          <Route path="/sales/:id" element={<Pick k="/sales/:id" v1={<SaleDetail />} />} />
+          <Route path="/sales/:id/edit" element={<RoleGate allow={["manager"]}><Pick k="/sales/:id/edit" v1={<SaleCreate />} /></RoleGate>} />
+          <Route path="/operators" element={<RoleGate allow={["manager"]}><Pick k="/operators" v1={<Operators />} /></RoleGate>} />
+          <Route path="/operators/:id" element={<RoleGate allow={["manager"]}><Pick k="/operators/:id" v1={<OperatorDetail />} /></RoleGate>} />
+          <Route path="/partners" element={<RoleGate allow={["manager"]}><Pick k="/partners" v1={<Partners />} /></RoleGate>} />
+          <Route path="/analytics" element={<RoleGate allow={["manager"]}><Pick k="/analytics" v1={<Analytics />} /></RoleGate>} />
+          <Route path="/leads-stats" element={<RoleGate allow={["manager"]}><Pick k="/leads-stats" v1={<LeadsStats />} /></RoleGate>} />
+          <Route path="/payroll" element={<RoleGate allow={["manager"]}><Pick k="/payroll" v1={<Payroll />} /></RoleGate>} />
+          <Route path="/leaderboard" element={<RoleGate allow={["manager", "operator"]}><Pick k="/leaderboard" v1={<Leaderboard />} /></RoleGate>} />
+          <Route path="/audit" element={<RoleGate allow={["manager"]}><Pick k="/audit" v1={<Audit />} /></RoleGate>} />
+          <Route path="/ai-chat" element={<RoleGate allow={["manager"]}><Pick k="/ai-chat" v1={<AIChat />} /></RoleGate>} />
+          <Route path="/marketing" element={<RoleGate allow={["manager"]}><Pick k="/marketing" v1={<Marketing />} /></RoleGate>} />
+          <Route path="/marketing/sources" element={<RoleGate allow={["manager"]}><Pick k="/marketing/sources" v1={<MarketingSources />} /></RoleGate>} />
+          <Route path="/attendance/today" element={<RoleGate allow={["manager"]}><PinGate><Pick k="/attendance/today" v1={<AttendanceToday />} /></PinGate></RoleGate>} />
+          <Route path="/attendance/report" element={<RoleGate allow={["manager"]}><PinGate><Pick k="/attendance/report" v1={<AttendanceReport />} /></PinGate></RoleGate>} />
+          <Route path="/attendance/photos" element={<RoleGate allow={["manager"]}><PinGate><Pick k="/attendance/photos" v1={<AttendancePhotos />} /></PinGate></RoleGate>} />
+          <Route path="/attendance/kiosk" element={<RoleGate allow={["manager"]}><PinGate><Pick k="/attendance/kiosk" v1={<AttendanceKiosk />} /></PinGate></RoleGate>} />
           {/* 2026-08-31 attendance-based payroll. Manager: сводка по всем
               операторам + drilldown + Excel/PDF per-operator. PinGate,
               как и остальные /attendance/* — совпадает с backend
               permission IsAttendancePinVerified. */}
-          <Route path="/attendance/payroll" element={<RoleGate allow={["manager"]}><PinGate><PayrollReport /></PinGate></RoleGate>} />
+          <Route path="/attendance/payroll" element={<RoleGate allow={["manager"]}><PinGate><Pick k="/attendance/payroll" v1={<PayrollReport />} /></PinGate></RoleGate>} />
           {/* Operator: свой отчёт за месяц (PIN не нужен, backend уже
               фильтрует по profile.operator). */}
-          <Route path="/my/payroll" element={<RoleGate allow={["operator"]}><MyPayroll /></RoleGate>} />
-          <Route path="/my/sales" element={<RoleGate allow={["operator"]}><MySales /></RoleGate>} />
-          <Route path="/my/day-off" element={<RoleGate allow={["operator"]}><MyDayOff /></RoleGate>} />
-          <Route path="/operators/day-off" element={<RoleGate allow={["manager"]}><DayOffRequests /></RoleGate>} />
-          <Route path="/settings/attendance" element={<RoleGate allow={["manager"]}><PinGate><AttendanceSettings /></PinGate></RoleGate>} />
+          <Route path="/my/payroll" element={<RoleGate allow={["operator"]}><Pick k="/my/payroll" v1={<MyPayroll />} /></RoleGate>} />
+          <Route path="/my/sales" element={<RoleGate allow={["operator"]}><Pick k="/my/sales" v1={<MySales />} /></RoleGate>} />
+          <Route path="/my/day-off" element={<RoleGate allow={["operator"]}><Pick k="/my/day-off" v1={<MyDayOff />} /></RoleGate>} />
+          <Route path="/operators/day-off" element={<RoleGate allow={["manager"]}><Pick k="/operators/day-off" v1={<DayOffRequests />} /></RoleGate>} />
+          <Route path="/settings/attendance" element={<RoleGate allow={["manager"]}><PinGate><Pick k="/settings/attendance" v1={<AttendanceSettings />} /></PinGate></RoleGate>} />
           {/* 2026-10-08 — WebRTC live-эфир. Manager-only. */}
-          <Route path="/live/wall" element={<RoleGate allow={["manager"]}><LiveWall /></RoleGate>} />
-          <Route path="/live/archive" element={<RoleGate allow={["manager"]}><LiveArchive /></RoleGate>} />
+          <Route path="/live/wall" element={<RoleGate allow={["manager"]}><Pick k="/live/wall" v1={<LiveWall />} /></RoleGate>} />
+          <Route path="/live/archive" element={<RoleGate allow={["manager"]}><Pick k="/live/archive" v1={<LiveArchive />} /></RoleGate>} />
+          <Route path="*" element={<Pick k="*" v1={null} />} />
         </Route>
       </Routes>
     </>

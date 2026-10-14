@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Moon, Sun, Volume2, VolumeX } from "lucide-react";
 import { useTheme } from "../../store/theme";
+import { useDesign } from "../../store/design";
 import { useLang } from "../../store/lang";
 import { usePageStore } from "../../store/page";
 import { useT } from "../../lib/i18n";
@@ -97,6 +98,15 @@ export function Header() {
             )}
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => useDesign.getState().set("v2")}
+          className="nf-btn nf-btn--ghost"
+          style={{ padding: "9px 14px" }}
+          title="Переключиться на новый дизайн «Атлас»"
+        >
+          Новый дизайн
+        </button>
         <div className="nf-tabs" role="tablist" aria-label={t("common.language")}>
           <button
             type="button"
