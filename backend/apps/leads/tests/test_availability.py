@@ -171,10 +171,11 @@ def test_untouched_leads_of_absent_operator_return_to_pool_after_shift_start():
     s.shift_start = dt.time(10, 0)
     s.save(update_fields=["shift_start"])
     absent = _op("absent")
-    auto = [_assign(absent, i) for i in range(3)]
-    manual = _assign(absent, 10, source=LeadAssignmentSource.ADMIN_REASSIGN)
-
     tz = timezone.get_current_timezone()
+    with freeze_time(dt.datetime(2026, 10, 14, 8, 30, tzinfo=tz)):  # morning split
+        auto = [_assign(absent, i) for i in range(3)]
+        manual = _assign(absent, 10, source=LeadAssignmentSource.ADMIN_REASSIGN)
+
     with freeze_time(dt.datetime(2026, 10, 14, 10, 30, tzinfo=tz)):
         assert release_leads_of_absent_operators(after_minutes=60) == {}  # too early
     with freeze_time(dt.datetime(2026, 10, 14, 11, 5, tzinfo=tz)):
@@ -195,9 +196,31 @@ def test_operator_on_shift_keeps_leads():
     s.shift_start = dt.time(10, 0)
     s.save(update_fields=["shift_start"])
     working = _op("working")
-    _assign(working, 1)
     tz = timezone.get_current_timezone()
     with freeze_time(dt.datetime(2026, 10, 14, 12, 0, tzinfo=tz)):
+        _assign(working, 1)
         _check_in(working)
         assert release_leads_of_absent_operators(after_minutes=60) == {}
     assert Lead.objects.filter(operator=working).count() == 1
+
+
+@SHIFT_ON
+def test_old_backlog_is_not_released_automatically():
+    _enforce(True)
+    s = attendance_settings_get()
+    s.shift_start = dt.time(10, 0)
+    s.save(update_fields=["shift_start"])
+    absent = _op("absent")
+    tz = timezone.get_current_timezone()
+    with freeze_time(dt.datetime(2026, 9, 24, 9, 0, tzinfo=tz)):
+        old = _assign(absent, 1)  # a backlog lead from three weeks ago
+    with freeze_time(dt.datetime(2026, 10, 14, 8, 30, tzinfo=tz)):
+        fresh = _assign(absent, 2)
+    with freeze_time(dt.datetime(2026, 10, 14, 12, 0, tzinfo=tz)):
+        released = release_leads_of_absent_operators(after_minutes=60)
+
+    assert released == {absent.id: 1}
+    old.refresh_from_db()
+    fresh.refresh_from_db()
+    assert old.operator_id == absent.id
+    assert fresh.operator_id is None
