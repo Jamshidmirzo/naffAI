@@ -20,6 +20,10 @@ export default {
     "v2.cmd.nothing": "Ничего не нашли",
     "v2.cmd.hint": "↑↓ выбрать · Enter открыть · Esc закрыть",
     "v2.cmd.minPhone": "Для поиска лида по телефону введите от 4 цифр",
+    "v2.pager.label": "Страницы",
+    "v2.pager.shown": "{from}–{to} из {total}",
+    "v2.pager.prev": "Назад",
+    "v2.pager.next": "Вперёд",
   },
   uz: {
     "v2.state.slowTitle": "Hali yuklanmoqda",
@@ -42,5 +46,9 @@ export default {
     "v2.cmd.nothing": "Hech narsa topilmadi",
     "v2.cmd.hint": "↑↓ tanlash · Enter ochish · Esc yopish",
     "v2.cmd.minPhone": "Lidni telefon bo‘yicha qidirish uchun kamida 4 raqam kiriting",
+    "v2.pager.label": "Sahifalar",
+    "v2.pager.shown": "{from}–{to} / {total}",
+    "v2.pager.prev": "Orqaga",
+    "v2.pager.next": "Oldinga",
   },
 };

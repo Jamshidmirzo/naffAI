@@ -8,6 +8,7 @@
 | manager | `v2manager` | `v2pass123` |
 | super_manager | `v2super` | `v2pass123` |
 | operator | `v2operator` (оператор Asadbek, id 29) | `v2pass123` |
+| superadmin | `v2admin` | `v2pass123` |
 
 У `v2manager` в команде 8 операторов (`managed_by`), `v2manager.reports_to = v2super`.
 
@@ -21,3 +22,5 @@ await page.evaluate((r) => { localStorage.setItem('naffai_token', r.token); loca
 await page.goto('http://localhost:5181/sales?design=v2');
 ```
 Разделы «Посещаемость» требуют PIN (`PinGate`); если PIN не задан локально — задать в `/settings` под менеджером.
+
+Логин ограничен 10 в минуту, и новый логин может сбросить токен той же учётки у другого агента — логинься один раз на прогон и переиспользуй токен.

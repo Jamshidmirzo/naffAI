@@ -777,13 +777,13 @@ html[data-nf="dark"] {
      class names. Alias them to the nf-* primitives so styles are
      consistent everywhere without a mass rename. New code should
      prefer the nf-* names directly. */
-  .input {
+  :where(html:not([data-design="v2"])) .input {
     @apply nf-input;
   }
-  .btn-ghost {
+  :where(html:not([data-design="v2"])) .btn-ghost {
     @apply nf-btn nf-btn--ghost;
   }
-  .btn-primary {
+  :where(html:not([data-design="v2"])) .btn-primary {
     @apply nf-btn nf-btn--primary;
   }
 

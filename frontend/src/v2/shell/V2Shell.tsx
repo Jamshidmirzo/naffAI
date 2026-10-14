@@ -1,6 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Menu } from "lucide-react";
 import { useAuth } from "../../store/auth";
 import { useTheme } from "../../store/theme";
 import { usePageStore } from "../../store/page";
@@ -60,13 +60,23 @@ export function V2Shell() {
     return () => document.body.removeAttribute("data-theme");
   }, [theme]);
 
+  const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => {
     window.scrollTo(0, 0);
+    setMenuOpen(false);
   }, [pathname]);
 
   const isOperator = role === "operator";
   return (
-    <div className="nf shell" data-theme={theme} style={{ minHeight: "100vh" }}>
+    <div className={`nf shell${menuOpen ? " menu-open" : ""}${isOperator ? " is-operator" : ""}`} data-theme={theme} style={{ minHeight: "100vh" }}>
+      {!isOperator ? (
+        <>
+          <button className="btn btn-sq v2-burger" type="button" aria-label="Меню" aria-expanded={menuOpen} onClick={() => setMenuOpen((v) => !v)}>
+            <Menu className="ic" />
+          </button>
+          <div className="v2-menu-scrim" onClick={() => setMenuOpen(false)} />
+        </>
+      ) : null}
       <div className={isOperator ? "rail-wrap" : "side-wrap"}>
         <SideNav />
       </div>

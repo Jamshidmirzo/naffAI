@@ -6,6 +6,7 @@ import { useTheme } from "../../store/theme";
 import { useT2 } from "../i18n";
 
 export { PageSkeleton, LoadingBlock, EmptyState, ErrorState, NoAccess } from "./states";
+export { Pager } from "./Pager";
 
 /** cx — tiny className joiner. */
 export function cx(...parts: Array<string | false | null | undefined>) {
@@ -30,7 +31,7 @@ export function fmtMln(n: number | string | null | undefined): string {
 }
 
 /** Page header as on the artboards: back button, h1, meta, actions on the right. */
-export function PageHeader({ title, meta, back, children }: { title: ReactNode; meta?: ReactNode; back?: string | (() => void); children?: ReactNode }) {
+export function PageHeader({ title, meta, back, after, children }: { title: ReactNode; meta?: ReactNode; back?: string | (() => void); after?: ReactNode; children?: ReactNode }) {
   const nav = useNavigate();
   const t = useT2();
   return (
@@ -42,6 +43,7 @@ export function PageHeader({ title, meta, back, children }: { title: ReactNode; 
       ) : null}
       <h1 className="h1">{title}</h1>
       {meta ? <span className="s c3">{meta}</span> : null}
+      {after}
       <span className="grow" />
       {children}
     </header>
@@ -70,10 +72,12 @@ export interface DialogProps {
   /** One-time secrets: no close on backdrop/Esc/×; only an explicit footer action closes. */
   locked?: boolean;
   danger?: boolean;
+  /** Ikat stripe on top (celebration / morning windows). */
+  stripe?: boolean;
 }
 
 /** The standard v2 window (.dlg): header with ×, body, footer buttons on the right. */
-export function Dialog({ open, onClose, title, sub, children, footer, width = 480, locked, danger }: DialogProps) {
+export function Dialog({ open, onClose, title, sub, children, footer, width = 480, locked, danger, stripe }: DialogProps) {
   const t = useT2();
   useEffect(() => {
     if (!open || locked) return;
@@ -86,8 +90,9 @@ export function Dialog({ open, onClose, title, sub, children, footer, width = 48
     <V2Portal>
       <div className="scrim" onClick={locked ? undefined : onClose} />
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, pointerEvents: "none" }}>
-        <section className="dlg" role="dialog" aria-modal="true" style={{ width, maxWidth: "100%", maxHeight: "calc(100vh - 48px)", overflow: "auto", pointerEvents: "auto" }}>
-          <div className="dlg-h">
+        <section className="dlg" role="dialog" aria-modal="true" style={{ width, maxWidth: "100%", maxHeight: "calc(100vh - 48px)", overflow: "hidden", display: "flex", flexDirection: "column", pointerEvents: "auto" }}>
+          {stripe ? <i className="ikat" style={{ height: 12, flex: "none" }} aria-hidden /> : null}
+          <div className="dlg-h" style={{ flex: "none" }}>
             <div className="col g4">
               <h2 className="h2" style={danger ? { color: "var(--bad)" } : undefined}>{title}</h2>
               {sub ? <span className="s c3">{sub}</span> : null}
@@ -98,8 +103,8 @@ export function Dialog({ open, onClose, title, sub, children, footer, width = 48
               </button>
             ) : null}
           </div>
-          {children ? <div className="dlg-b">{children}</div> : null}
-          {footer ? <div className="dlg-f">{footer}</div> : null}
+          {children ? <div className="dlg-b" style={{ overflow: "auto", minHeight: 0, flex: "1 1 auto" }}>{children}</div> : null}
+          {footer ? <div className="dlg-f" style={{ flex: "none" }}>{footer}</div> : null}
         </section>
       </div>
     </V2Portal>
@@ -161,7 +166,7 @@ export function useConfirm() {
         <div className="field">
           <label htmlFor="v2-confirm-reason">{state.reason.label}</label>
           <textarea id="v2-confirm-reason" className="input" rows={3} value={reason} placeholder={state.reason.placeholder} onChange={(e) => setReason(e.target.value)} />
-          {min ? <span className="xs c3">{reason.trim().length} / {min}</span> : null}
+          {min > 1 ? <span className="xs c3">{reason.trim().length} / {min}</span> : null}
         </div>
       ) : null}
     </Dialog>
