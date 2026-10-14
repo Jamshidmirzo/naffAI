@@ -269,7 +269,7 @@ def attendance_report(day: dt.date) -> dict:
     }
 
 
-def attendance_dashboard_snapshot() -> dict:
+def attendance_dashboard_snapshot(*, operator_ids: list[int] | None = None) -> dict:
     """
     Компактный срез посещаемости для менеджерского дашборда «Сводка дня».
 
@@ -294,7 +294,15 @@ def attendance_dashboard_snapshot() -> dict:
     # Открытые смены прямо сейчас — устойчиво к «висящим» логам:
     # берём только те, что открыты сегодня. Ночевать никто не должен —
     # auto_close_at по умолчанию 23:00.
-    on_shift = AttendanceLog.objects.filter(
+    # `operator_ids` (2026-10-14) — опц. сужение до ветки менеджера;
+    # None = глобально (как раньше).
+    logs = AttendanceLog.objects.all()
+    ops = Operator.objects.all()
+    if operator_ids is not None:
+        logs = logs.filter(operator_id__in=operator_ids)
+        ops = ops.filter(id__in=operator_ids)
+
+    on_shift = logs.filter(
         checked_out_at__isnull=True,
         checked_in_at__gte=start_dt,
     ).count()
@@ -304,9 +312,9 @@ def attendance_dashboard_snapshot() -> dict:
     if today_local.weekday() == 6:
         expected = 0
     else:
-        expected = Operator.objects.exclude(status=OperatorStatus.INACTIVE).count()
+        expected = ops.exclude(status=OperatorStatus.INACTIVE).count()
 
-    late_today = AttendanceLog.objects.filter(
+    late_today = logs.filter(
         checked_in_at__gte=start_dt,
         checked_in_at__lte=end_dt,
         was_late=True,

@@ -62,3 +62,17 @@ class IsAttendancePinVerified(BasePermission):
             "detail": "PIN подтверждение обязательно для этой секции",
             "code": "pin_required",
         })
+
+
+def attendance_pin_access_granted(user) -> bool:
+    """
+    Non-raising twin of `IsAttendancePinVerified` — для endpoint'ов, которые
+    НЕ закрыты PIN-гейтом целиком, но должны прятать attendance-поля
+    (check-in время, опоздания) без свежей PIN-сессии. Правило то же:
+    superadmin — bypass, остальным нужна валидная `AttendancePinSession`.
+    """
+    if not user or not user.is_authenticated:
+        return False
+    if _role(user) == Role.SUPERADMIN:
+        return True
+    return bool(attendance_pin_session_is_valid(user))

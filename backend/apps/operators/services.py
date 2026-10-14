@@ -41,6 +41,60 @@ def operator_update(*, operator: Operator, user=None, **fields) -> Operator:
 
 
 @transaction.atomic
+def operators_bulk_set_manager(
+    *,
+    operator_ids: list[int],
+    managed_by,
+    user=None,
+    visible_operator_ids: list[int] | None = None,
+) -> dict:
+    """
+    Массовый перенос операторов к другому владельцу (`managed_by`).
+
+    Permission-гейт на самого `managed_by` (кому можно назначать) делает
+    API тем же `OperatorSerializer.validate`, что и одиночный PATCH —
+    сюда приходит уже провалидированный User|None.
+
+    Поштучно:
+      * id не существует → error «Оператор не найден»;
+      * id вне `visible_operator_ids` (если передан) → error «Нет доступа»;
+      * иначе — `operator_update(managed_by=...)` (тот же audit-лог
+        `UPDATE operators.Operator`, что у PATCH). Если владелец уже
+        совпадает — запись не трогаем, но id попадает в `updated`
+        (идемпотентно).
+
+    Всё в одной транзакции: либо применены все валидные id, либо (при
+    неожиданном исключении) ни один.
+    """
+    seen: set[int] = set()
+    ordered_ids: list[int] = []
+    for raw in operator_ids:
+        oid = int(raw)
+        if oid not in seen:
+            seen.add(oid)
+            ordered_ids.append(oid)
+
+    visible = set(visible_operator_ids) if visible_operator_ids is not None else None
+    ops = {op.id: op for op in Operator.objects.select_for_update().filter(id__in=ordered_ids)}
+    target_id = managed_by.id if managed_by is not None else None
+
+    updated: list[int] = []
+    errors: list[dict] = []
+    for oid in ordered_ids:
+        op = ops.get(oid)
+        if op is None:
+            errors.append({"id": oid, "detail": "Оператор не найден"})
+            continue
+        if visible is not None and oid not in visible:
+            errors.append({"id": oid, "detail": "Нет доступа к этому оператору"})
+            continue
+        if op.managed_by_id != target_id:
+            operator_update(operator=op, user=user, managed_by=managed_by)
+        updated.append(oid)
+    return {"updated": updated, "errors": errors}
+
+
+@transaction.atomic
 def operator_deactivate(
     *,
     operator: Operator,

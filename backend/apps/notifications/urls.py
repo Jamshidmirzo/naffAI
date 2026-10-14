@@ -8,6 +8,7 @@ urlpatterns = [
     path("unread-count/", apis.NotificationUnreadCountApi.as_view(), name="notification-unread-count"),
     path("mark-read/", apis.NotificationMarkReadApi.as_view(), name="notification-mark-read"),
     path("mark-all-read/", apis.NotificationMarkAllReadApi.as_view(), name="notification-mark-all-read"),
+    path("preferences/", apis.NotificationPreferencesApi.as_view(), name="notification-preferences"),
     # Server-Sent Events — async StreamingHttpResponse. Нужен uvicorn
     # worker (gunicorn -k uvicorn.workers.UvicornWorker) + отключённая
     # буферизация в nginx для этого location.

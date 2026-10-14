@@ -103,6 +103,50 @@ def visible_operator_ids(actor) -> list[int]:
     return []
 
 
+class InvalidManagerFilter(ValueError):
+    """Raised when `?manager_id=` is neither an int nor `none`/`null`."""
+
+
+def can_filter_by_manager(actor) -> bool:
+    """`?manager_id=` branch-filter is a super_manager/superadmin privilege."""
+    if actor is None or not getattr(actor, "is_authenticated", False):
+        return False
+    if actor.is_superuser:
+        return True
+    return _actor_role(actor) in (Role.SUPER_MANAGER, Role.SUPERADMIN)
+
+
+def operator_ids_for_manager_filter(actor, raw_manager_id) -> list[int] | None:
+    """
+    Resolve the optional `?manager_id=<user_id>|none` query param into an
+    operator-id allowlist **on top of** `visible_operator_ids(actor)`.
+
+    Returns:
+      * `None` — no filter requested (param absent/empty) or the actor is
+        not allowed to use it (manager/team_lead/operator: silently
+        ignored so the endpoint behaves exactly as before);
+      * `list[int]` — visible operators with `managed_by_id=<id>`
+        (or `managed_by IS NULL` for `none` / `null`).
+
+    Raises `InvalidManagerFilter` for garbage values (callers map → 400).
+    """
+    if raw_manager_id is None:
+        return None
+    raw = str(raw_manager_id).strip().lower()
+    if raw == "" or not can_filter_by_manager(actor):
+        return None
+    qs = Operator.objects.filter(id__in=visible_operator_ids(actor))
+    if raw in ("none", "null", "unassigned"):
+        qs = qs.filter(managed_by__isnull=True)
+    else:
+        try:
+            manager_id = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise InvalidManagerFilter(raw_manager_id) from exc
+        qs = qs.filter(managed_by_id=manager_id)
+    return list(qs.values_list("id", flat=True))
+
+
 def visible_manager_user_ids(actor) -> list[int]:
     """
     Which User-ids should `actor` be able to see on the «Users / Managers»

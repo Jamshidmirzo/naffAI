@@ -70,12 +70,21 @@ def sale_list(
             | Q(operator_lines__operator_id__in=visible_operator_ids)
         ).distinct()
     if search:
-        qs = qs.filter(
+        search_q = (
             Q(imei__icontains=search)
             | Q(phone_model__icontains=search)
             | Q(operator__full_name__icontains=search)
             | Q(operator_lines__operator__full_name__icontains=search)
-        ).distinct()
+            # 2026-10-14 design-atlas V2: поиск по клиенту.
+            | Q(client_name__icontains=search)
+            | Q(client_phone__icontains=search)
+        )
+        # «90 123-45-67» / «+998 (90) …» → ищем и по одним цифрам, т.к.
+        # client_phone хранится без разделителей.
+        digits = "".join(ch for ch in search if ch.isdigit())
+        if len(digits) >= 3 and digits != search:
+            search_q |= Q(client_phone__icontains=digits)
+        qs = qs.filter(search_q).distinct()
     if operator_id:
         # Sale matches if the operator is the primary OR a line credit.
         qs = qs.filter(

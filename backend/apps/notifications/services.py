@@ -11,7 +11,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 
-from .models import Notification, NotificationKind
+from .models import Notification, NotificationKind, NotificationPreference
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -92,6 +92,14 @@ def notification_broadcast(
     ids = [i for i in recipient_ids if i]
     if not ids:
         return 0
+    # 2026-10-14: per-user opt-out (`NotificationPreference.in_app=False`).
+    from .selectors import notification_in_app_muted_user_ids
+
+    muted = notification_in_app_muted_user_ids(kind=kind, user_ids=ids)
+    if muted:
+        ids = [i for i in ids if i not in muted]
+        if not ids:
+            return 0
     meta = metadata or {}
     rows = [
         Notification(
@@ -136,10 +144,40 @@ def notification_mark_all_read(*, user_id: int) -> int:
     ).update(read_at=timezone.now())
 
 
+@transaction.atomic
+def notification_preferences_update(*, user, items: list[dict]) -> None:
+    """
+    Upsert per-kind preferences. Каждый item: `{"kind", "in_app"?, "telegram"?}`
+    — отсутствующие флаги не трогаем (у новой строки берутся defaults).
+    Kind'ы, не применимые к роли пользователя, отвергаются ValueError'ом
+    (API превращает в 400).
+    """
+    from .selectors import PREFERENCE_DEFAULTS, notification_kinds_for_user
+
+    allowed = set(notification_kinds_for_user(user))
+    bad = sorted({str(it.get("kind")) for it in items if it.get("kind") not in allowed})
+    if bad:
+        raise ValueError(", ".join(bad))
+    for it in items:
+        pref, _ = NotificationPreference.objects.select_for_update().get_or_create(
+            user=user,
+            kind=it["kind"],
+            defaults=dict(PREFERENCE_DEFAULTS),
+        )
+        changed = []
+        for field in ("in_app", "telegram"):
+            if field in it and it[field] is not None and getattr(pref, field) != bool(it[field]):
+                setattr(pref, field, bool(it[field]))
+                changed.append(field)
+        if changed:
+            pref.save(update_fields=[*changed, "updated_at"])
+
+
 __all__ = [
     "NotificationKind",
     "notification_broadcast",
     "notification_mark_read",
     "notification_mark_all_read",
     "notif_channel",
+    "notification_preferences_update",
 ]

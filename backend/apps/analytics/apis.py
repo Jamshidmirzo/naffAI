@@ -8,7 +8,11 @@ from rest_framework.views import APIView
 
 from apps.common.excel import new_workbook, workbook_response, write_sheet
 from apps.users.permissions import IsAuthenticatedAnyRole, IsTeamLeadOrManagerReadOnly
-from apps.users.selectors import visible_operator_ids
+from apps.users.selectors import (
+    InvalidManagerFilter,
+    operator_ids_for_manager_filter,
+    visible_operator_ids,
+)
 
 from .cache import (
     DASHBOARD_SUMMARY_TTL,
@@ -35,6 +39,19 @@ from .selectors import (
     sales_by_source,
     timeseries_daily,
 )
+
+
+def _manager_filter(request) -> list[int] | None:
+    """`?manager_id=<id>|none` → operator allowlist (super_manager/superadmin
+    only; иначе None = поведение без изменений). Мусор → 400."""
+    from rest_framework.exceptions import ValidationError
+
+    try:
+        return operator_ids_for_manager_filter(
+            request.user, request.query_params.get("manager_id")
+        )
+    except InvalidManagerFilter:
+        raise ValidationError({"manager_id": "Ожидается id пользователя или none"}) from None
 
 
 def _parse(value):
@@ -88,12 +105,17 @@ class LeaderboardApi(APIView):
         # top 5 visually highlighted and the tail scrollable.
         raw_limit = request.query_params.get("limit")
         limit = int(raw_limit) if raw_limit not in (None, "", "0") else None
+        # 2026-10-14: `?manager_id=` (super_manager/superadmin) — ветка
+        # менеджера поверх обычного scope'а.
+        filtered = _manager_filter(request)
         return Response(
             leaderboard(
                 date_from=date_from,
                 date_to=date_to,
                 limit=limit,
-                operator_ids=visible_operator_ids(request.user),
+                operator_ids=(
+                    filtered if filtered is not None else visible_operator_ids(request.user)
+                ),
             )
         )
 
@@ -323,6 +345,13 @@ class DashboardSummaryApi(APIView):
     def get(self, request):
         period = (request.query_params.get("period") or "week").lower()
         month = (request.query_params.get("month") or "").strip() or None
+        # 2026-10-14: `?manager_id=` (super_manager/superadmin) — сводка по
+        # ветке одного менеджера. Мимо кэша (ключ кэша — только period).
+        filtered = _manager_filter(request)
+        if filtered is not None:
+            return Response(
+                dashboard_summary(period=period, month=month, operator_ids=filtered)
+            )
         if month:
             # Конкретный месяц («посмотреть август и посчитать ЗП») —
             # мимо кэша: исторический месяц не меняется, а гонять

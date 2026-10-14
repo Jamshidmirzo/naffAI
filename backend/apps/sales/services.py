@@ -586,8 +586,9 @@ def _broadcast_new_sale(sale, primary_op, operator_lines, total) -> None:
         body_parts.append(f"🎁 {sale.bonus_note.strip()[:200]}")
     body = " · ".join(body_parts)
 
+    # 2026-10-14: super_manager тоже получает sale_created (in-app + TG).
     seniors = Profile.objects.filter(
-        role__in=[Role.TEAM_LEAD, Role.MANAGER, Role.SUPERADMIN]
+        role__in=[Role.TEAM_LEAD, Role.MANAGER, Role.SUPER_MANAGER, Role.SUPERADMIN]
     ).select_related("user")
     recipient_ids = [p.user_id for p in seniors if p.user_id]
     tg_ids = [p.telegram_user_id for p in seniors if p.telegram_user_id]

@@ -12,7 +12,9 @@ from apps.analytics.selectors import resolve_period
 from apps.common.exceptions import ApplicationError
 from apps.users.permissions import IsManager, IsTeamLead, IsTeamLeadOrManagerReadOnly
 from apps.users.selectors import (
+    InvalidManagerFilter,
     account_state,
+    operator_ids_for_manager_filter,
     user_by_operator,
     visible_operator_ids,
 )
@@ -26,6 +28,7 @@ from .selectors import (
     operator_list,
     operator_plan_progress,
     operator_stats,
+    operators_floor_snapshot,
     operators_with_birthday_today_public,
 )
 from .services import (
@@ -41,6 +44,7 @@ from .services import (
     operator_self_update_preferences,
     operator_set_paused,
     operator_update,
+    operators_bulk_set_manager,
 )
 
 
@@ -891,3 +895,94 @@ class OperatorSnapshotRequestApi(APIView):
                 {"detail": "У оператора нет связанного пользователя"}, status=400
             )
         return Response({"sent": sent}, status=202)
+
+
+# ---------------------------------------------------------------------------
+# 2026-10-14 design-atlas V2: «Пульт зала» + массовый перенос операторов.
+# ---------------------------------------------------------------------------
+
+
+class OperatorFloorApi(APIView):
+    """
+    GET /api/operators/floor/[?manager_id=<user_id>|none]
+
+    Живой срез зала: state каждого оператора (call/wait/pause/late/absent/
+    off/dayoff), квота, продажи сегодня, просроченные колбэки, план месяца.
+    Скоуп — `visible_operator_ids`; `manager_id` — доп. фильтр для
+    super_manager/superadmin (остальным игнорируется).
+
+    Attendance-поля (`checked_in_at`, `late_minutes`) отдаются только при
+    валидной attendance-PIN-сессии (superadmin — bypass), иначе null и
+    `pin_verified=false`. Сам endpoint PIN не требует.
+    """
+
+    permission_classes = [IsAuthenticated, IsManager]
+
+    def get(self, request):
+        from apps.attendance.permissions import attendance_pin_access_granted
+
+        try:
+            filtered = operator_ids_for_manager_filter(
+                request.user, request.query_params.get("manager_id")
+            )
+        except InvalidManagerFilter:
+            raise ValidationError(
+                {"manager_id": "Ожидается id пользователя или none"}
+            ) from None
+        operator_ids = filtered if filtered is not None else visible_operator_ids(request.user)
+        payload = operators_floor_snapshot(
+            operator_ids=operator_ids,
+            pin_verified=attendance_pin_access_granted(request.user),
+        )
+        for row in payload["operators"]:
+            if row["avatar_url"]:
+                try:
+                    row["avatar_url"] = request.build_absolute_uri(row["avatar_url"])
+                except Exception:
+                    pass
+        return Response(payload)
+
+
+class OperatorBulkSetManagerInputSerializer(serializers.Serializer):
+    operator_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), min_length=1, max_length=500
+    )
+    managed_by_id = serializers.IntegerField(allow_null=True, min_value=1)
+
+
+class OperatorBulkSetManagerApi(APIView):
+    """
+    POST /api/operators/bulk-set-manager/
+    body: {"operator_ids": [1, 2, 3], "managed_by_id": 7 | null}
+    → 200 {"updated": [1, 2], "errors": [{"id": 3, "detail": "..."}]}
+
+    Права — как у PATCH /operators/<id>/ (`IsTeamLead` + правила
+    `OperatorSerializer.validate` для `managed_by_id`: manager/team_lead —
+    только себе или null, super_manager — любому senior, superadmin — кому
+    угодно). Недопустимый владелец → 400 целиком. Дополнительно (строже
+    одиночного PATCH): операторы вне `visible_operator_ids` попадают в
+    `errors`, а не переносятся.
+    """
+
+    permission_classes = [IsAuthenticated, IsTeamLead]
+
+    def post(self, request):
+        inp = OperatorBulkSetManagerInputSerializer(data=request.data)
+        inp.is_valid(raise_exception=True)
+
+        # Тот же валидатор владельца, что у одиночного PATCH.
+        owner_ser = OperatorSerializer(
+            data={"managed_by_id": inp.validated_data["managed_by_id"]},
+            partial=True,
+            context={"request": request},
+        )
+        owner_ser.is_valid(raise_exception=True)
+        managed_by = owner_ser.validated_data.get("managed_by")
+
+        result = operators_bulk_set_manager(
+            operator_ids=inp.validated_data["operator_ids"],
+            managed_by=managed_by,
+            user=request.user,
+            visible_operator_ids=visible_operator_ids(request.user),
+        )
+        return Response(result)

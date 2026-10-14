@@ -4,7 +4,7 @@ import datetime as dt
 from decimal import Decimal
 
 from django.db import models
-from django.db.models import Avg, Count, F, Sum, Value
+from django.db.models import Avg, Count, F, Q, Sum, Value
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 
@@ -1790,7 +1790,12 @@ def _month_bounds(
     return cur_start, cur_end, prev_start, cur_start
 
 
-def dashboard_summary(period: str = "week", *, month: str | None = None) -> dict:
+def dashboard_summary(
+    period: str = "week",
+    *,
+    month: str | None = None,
+    operator_ids: list[int] | None = None,
+) -> dict:
     """
     Aggregate everything the manager «Сводка дня» dashboard needs.
 
@@ -1800,6 +1805,12 @@ def dashboard_summary(period: str = "week", *, month: str | None = None) -> dict
     `month="YYYY-MM"` — конкретный календарный месяц (кейс «посмотреть
     август и посчитать по нему ЗП»); перекрывает `period`, prev-окно =
     предыдущий календарный месяц.
+
+    `operator_ids` (2026-10-14, `?manager_id=` для super_manager/superadmin)
+    — None = как раньше (глобально). Список → продажи / pending /
+    конверсия / смены / timeseries / stranded / топ сужаются до этих
+    операторов. НЕ сужаются: `attention.orphans` (у сирот нет оператора)
+    и `turnover.target` / `target_daily_count` (SalesTarget глобальный).
     """
     from apps.leads.selectors import orphan_leads
     from apps.sales.models import Sale
@@ -1818,15 +1829,20 @@ def dashboard_summary(period: str = "week", *, month: str | None = None) -> dict
     # -------- today card (always today, независимо от period) --------
     now = timezone.now()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_agg = _base_qs(date_from=today_start, date_to=now).aggregate(
-        count=Count("id"), total=Sum(NET_AMOUNT)
-    )
-    pending_today = Sale.objects.filter(
-        is_deleted=False, is_returned=False, status="pending"
-    ).count()
+    today_agg = _base_qs(
+        date_from=today_start, date_to=now, operator_ids=operator_ids
+    ).aggregate(count=Count("id"), total=Sum(NET_AMOUNT))
+    pending_qs = Sale.objects.filter(is_deleted=False, is_returned=False, status="pending")
+    if operator_ids is not None:
+        pending_qs = pending_qs.filter(
+            Q(operator_id__in=operator_ids) | Q(operator_lines__operator_id__in=operator_ids)
+        ).distinct()
+    pending_today = pending_qs.count()
 
     # -------- turnover card (period window, net) --------
-    turnover_actual = _base_qs(date_from=cur_start, date_to=cur_end).aggregate(
+    turnover_actual = _base_qs(
+        date_from=cur_start, date_to=cur_end, operator_ids=operator_ids
+    ).aggregate(
         total=Sum(NET_AMOUNT)
     )["total"] or Decimal("0")
     target_row = _sales_target_for_period(period, cur_start)
@@ -1835,13 +1851,19 @@ def dashboard_summary(period: str = "week", *, month: str | None = None) -> dict
     from apps.leads.models import Lead
 
     def _leads_and_conv(start, end):
-        leads_cnt = Lead.objects.filter(
-            created_at__gte=start, created_at__lte=end
-        ).count()
-        conv_cnt = Sale.objects.filter(
+        leads_qs = Lead.objects.filter(created_at__gte=start, created_at__lte=end)
+        conv_qs = Sale.objects.filter(
             is_deleted=False, is_returned=False, status="confirmed",
             lead__created_at__gte=start, lead__created_at__lte=end,
-        ).count()
+        )
+        if operator_ids is not None:
+            leads_qs = leads_qs.filter(operator_id__in=operator_ids)
+            conv_qs = conv_qs.filter(
+                Q(operator_id__in=operator_ids)
+                | Q(operator_lines__operator_id__in=operator_ids)
+            ).distinct()
+        leads_cnt = leads_qs.count()
+        conv_cnt = conv_qs.count()
         rate = round(conv_cnt * 100.0 / leads_cnt, 2) if leads_cnt else 0.0
         return leads_cnt, conv_cnt, rate
 
@@ -1850,11 +1872,11 @@ def dashboard_summary(period: str = "week", *, month: str | None = None) -> dict
     delta_pp = round(cur_conv_rate - prev_conv_rate, 2)
 
     # -------- shift card --------
-    shift = attendance_dashboard_snapshot()
+    shift = attendance_dashboard_snapshot(operator_ids=operator_ids)
 
     # -------- timeseries: last N days regardless of period tab --------
     ts_start = today_start - dt.timedelta(days=_DASHBOARD_TIMESERIES_DAYS - 1)
-    ts_rows = timeseries_daily(date_from=ts_start, date_to=now)
+    ts_rows = timeseries_daily(date_from=ts_start, date_to=now, operator_ids=operator_ids)
     # Backfill missing days with zeros so the bar chart has fixed width.
     ts_by_day = {r["day"]: r for r in ts_rows}
     ts_filled: list[dict] = []
@@ -1876,12 +1898,17 @@ def dashboard_summary(period: str = "week", *, month: str | None = None) -> dict
     from apps.leads.selectors import stranded_on_inactive_operators
 
     orphans_cnt = orphan_leads().count()
-    stranded_cnt = stranded_on_inactive_operators().count()
+    stranded_qs = stranded_on_inactive_operators()
+    if operator_ids is not None:
+        stranded_qs = stranded_qs.filter(operator_id__in=operator_ids)
+    stranded_cnt = stranded_qs.count()
     to_review = pending_today  # alias — Sale.status='pending' == «требует проверки»
     late_today = int(shift.get("late_today") or 0)
 
     # -------- leaderboard: top 5 for the SAME window as the KPIs --------
-    top_ops = leaderboard(date_from=cur_start, date_to=cur_end, limit=5)
+    top_ops = leaderboard(
+        date_from=cur_start, date_to=cur_end, limit=5, operator_ids=operator_ids
+    )
     top_ops_shaped = [
         {
             "id": r["operator_id"],

@@ -145,7 +145,7 @@ class Command(BaseCommand):
         # Managers = recipients of in-app Notification.
         manager_users = list(
             User.objects.filter(
-                profile__role__in=(Role.MANAGER, Role.TEAM_LEAD, Role.SUPERADMIN),
+                profile__role__in=(Role.MANAGER, Role.TEAM_LEAD, Role.SUPER_MANAGER, Role.SUPERADMIN),
                 is_active=True,
             )
         )
@@ -155,7 +155,7 @@ class Command(BaseCommand):
         # BotSubscription не подходит — таблица per-chat, не per-user.
         tg_chat_ids: list[int] = list(
             Profile.objects.filter(
-                role__in=(Role.MANAGER, Role.TEAM_LEAD, Role.SUPERADMIN),
+                role__in=(Role.MANAGER, Role.TEAM_LEAD, Role.SUPER_MANAGER, Role.SUPERADMIN),
                 telegram_user_id__isnull=False,
                 user__is_active=True,
             ).values_list("telegram_user_id", flat=True)
@@ -182,8 +182,15 @@ class Command(BaseCommand):
             if dry_run:
                 continue
 
-            # 1. In-app Notifications (bulk).
-            if manager_users:
+            # 1. In-app Notifications (bulk). 2026-10-14: уважаем
+            # NotificationPreference(kind=birthday, in_app=False).
+            from apps.notifications.selectors import notification_in_app_muted_user_ids
+
+            muted = notification_in_app_muted_user_ids(
+                kind=NotificationKind.BIRTHDAY, user_ids=[m.id for m in manager_users]
+            )
+            in_app_recipients = [m for m in manager_users if m.id not in muted]
+            if in_app_recipients:
                 try:
                     Notification.objects.bulk_create(
                         [
@@ -201,7 +208,7 @@ class Command(BaseCommand):
                                     "birth_date": op.birth_date.isoformat(),
                                 },
                             )
-                            for m in manager_users
+                            for m in in_app_recipients
                         ]
                     )
                 except Exception:

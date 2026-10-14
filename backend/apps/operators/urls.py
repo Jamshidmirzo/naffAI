@@ -10,9 +10,11 @@ from .apis import (
     MePreferencesApi,
     MyDayOffListApi,
     OperatorAvatarApi,
+    OperatorBulkSetManagerApi,
     OperatorDeactivateApi,
     OperatorDeleteApi,
     OperatorDetailApi,
+    OperatorFloorApi,
     OperatorListCreateApi,
     OperatorMeAvatarApi,
     OperatorPauseApi,
@@ -29,6 +31,13 @@ urlpatterns = [
     # съест «birthdays-today» как pk и упадёт с 404.
     path("birthdays-today/", OperatorsBirthdayTodayApi.as_view()),
     path("deleted/", DeletedOperatorsListApi.as_view()),
+    # 2026-10-14 design-atlas V2 — static paths ДО <int:pk>/.
+    path("floor/", OperatorFloorApi.as_view(), name="operators-floor"),
+    path(
+        "bulk-set-manager/",
+        OperatorBulkSetManagerApi.as_view(),
+        name="operators-bulk-set-manager",
+    ),
     # Day-off requests — static paths ДО <int:pk>/.
     path("day-off/", DayOffCreateApi.as_view()),
     path("day-off/pending/", DayOffPendingListApi.as_view()),

@@ -9,8 +9,16 @@ from rest_framework.views import APIView
 from apps.users.permissions import IsAuthenticatedAnyRole
 
 from .models import Notification
-from .selectors import notifications_for_user, unread_count_for_user
-from .services import notification_mark_all_read, notification_mark_read
+from .selectors import (
+    notification_preferences_for_user,
+    notifications_for_user,
+    unread_count_for_user,
+)
+from .services import (
+    notification_mark_all_read,
+    notification_mark_read,
+    notification_preferences_update,
+)
 
 
 class NotificationSerializer(serializers.ModelSerializer):
@@ -77,3 +85,44 @@ class NotificationMarkAllReadApi(APIView):
     def post(self, request):
         marked = notification_mark_all_read(user_id=request.user.id)
         return Response({"marked": marked}, status=status.HTTP_200_OK)
+
+
+class NotificationPreferenceItemSerializer(serializers.Serializer):
+    kind = serializers.CharField(max_length=32)
+    in_app = serializers.BooleanField(required=False)
+    telegram = serializers.BooleanField(required=False)
+
+
+class NotificationPreferencesInputSerializer(serializers.Serializer):
+    items = NotificationPreferenceItemSerializer(many=True, allow_empty=True)
+
+
+class NotificationPreferencesApi(APIView):
+    """
+    GET   /api/notifications/preferences/
+      → {"items": [{"kind": "sale_created", "in_app": true, "telegram": false}, ...]}
+    PATCH /api/notifications/preferences/  {"items": [{"kind": "...", "in_app": false}]}
+      → тот же формат (полный список после изменения).
+
+    Список kind'ов зависит от роли (senior vs operator); kind вне списка
+    роли в PATCH → 400.
+    """
+
+    permission_classes = [IsAuthenticated, IsAuthenticatedAnyRole]
+
+    def get(self, request):
+        return Response({"items": notification_preferences_for_user(request.user)})
+
+    def patch(self, request):
+        ser = NotificationPreferencesInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            notification_preferences_update(
+                user=request.user, items=ser.validated_data["items"]
+            )
+        except ValueError as exc:
+            return Response(
+                {"items": [f"Недопустимый kind для вашей роли: {exc}"]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({"items": notification_preferences_for_user(request.user)})

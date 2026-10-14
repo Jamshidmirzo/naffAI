@@ -586,3 +586,321 @@ def _age_years(birth_date: dt.date, today: dt.date) -> int:
     if (today.month, today.day) < (bd_month, bd_day):
         age -= 1
     return max(0, age)
+
+
+# ---------------------------------------------------------------------------
+# 2026-10-14 (design-atlas V2): plan helper + «Пульт зала» floor snapshot.
+# ---------------------------------------------------------------------------
+
+
+def _money_int(value) -> int:
+    """UZS → int (без тийинов). None → 0."""
+    if value is None:
+        return 0
+    return int(Decimal(value).quantize(Decimal("1")))
+
+
+def operator_plan_current_month(*, operator: Operator) -> dict:
+    """
+    `plan_target` / `plan_actual` за текущий месяц — РОВНО тот же расчёт,
+    что и аннотация `with_plan=True` в `operator_list` (её и переиспользуем),
+    только отдаём int'ами (UZS без копеек):
+
+      * `plan_target` — `OperatorMonthlyPlan.target_amount` или None;
+      * `plan_actual` — сумма `SaleOperator.amount` по confirmed,
+        не удалённым и не возвращённым продажам за текущий месяц.
+    """
+    row = (
+        operator_list(visible_operator_ids=[operator.id], with_plan=True)
+        .values("plan_target", "plan_actual")
+        .first()
+    )
+    if row is None:
+        return {"plan_target": None, "plan_actual": 0}
+    target = row["plan_target"]
+    return {
+        "plan_target": _money_int(target) if target is not None else None,
+        "plan_actual": _money_int(row["plan_actual"]),
+    }
+
+
+class FloorState:
+    CALL = "call"
+    WAIT = "wait"
+    PAUSE = "pause"
+    LATE = "late"
+    ABSENT = "absent"
+    OFF = "off"
+    DAYOFF = "dayoff"
+
+
+# Открытый CallAttempt старше этого окна считаем «забытым» (оператор не
+# закрыл карточку звонка) — в state=call он не превращается.
+FLOOR_OPEN_CALL_WINDOW = dt.timedelta(minutes=15)
+# Сколько минут после опоздавшего check-in'а держим state=late.
+FLOOR_LATE_WINDOW = dt.timedelta(minutes=60)
+
+
+def _as_time(value) -> dt.time:
+    """AttendanceSettings, только что созданный get_or_create'ом, держит
+    default'ы строкой («10:00») — приводим к `time`."""
+    if isinstance(value, dt.time):
+        return value
+    h, m = map(int, str(value).split(":")[:2])
+    return dt.time(hour=h, minute=m)
+
+
+def floor_state_resolve(
+    *,
+    is_day_off: bool,
+    is_paused: bool,
+    has_recent_open_call: bool,
+    first_checkin_at: dt.datetime | None,
+    first_checkin_was_late: bool,
+    has_open_shift: bool,
+    late_deadline: dt.datetime,
+    now: dt.datetime,
+) -> str:
+    """
+    Чистая функция правила `state` (порядок важен):
+
+      1. approved day-off сегодня / weekly_day_off → dayoff
+      2. is_paused                                → pause
+      3. открытый CallAttempt < 15 мин            → call
+      4. нет check-in сегодня: после shift_start+grace → absent, иначе off
+      5. все смены за сегодня закрыты (checkout)  → off
+      6. check-in с опозданием < 60 мин назад     → late
+      7. иначе                                    → wait
+    """
+    if is_day_off:
+        return FloorState.DAYOFF
+    if is_paused:
+        return FloorState.PAUSE
+    if has_recent_open_call:
+        return FloorState.CALL
+    if first_checkin_at is None:
+        return FloorState.ABSENT if now > late_deadline else FloorState.OFF
+    if not has_open_shift:
+        return FloorState.OFF
+    if first_checkin_was_late and (now - first_checkin_at) < FLOOR_LATE_WINDOW:
+        return FloorState.LATE
+    return FloorState.WAIT
+
+
+def operators_floor_snapshot(
+    *,
+    operator_ids: list[int],
+    pin_verified: bool,
+    now: dt.datetime | None = None,
+) -> dict:
+    """
+    «Пульт зала» — живой срез по каждому не-inactive оператору из
+    `operator_ids` (caller передаёт уже scope-нутый allowlist).
+
+    Все агрегаты — bulk (один запрос на домен), без N+1:
+      day-offs, open CallAttempt'ы, AttendanceLog за сегодня,
+      просроченные CallbackReminder'ы, SaleOperator за сегодня,
+      working_count (та же аннотация, что `operators_distribution_status`),
+      plan (та же аннотация, что `operator_list(with_plan=True)`).
+
+    `pin_verified=False` → персональные `checked_in_at` / `late_minutes`
+    отдаются null (attendance-данные под PIN-гейтом), но в расчёт `state`
+    check-in всё равно входит.
+
+    `avatar_url` — относительный (`/media/...`); абсолютным его делает API.
+    """
+    from django.conf import settings as dj_settings
+    from django.db.models import Max
+
+    from apps.attendance.models import AttendanceLog
+    from apps.attendance.selectors import attendance_settings_get
+    from apps.calls.models import CallAttempt, CallbackReminder, CallbackReminderStatus
+    from apps.leads.selectors import (
+        _leads_active_today_filter,
+        _rr_batch_size,
+        active_lead_status_codes,
+        carry_over_status_codes,
+        terminal_lead_status_codes,
+    )
+
+    from .models import DayOffStatus, OperatorDayOff
+
+    now = now or timezone.now()
+    now_local = timezone.localtime(now)
+    today = now_local.date()
+    tz = timezone.get_current_timezone()
+    day_start = dt.datetime.combine(today, dt.time.min, tzinfo=tz)
+    day_end = day_start + dt.timedelta(days=1)
+    quota = _rr_batch_size()
+
+    base = {
+        "generated_at": now_local.isoformat(),
+        "pin_verified": bool(pin_verified),
+        "rr_batch_size": quota,
+        "operators": [],
+    }
+
+    terminal = set(terminal_lead_status_codes())
+    carry = set(carry_over_status_codes())
+    workable = list(set(active_lead_status_codes()) - terminal - carry)
+
+    ops = list(
+        operator_list(
+            visible_operator_ids=operator_ids,
+            include_inactive=False,
+            with_plan=True,
+        )
+        .annotate(
+            _working_count=Count(
+                "leads",
+                filter=Q(
+                    leads__status__in=workable,
+                    leads__postponed_at__isnull=True,
+                )
+                & _leads_active_today_filter(),
+            )
+        )
+        .order_by("full_name", "id")
+    )
+    if not ops:
+        return base
+    ids = [op.id for op in ops]
+
+    settings_obj = attendance_settings_get()
+    default_shift_start = _as_time(settings_obj.shift_start)
+    default_weekly_day_off = settings_obj.default_weekly_day_off
+    late_threshold = dt.timedelta(minutes=int(settings_obj.late_threshold_min or 0))
+
+    day_off_ids = set(
+        OperatorDayOff.objects.filter(
+            operator_id__in=ids, date=today, status=DayOffStatus.APPROVED
+        ).values_list("operator_id", flat=True)
+    )
+
+    open_calls = dict(
+        CallAttempt.objects.filter(
+            operator_id__in=ids, outcome="", ended_at__isnull=True
+        )
+        .annotate(_start=Coalesce("started_at", "created_at"))
+        .filter(_start__gte=now - FLOOR_OPEN_CALL_WINDOW, _start__lte=now)
+        .values("operator_id")
+        .annotate(latest=Max("_start"))
+        .values_list("operator_id", "latest")
+    )
+
+    first_log: dict[int, AttendanceLog] = {}
+    has_open: set[int] = set()
+    for log in AttendanceLog.objects.filter(
+        operator_id__in=ids, checked_in_at__gte=day_start, checked_in_at__lt=day_end
+    ).only("id", "operator_id", "checked_in_at", "checked_out_at", "was_late").order_by(
+        "checked_in_at", "id"
+    ):
+        first_log.setdefault(log.operator_id, log)
+        if log.checked_out_at is None:
+            has_open.add(log.operator_id)
+
+    grace = getattr(dj_settings, "CALLBACK_OVERDUE_GRACE_MINUTES", 30)
+    overdue = dict(
+        CallbackReminder.objects.filter(
+            operator_id__in=ids,
+            status__in=(
+                CallbackReminderStatus.PENDING,
+                CallbackReminderStatus.OVERDUE,
+                CallbackReminderStatus.SNOOZED,
+            ),
+            remind_at__lte=now - dt.timedelta(minutes=grace),
+        )
+        .values("operator_id")
+        .annotate(n=Count("id"))
+        .values_list("operator_id", "n")
+    )
+
+    sales: dict[int, dict] = {
+        r["operator_id"]: r
+        for r in SaleOperator.objects.filter(
+            operator_id__in=ids,
+            sale__is_deleted=False,
+            sale__is_returned=False,
+            sale__status="confirmed",
+            sale__sold_at__gte=day_start,
+            sale__sold_at__lt=day_end,
+        )
+        .values("operator_id")
+        .annotate(n=Count("sale", distinct=True), s=Sum("amount"))
+    }
+
+    rows: list[dict] = []
+    for op in ops:
+        weekly = op.weekly_day_off if op.weekly_day_off is not None else default_weekly_day_off
+        is_day_off = op.id in day_off_ids or (
+            weekly is not None and today.weekday() == int(weekly)
+        )
+        shift_start = _as_time(op.shift_start) if op.shift_start else default_shift_start
+        shift_start_dt = dt.datetime.combine(today, shift_start, tzinfo=tz)
+        late_deadline = shift_start_dt + late_threshold
+
+        log = first_log.get(op.id)
+        call_started_at = open_calls.get(op.id)
+        state = floor_state_resolve(
+            is_day_off=is_day_off,
+            is_paused=bool(op.is_paused),
+            has_recent_open_call=call_started_at is not None,
+            first_checkin_at=log.checked_in_at if log else None,
+            first_checkin_was_late=bool(log and log.was_late),
+            has_open_shift=op.id in has_open,
+            late_deadline=late_deadline,
+            now=now,
+        )
+
+        checked_in_at = None
+        late_minutes = None
+        if pin_verified and log is not None:
+            checked_in_at = timezone.localtime(log.checked_in_at).isoformat()
+            if log.was_late:
+                # Та же формула, что в `attendance_late_notification`:
+                # опоздание считаем от shift_start + late_threshold_min.
+                late_minutes = max(
+                    0, int((log.checked_in_at - late_deadline).total_seconds() // 60)
+                )
+
+        avatar_url = None
+        if op.avatar:
+            try:
+                avatar_url = op.avatar.url
+            except Exception:
+                avatar_url = None
+
+        sale_row = sales.get(op.id) or {}
+        plan_target = getattr(op, "plan_target", None)
+        rows.append(
+            {
+                "id": op.id,
+                "full_name": op.full_name,
+                "status": op.status,
+                "managed_by_id": op.managed_by_id,
+                "avatar_url": avatar_url,
+                "state": state,
+                "call_started_at": (
+                    timezone.localtime(call_started_at).isoformat() if call_started_at else None
+                ),
+                # Звонок выводится из открытого CallAttempt (телефонии нет),
+                # поэтому время старта — всегда оценка.
+                "call_is_estimate": call_started_at is not None,
+                "paused_at": (
+                    timezone.localtime(op.paused_at).isoformat()
+                    if op.is_paused and op.paused_at
+                    else None
+                ),
+                "checked_in_at": checked_in_at,
+                "late_minutes": late_minutes,
+                "working_count": int(op._working_count),  # type: ignore[attr-defined]
+                "quota": quota,
+                "sales_today": int(sale_row.get("n") or 0),
+                "sales_today_amount": str(_money_int(sale_row.get("s"))),
+                "overdue_callbacks": int(overdue.get(op.id, 0)),
+                "plan_target": _money_int(plan_target) if plan_target is not None else None,
+                "plan_actual": _money_int(getattr(op, "plan_actual", None)),
+            }
+        )
+    base["operators"] = rows
+    return base

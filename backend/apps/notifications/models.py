@@ -51,3 +51,34 @@ class Notification(TimestampedModel):
 
     def __str__(self) -> str:
         return f"[{self.kind}] {self.title} → user#{self.recipient_id}"
+
+
+class NotificationPreference(TimestampedModel):
+    """
+    Per-user подписка на конкретный `NotificationKind` (2026-10-14,
+    design-atlas V2). Строки создаются лениво — отсутствие строки =
+    defaults (`in_app=True`, `telegram=False`).
+
+    `in_app=False` → `notification_broadcast` пропускает этого получателя
+    для этого kind. `telegram` пока только хранится (TG-рассылки его не
+    читают) — задел под будущую фильтрацию DM.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notification_preferences",
+    )
+    kind = models.CharField(max_length=32, choices=NotificationKind.choices)
+    in_app = models.BooleanField(default=True)
+    telegram = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "kind"], name="uniq_notification_preference_user_kind"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"pref user#{self.user_id} {self.kind} in_app={self.in_app} tg={self.telegram}"

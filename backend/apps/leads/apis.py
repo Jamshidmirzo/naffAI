@@ -601,7 +601,14 @@ class LeadMyStatusApi(APIView):
         operator = operator_get(op_id)
         if not operator:
             return Response({"detail": "Оператор не найден"}, status=404)
-        return Response(my_status_for_operator(operator))
+        payload = my_status_for_operator(operator)
+        # 2026-10-14 design-atlas V2: план месяца виден самому оператору.
+        # Добавочные поля — тот же расчёт, что `plan_target`/`plan_actual`
+        # в /api/operators/ (int, UZS).
+        from apps.operators.selectors import operator_plan_current_month
+
+        payload.update(operator_plan_current_month(operator=operator))
+        return Response(payload)
 
 
 class LeadPostponeInputSerializer(serializers.Serializer):
