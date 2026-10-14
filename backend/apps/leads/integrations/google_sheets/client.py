@@ -283,18 +283,40 @@ class GoogleSheetsClient:
         """
         Read the whole worksheet as a list of dicts (headers → cell).
 
-        - Row 1 = headers (may contain blanks; blank headers keep their
-          positional slot via `__cells__`).
+        - If Row 1 contains actual data (detected via phone number pattern),
+          the sheet is treated as headerless: virtual headers 'A', 'B', 'C'...
+          are used, and Row 1 is processed as data (__row__=1).
+        - Otherwise, Row 1 = headers, and data begins from Row 2.
         - Empty rows are skipped.
         """
+        import re
+
         # Sheet name may contain non-ascii chars → single-quote it.
         safe = worksheet_name.replace("'", "''")
         rows = self.raw_values(spreadsheet_id, f"'{safe}'!A1:ZZ")
         if not rows:
             return []
-        headers = [str(h).strip() if h is not None else "" for h in rows[0]]
+
+        first_row = rows[0]
+
+        def _is_phone(val: Any) -> bool:
+            digits = re.sub(r"\D", "", str(val or ""))
+            return len(digits) in (9, 12) and (digits.startswith("998") or len(digits) == 9)
+
+        is_headerless = any(_is_phone(c) for c in first_row)
+
+        if is_headerless:
+            max_cols = max(len(r) for r in rows)
+            headers = [_idx_to_letter(i + 1) for i in range(max_cols)]
+            data_rows = rows
+            start_row = 1
+        else:
+            headers = [str(h).strip() if h is not None else "" for h in first_row]
+            data_rows = rows[1:]
+            start_row = 2
+
         out: list[dict] = []
-        for idx, row in enumerate(rows[1:], start=2):
+        for idx, row in enumerate(data_rows, start=start_row):
             if not row or not any(str(c).strip() for c in row):
                 continue
             padded = list(row) + [""] * (len(headers) - len(row))

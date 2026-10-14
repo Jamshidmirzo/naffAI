@@ -450,6 +450,7 @@ class UserListCreateApi(APIView):
     class CreateSerializer(serializers.Serializer):
         username = serializers.CharField(max_length=150)
         password = serializers.CharField(required=False, allow_blank=True)
+        full_name = serializers.CharField(required=False, allow_blank=True, default="")
         role = serializers.ChoiceField(
             choices=[
                 Role.MANAGER,
@@ -543,12 +544,19 @@ class UserListCreateApi(APIView):
         return Response(rows)
 
     def post(self, request):
+        from apps.operators.models import Operator
+
         s = self.CreateSerializer(data=request.data)
         s.is_valid(raise_exception=True)
-        username = s.validated_data["username"].strip()
+        raw_username = s.validated_data["username"].strip()
+        full_name = (s.validated_data.get("full_name") or "").strip()
         role = s.validated_data.get("role") or Role.MANAGER
         plain = s.validated_data.get("password") or generate_temp_password()
         reports_to_id = s.validated_data.get("reports_to_id")
+
+        # Normalize phone if provided in phone format (+998...)
+        normalized, valid = normalize_uz_phone(raw_username)
+        username = normalized if valid else raw_username
 
         # Singleton guard for super_manager — ровно один в системе.
         # Validator is inside the service, but doing a pre-check here
@@ -580,7 +588,7 @@ class UserListCreateApi(APIView):
 
         if User.objects.filter(username=username).exists():
             return Response(
-                {"detail": "Пользователь с таким логином уже существует"},
+                {"detail": "Пользователь с таким логином / номером уже существует"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -597,10 +605,17 @@ class UserListCreateApi(APIView):
                 )
 
         user = User.objects.create(username=username, is_active=True)
+        if full_name:
+            parts = full_name.split(maxsplit=1)
+            user.first_name = parts[0]
+            user.last_name = parts[1] if len(parts) > 1 else ""
+            user.save(update_fields=["first_name", "last_name"])
+
         user_password_set(user=user, plain=plain)
+        matching_op = Operator.objects.filter(phone=username).first()
         Profile.objects.update_or_create(
             user=user,
-            defaults={"role": role, "reports_to": reports_to_user},
+            defaults={"role": role, "reports_to": reports_to_user, "operator": matching_op},
         )
         audit_log_create(
             user=request.user,
@@ -617,10 +632,13 @@ class UserListCreateApi(APIView):
             {
                 "id": user.id,
                 "username": user.username,
+                "full_name": user.get_full_name() or user.username,
                 "role": role,
                 "is_active": True,
                 "password": plain,
                 "reports_to_id": reports_to_id,
+                "operator_id": matching_op.id if matching_op else None,
+                "operator_name": matching_op.full_name if matching_op else None,
             },
             status=status.HTTP_201_CREATED,
         )

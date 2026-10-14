@@ -87,6 +87,11 @@ class SheetPreview:
     total_rows: int
 
 
+def _looks_like_phone_value(val: Any) -> bool:
+    digits = re.sub(r"\D", "", str(val or ""))
+    return len(digits) in (9, 12) and (digits.startswith("998") or len(digits) == 9)
+
+
 def fetch_sheet_preview(spreadsheet_id: str, gid: int) -> dict:
     """
     Pull the first ~10 data rows via GoogleSheetsClient and return
@@ -122,8 +127,21 @@ def fetch_sheet_preview(spreadsheet_id: str, gid: int) -> dict:
             "total_rows": 0,
         }
 
-    headers = [str(h).strip() if h is not None else "" for h in rows[0]]
-    data_rows = rows[1:]
+    first_row = rows[0]
+    # Умное определение: если в первой строке уже лежит номер телефона (например,
+    # '+998933339495'), значит в таблице НЕТ строки заголовков — сразу идут данные!
+    # В этом случае создаём виртуальные заголовки 'Колонка A', 'Колонка B'...,
+    # чтобы первая строка не терялась и попала в лиды.
+    is_headerless = any(_looks_like_phone_value(c) for c in first_row)
+
+    if is_headerless:
+        max_cols = max(len(r) for r in rows)
+        headers = [_idx_to_letter(i + 1) for i in range(max_cols)]
+        data_rows = rows
+    else:
+        headers = [str(h).strip() if h is not None else "" for h in first_row]
+        data_rows = rows[1:]
+
     sample = []
     for r in data_rows[:10]:
         padded = list(r) + [""] * (len(headers) - len(r))
@@ -267,6 +285,16 @@ def suggest_column_map(headers: list[str]) -> dict:
                     break
             if result[slot]:
                 break
+
+    # Phase 3: headerless fallback (когда заголовки — это просто буквы 'A', 'B', 'C'...)
+    # В 99% случаев в таких таблицах: A = Товар/Модель, B = Имя, C = Телефон
+    if not result["phone"] and not result["full_name"] and set(headers[:3]) <= {"A", "B", "C"}:
+        if "C" in headers:
+            result["phone"] = "C"
+        if "B" in headers:
+            result["full_name"] = "B"
+        if "A" in headers:
+            result["product_hint"] = "A"
 
     return result
 
