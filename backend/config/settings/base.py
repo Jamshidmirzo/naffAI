@@ -464,8 +464,8 @@ LIVEKIT_S3_FORCE_PATH_STYLE = config("LIVEKIT_S3_FORCE_PATH_STYLE", default=Fals
 # One LiveKit server serves prod and demo: each backend owns one room and
 # ignores webhooks of the other (`naffai-prod` / `naffai-demo`).
 LIVEKIT_ROOM_NAME = config("LIVEKIT_ROOM_NAME", default="naffai-ops-floor")
-# Internal URL of the LiveKit server API (Twirp) — `http://livekit:7880`
-# inside compose. Empty = no server calls: no kicks, no recording, live-now
+# URL of the LiveKit server API (Twirp) — the media server's private IP,
+# `http://172.26.5.12:7880`. Empty = no server calls: no kicks, no recording, live-now
 # falls back to webhook-driven rows.
 LIVEKIT_API_URL = config("LIVEKIT_API_URL", default="")
 # Track egress → one mp4 per operator per hour in LIVEKIT_S3_BUCKET.

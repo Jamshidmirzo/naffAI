@@ -6,38 +6,36 @@ demo. Разделение — по комнате: у каждого бэкен
 LiveKit шлёт вебхуки в оба бэкенда, каждый берёт события только своей
 комнаты.
 
-Сервисы — `docker-compose.prod.yml`, профиль `live`:
+LiveKit живёт на отдельном сервере, чтобы видео не нагружало CRM:
+Lightsail `naffai-media` (small_3_0, 2 vCPU / 2 ГБ, eu-central-1a), публичный
+IP 3.70.241.228 (не статический — лимит статических IP в аккаунте; меняется
+только при stop/start), приватный 172.26.5.12. Деплой —
+`bash deploy/deploy-media.sh` (compose — `deploy/livekit/docker-compose.media.yml`,
+host network, ключи берёт из `.env` CRM, IP определяет сам). SSH — тем же
+`~/.ssh/naffai-lightsail.pem`.
 
-| Сервис          | Что делает                                                |
+| Сервис (media)  | Что делает                                                |
 |-----------------|-----------------------------------------------------------|
 | `livekit`       | SFU + встроенный TURN. Конфиг — env `LIVEKIT_CONFIG`.     |
-| `livekit-redis` | Состояние комнат и шина egress (noeviction).              |
+| `livekit-redis` | Состояние комнат и шина egress (noeviction, 127.0.0.1).   |
 | `egress`        | Запись: track egress → mp4 в S3. Конфиг — `EGRESS_CONFIG_BODY`. |
-| `live-ops`, `demo-live-ops` | Бэкенд-цикл `manage.py live_ops`: сверка «кто в эфире» с LiveKit, часовая нарезка записей, чистка. |
 
-Ключи подставляет compose из `/opt/naffAI/.env` (`LIVEKIT_API_KEY`,
-`LIVEKIT_API_SECRET`). Отдельных yaml-файлов нет — справка по полям:
-https://docs.livekit.io/home/self-hosting/deployment/ .
+На CRM-сервере (`docker-compose.prod.yml`) — только `live-ops` /
+`demo-live-ops` (`manage.py live_ops`: сверка «кто в эфире» с LiveKit,
+часовая нарезка записей, чистка), `LIVEKIT_API_URL=http://172.26.5.12:7880`
+и nginx `/livekit/` → тот же адрес.
 
-`deploy/deploy-prod.sh` поднимает профиль `live` сам (если в `.env` есть
-`LIVEKIT_API_KEY`) и пересоздаёт его, только если менялся compose или эта
-папка.
+## Порты (Lightsail firewall `naffai-media`)
 
-## Порты
+| Порт      | Протокол | Откуда           | Зачем                                      |
+|-----------|----------|------------------|--------------------------------------------|
+| 7880      | TCP      | только CRM-хост  | сигналинг (через nginx CRM) + API бэкенда  |
+| 7881      | TCP      | все              | ICE по TCP для сетей без UDP               |
+| 7882      | UDP      | все              | все WebRTC-потоки одним портом (UDP mux)   |
+| 3478      | UDP      | все              | встроенный TURN (строгий NAT)              |
 
-| Порт      | Протокол | Зачем                                                   |
-|-----------|----------|---------------------------------------------------------|
-| 7880      | TCP      | сигналинг + API, только 127.0.0.1 — nginx `/livekit/`   |
-| 7881      | TCP      | ICE по TCP для сетей, где UDP закрыт                    |
-| 7882      | UDP      | все WebRTC-потоки одним портом (UDP mux)                |
-| 3478      | UDP      | встроенный TURN (строгий NAT)                           |
-
-Lightsail firewall: открыть 7881/tcp, 7882/udp, 3478/udp. Старые диапазоны
-49160-49200/udp и 50000-50200/udp (coturn) больше не нужны.
-
-Ядро: LiveKit просит буфер UDP побольше —
-`/etc/sysctl.d/60-livekit.conf`: `net.core.rmem_max=5000000`,
-`net.core.wmem_max=5000000` → `sudo sysctl --system`.
+Ядро медиасервера: `/etc/sysctl.d/60-livekit.conf` (`net.core.rmem_max` /
+`wmem_max` = 5000000) — ставится user-data при создании.
 
 ## nginx
 
@@ -47,7 +45,7 @@ nginx, копия в `deploy/nginx/`). В оба сайта (`naffai`, `naff-dem
 ```nginx
 location /livekit/ {
     rewrite ^/livekit/(.*)$ /$1 break;
-    proxy_pass http://127.0.0.1:7880;
+    proxy_pass http://172.26.5.12:7880;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $connection_upgrade;
@@ -65,7 +63,7 @@ prod (`/opt/naffAI/.env`):
 ```
 LIVEKIT_WS_URL=wss://naff.flek.uz/livekit/
 LIVEKIT_ROOM_NAME=naffai-prod
-LIVEKIT_API_URL=http://livekit:7880
+LIVEKIT_API_URL=http://172.26.5.12:7880
 LIVEKIT_S3_BUCKET=naffai-livestream-recordings
 LIVEKIT_RECORDING_ENABLED=1
 ```
@@ -84,7 +82,9 @@ demo (`/opt/naffAI/.env.demo`, перекрывает): `LIVEKIT_WS_URL=wss://de
 ## Проверка
 
 ```bash
+# на CRM
 sudo docker compose -f docker-compose.prod.yml exec -T web python manage.py live_ops --once
-sudo docker logs --since 5m naffai-livekit-1 | grep -iE 'error|turn|webhook'
-sudo docker logs --since 5m naffai-egress-1 | tail
+# на media
+cd /opt/naffai-media && sudo docker compose logs --since 5m livekit | grep -iE 'error|turn|webhook'
+sudo docker compose logs --since 5m egress | tail
 ```
