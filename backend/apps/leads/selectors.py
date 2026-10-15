@@ -1341,6 +1341,22 @@ def next_operator_for_round_robin(
 # ---- Sheet configuration --------------------------------------------------
 
 
+def webhook_source_by_token(token: str) -> SheetSource | None:
+    """Active webhook source for the token in `/api/integrations/leads/<token>/`."""
+    from .models import SheetSourceKind
+
+    token = (token or "").strip()
+    if not token or len(token) > 64:
+        return None
+    return (
+        SheetSource.objects.filter(
+            webhook_token=token, kind=SheetSourceKind.WEBHOOK, active=True
+        )
+        .select_related("default_operator")
+        .first()
+    )
+
+
 def alias_lookup(alias_name: str) -> OperatorSheetAlias | None:
     if not alias_name:
         return None

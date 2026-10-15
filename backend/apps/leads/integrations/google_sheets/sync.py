@@ -23,7 +23,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.common.exceptions import ApplicationError
-from apps.leads.models import SheetSource
+from apps.leads.models import SheetSource, SheetSourceKind
 from apps.leads.services import (
     lead_create_from_sheet_row,
     sheet_source_bump_watermark,
@@ -181,6 +181,12 @@ def sync_single_source(
     manual «Sync now» endpoint that the wizard triggers after creating a
     source — we don't want to wait for the cron.
     """
+    if sheet_source.kind != SheetSourceKind.SHEET:
+        # Webhook-источник: лиды приходят POST'ом, в Google ходить нечего.
+        raise ApplicationError(
+            "Это webhook-источник — синхронизация с Google Sheets не нужна",
+            {"field": "kind", "reason": "webhook_source"},
+        )
     client = GoogleSheetsClient()  # may raise GoogleSheetsUnavailable
     return sync_one(
         client=client, sheet_source=sheet_source, force_full_scan=force_full_scan
@@ -195,7 +201,8 @@ def sync_all(*, force_full_scan: bool = False, hot_only: bool = False) -> list[S
         return []
 
     results: list[SyncResult] = []
-    qs = SheetSource.objects.filter(active=True)
+    # Webhook-источники (kind=webhook) не синкаются — у них нет таблицы.
+    qs = SheetSource.objects.filter(active=True, kind=SheetSourceKind.SHEET)
     if hot_only:
         qs = qs.filter(is_hot=True)
     for src in qs.order_by("id"):

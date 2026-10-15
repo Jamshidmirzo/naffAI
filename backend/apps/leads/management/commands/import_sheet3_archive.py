@@ -31,7 +31,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **opts) -> None:
         gid = int(opts["gid"])
-        src = SheetSource.objects.filter(gid=gid).first()
+        src = SheetSource.objects.filter(gid=gid, kind="sheet").first()
         if src is None:
             raise CommandError(
                 f"No SheetSource with gid={gid}. Run bootstrap_lead_domain first."

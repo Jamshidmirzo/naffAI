@@ -303,7 +303,9 @@ def sales_by_source(
             "sales_count": r["sales_count"],
         }
 
-    leads_qs = Lead.objects.filter(source="sheet")
+    # Webhook-лиды (LeadPixel) атрибутируются своему источнику так же, как
+    # строки шита — иначе у webhook-источника продажи есть, а лидов 0.
+    leads_qs = Lead.objects.filter(source__in=("sheet", "webhook"))
     if date_from:
         leads_qs = leads_qs.filter(created_at__gte=date_from)
     if date_to:

@@ -87,6 +87,10 @@ EXPECTED_INTERVALS: dict[str, int] = {
     "userclient": 10 * 60,
     # Watchdog itself — ticks every 60s. If stale, /healthz 503s.
     "watchdog": 3 * 60,
+    # NB: `lead_outbound` (process_lead_outbound, статусы в LeadPixel) пишет
+    # heartbeat, но сюда НЕ добавлен намеренно: compose-сервиса пока нет
+    # (формат LeadPixel неизвестен). Добавить вместе с сервисом:
+    #   "lead_outbound": 5 * 60,
 }
 
 
@@ -213,8 +217,10 @@ class HealthCheckView(APIView):
         # 2. Google Sheets sync freshness (via SheetSource.last_synced_at,
         # independent of the Redis heartbeat — this is a safety fallback).
         try:
+            # Только Google-шиты: webhook-источник обновляет last_synced_at
+            # на каждом лиде и маскировал бы умерший sheet-sync.
             latest = (
-                SheetSource.objects.filter(active=True)
+                SheetSource.objects.filter(active=True, kind="sheet")
                 .order_by("-last_synced_at")
                 .first()
             )

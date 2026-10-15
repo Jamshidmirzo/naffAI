@@ -37,6 +37,7 @@ from .models import (
     LeadStatusLabel,
     OperatorSheetAlias,
     SheetSource,
+    SheetSourceKind,
 )
 from .selectors import (
     KNOWN_LOST_REASONS,
@@ -198,11 +199,23 @@ class SheetSourceSerializer(serializers.ModelSerializer):
         ),
     )
 
+    kind = serializers.ChoiceField(
+        choices=SheetSourceKind.choices, required=False, default=SheetSourceKind.SHEET
+    )
+    # Для kind=webhook: абсолютный адрес приёма лидов (вставить в LeadPixel).
+    webhook_url = serializers.SerializerMethodField()
+    # «Статусы обратно»: api_key в ответах замаскирован, PATCH с маской
+    # оставляет старый ключ.
+    outbound_config = serializers.JSONField(required=False)
+
     class Meta:
         model = SheetSource
         fields = [
             "id",
             "name",
+            "kind",
+            "webhook_url",
+            "outbound_config",
             "spreadsheet_id",
             "gid",
             "worksheet_name",
@@ -241,6 +254,48 @@ class SheetSourceSerializer(serializers.ModelSerializer):
             )
         return value
 
+    def _kind(self) -> str:
+        if self.instance is not None:
+            return self.instance.kind
+        return (getattr(self, "initial_data", None) or {}).get("kind") or SheetSourceKind.SHEET
+
+    def get_webhook_url(self, obj) -> str | None:
+        if obj.kind != SheetSourceKind.WEBHOOK or not obj.webhook_token:
+            return None
+        from .integrations.webhook.services import webhook_path
+
+        path = webhook_path(obj.webhook_token)
+        request = self.context.get("request")
+        return request.build_absolute_uri(path) if request is not None else path
+
+    def to_representation(self, instance):
+        from .integrations.webhook.services import outbound_config_masked
+
+        data = super().to_representation(instance)
+        data["outbound_config"] = outbound_config_masked(instance.outbound_config)
+        return data
+
+    def validate_outbound_config(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("outbound_config должен быть объектом.")
+        url = str(value.get("url") or "").strip()
+        if url and not url.startswith(("http://", "https://")):
+            raise serializers.ValidationError("url должен начинаться с http:// или https://")
+        return value
+
+    def validate(self, attrs):
+        # Google-шиту при создании нужны spreadsheet_id + gid (раньше это
+        # были обязательные поля модели). Webhook-источнику — нет.
+        if self.instance is None and self._kind() == SheetSourceKind.SHEET:
+            errors = {}
+            if not attrs.get("spreadsheet_id"):
+                errors["spreadsheet_id"] = ["Обязательное поле."]
+            if "gid" not in (getattr(self, "initial_data", None) or {}):
+                errors["gid"] = ["Обязательное поле."]
+            if errors:
+                raise serializers.ValidationError(errors)
+        return attrs
+
     def validate_column_map(self, value):
         """Require phone + full_name so newly-created sources always import
         leads with contact info. Empty column_map used to silently produce
@@ -249,6 +304,9 @@ class SheetSourceSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "column_map должен быть объектом {slot: column}."
             )
+        if self._kind() == SheetSourceKind.WEBHOOK:
+            # Webhook разбирает поля сам (parse.py) — column_map не нужен.
+            return value
         missing = [k for k in ("phone", "full_name") if not value.get(k)]
         if missing:
             raise serializers.ValidationError(
@@ -1123,6 +1181,15 @@ class DistributeNowApi(APIView):
 # ---- Sheet configuration CRUD -------------------------------------------
 
 
+_WEBHOOK_NO_GOOGLE = {
+    "detail": (
+        "Это webhook-источник: лиды приходят POST'ом на адрес приёма, "
+        "синхронизация с Google Sheets для него не выполняется."
+    ),
+    "reason": "webhook_source",
+}
+
+
 class SheetSourceListCreateApi(ListCreateAPIView):
     permission_classes = [IsTeamLead]
     serializer_class = SheetSourceSerializer
@@ -1136,6 +1203,35 @@ class SheetSourceListCreateApi(ListCreateAPIView):
         data = ser.validated_data
         default_op = data.get("default_operator")
         allowed_ops = data.get("allowed_operators")  # list[Operator] | None
+        if data.get("kind") == SheetSourceKind.WEBHOOK:
+            from .integrations.webhook.services import (
+                webhook_source_create,
+                webhook_source_update,
+            )
+
+            obj = webhook_source_create(
+                name=data["name"],
+                is_hot=data.get("is_hot", False),
+                hot_sla_minutes=data.get("hot_sla_minutes") or 10,
+                operator_ids=[op.id for op in (allowed_ops or [])],
+                distribution_mode=(
+                    data.get("distribution_mode") or DistributionMode.ALIAS_OR_ROUND_ROBIN
+                ),
+                default_status=data.get("default_status") or LeadStatus.NEW,
+                default_operator=default_op if default_op else None,
+                active=data.get("active", True),
+                user=request.user,
+            )
+            if "outbound_config" in data:
+                obj = webhook_source_update(
+                    source=obj,
+                    data={"outbound_config": data["outbound_config"]},
+                    user=request.user,
+                )
+            return Response(
+                SheetSourceSerializer(obj, context={"request": request}).data,
+                status=status.HTTP_201_CREATED,
+            )
         obj = sheet_source_upsert(
             name=data["name"],
             spreadsheet_id=data["spreadsheet_id"],
@@ -1153,7 +1249,8 @@ class SheetSourceListCreateApi(ListCreateAPIView):
             user=request.user,
         )
         return Response(
-            SheetSourceSerializer(obj).data, status=status.HTTP_201_CREATED
+            SheetSourceSerializer(obj, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
         )
 
 
@@ -1164,13 +1261,15 @@ class SheetSourceDetailApi(APIView):
         obj = SheetSource.objects.filter(pk=pk).first()
         if not obj:
             return Response({"detail": "Not found"}, status=404)
-        return Response(SheetSourceSerializer(obj).data)
+        return Response(SheetSourceSerializer(obj, context={"request": request}).data)
 
     def patch(self, request, pk: int):
         obj = SheetSource.objects.filter(pk=pk).first()
         if not obj:
             return Response({"detail": "Not found"}, status=404)
-        ser = SheetSourceSerializer(obj, data=request.data, partial=True)
+        ser = SheetSourceSerializer(
+            obj, data=request.data, partial=True, context={"request": request}
+        )
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
         default_op = data.get("default_operator", obj.default_operator)
@@ -1181,6 +1280,19 @@ class SheetSourceDetailApi(APIView):
             allowed_ids = [op.id for op in (data.get("allowed_operators") or [])]
         else:
             allowed_ids = None
+        if obj.kind == SheetSourceKind.WEBHOOK:
+            # Webhook: spreadsheet_id / gid / column_map / writeback не
+            # применимы — sheet_source_upsert (ключ spreadsheet_id+gid) не
+            # годится, правим по pk.
+            from .integrations.webhook.services import webhook_source_update
+
+            updated = webhook_source_update(
+                source=obj,
+                data=data,
+                allowed_operator_ids=allowed_ids,
+                user=request.user,
+            )
+            return Response(SheetSourceSerializer(updated, context={"request": request}).data)
         updated = sheet_source_upsert(
             name=data.get("name", obj.name),
             spreadsheet_id=data.get("spreadsheet_id", obj.spreadsheet_id),
@@ -1195,7 +1307,7 @@ class SheetSourceDetailApi(APIView):
             allowed_operator_ids=allowed_ids,
             user=request.user,
         )
-        return Response(SheetSourceSerializer(updated).data)
+        return Response(SheetSourceSerializer(updated, context={"request": request}).data)
 
 
 class SheetSourcePreviewApi(APIView):
@@ -1293,6 +1405,8 @@ class SheetSourceSyncNowApi(APIView):
         src = SheetSource.objects.filter(pk=pk).first()
         if not src:
             return Response({"detail": "Not found"}, status=404)
+        if src.kind == SheetSourceKind.WEBHOOK:
+            return Response(_WEBHOOK_NO_GOOGLE, status=400)
 
         if src.last_synced_at:
             delta = (timezone.now() - src.last_synced_at).total_seconds()
@@ -1374,16 +1488,22 @@ class SheetSourceStatsApi(APIView):
         leads_7d = leads_qs.filter(created_at__gte=d7).count()
         sales_total = Sale.objects.filter(sheet_source=src, is_deleted=False).count()
 
-        healthy = bool(
-            not src.last_sync_error
-            and src.last_synced_at
-            and (now - src.last_synced_at) < timedelta(hours=2)
-        )
+        if src.kind == SheetSourceKind.WEBHOOK:
+            # Webhook ни от чего не «отстаёт»: ночью лидов может не быть
+            # часами. last_synced_at = время последнего принятого лида.
+            healthy = bool(src.active)
+        else:
+            healthy = bool(
+                not src.last_sync_error
+                and src.last_synced_at
+                and (now - src.last_synced_at) < timedelta(hours=2)
+            )
 
         return Response(
             {
                 "id": src.id,
                 "name": src.name,
+                "kind": src.kind,
                 "active": src.active,
                 "leads_total": leads_total,
                 "leads_last_24h": leads_24h,
@@ -1407,7 +1527,7 @@ class SheetSourceHealthOverviewApi(APIView):
     def get(self, request):
         from datetime import timedelta
         from django.utils import timezone
-        from apps.leads.models import SheetSource, SheetWritebackJob
+        from apps.leads.models import InboundLeadEvent, SheetSource, SheetWritebackJob
 
         now = timezone.now()
         sources_data = []
@@ -1419,10 +1539,39 @@ class SheetSourceHealthOverviewApi(APIView):
             is_healthy = not bool(s.last_sync_error)
             leads_today = Lead.objects.filter(sheet_source=s, created_at__date=timezone.localdate()).count()
             leads_total = Lead.objects.filter(sheet_source=s).count()
+            is_webhook = s.kind == SheetSourceKind.WEBHOOK
+            webhook_info = None
+            if is_webhook:
+                # Без Google: «свежесть» = последний принятый лид (last_synced_at
+                # обновляется на каждом принятом), плюс последний запрос вообще.
+                last_event = (
+                    InboundLeadEvent.objects.filter(source=s)
+                    .order_by("-received_at")
+                    .values("received_at", "outcome")
+                    .first()
+                )
+                webhook_info = {
+                    "last_request_at": (
+                        last_event["received_at"].isoformat() if last_event else None
+                    ),
+                    "last_request_outcome": last_event["outcome"] if last_event else None,
+                    "requests_24h": InboundLeadEvent.objects.filter(
+                        source=s, received_at__gte=now - timedelta(hours=24)
+                    ).count(),
+                    "invalid_24h": InboundLeadEvent.objects.filter(
+                        source=s,
+                        received_at__gte=now - timedelta(hours=24),
+                        outcome__in=["invalid", "error"],
+                    ).count(),
+                    "outbound_pending": s.outbound_events.filter(delivered_at__isnull=True).count(),
+                    "outbound_enabled": bool((s.outbound_config or {}).get("enabled")),
+                }
 
             sources_data.append({
                 "id": s.id,
                 "name": s.name,
+                "kind": s.kind,
+                "webhook": webhook_info,
                 "worksheet_name": s.worksheet_name or "",
                 "spreadsheet_id": s.spreadsheet_id,
                 "gid": s.gid,
@@ -1432,7 +1581,7 @@ class SheetSourceHealthOverviewApi(APIView):
                 "last_synced_row": s.last_synced_row,
                 "last_sync_error": s.last_sync_error or None,
                 "is_healthy": is_healthy,
-                "writeback_enabled": bool(wb.get("enabled", False)),
+                "writeback_enabled": (not is_webhook) and bool(wb.get("enabled", False)),
                 "writeback_status_col": wb.get("status_col") or "",
                 "writeback_operator_col": wb.get("operator_col") or "",
                 "leads_today": leads_today,
@@ -1537,6 +1686,8 @@ class SheetSourceResetWatermarkApi(APIView):
         src = SheetSource.objects.filter(pk=pk).first()
         if not src:
             return Response({"detail": "Not found"}, status=404)
+        if src.kind == SheetSourceKind.WEBHOOK:
+            return Response(_WEBHOOK_NO_GOOGLE, status=400)
 
         row = int(request.data.get("row", 0))
         src.last_synced_row = row

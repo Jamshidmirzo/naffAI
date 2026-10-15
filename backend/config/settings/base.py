@@ -514,3 +514,5 @@ ATTENDANCE_PHASH_CHECK_ENABLED = config(
 
 REST_FRAMEWORK.setdefault("DEFAULT_THROTTLE_RATES", {})
 REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["attendance_scan_ip"] = "20/min"
+# Публичный webhook-приём лидов (/api/integrations/leads/<token>/), per-IP.
+REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["lead_webhook"] = "120/min"

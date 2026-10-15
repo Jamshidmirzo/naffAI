@@ -61,6 +61,12 @@ urlpatterns = [
     #  - /callbacks/*     mine / due / done / snooze
     #  - /sheet-sources/, /operator-sheet-aliases/  (sheet mapping admin)
     #  - /telegram/lookup, /telegram/lookup (POST upsert)
+    # Публичный приём лидов по webhook (LeadPixel → «Своя CRM» и т.п.):
+    # POST /api/integrations/leads/<token>/ — токен в пути = авторизация.
+    path(
+        "integrations/leads/",
+        include(("apps.leads.integrations.webhook.urls", "lead_webhook")),
+    ),
     path("leads/", include("apps.leads.urls")),
     path("leads/", include((lead_nested_urlpatterns, "calls_nested"))),
     path("callbacks/", include((callback_urlpatterns, "callbacks"))),

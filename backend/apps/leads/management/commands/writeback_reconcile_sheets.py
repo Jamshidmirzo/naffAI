@@ -62,7 +62,13 @@ class Command(BaseCommand):
     def handle(self, *args, **opts) -> None:
         from apps.common.health import record_heartbeat
         from apps.leads.integrations.google_sheets.client import GoogleSheetsClient
-        from apps.leads.models import Lead, LeadStatus, LeadStatusLabel, SheetSource
+        from apps.leads.models import (
+            Lead,
+            LeadStatus,
+            LeadStatusLabel,
+            SheetSource,
+            SheetSourceKind,
+        )
         from apps.leads.services import (
             _col_to_idx,
             _writeback_batch_async,
@@ -77,7 +83,9 @@ class Command(BaseCommand):
         client = GoogleSheetsClient()
         total_checked = total_drift = 0
 
-        for src in SheetSource.objects.filter(active=True).order_by("id"):
+        for src in SheetSource.objects.filter(
+            active=True, kind=SheetSourceKind.SHEET
+        ).order_by("id"):
             cfg = _writeback_config(src)
             if not cfg.get("enabled", True):
                 continue

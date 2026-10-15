@@ -547,8 +547,25 @@ def _link_sale_to_lead_and_mark_won(*, sale: Sale, lead_id: int, user) -> None:
                 user=user,
                 comment=f"Продажа №{sale.id}: авто-конвертация по phone-match",
             )
+        _schedule_lead_outbound_sale(sale=sale, kind="sale")
     except Exception:
         logger.exception("link_sale_to_lead failed sale=%s lead_id=%s", sale.id, lead_id)
+
+
+def _schedule_lead_outbound_sale(*, sale: Sale, kind: str) -> None:
+    """
+    Report a sale (or its return) of a webhook-source lead back to the
+    source (LeadPixel ROAS). On commit, deduped per sale; no-op for leads
+    from Google sheets and for unlinked sales. Never raises.
+    """
+    if not sale.lead_id:
+        return
+    try:
+        from apps.leads.integrations.webhook.outbound import outbound_schedule
+
+        outbound_schedule(lead_id=sale.lead_id, kind=kind, sale_id=sale.id)
+    except Exception:
+        logger.exception("lead outbound schedule failed sale=%s", sale.id)
 
 
 def _broadcast_new_sale(sale, primary_op, operator_lines, total) -> None:
@@ -1033,6 +1050,7 @@ def sale_mark_returned(*, sale: Sale, reason: str, user=None) -> Sale:
         changes={"is_returned": True, "return_reason": reason},
         comment="Возврат",
     )
+    _schedule_lead_outbound_sale(sale=sale, kind="sale_returned")
     _schedule_dashboard_cache_bust()
     return sale
 
@@ -1073,6 +1091,7 @@ def sale_confirm(*, sale: Sale, user=None) -> Sale:
         entity_id=sale.id,
         changes={"status": {"old": old_status, "new": "confirmed"}},
     )
+    _schedule_lead_outbound_sale(sale=sale, kind="sale")
     _schedule_dashboard_cache_bust()
     return sale
 

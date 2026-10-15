@@ -8,6 +8,10 @@ Pre-sale domain: Lead + assignments + Google-Sheets sync configuration.
   alias). Latest active row wins.
 - `SheetSource` + `OperatorSheetAlias` — per-worksheet column mapper and
   operator-name aliases used by the sync command.
+- `SheetSource.kind=webhook` — the same per-source config, but leads are
+  POSTed to `/api/integrations/leads/<token>/` (LeadPixel etc.);
+  `InboundLeadEvent` journals every POST, `LeadOutboundEvent` queues
+  statuses / sales back to the source.
 - `TelegramLink` — phone→username cache so the frontend "Написать в TG"
   button opens `https://t.me/{username}` when we know it, and falls back to
   `tg://resolve?phone=+998…` otherwise.
@@ -42,6 +46,9 @@ class LeadSource(models.TextChoices):
     SHEET = "sheet", "Google Sheets"
     MANUAL = "manual", "Ручной ввод"
     BOT = "bot", "Telegram-бот"
+    # 2026-10-15: лид пришёл POST'ом на /api/integrations/leads/<token>/
+    # (LeadPixel → «Своя CRM» и подобные). sheet_source = webhook-источник.
+    WEBHOOK = "webhook", "Webhook"
 
 
 class LeadStatusTone(models.TextChoices):
@@ -150,6 +157,18 @@ class DistributionMode(models.TextChoices):
     ALIAS_OR_ROUND_ROBIN = "alias_or_rr", "По alias, иначе round-robin"
 
 
+class SheetSourceKind(models.TextChoices):
+    """
+    Where a source's leads come from. `sheet` — Google Sheets worksheet
+    polled by `sync_sheets_leads`. `webhook` — leads are POSTed to
+    `/api/integrations/leads/<webhook_token>/` (LeadPixel etc.); no Google
+    calls, no row index, no writeback — but the same per-source routing
+    (allowed operators, distribution mode, hot SLA, sales attribution).
+    """
+    SHEET = "sheet", "Google Sheets"
+    WEBHOOK = "webhook", "Webhook"
+
+
 class SheetSource(TimestampedModel):
     """
     Configuration for one Google Sheets worksheet — read once per sync run,
@@ -172,8 +191,14 @@ class SheetSource(TimestampedModel):
     """
 
     name = models.CharField(max_length=128)
-    spreadsheet_id = models.CharField(max_length=128)
-    gid = models.BigIntegerField(help_text="Google Sheet's tab gid")
+    kind = models.CharField(
+        max_length=16,
+        choices=SheetSourceKind.choices,
+        default=SheetSourceKind.SHEET,
+        db_index=True,
+    )
+    spreadsheet_id = models.CharField(max_length=128, blank=True, default="")
+    gid = models.BigIntegerField(default=0, help_text="Google Sheet's tab gid")
     worksheet_name = models.CharField(
         max_length=128,
         blank=True,
@@ -264,17 +289,36 @@ class SheetSource(TimestampedModel):
             "По истечении лид считается остывшим — watcher уведомит владельца."
         ),
     )
+    # Webhook-источник (kind=webhook): секрет в пути приёмного URL.
+    # `secrets.token_urlsafe(24)`; ротация — `create_webhook_source --rotate`.
+    webhook_token = models.CharField(
+        max_length=64, unique=True, null=True, blank=True, default=None
+    )
+    # Куда отправлять статусы лидов обратно (LeadPixel: лиды/продажи/ROAS).
+    # {"url": "...", "api_key": "...", "enabled": false}. Формат LeadPixel
+    # пока неизвестен — очередь копится, доставка выключена, пока enabled=false.
+    outbound_config = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ["name"]
         constraints = [
+            # Только для Google-шитов: у webhook-источников spreadsheet_id
+            # пустой и gid=0, их может быть сколько угодно.
             models.UniqueConstraint(
-                fields=["spreadsheet_id", "gid"], name="uniq_sheet_source_ss_gid"
+                fields=["spreadsheet_id", "gid"],
+                condition=models.Q(kind="sheet"),
+                name="uniq_sheet_source_ss_gid",
             )
         ]
 
     def __str__(self) -> str:
+        if self.kind == SheetSourceKind.WEBHOOK:
+            return f"{self.name} (webhook)"
         return f"{self.name} (gid={self.gid})"
+
+    @property
+    def is_webhook(self) -> bool:
+        return self.kind == SheetSourceKind.WEBHOOK
 
 
 class OperatorSheetAlias(TimestampedModel):
@@ -482,6 +526,96 @@ class SheetWritebackJob(models.Model):
 
     def __str__(self) -> str:
         return f"SheetWritebackJob#{self.pk} lead={self.lead_id}"
+
+
+class InboundLeadEventOutcome(models.TextChoices):
+    CREATED = "created", "Создан лид"
+    MERGED = "merged", "Склеен с существующим"
+    DUPLICATE = "duplicate", "Повтор (тот же external_id)"
+    NEEDS_REVIEW = "needs_review", "Создан, требует проверки"
+    INVALID = "invalid", "Отклонён (нет телефона и имени)"
+    ERROR = "error", "Ошибка обработки"
+
+
+class InboundLeadEvent(models.Model):
+    """
+    Журнал всего, что пришло на webhook-приём лидов. Формат LeadPixel
+    публично не задокументирован — сырой payload храним (обрезанным),
+    чтобы разбирать по факту. Заодно ключ идемпотентности: повтор того же
+    `external_id` (leadgen_id / lead_id / id) для источника → `duplicate`.
+    """
+
+    source = models.ForeignKey(
+        SheetSource, on_delete=models.CASCADE, related_name="inbound_events"
+    )
+    external_id = models.CharField(max_length=128, blank=True, default="")
+    payload = models.JSONField(default=dict, blank=True)
+    lead = models.ForeignKey(
+        Lead,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="inbound_events",
+    )
+    outcome = models.CharField(max_length=16, choices=InboundLeadEventOutcome.choices)
+    error = models.TextField(blank=True, default="")
+    received_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    remote_ip = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-received_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source", "external_id"],
+                condition=~models.Q(external_id=""),
+                name="uniq_inbound_lead_event_source_ext",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"InboundLeadEvent#{self.pk} src={self.source_id} {self.outcome}"
+
+
+class LeadOutboundEventKind(models.TextChoices):
+    STATUS = "status", "Смена статуса"
+    SALE = "sale", "Продажа"
+    SALE_RETURNED = "sale_returned", "Возврат продажи"
+
+
+class LeadOutboundEvent(models.Model):
+    """
+    Очередь «статусы обратно» для webhook-источников (LeadPixel хочет
+    видеть лиды → продажи → ROAS). Пишется on_commit из lead/sale сервисов,
+    вычищается `process_lead_outbound`. Пока у источника
+    `outbound_config.enabled` не true — события копятся и не трогаются.
+    """
+
+    source = models.ForeignKey(
+        SheetSource, on_delete=models.CASCADE, related_name="outbound_events"
+    )
+    lead = models.ForeignKey(
+        Lead, on_delete=models.CASCADE, related_name="outbound_events"
+    )
+    kind = models.CharField(max_length=16, choices=LeadOutboundEventKind.choices)
+    # "status:<code>" / "sale:<id>" / "sale_returned:<id>" — гасит дубли
+    # одного и того же события (статус WON из двух путей продажи и т.п.).
+    dedupe_key = models.CharField(max_length=128, blank=True, default="")
+    payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    next_try_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["id"]
+        indexes = [
+            models.Index(fields=["delivered_at", "next_try_at"], name="lead_outbound_due_idx"),
+            models.Index(fields=["source", "lead"], name="lead_outbound_src_lead_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"LeadOutboundEvent#{self.pk} {self.kind} lead={self.lead_id}"
 
 
 class LeadAssignmentSource(models.TextChoices):

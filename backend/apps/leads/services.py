@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 
@@ -389,16 +390,23 @@ def _writeback_batch_async(
     Never raises: a queue insert failure is logged and the nightly
     reconcile picks the drift up.
     """
-    from .models import SheetWritebackJob
+    from .models import SheetSourceKind, SheetWritebackJob
 
     if not lead_ids:
         return
     now = timezone.now()
     try:
+        # Лиды webhook-источников не имеют строки в Google — писать некуда.
+        webhook_ids = set(
+            Lead.objects.filter(
+                pk__in=list(lead_ids), sheet_source__kind=SheetSourceKind.WEBHOOK
+            ).values_list("id", flat=True)
+        )
         SheetWritebackJob.objects.bulk_create(
             [
                 SheetWritebackJob(lead_id=lead_id, comment=comment or "", next_try_at=now)
                 for lead_id in dict.fromkeys(lead_ids)
+                if lead_id not in webhook_ids
             ]
         )
     except Exception:
@@ -480,127 +488,36 @@ def lead_create(
     return lead
 
 
-@transaction.atomic
-def lead_create_from_sheet_row(
+@dataclass
+class _LeadRouting:
+    """Result of `_route_new_lead` — how a fresh source lead gets distributed."""
+
+    status: str
+    needs_review: bool
+    assigned_op: Operator | None
+    assignment_reason: str
+    use_round_robin: bool
+    hot_until: dt.datetime | None
+
+
+def _route_new_lead(
     *,
     sheet_source: SheetSource,
-    row_index: int,
-    raw_row: dict,
-) -> tuple[Lead, str]:
+    operator_alias: str,
+    valid: bool,
+    initial_status: str,
+) -> _LeadRouting:
     """
-    Returns `(lead, outcome)` where outcome is:
-      - `"resynced"` — the (sheet_source, row_index) pair already existed.
-        Idempotent path: sync loops don't overwrite manual edits, but we
-        do pull through freshly-typed status changes from the sheet.
-      - `"merged"` — a different lead with the same normalized phone was
-        already active in the DB. We reuse it, update «soft» fields
-        (name / product hint / has_card / phone_alt) if the new row has
-        richer values, and append a `duplicate_sheet_rows` audit trail
-        entry so history is preserved. `sheet_source` / `sheet_row_index`
-        on the winning lead stay pointed at the ORIGINAL row.
-      - `"created"` — no existing match; a fresh Lead is created and
-        (optionally) auto-assigned.
-
-    Column resolution goes through `_pick_column`, which supports both
-    header-name and positional (`{"column_index": N}`) specs so the same
-    codepath handles Sheet 1 (has headers) and the operator column of Sheet
-    2 (no header on the column that carries the operator alias).
+    Decide status / operator / round-robin / hot SLA for a NEW lead of a
+    source (Google-sheet row or webhook POST). Only side effect: an unknown
+    alias is registered. The caller creates the Lead and then calls
+    `_finish_new_lead_assignment`.
+    Extracted from `lead_create_from_sheet_row` (2026-10-15) so webhook
+    leads follow exactly the same per-source rules.
     """
-    cm = sheet_source.column_map or {}
-    sheet_status_raw = _pick_column(raw_row, cm.get("status"))
-    mapped_sheet_status = _map_sheet_status(sheet_status_raw)
-
-    existing = Lead.objects.filter(
-        sheet_source=sheet_source, sheet_row_index=row_index
-    ).first()
-    if existing:
-        # Re-sync should honour freshly-typed status changes from the
-        # sheet — the operator may have marked "javob bermadi 2" after
-        # our first import.
-        if mapped_sheet_status and existing.status != mapped_sheet_status:
-            lead_update_status(
-                lead=existing,
-                status=mapped_sheet_status,
-                comment=f"resync: sheet status «{sheet_status_raw}»",
-            )
-        return existing, "resynced"
-
-    full_name = _pick_column(raw_row, cm.get("full_name"))
-    phone_raw = _pick_column(raw_row, cm.get("phone"))
-    product_hint = _pick_column(raw_row, cm.get("product_hint"))
-    has_card = _pick_column(raw_row, cm.get("has_card"))
-    operator_alias = _pick_column(raw_row, cm.get("operator_alias"))
-
-    normalized, valid = normalize_uz_phone(phone_raw)
-
-    # Format-drift fallback: some srm rows added an "age" column between
-    # product and name, shifting the phone rightward. If column_map's
-    # position missed → scan the raw row for the last valid +998 number,
-    # then pick the first alphabetic cell before it as the name.
-    cells = raw_row.get("__cells__") or []
-    phone_alt = ""
-    if not valid:
-        smart_phones, phone_col = _scan_row_for_phones(cells)
-        if smart_phones:
-            normalized, valid = smart_phones[0], True
-            phone_raw = smart_phones[0]
-            if len(smart_phones) > 1 and smart_phones[1] != smart_phones[0]:
-                phone_alt = smart_phones[1]
-            if not full_name or not any(ch.isalpha() for ch in full_name):
-                smart_name = _scan_row_for_name(cells, phone_col_1based=phone_col)
-                if smart_name:
-                    full_name = smart_name
-    else:
-        # column_map hit — but the row may STILL have a second phone in a
-        # neighbouring cell (new srm format has both a raw duplicate and
-        # the +998-normalized one). Grab it into phone_alt if distinct.
-        smart_phones, _ = _scan_row_for_phones(cells)
-        for candidate in smart_phones:
-            if candidate != normalized:
-                phone_alt = candidate
-                break
-    metadata = _extract_metadata(raw_row, cm)
-
-    # Phone-level dedup (2026-08-30): the historical idempotency key was
-    # (sheet_source, sheet_row_index) — but managers routinely re-add the
-    # same customer from a different channel or a copy-pasted row, which
-    # would create a fresh Lead each time and leave the CRM showing two
-    # cards for the same person. If the normalized phone already belongs
-    # to a NON-terminal Lead, we reuse it: soft-update name/product hint
-    # /card/alt-phone if the new row has richer values, append a row
-    # trail into `metadata["duplicate_sheet_rows"]`, and DO NOT touch
-    # status/operator/sheet_source/sheet_row_index (those still point to
-    # the original row so per-sheet writeback stays aligned).
-    #
-    # A phone that only exists on terminal leads (won/lost/archived/…)
-    # still creates a fresh Lead — the client came back after a closed
-    # history and deserves a new working card.
-    if valid and normalized:
-        from .selectors import terminal_lead_status_codes
-
-        terminal = set(terminal_lead_status_codes()) | set(TERMINAL_LEAD_STATUSES)
-        active_dup = (
-            Lead.objects
-            .filter(phone=normalized)
-            .exclude(status__in=terminal)
-            .order_by("-updated_at")
-            .first()
-        )
-        if active_dup is not None:
-            merged = _merge_sheet_row_into_existing(
-                existing=active_dup,
-                sheet_source=sheet_source,
-                row_index=row_index,
-                full_name=full_name,
-                product_hint=product_hint,
-                has_card=has_card,
-                phone_alt=phone_alt,
-            )
-            return merged, "merged"
-
     default_status = sheet_source.default_status or LeadStatus.NEW
     needs_review = False
-    status = mapped_sheet_status or default_status
+    status = initial_status
 
     # Alias resolution + distribution routing:
     # First look up the alias (persist unknown ones so admin can bind them),
@@ -699,6 +616,183 @@ def lead_create_from_sheet_row(
         sla_minutes = int(sheet_source.hot_sla_minutes or 10)
         hot_until_dt = timezone.now() + timedelta(minutes=sla_minutes)
 
+    return _LeadRouting(
+        status=status,
+        needs_review=needs_review,
+        assigned_op=assigned_op,
+        assignment_reason=assignment_reason,
+        use_round_robin=use_round_robin,
+        hot_until=hot_until_dt,
+    )
+
+
+def _finish_new_lead_assignment(
+    *, lead: Lead, routing: _LeadRouting, sheet_source: SheetSource
+) -> None:
+    """Post-create half of the routing: assignment row / RR / review note."""
+    if routing.assigned_op is not None:
+        LeadAssignment.objects.create(
+            lead=lead,
+            operator=routing.assigned_op,
+            source=LeadAssignmentSource.SHEET_MANUAL,
+            reason=routing.assignment_reason[:256],
+        )
+        if not routing.needs_review:
+            lead.status = LeadStatus.ASSIGNED
+            lead.save(update_fields=["status", "updated_at"])
+    elif (
+        routing.use_round_robin
+        and not routing.needs_review
+        and routing.status == LeadStatus.NEW
+        and not lead.phone_invalid
+    ):
+        try:
+            lead_auto_assign(lead=lead, user=None, sheet_source=sheet_source)
+        except ApplicationError:
+            pass  # no eligible op right now → leave in `new`
+    elif routing.needs_review and routing.assignment_reason:
+        audit_log_create(
+            user=None,
+            action=AuditAction.UPDATE,
+            entity="leads.Lead",
+            entity_id=lead.id,
+            changes={"needs_review_reason": routing.assignment_reason},
+        )
+
+
+def _find_active_lead_by_phone(normalized: str) -> Lead | None:
+    """Newest NON-terminal lead with this normalized phone (import dedup)."""
+    from .selectors import terminal_lead_status_codes
+
+    terminal = set(terminal_lead_status_codes()) | set(TERMINAL_LEAD_STATUSES)
+    return (
+        Lead.objects
+        .filter(phone=normalized)
+        .exclude(status__in=terminal)
+        .order_by("-updated_at")
+        .first()
+    )
+
+
+@transaction.atomic
+def lead_create_from_sheet_row(
+    *,
+    sheet_source: SheetSource,
+    row_index: int,
+    raw_row: dict,
+) -> tuple[Lead, str]:
+    """
+    Returns `(lead, outcome)` where outcome is:
+      - `"resynced"` — the (sheet_source, row_index) pair already existed.
+        Idempotent path: sync loops don't overwrite manual edits, but we
+        do pull through freshly-typed status changes from the sheet.
+      - `"merged"` — a different lead with the same normalized phone was
+        already active in the DB. We reuse it, update «soft» fields
+        (name / product hint / has_card / phone_alt) if the new row has
+        richer values, and append a `duplicate_sheet_rows` audit trail
+        entry so history is preserved. `sheet_source` / `sheet_row_index`
+        on the winning lead stay pointed at the ORIGINAL row.
+      - `"created"` — no existing match; a fresh Lead is created and
+        (optionally) auto-assigned.
+
+    Column resolution goes through `_pick_column`, which supports both
+    header-name and positional (`{"column_index": N}`) specs so the same
+    codepath handles Sheet 1 (has headers) and the operator column of Sheet
+    2 (no header on the column that carries the operator alias).
+    """
+    cm = sheet_source.column_map or {}
+    sheet_status_raw = _pick_column(raw_row, cm.get("status"))
+    mapped_sheet_status = _map_sheet_status(sheet_status_raw)
+
+    existing = Lead.objects.filter(
+        sheet_source=sheet_source, sheet_row_index=row_index
+    ).first()
+    if existing:
+        # Re-sync should honour freshly-typed status changes from the
+        # sheet — the operator may have marked "javob bermadi 2" after
+        # our first import.
+        if mapped_sheet_status and existing.status != mapped_sheet_status:
+            lead_update_status(
+                lead=existing,
+                status=mapped_sheet_status,
+                comment=f"resync: sheet status «{sheet_status_raw}»",
+            )
+        return existing, "resynced"
+
+    full_name = _pick_column(raw_row, cm.get("full_name"))
+    phone_raw = _pick_column(raw_row, cm.get("phone"))
+    product_hint = _pick_column(raw_row, cm.get("product_hint"))
+    has_card = _pick_column(raw_row, cm.get("has_card"))
+    operator_alias = _pick_column(raw_row, cm.get("operator_alias"))
+
+    normalized, valid = normalize_uz_phone(phone_raw)
+
+    # Format-drift fallback: some srm rows added an "age" column between
+    # product and name, shifting the phone rightward. If column_map's
+    # position missed → scan the raw row for the last valid +998 number,
+    # then pick the first alphabetic cell before it as the name.
+    cells = raw_row.get("__cells__") or []
+    phone_alt = ""
+    if not valid:
+        smart_phones, phone_col = _scan_row_for_phones(cells)
+        if smart_phones:
+            normalized, valid = smart_phones[0], True
+            phone_raw = smart_phones[0]
+            if len(smart_phones) > 1 and smart_phones[1] != smart_phones[0]:
+                phone_alt = smart_phones[1]
+            if not full_name or not any(ch.isalpha() for ch in full_name):
+                smart_name = _scan_row_for_name(cells, phone_col_1based=phone_col)
+                if smart_name:
+                    full_name = smart_name
+    else:
+        # column_map hit — but the row may STILL have a second phone in a
+        # neighbouring cell (new srm format has both a raw duplicate and
+        # the +998-normalized one). Grab it into phone_alt if distinct.
+        smart_phones, _ = _scan_row_for_phones(cells)
+        for candidate in smart_phones:
+            if candidate != normalized:
+                phone_alt = candidate
+                break
+    metadata = _extract_metadata(raw_row, cm)
+
+    # Phone-level dedup (2026-08-30): the historical idempotency key was
+    # (sheet_source, sheet_row_index) — but managers routinely re-add the
+    # same customer from a different channel or a copy-pasted row, which
+    # would create a fresh Lead each time and leave the CRM showing two
+    # cards for the same person. If the normalized phone already belongs
+    # to a NON-terminal Lead, we reuse it: soft-update name/product hint
+    # /card/alt-phone if the new row has richer values, append a row
+    # trail into `metadata["duplicate_sheet_rows"]`, and DO NOT touch
+    # status/operator/sheet_source/sheet_row_index (those still point to
+    # the original row so per-sheet writeback stays aligned).
+    #
+    # A phone that only exists on terminal leads (won/lost/archived/…)
+    # still creates a fresh Lead — the client came back after a closed
+    # history and deserves a new working card.
+    if valid and normalized:
+        active_dup = _find_active_lead_by_phone(normalized)
+        if active_dup is not None:
+            merged = _merge_sheet_row_into_existing(
+                existing=active_dup,
+                sheet_source=sheet_source,
+                row_index=row_index,
+                full_name=full_name,
+                product_hint=product_hint,
+                has_card=has_card,
+                phone_alt=phone_alt,
+            )
+            return merged, "merged"
+
+    routing = _route_new_lead(
+        sheet_source=sheet_source,
+        operator_alias=operator_alias,
+        valid=valid,
+        initial_status=mapped_sheet_status or (sheet_source.default_status or LeadStatus.NEW),
+    )
+    status = routing.status
+    needs_review = routing.needs_review
+    assigned_op = routing.assigned_op
+
     lead = Lead.objects.create(
         full_name=full_name[:128],
         phone_raw=phone_raw[:64],
@@ -714,7 +808,7 @@ def lead_create_from_sheet_row(
         operator=assigned_op,
         needs_review=needs_review,
         metadata=metadata,
-        hot_until=hot_until_dt,
+        hot_until=routing.hot_until,
     )
     audit_log_create(
         user=None,
@@ -733,30 +827,39 @@ def lead_create_from_sheet_row(
         },
         comment="Импорт из Google Sheets",
     )
-    if assigned_op is not None:
-        LeadAssignment.objects.create(
-            lead=lead,
-            operator=assigned_op,
-            source=LeadAssignmentSource.SHEET_MANUAL,
-            reason=assignment_reason[:256],
-        )
-        if not needs_review:
-            lead.status = LeadStatus.ASSIGNED
-            lead.save(update_fields=["status", "updated_at"])
-    elif use_round_robin and not needs_review and status == LeadStatus.NEW and valid:
-        try:
-            lead_auto_assign(lead=lead, user=None, sheet_source=sheet_source)
-        except ApplicationError:
-            pass  # no eligible op right now → leave in `new`
-    elif needs_review and assignment_reason:
-        audit_log_create(
-            user=None,
-            action=AuditAction.UPDATE,
-            entity="leads.Lead",
-            entity_id=lead.id,
-            changes={"needs_review_reason": assignment_reason},
-        )
+    _finish_new_lead_assignment(lead=lead, routing=routing, sheet_source=sheet_source)
     return lead, "created"
+
+
+def _apply_soft_fields(
+    existing: Lead,
+    *,
+    full_name: str,
+    product_hint: str,
+    has_card: str,
+    phone_alt: str,
+) -> tuple[list[str], dict[str, dict[str, str]]]:
+    """
+    Set «soft» fields on `existing` when the incoming value is non-empty and
+    differs. Never blanks existing data. Returns (changed_fields, diff);
+    the caller saves.
+    """
+    changed_fields: list[str] = []
+    change_diff: dict[str, dict[str, str]] = {}
+    for field, new_val in (
+        ("full_name", (full_name or "").strip()[:128]),
+        ("product_hint", (product_hint or "").strip()[:256]),
+        ("has_card", (has_card or "").strip()[:64]),
+        ("phone_alt", (phone_alt or "").strip()[:16]),
+    ):
+        if not new_val:
+            continue
+        old_val = getattr(existing, field) or ""
+        if old_val != new_val:
+            setattr(existing, field, new_val)
+            changed_fields.append(field)
+            change_diff[field] = {"old": old_val, "new": new_val}
+    return changed_fields, change_diff
 
 
 def _merge_sheet_row_into_existing(
@@ -788,21 +891,13 @@ def _merge_sheet_row_into_existing(
       - Emits an `AuditAction.UPDATE` entry so the merge is visible in
         the audit log timeline.
     """
-    changed_fields: list[str] = []
-    change_diff: dict[str, dict[str, str]] = {}
-    for field, new_val in (
-        ("full_name", (full_name or "").strip()[:128]),
-        ("product_hint", (product_hint or "").strip()[:256]),
-        ("has_card", (has_card or "").strip()[:64]),
-        ("phone_alt", (phone_alt or "").strip()[:16]),
-    ):
-        if not new_val:
-            continue
-        old_val = getattr(existing, field) or ""
-        if old_val != new_val:
-            setattr(existing, field, new_val)
-            changed_fields.append(field)
-            change_diff[field] = {"old": old_val, "new": new_val}
+    changed_fields, change_diff = _apply_soft_fields(
+        existing,
+        full_name=full_name,
+        product_hint=product_hint,
+        has_card=has_card,
+        phone_alt=phone_alt,
+    )
 
     metadata = dict(existing.metadata or {})
     trail = list(metadata.get("duplicate_sheet_rows") or [])
@@ -837,6 +932,159 @@ def _merge_sheet_row_into_existing(
         comment="Дедуп на импорте: строка Sheets склеена с существующим лидом",
     )
     return existing
+
+
+# ---- webhook-приём лидов (LeadPixel и т.п.) -----------------------------
+
+
+@transaction.atomic
+def lead_create_from_webhook(
+    *,
+    source: SheetSource,
+    full_name: str,
+    phone_raw: str,
+    product_hint: str = "",
+    has_card: str = "",
+    metadata: dict | None = None,
+    external_id: str = "",
+) -> tuple[Lead, str]:
+    """
+    Lead from a webhook POST (`apps.leads.integrations.webhook`). Same rules
+    as a sheet row of `source` — phone normalisation, dedup into an active
+    lead with the same phone, `default_status`, distribution mode /
+    default operator / per-source operator pool / availability, hot SLA —
+    only without a row index and without Google.
+
+    Returns `(lead, outcome)`: `"created"` or `"merged"`. Idempotency by
+    `external_id` lives in the caller (InboundLeadEvent journal).
+    """
+    full_name = (full_name or "").strip()
+    phone_raw = (phone_raw or "").strip()
+    product_hint = (product_hint or "").strip()
+    has_card = (has_card or "").strip()
+    normalized, valid = normalize_uz_phone(phone_raw)
+
+    if valid and normalized:
+        active_dup = _find_active_lead_by_phone(normalized)
+        if active_dup is not None:
+            return (
+                _merge_webhook_lead_into_existing(
+                    existing=active_dup,
+                    source=source,
+                    external_id=external_id,
+                    full_name=full_name,
+                    product_hint=product_hint,
+                    has_card=has_card,
+                ),
+                "merged",
+            )
+
+    routing = _route_new_lead(
+        sheet_source=source,
+        operator_alias="",
+        valid=valid,
+        initial_status=source.default_status or LeadStatus.NEW,
+    )
+    lead = Lead.objects.create(
+        full_name=full_name[:128],
+        phone_raw=phone_raw[:64],
+        phone=normalized if valid else "",
+        phone_invalid=not valid,
+        product_hint=product_hint[:256],
+        has_card=has_card[:64],
+        status=routing.status,
+        source=LeadSource.WEBHOOK,
+        sheet_source=source,
+        operator=routing.assigned_op,
+        needs_review=routing.needs_review,
+        metadata=dict(metadata or {}),
+        hot_until=routing.hot_until,
+    )
+    audit_log_create(
+        user=None,
+        action=AuditAction.CREATE,
+        entity="leads.Lead",
+        entity_id=lead.id,
+        changes={
+            "webhook_source_id": source.id,
+            "external_id": external_id,
+            "full_name": lead.full_name,
+            "phone": lead.phone,
+            "phone_invalid": not valid,
+            "needs_review": routing.needs_review,
+            "status": routing.status,
+        },
+        comment=f"Приём по webhook: {source.name}"[:500],
+    )
+    _finish_new_lead_assignment(lead=lead, routing=routing, sheet_source=source)
+    # Первый статус обратно в источник («лид принят / назначен»).
+    lead_outbound_schedule_status(lead)
+    return lead, "created"
+
+
+def _merge_webhook_lead_into_existing(
+    *,
+    existing: Lead,
+    source: SheetSource,
+    external_id: str,
+    full_name: str,
+    product_hint: str,
+    has_card: str,
+) -> Lead:
+    """
+    Webhook counterpart of `_merge_sheet_row_into_existing`: soft fields
+    only, hard fields (status / operator / sheet_source) untouched, trail in
+    `metadata["duplicate_webhook_events"]`. The trail also tells the
+    outbound queue to report this lead's statuses to `source` even though
+    `existing.sheet_source` points elsewhere.
+    """
+    changed_fields, change_diff = _apply_soft_fields(
+        existing,
+        full_name=full_name,
+        product_hint=product_hint,
+        has_card=has_card,
+        phone_alt="",
+    )
+    metadata = dict(existing.metadata or {})
+    trail = list(metadata.get("duplicate_webhook_events") or [])
+    trail.append(
+        {
+            "source_id": source.id,
+            "external_id": external_id,
+            "at": timezone.now().isoformat(),
+        }
+    )
+    # Не даём метаданным разрастись от повторных заявок одного клиента.
+    metadata["duplicate_webhook_events"] = trail[-20:]
+    existing.metadata = metadata
+    changed_fields += ["metadata", "updated_at"]
+    existing.save(update_fields=list(dict.fromkeys(changed_fields)))
+
+    audit_log_create(
+        user=None,
+        action=AuditAction.UPDATE,
+        entity="leads.Lead",
+        entity_id=existing.id,
+        changes={
+            "merged_from_webhook": {"source_id": source.id, "external_id": external_id},
+            "soft_field_diff": change_diff,
+        },
+        comment=f"Дедуп на приёме webhook ({source.name}): склеен с существующим лидом"[:500],
+    )
+    lead_outbound_schedule_status(existing)
+    return existing
+
+
+def lead_outbound_schedule_status(lead: Lead) -> None:
+    """Status event for webhook sources (no-op for sheet leads). Never raises."""
+    if not lead.sheet_source_id and not (lead.metadata or {}).get("duplicate_webhook_events"):
+        return  # ручной / бот-лид без источника — точно не webhook
+    try:
+        from .integrations.webhook.outbound import outbound_schedule
+
+        outbound_schedule(lead_id=lead.id, kind="status")
+    except Exception:
+        logger.exception("lead outbound schedule failed lead=%s", getattr(lead, "id", None))
 
 
 @transaction.atomic
@@ -1588,6 +1836,9 @@ def lead_update_status(
         comment=comment,
     )
     _schedule_writeback(lead.id, comment=comment)
+    # Webhook-источники (LeadPixel) получают статус обратно; для лидов из
+    # Google-шитов — no-op.
+    lead_outbound_schedule_status(lead)
 
     # Wave-1 (2026-08-22): смена статуса лида пересчитывает dashboard-summary
     # (лид ушёл из «в работе» в won/lost/etc → KPI меняется) и lead-stats
@@ -1955,7 +2206,19 @@ def lead_convert_to_sale(*, lead: Lead, user=None, sale_data: dict):
         lead.id,
         comment=(sale.bonus_note or f"→ Sale #{sale.id}"),
     )
+    lead_outbound_schedule_status(lead)
+    _outbound_schedule_sale(lead_id=lead.id, sale_id=sale.id, kind="sale")
     return sale
+
+
+def _outbound_schedule_sale(*, lead_id: int | None, sale_id: int, kind: str) -> None:
+    """Sale / sale_returned event for webhook sources. Never raises."""
+    try:
+        from .integrations.webhook.outbound import outbound_schedule
+
+        outbound_schedule(lead_id=lead_id, kind=kind, sale_id=sale_id)
+    except Exception:
+        logger.exception("lead outbound schedule failed lead=%s sale=%s", lead_id, sale_id)
 
 
 # ---- Telegram link cache -------------------------------------------------
@@ -2424,6 +2687,7 @@ def lead_mark_system_lost(
         },
         comment=(comment or f"System-lost: {reason}")[:500],
     )
+    lead_outbound_schedule_status(lead)
     return lead
 
 
@@ -2490,6 +2754,7 @@ def lead_recover_from_system_lost(*, lead: Lead, user=None) -> Lead:
         },
         comment=f"Recovered from system-lost ({reason})",
     )
+    lead_outbound_schedule_status(lead)
     return lead
 
 
