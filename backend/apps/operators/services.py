@@ -264,18 +264,12 @@ def _apply_rescue_touched_if_needed(
         * `touched_system_lost_count` — сколько ушло в LOST (mark_lost mode)
         * `touched_reassigned_count`  — сколько переназначено (reassign mode)
     """
-    from collections import defaultdict
-
-    from django.db.models import Count, Q
-    from django.utils import timezone as djtz
-
     from apps.leads.models import (
         Lead as LeadModel,
         LeadAssignment,
         LeadAssignmentSource,
     )
     from apps.leads.selectors import (
-        active_lead_status_codes,
         stranded_touched_non_terminal_leads,
         stranded_untouched_leads,
     )
@@ -346,25 +340,15 @@ def _apply_rescue_touched_if_needed(
         return
 
     # --- mode == "reassign" (default) ---
-    from apps.operators.models import OperatorStatus as _OpStatus
-
     touched_leads = list(touched_qs)
     if not touched_leads:
         operator.touched_needs_review_count = 0
         return
 
-    # Пул кандидатов: ВСЕ ACTIVE операторы кроме уходящего.
+    # Пул кандидатов — «те, кто работает» (см. operators_for_touched_rescue).
     # Не используем operators_eligible_for_new_leads() — там batch-cap /
     # morning-gate, а touched уже в воронке, их нельзя откладывать.
-    # Paused-операторов исключаем: у них весь смысл флага — не получать
-    # новых/чужих лидов; rescue-target это тот же «новый лид с чужой
-    # историей», но всё равно чужой.
-    # Prefer operators on shift right now; if nobody is (evening, weekend)
-    # keep the old pool rather than marking the leads system-lost.
-    from apps.leads.availability import operators_available_for_auto_leads
-
-    base = Operator.objects.filter(status=_OpStatus.ACTIVE, is_paused=False).exclude(pk=operator.id)
-    pool = list(operators_available_for_auto_leads(base)) or list(base)
+    pool = operators_for_touched_rescue(exclude_operator_id=operator.id)
     if not pool:
         # Никому раздать — fallback: помечаем как system-lost
         # (лучше, чем оставлять висеть на уволенном).
@@ -389,90 +373,8 @@ def _apply_rescue_touched_if_needed(
         operator.touched_needs_review_count = len(touched_leads)
         return
 
-    # Round-robin по текущей загрузке (наименее загруженный получает первым).
-    load: dict[int, int] = defaultdict(int)
-    for row in (
-        LeadModel.objects.filter(operator_id__in=[o.id for o in pool])
-        .values("operator_id")
-        .annotate(n=Count("id", filter=Q(status__in=active_lead_status_codes())))
-    ):
-        load[row["operator_id"]] = row["n"]
-
+    per_op_reassigned, cb_moved = spread_touched_leads(leads=touched_leads, pool=pool, from_operator=operator)
     pool_by_id = {o.id: o for o in pool}
-    per_op_reassigned: dict[int, int] = defaultdict(int)
-    now = djtz.now()
-
-    new_assignments: list[LeadAssignment] = []
-    lead_to_new_op: dict[int, int] = {}
-
-    for lead in touched_leads:
-        # Наименее загруженный (стабильный tie-break по id).
-        new_op_id = min(pool_by_id.keys(), key=lambda oid: (load[oid], oid))
-        new_op = pool_by_id[new_op_id]
-
-        # metadata — сохраняем контекст для аудита.
-        md = dict(lead.metadata or {})
-        md["rescued_touched_at"] = now.isoformat()
-        md["rescued_from_operator_id"] = operator.id
-        md["rescued_from_operator_name"] = operator.full_name
-        md["rescued_to_operator_id"] = new_op.id
-        md["rescued_to_operator_name"] = new_op.full_name
-        md["rescued_reason"] = "operator_deactivated"
-        lead.metadata = md
-        lead.operator_id = new_op_id
-        lead.updated_at = now
-        # Статус НЕ меняем — лид продолжает воронку с того же места.
-
-        load[new_op_id] += 1
-        per_op_reassigned[new_op_id] += 1
-        lead_to_new_op[lead.id] = new_op_id
-
-        new_assignments.append(
-            LeadAssignment(
-                lead=lead,
-                operator_id=new_op_id,
-                source=LeadAssignmentSource.AUTO_RESCUE_TOUCHED,
-                active=True,
-                reason=(
-                    f"rescue-RR touched-lead from op#{operator.id} "
-                    f"({operator.full_name})"
-                )[:256],
-            )
-        )
-
-    touched_lead_ids = [le.id for le in touched_leads]
-    LeadAssignment.objects.filter(
-        lead_id__in=touched_lead_ids, active=True
-    ).update(active=False)
-    LeadModel.objects.bulk_update(
-        touched_leads, ["operator_id", "metadata", "updated_at"], batch_size=200
-    )
-    LeadAssignment.objects.bulk_create(new_assignments, batch_size=200)
-
-    # Callbacks — перенести на нового владельца, сбросить dm_sent_at.
-    from apps.calls.models import CallbackReminder, CallbackReminderStatus
-
-    live_statuses = (
-        CallbackReminderStatus.PENDING,
-        CallbackReminderStatus.SNOOZED,
-        CallbackReminderStatus.OVERDUE,
-    )
-    cb_moved = 0
-    cb_qs = list(
-        CallbackReminder.objects.filter(
-            lead_id__in=touched_lead_ids,
-            operator_id=operator.id,
-            status__in=live_statuses,
-        )
-    )
-    for cb in cb_qs:
-        cb.operator_id = lead_to_new_op.get(cb.lead_id, cb.operator_id)
-        cb.dm_sent_at = None
-    if cb_qs:
-        CallbackReminder.objects.bulk_update(
-            cb_qs, ["operator_id", "dm_sent_at"], batch_size=200
-        )
-        cb_moved = len(cb_qs)
 
     operator.touched_reassigned_count = len(touched_leads)
     # Обратная совместимость: старое имя == сколько «изъяли» touched-лидов
@@ -500,6 +402,130 @@ def _apply_rescue_touched_if_needed(
             f"op#{operator.id} на активных операторов."
         ),
     )
+
+
+# How far back a shift makes an operator «working» for touched-lead rescue.
+TOUCHED_RESCUE_RECENT_DAYS = 3
+
+
+def operators_for_touched_rescue(*, exclude_operator_id: int | None = None) -> list[Operator]:
+    """
+    Who takes touched (in-funnel) leads of a deactivated operator.
+
+    2026-10-15: «those who work» — ACTIVE, not on a manager's manual pause,
+    with a shift in the last TOUCHED_RESCUE_RECENT_DAYS days. The end-of-shift
+    pause (checkout / auto_close) does not exclude anyone: in the morning the
+    whole team is still on it, and limiting the pool to whoever is on shift
+    right now dumped 217 leads on the one operator who had checked in.
+    Fallbacks: active and not paused, then nobody (caller marks system-lost).
+    """
+    import datetime as _dt
+
+    from django.db.models import Exists, OuterRef
+
+    from apps.attendance.models import AttendanceLog
+
+    base = Operator.objects.filter(status=OperatorStatus.ACTIVE)
+    if exclude_operator_id is not None:
+        base = base.exclude(pk=exclude_operator_id)
+    since = timezone.now() - _dt.timedelta(days=TOUCHED_RESCUE_RECENT_DAYS)
+    recent = (
+        base.exclude(is_paused=True, paused_reason="manual")
+        .filter(Exists(AttendanceLog.objects.filter(operator=OuterRef("pk"), checked_in_at__gte=since)))
+        .order_by("id")
+    )
+    return list(recent) or list(base.filter(is_paused=False).order_by("id"))
+
+
+def spread_touched_leads(*, leads: list, pool: list[Operator], from_operator: Operator) -> tuple[dict[int, int], int]:
+    """
+    Split touched leads evenly over ``pool`` (counts differ by at most one;
+    ties go to the less loaded operator). Status, call history and metadata
+    stay; live callbacks follow the lead. A lead whose share falls on its
+    current holder is left untouched. ``from_operator`` is the operator the
+    leads were rescued from (goes into metadata / assignment reason).
+
+    Returns ``({operator_id: leads_moved_to_them}, callbacks_moved)``.
+    """
+    from collections import defaultdict
+
+    from django.db.models import Q
+
+    from apps.calls.models import CallbackReminder, CallbackReminderStatus
+    from apps.leads.models import Lead as LeadModel
+    from apps.leads.models import LeadAssignment, LeadAssignmentSource
+    from apps.leads.selectors import active_lead_status_codes
+
+    if not leads or not pool:
+        return {}, 0
+    load: dict[int, int] = defaultdict(int)
+    for row in (
+        LeadModel.objects.filter(operator_id__in=[o.id for o in pool])
+        .values("operator_id")
+        .annotate(n=Count("id", filter=Q(status__in=active_lead_status_codes())))
+    ):
+        load[row["operator_id"]] = row["n"]
+
+    pool_by_id = {o.id: o for o in pool}
+    share: dict[int, int] = defaultdict(int)
+    per_op: dict[int, int] = defaultdict(int)
+    now = timezone.now()
+    moved: list = []
+    prev_owner: dict[int, int | None] = {}
+    new_assignments: list[LeadAssignment] = []
+
+    for lead in leads:
+        new_op_id = min(pool_by_id, key=lambda oid: (share[oid], load[oid], oid))
+        share[new_op_id] += 1
+        if lead.operator_id == new_op_id:
+            continue
+        new_op = pool_by_id[new_op_id]
+        prev_owner[lead.id] = lead.operator_id
+        md = dict(lead.metadata or {})
+        md["rescued_touched_at"] = now.isoformat()
+        md["rescued_from_operator_id"] = from_operator.id
+        md["rescued_from_operator_name"] = from_operator.full_name
+        md["rescued_to_operator_id"] = new_op.id
+        md["rescued_to_operator_name"] = new_op.full_name
+        md["rescued_reason"] = "operator_deactivated"
+        lead.metadata = md
+        lead.operator_id = new_op_id
+        lead.updated_at = now
+        # Статус НЕ меняем — лид продолжает воронку с того же места.
+        per_op[new_op_id] += 1
+        moved.append(lead)
+        new_assignments.append(
+            LeadAssignment(
+                lead=lead,
+                operator_id=new_op_id,
+                source=LeadAssignmentSource.AUTO_RESCUE_TOUCHED,
+                active=True,
+                reason=(f"rescue-RR touched-lead from op#{from_operator.id} ({from_operator.full_name})")[:256],
+            )
+        )
+    if not moved:
+        return {}, 0
+
+    moved_ids = [le.id for le in moved]
+    LeadAssignment.objects.filter(lead_id__in=moved_ids, active=True).update(active=False)
+    LeadModel.objects.bulk_update(moved, ["operator_id", "metadata", "updated_at"], batch_size=200)
+    LeadAssignment.objects.bulk_create(new_assignments, batch_size=200)
+
+    # Callbacks — перенести на нового владельца, сбросить dm_sent_at.
+    new_owner = {le.id: le.operator_id for le in moved}
+    cbs = list(
+        CallbackReminder.objects.filter(
+            lead_id__in=moved_ids,
+            status__in=(CallbackReminderStatus.PENDING, CallbackReminderStatus.SNOOZED, CallbackReminderStatus.OVERDUE),
+        )
+    )
+    cbs = [cb for cb in cbs if cb.operator_id in (prev_owner.get(cb.lead_id), from_operator.id)]
+    for cb in cbs:
+        cb.operator_id = new_owner[cb.lead_id]
+        cb.dm_sent_at = None
+    if cbs:
+        CallbackReminder.objects.bulk_update(cbs, ["operator_id", "dm_sent_at"], batch_size=200)
+    return dict(per_op), len(cbs)
 
 
 @transaction.atomic
