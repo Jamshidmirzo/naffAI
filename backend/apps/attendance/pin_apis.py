@@ -134,8 +134,17 @@ class PinVerifyApi(APIView):
 
     def post(self, request):
         role = _role(request.user)
-        if role == Role.SUPERADMIN:
+        if role == Role.SUPERADMIN and not str(request.data.get("pin") or "").strip():
+            # Attendance pages let superadmin through without a PIN (PinGate
+            # bypass) — a bare call keeps answering 200 without a session.
             return Response({"ok": True, "expires_at": None, "role": role})
+        # A superadmin who DOES type the PIN (operator deactivate dialog,
+        # `IsDestructiveActionPinVerified` has no superadmin bypass) gets a
+        # real session like everyone else — before this they got 200 with no
+        # session and the deactivate call then failed with pin_required.
+
+        if role not in SENIOR_ROLES:
+            raise PermissionDenied("Только для менеджеров")
 
         if role not in SENIOR_ROLES:
             raise PermissionDenied("Только для менеджеров")

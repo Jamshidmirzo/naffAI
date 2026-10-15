@@ -389,3 +389,46 @@ def test_after_reset_managers_locked_out_until_new_set(
     # Теперь менеджер входит по новому
     r = c.post("/api/attendance/pin/verify/", {"pin": "5678"}, format="json")
     assert r.status_code == 200
+
+
+# --------------------------- SUPERADMIN + DESTRUCTIVE GATE --------------------
+
+
+@pytest.mark.django_db
+def test_superadmin_verify_without_pin_keeps_bypass(client, superadmin):
+    """Bare verify by superadmin (attendance PinGate flow) — 200, no session."""
+    client.force_authenticate(superadmin)
+    r = client.post("/api/attendance/pin/verify/", {}, format="json")
+    assert r.status_code == 200 and r.json()["expires_at"] is None
+    assert not AttendancePinSession.objects.filter(user=superadmin).exists()
+
+
+@pytest.mark.django_db
+def test_superadmin_with_pin_gets_real_session_and_can_deactivate(client, superadmin):
+    """Superadmin who types the PIN gets a session, so operator deactivate
+    (IsDestructiveActionPinVerified, no superadmin bypass) goes through."""
+    _sa_set(client, superadmin, "6810")
+    op = Operator.objects.create(full_name="Ketadigan", status="active")
+
+    c = APIClient()
+    c.force_authenticate(superadmin)
+    assert c.post(f"/api/operators/{op.id}/deactivate/", {}, format="json").status_code == 401
+
+    r = c.post("/api/attendance/pin/verify/", {"pin": "6810"}, format="json")
+    assert r.status_code == 200, r.content
+    assert r.json()["expires_at"]
+    assert AttendancePinSession.objects.filter(user=superadmin).exists()
+
+    r = c.post(f"/api/operators/{op.id}/deactivate/", {}, format="json")
+    assert r.status_code == 200, r.content
+    op.refresh_from_db()
+    assert op.status != "active"
+
+
+@pytest.mark.django_db
+def test_superadmin_wrong_pin_400(client, superadmin):
+    _sa_set(client, superadmin, "6810")
+    c = APIClient()
+    c.force_authenticate(superadmin)
+    assert c.post("/api/attendance/pin/verify/", {"pin": "0001"}, format="json").status_code == 400
+    assert not AttendancePinSession.objects.filter(user=superadmin).exists()
