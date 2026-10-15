@@ -127,3 +127,14 @@ def test_client_start_track_egress_body():
     assert seen["body"] == {"roomName": ROOM, "trackId": "TR_1", "file": {
         "filepath": "a/b.mp4",
         "s3": {"accessKey": "AK", "secret": "SK", "region": "eu-central-1", "bucket": "b"}}}
+
+
+def test_client_camelizes_twirp_answers():
+    def handler(request):
+        return httpx.Response(200, json={"items": [{"egress_id": "EG_1", "room_name": ROOM,
+                                                    "file_results": [{"filename": "a.mp4", "started_at": "1"}],
+                                                    "track": {"track_id": "TR_1"}}]})
+
+    item = _client(handler).list_egress(egress_id="EG_1")[0]
+    assert item == {"egressId": "EG_1", "roomName": ROOM,
+                    "fileResults": [{"filename": "a.mp4", "startedAt": "1"}], "track": {"trackId": "TR_1"}}

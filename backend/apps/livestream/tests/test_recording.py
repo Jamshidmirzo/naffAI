@@ -158,3 +158,15 @@ def test_expire_marks_old_recordings_deleted(operator):
     new.refresh_from_db()
     assert old.status == RecordingSessionStatus.DELETED and old.deleted_at
     assert new.status == RecordingSessionStatus.FINISHED
+
+
+@pytest.mark.django_db
+def test_negative_duration_falls_back_to_wall_clock(operator):
+    _live_session(operator, track="TR_5")
+    row = recording_apply_egress_info(info={
+        "egressId": "EG_neg", "roomName": ROOM, "status": "EGRESS_COMPLETE",
+        "startedAt": "1792065986000000000", "endedAt": "1792066046000000000",
+        "track": {"trackId": "TR_5"},
+        "fileResults": [{"filename": "x.mp4", "size": "10", "duration": "-1792065986285986201"}]})
+    assert row.status == RecordingSessionStatus.FINISHED
+    assert row.duration_s == 60

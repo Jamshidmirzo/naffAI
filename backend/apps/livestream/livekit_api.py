@@ -24,6 +24,22 @@ from .jwt import jwt_hs256
 logger = logging.getLogger(__name__)
 
 
+def _camel(key: str) -> str:
+    head, *rest = key.split("_")
+    return head + "".join(w[:1].upper() + w[1:] for w in rest)
+
+
+def camelize(value: Any) -> Any:
+    """Twirp answers with proto field names (`egress_id`, `file_results`);
+    webhooks use JSON names (`egressId`). Normalise to the webhook form so
+    one parser handles both."""
+    if isinstance(value, dict):
+        return {_camel(k): camelize(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [camelize(v) for v in value]
+    return value
+
+
 class LiveKitApiError(RuntimeError):
     def __init__(self, msg: str, *, status: int = 0, code: str = "") -> None:
         super().__init__(msg)
@@ -104,7 +120,7 @@ class LiveKitClient:
             data = resp.json()
         except ValueError:
             return {}
-        return data if isinstance(data, dict) else {}
+        return camelize(data) if isinstance(data, dict) else {}
 
     # --- RoomService -------------------------------------------------------
 

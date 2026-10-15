@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLivePublisherEngine,
+  POLL_DISABLED_MS,
   POLL_HIDDEN_MS,
   POLL_VISIBLE_MS,
   SLOW_PROBE_MS,
@@ -570,13 +571,14 @@ describe("livePublisher engine", () => {
     expect(st(h.engine).status).toBe("disabled_global");
     expect(room1.disconnectCalls).toBe(1);
 
-    // Still off on the next tick — nothing happens.
-    await vi.advanceTimersByTimeAsync(POLL_VISIBLE_MS);
+    // Still off on the next (faster) tick — nothing happens.
+    await vi.advanceTimersByTimeAsync(POLL_DISABLED_MS);
     await flush();
     expect(h.fetchToken).toHaveBeenCalledTimes(1);
 
+    // Back on: picked up within the short wait-for-switch interval.
     h.globalImpl.fn = async () => ({ enabled: true });
-    await vi.advanceTimersByTimeAsync(POLL_VISIBLE_MS);
+    await vi.advanceTimersByTimeAsync(POLL_DISABLED_MS);
     await flush();
     expect(st(h.engine).status).toBe("live");
     expect(h.fetchToken).toHaveBeenCalledTimes(2);

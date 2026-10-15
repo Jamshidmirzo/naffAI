@@ -267,9 +267,10 @@ def _lk_ts(value: Any) -> _dt.datetime | None:
 
 
 def _lk_duration_s(value: Any) -> int | None:
-    """Egress durations are nanoseconds."""
+    """Egress durations are nanoseconds (negative when the egress was
+    stopped before it got an end time — treat as unknown)."""
     ns = _lk_int(value)
-    if ns is None:
+    if ns is None or ns <= 0:
         return None
     return int(ns // 1_000_000_000) if ns > 10_000_000 else int(ns)
 
@@ -835,6 +836,9 @@ def recording_apply_egress_info(*, info: dict[str, Any]) -> RecordingSession | N
         if row.ended_at != ended:
             row.ended_at = ended
             fields.add("ended_at")
+        if not row.duration_s and row.started_at and ended > row.started_at:
+            row.duration_s = int((ended - row.started_at).total_seconds())
+            fields.add("duration_s")
     error = str(info.get("error") or "")
     if error and not row.error_text:
         row.error_text = error[:2000]

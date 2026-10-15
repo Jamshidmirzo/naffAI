@@ -738,7 +738,7 @@ services:
     profiles: ["live"]
 
   livekit:
-    image: livekit/livekit-server:v1.8.4
+    image: livekit/livekit-server:v1.13.7
     logging: *default-logging
     restart: unless-stopped
     depends_on:
@@ -785,7 +785,7 @@ services:
   # пишется в mp4 и сразу уходит в S3 (бакет и ключи бэкенд передаёт в
   # каждом запросе, так prod и demo пишут каждый в свой бакет).
   egress:
-    image: livekit/egress:v1.8.4
+    image: livekit/egress:v1.14.1
     logging: *default-logging
     restart: unless-stopped
     depends_on:
