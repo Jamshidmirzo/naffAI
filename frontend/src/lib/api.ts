@@ -87,9 +87,10 @@ api.interceptors.response.use(
     } else if (err.response?.status === 403) {
       // Silence role-scoped endpoints (e.g. manager hitting operator's /my/)
       // — RoleGate already routes users to their home; a global toast just
-      // spams noise.
+      // spams noise. `/live/*` 403s (operator paused / flag off) are
+      // expected states handled by the live publisher and wall.
       const url = err.config?.url || "";
-      if (!/\/(my|mine)\/?/.test(url)) {
+      if (!/\/(my|mine)\/?/.test(url) && !/\/live\//.test(url)) {
         toast.error("Доступ запрещён");
       }
     }

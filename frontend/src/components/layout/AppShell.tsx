@@ -267,10 +267,10 @@ export default function AppShell() {
       {/* Floating helper — оператор-only. Manager/team_lead виджет не видят
           (у них своя админка + и так знают систему; клат-нить в углу лишний). */}
       {role === "operator" && <HelperButton />}
-      {/* 2026-10-08 — WebRTC live publisher. Mounts ТОЛЬКО для operator'ов
-          с livestream_enabled=true (opt-in). Manager flips the flag through
-          OperatorDetail. If `/auth/me` says false → component returns null
-          and nothing is mounted (no camera prompt, no network). */}
+      {/* WebRTC live publisher — operator-only. `livestream_enabled` is ON
+          by default on the backend; the manager switches it off on the
+          operator card. When `/auth/me` says false the controller stays
+          idle (no camera prompt, no network). Engine: lib/livePublisher. */}
       {role === "operator" && (
         <LiveStreamPublisher enabled={!!me.data?.livestream_enabled} />
       )}

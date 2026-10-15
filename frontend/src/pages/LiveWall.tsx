@@ -1,324 +1,664 @@
 /**
- * LiveWall — manager-only grid of currently publishing operators.
- * Polls `/live/live-now/` every 5 seconds to refresh the active list,
- * subscribes to the LiveKit room once on mount with the manager JWT.
+ * LiveWall — manager-only grid of operators currently on air.
  *
- * Simple interaction model:
- *   • default = grid preview, no audio
- *   • click a tile → expands into a focused view with an audio toggle
+ * Data sources:
+ *   • `/live/live-now/` (polled 5 s) — who is live (scoped to operators
+ *     this manager can see), names, start time, shift/pause flags, and
+ *     the list of operators with the flag on (for «Не в эфире»);
+ *   • the LiveKit room (`useLiveWallRoom`) — actual video tracks. We only
+ *     subscribe to camera tracks of tiles that pass the search filter
+ *     (+ the focused one), never to anyone outside live-now.
+ *
+ * Video only — operators publish no audio.
+ * Focus view is URL-driven (`?focus=op:<id>`), so the operator card can
+ * deep-link here. Esc closes, ←/→ walk the filtered tiles, F = fullscreen.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchLiveNow, fetchRoomToken } from "../lib/liveRoom";
-import { api } from "../lib/api";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  Maximize2,
+  Minimize2,
+  RefreshCw,
+  Search,
+  X,
+} from "lucide-react";
+import {
+  useLiveConfig,
+  useLiveGlobalStatus,
+  useLiveGlobalToggle,
+  useLiveNow,
+} from "../lib/liveQueries";
+import { useLiveWallRoom, type WallConnection, type WallParticipant } from "../lib/liveWallRoom";
+import {
+  formatOnAir,
+  type EnabledOperatorRow,
+  type LiveNowRow,
+  type NotLiveReason,
+} from "../lib/liveRoom";
+import LiveVideo from "../components/live/LiveVideo";
+import { Modal } from "../components/Modal";
+import { Button, toast } from "../components/ui";
+import { usePageHeader } from "../store/page";
+import { useLangValue, useT } from "../lib/i18n";
 
-type LivekitSDK = typeof import("livekit-client");
-
-type RemoteParticipantAdapter = {
-  identity: string;
-  // Each participant has a Map-like set of video tracks; we lazy-grab
-  // the one tagged camera.
-  videoEl: HTMLVideoElement | null;
-};
+const EMPTY_ROWS: LiveNowRow[] = [];
+const EMPTY_OPS: EnabledOperatorRow[] = [];
+const FOCUS_GRACE_MS = 5_000;
 
 type Tile = {
   identity: string;
-  operatorName: string;
-  operatorId: number;
-  isLive: boolean;
-  attachedTrack: boolean;
+  row: LiveNowRow;
+  participant: WallParticipant | undefined;
+  hasVideo: boolean;
 };
 
-export default function LiveWall() {
-  const [sdk, setSdk] = useState<LivekitSDK | null>(null);
-  const [connected, setConnected] = useState(false);
-  const [focused, setFocused] = useState<string | null>(null);
-  const [audioOn, setAudioOn] = useState(false);
-  const [errText, setErrText] = useState<string>("");
-  const roomRef = useRef<unknown>(null);
-  const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
-
-  const liveNowQuery = useQuery({
-    queryKey: ["live-now"],
-    queryFn: fetchLiveNow,
-    refetchInterval: 5000,
-    staleTime: 2000,
-  });
-
-  const qc = useQueryClient();
-  // Global killswitch state + mutation.
-  const globalQuery = useQuery({
-    queryKey: ["live-global-status"],
-    queryFn: () => api.get<{ enabled: boolean }>("/live/global-status/").then((r) => r.data),
-    refetchInterval: 5000,
-    staleTime: 2000,
-  });
-  const killMut = useMutation({
-    mutationFn: (enabled: boolean) =>
-      api.patch<{ enabled: boolean }>("/live/global-status/", { enabled }).then((r) => r.data),
-    onSuccess: (d) => {
-      qc.setQueryData(["live-global-status"], d);
-      qc.invalidateQueries({ queryKey: ["live-now"] });
-    },
-  });
-  const globalOn = globalQuery.data?.enabled !== false;
-
-  // Lazy-load the LiveKit SDK on first mount.
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    let aborted = false;
-    (async () => {
-      try {
-        const mod = await import("livekit-client");
-        if (!aborted) setSdk(mod);
-      } catch (e) {
-        if (!aborted) setErrText(`SDK: ${(e as Error).message}`);
-      }
-    })();
+    const id = window.setInterval(() => setNow(Date.now()), intervalMs);
+    return () => window.clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+function useDebounced<T>(value: T, ms: number): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const id = window.setTimeout(() => setV(value), ms);
+    return () => window.clearTimeout(id);
+  }, [value, ms]);
+  return v;
+}
+
+// --- fullscreen with the webkit (Safari) fallback --------------------------
+
+type FsDoc = Document & { webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => void };
+type FsEl = HTMLElement & { webkitRequestFullscreen?: () => void };
+
+const fsElement = () => {
+  const d = document as FsDoc;
+  return d.fullscreenElement ?? d.webkitFullscreenElement ?? null;
+};
+function exitFullscreen() {
+  const d = document as FsDoc;
+  if (d.exitFullscreen) d.exitFullscreen().catch(() => {});
+  else d.webkitExitFullscreen?.();
+}
+function enterFullscreen(el: HTMLElement) {
+  const e = el as FsEl;
+  if (e.requestFullscreen) e.requestFullscreen().catch(() => {});
+  else e.webkitRequestFullscreen?.();
+}
+
+const notLiveReason = (o: EnabledOperatorRow): NotLiveReason =>
+  o.reason ?? (o.is_paused ? "paused" : o.on_shift === false ? "no_shift" : "offline");
+
+const isPoor = (q: string | undefined) => q === "poor" || q === "lost";
+
+export default function LiveWall() {
+  const t = useT();
+  const lang = useLangValue();
+  usePageHeader({ title: t("live.wall.title"), subtitle: t("live.wall.subtitle") }, [lang]);
+
+  const [sp, setSp] = useSearchParams();
+  const focusId = sp.get("focus");
+  const setFocus = useCallback(
+    (identity: string | null) =>
+      setSp(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (identity) next.set("focus", identity);
+          else next.delete("focus");
+          return next;
+        },
+        { replace: true },
+      ),
+    [setSp],
+  );
+
+  const config = useLiveConfig();
+  const liveNow = useLiveNow();
+  const globalQ = useLiveGlobalStatus();
+  const toggle = useLiveGlobalToggle();
+  const now = useNow(1000);
+
+  const [search, setSearch] = useState("");
+  const q = useDebounced(search.trim().toLowerCase(), 250);
+  const [onlyVideo, setOnlyVideo] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const rows = liveNow.data?.live_now ?? EMPTY_ROWS;
+  const enabledOps = liveNow.data?.enabled_operators ?? EMPTY_OPS;
+
+  const searchMatched = useMemo(
+    () =>
+      rows
+        .filter((r) => !q || (r.operator_name || "").toLowerCase().includes(q))
+        .slice()
+        .sort((a, b) => (a.operator_name || "").localeCompare(b.operator_name || "")),
+    [rows, q],
+  );
+
+  // Stable Set identity: only changes when the membership changes.
+  const idKey = searchMatched.map((r) => r.participant_identity).sort().join("|");
+  const identities = useMemo(() => new Set(idKey ? idKey.split("|") : []), [idKey]);
+
+  const notConfigured = config.data?.configured === false;
+  const wall = useLiveWallRoom({
+    identities,
+    focusedIdentity: focusId,
+    enabled: !config.isLoading && !notConfigured,
+  });
+  const connected = wall.connection === "connected";
+
+  const allTiles: Tile[] = useMemo(
+    () =>
+      searchMatched.map((row) => {
+        const participant = wall.participants.get(row.participant_identity);
+        const hasVideo = participant ? participant.hasVideo : !connected && !!row.has_video;
+        return { identity: row.participant_identity, row, participant, hasVideo };
+      }),
+    [searchMatched, wall.participants, connected],
+  );
+  const tiles = useMemo(
+    () => (onlyVideo ? allTiles.filter((x) => x.hasVideo) : allTiles),
+    [allTiles, onlyVideo],
+  );
+
+  // «Не в эфире» — flag on, but not live; grouped by reason.
+  const notLiveGroups = useMemo(() => {
+    const liveIds = new Set(rows.map((r) => r.operator_id));
+    const groups: Record<NotLiveReason, EnabledOperatorRow[]> = { paused: [], no_shift: [], offline: [] };
+    for (const o of enabledOps) {
+      if (o.is_live ?? liveIds.has(o.id)) continue;
+      if (q && !(o.full_name || "").toLowerCase().includes(q)) continue;
+      groups[notLiveReason(o)].push(o);
+    }
+    return groups;
+  }, [rows, enabledOps, q]);
+  const notLiveCount = notLiveGroups.paused.length + notLiveGroups.no_shift.length + notLiveGroups.offline.length;
+
+  // --- focus view ----------------------------------------------------------
+
+  const focusRow = focusId ? rows.find((r) => r.participant_identity === focusId) : undefined;
+  const lastFocusRowRef = useRef<LiveNowRow | undefined>(undefined);
+  if (focusRow) lastFocusRowRef.current = focusRow;
+  if (!focusId) lastFocusRowRef.current = undefined;
+  const shownFocusRow = focusRow ?? lastFocusRowRef.current;
+  const focusPresent = !!focusRow;
+  const focusEnded = !!focusId && !!liveNow.data && !focusPresent;
+
+  useEffect(() => {
+    if (!focusEnded) return;
+    const id = window.setTimeout(() => setFocus(null), FOCUS_GRACE_MS);
+    return () => window.clearTimeout(id);
+  }, [focusEnded, setFocus]);
+
+  const focusRef = useRef<HTMLDivElement>(null);
+  const [isFs, setIsFs] = useState(false);
+  useEffect(() => {
+    const h = () => setIsFs(!!fsElement());
+    document.addEventListener("fullscreenchange", h);
+    document.addEventListener("webkitfullscreenchange", h);
     return () => {
-      aborted = true;
+      document.removeEventListener("fullscreenchange", h);
+      document.removeEventListener("webkitfullscreenchange", h);
     };
   }, []);
+  const toggleFullscreen = useCallback(() => {
+    if (fsElement()) exitFullscreen();
+    else if (focusRef.current) enterFullscreen(focusRef.current);
+  }, []);
+  const closeFocus = useCallback(() => {
+    if (fsElement()) exitFullscreen();
+    setFocus(null);
+  }, [setFocus]);
 
-  // Connect to the room once SDK is ready. Reconnect only on explicit
-  // user action — the token is good for 12h so a single connect lasts
-  // through a normal shift.
+  const step = useCallback(
+    (dir: 1 | -1) => {
+      if (tiles.length === 0) return;
+      const i = tiles.findIndex((x) => x.identity === focusId);
+      const next = i < 0 ? 0 : (i + dir + tiles.length) % tiles.length;
+      setFocus(tiles[next].identity);
+    },
+    [tiles, focusId, setFocus],
+  );
+
   useEffect(() => {
-    if (!sdk) return;
-    let cancelled = false;
-    (async () => {
-      let token: Awaited<ReturnType<typeof fetchRoomToken>>;
-      try {
-        token = await fetchRoomToken();
-      } catch (e) {
-        const err = e as { response?: { status?: number } };
-        if (err?.response?.status === 503 || err?.response?.status === 404) {
-          setErrText(
-            "Live-эфир не настроен на этом окружении (нет LIVEKIT_* в .env)."
-          );
-          return;
-        }
-        setErrText(`token: ${(e as Error).message || e}`);
-        return;
+    if (!focusId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (confirmOpen || e.defaultPrevented) return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "Escape") {
+        if (!fsElement()) closeFocus();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        step(1);
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        step(-1);
+      } else if (e.key === "f" || e.key === "F") {
+        toggleFullscreen();
       }
-      const room = new sdk.Room({ adaptiveStream: true });
-      roomRef.current = room;
-
-      // When a track is subscribed, find the matching <video> element in
-      // the grid and attach it. If the element isn't mounted yet (grid
-      // row created async), we retry on each render via useEffect below.
-      room.on(sdk.RoomEvent.TrackSubscribed, (track, _pub, participant) => {
-        if (track.kind !== sdk.Track.Kind.Video) return;
-        const el = videoRefs.current.get(participant.identity);
-        if (el) {
-          track.attach(el);
-        }
-      });
-      room.on(sdk.RoomEvent.TrackUnsubscribed, (track) => {
-        try {
-          track.detach();
-        } catch {
-          // ignore
-        }
-      });
-
-      try {
-        await room.connect(token.ws_url, token.token, {
-          autoSubscribe: true,
-        });
-        if (cancelled) {
-          await room.disconnect();
-          return;
-        }
-        setConnected(true);
-      } catch (e) {
-        setErrText(`connect: ${(e as Error).message || e}`);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      const room = roomRef.current as { disconnect?: () => Promise<void> } | null;
-      if (room?.disconnect) room.disconnect().catch(() => {});
-      roomRef.current = null;
     };
-  }, [sdk]);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusId, confirmOpen, closeFocus, step, toggleFullscreen]);
 
-  // Each render — re-attach tracks for participants that already have a
-  // subscribed track but whose <video> wasn't mounted during the
-  // original TrackSubscribed event. This mostly matters for the first
-  // few seconds after mount.
-  useEffect(() => {
-    if (!sdk || !connected) return;
-    const room = roomRef.current as {
-      remoteParticipants: Map<string, {
-        identity: string;
-        videoTrackPublications: Map<string, {
-          isSubscribed: boolean;
-          track?: { attach: (el: HTMLMediaElement) => void };
-        }>;
-      }>;
-    } | null;
-    if (!room) return;
-    for (const participant of room.remoteParticipants.values()) {
-      const el = videoRefs.current.get(participant.identity);
-      if (!el) continue;
-      for (const pub of participant.videoTrackPublications.values()) {
-        if (pub.isSubscribed && pub.track) {
-          pub.track.attach(el);
-          break;
-        }
-      }
-    }
-  });
+  // --- killswitch ------------------------------------------------------------
 
-  // Mute/unmute audio from the focused participant. Simple approach —
-  // iterate audio pubs on focused identity, toggle enable.
-  useEffect(() => {
-    if (!sdk || !connected) return;
-    const room = roomRef.current as {
-      remoteParticipants: Map<string, {
-        identity: string;
-        audioTrackPublications: Map<string, {
-          isSubscribed: boolean;
-          setSubscribed: (sub: boolean) => void;
-          track?: { setMuted: (m: boolean) => void };
-        }>;
-      }>;
-    } | null;
-    if (!room) return;
-    for (const participant of room.remoteParticipants.values()) {
-      const wantAudio = audioOn && participant.identity === focused;
-      for (const pub of participant.audioTrackPublications.values()) {
-        pub.setSubscribed(wantAudio);
-      }
-    }
-  }, [sdk, connected, focused, audioOn]);
+  const globalOn = globalQ.data?.enabled !== false;
+  const confirmToggle = () => {
+    toggle.mutate(!globalOn, {
+      onSuccess: () => setConfirmOpen(false),
+      onError: () => toast.error(t("live.wall.ks_failed")),
+    });
+  };
 
-  const tiles: Tile[] = useMemo(() => {
-    const live = liveNowQuery.data?.live_now ?? [];
-    return live.map((row) => ({
-      identity: row.participant_identity,
-      operatorName: row.operator_name,
-      operatorId: row.operator_id,
-      isLive: true,
-      attachedTrack: videoRefs.current.has(row.participant_identity),
-    }));
-  }, [liveNowQuery.data]);
+  // --- render ------------------------------------------------------------------
+
+  const unavailable = notConfigured || wall.connection === "unavailable";
 
   return (
     <div className="space-y-4">
-      <header className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Live-эфир операторов</h1>
-          <p className="text-sm text-slate-500">
-            {connected ? "Подключено к LiveKit." : "Подключение…"}
-            {tiles.length > 0 && ` · В эфире: ${tiles.length}.`}
-          </p>
+      {/* Header strip: connection + counts + filters */}
+      <section className="nf-card flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
+          <ConnectionBadge connection={wall.connection} />
+          {!unavailable && wall.connection !== "connecting" && wall.connection !== "idle" && (
+            <button
+              type="button"
+              onClick={wall.reconnect}
+              className="inline-flex items-center gap-1 text-xs text-muted hover:text-text"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> {t("live.wall.reconnect")}
+            </button>
+          )}
+          <span className="text-sm text-text" data-testid="live-count">
+            {enabledOps.length > 0
+              ? t("live.wall.count", { n: rows.length, m: enabledOps.length })
+              : t("live.wall.count_short", { n: rows.length })}
+          </span>
         </div>
-        {errText && (
-          <div className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-800 border border-rose-200">
-            {errText}
-          </div>
-        )}
-      </header>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t("live.wall.search")}
+              aria-label={t("live.wall.search")}
+              className="nf-input"
+              style={{ paddingLeft: 30, minWidth: 220 }}
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm text-text cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={onlyVideo}
+              onChange={(e) => setOnlyVideo(e.target.checked)}
+              className="h-4 w-4"
+            />
+            {t("live.wall.only_video")}
+          </label>
+        </div>
+      </section>
 
-      {/* Global killswitch — one big button. */}
-      <button
-        type="button"
-        disabled={killMut.isPending}
-        onClick={() => killMut.mutate(!globalOn)}
-        className={`w-full rounded-xl px-6 py-5 text-lg font-bold tracking-tight shadow-sm transition-all ${
-          globalOn
-            ? "bg-emerald-500 text-white hover:bg-emerald-600 border border-emerald-600"
-            : "bg-rose-600 text-white hover:bg-rose-700 border border-rose-700"
-        } ${killMut.isPending ? "opacity-60 cursor-wait" : "cursor-pointer"}`}
+      {/* Killswitch */}
+      <section
+        className="nf-card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
+        data-testid="live-killswitch"
+        data-enabled={globalOn ? "true" : "false"}
       >
-        {killMut.isPending
-          ? "…"
-          : globalOn
-          ? "🟢 Live-эфир ВКЛЮЧЁН — нажми чтобы ВЫКЛЮЧИТЬ всех"
-          : "🔴 Live-эфир ВЫКЛЮЧЕН — нажми чтобы ВКЛЮЧИТЬ"}
-      </button>
-      <p className="text-xs text-slate-500">
-        При выключении все 40 webcam-стримов остановятся в течение 10 секунд,
-        SFU-сервер разгрузится. Включение — обратно (операторы автоматически
-        подхватят на следующий tick).
-      </p>
-
-      {focused && (
-        <div className="rounded-xl border border-slate-200 bg-black overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2 bg-slate-900 text-white">
-            <span className="text-sm font-medium">
-              {tiles.find((t) => t.identity === focused)?.operatorName ?? focused}
-            </span>
-            <div className="flex items-center gap-3 text-xs">
-              <label className="flex items-center gap-1 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={audioOn}
-                  onChange={(e) => setAudioOn(e.target.checked)}
-                />
-                Звук
-              </label>
-              <button
-                onClick={() => {
-                  setFocused(null);
-                  setAudioOn(false);
-                }}
-                className="px-2 py-0.5 rounded hover:bg-white/10"
-              >
-                Закрыть
-              </button>
-            </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 font-semibold text-text">
+            <span className={`inline-block h-2.5 w-2.5 rounded-full ${globalOn ? "bg-emerald-500" : "bg-rose-500"}`} />
+            {globalOn ? t("live.wall.ks_on_title") : t("live.wall.ks_off_title")}
           </div>
-          <video
-            ref={(el) => {
-              if (el) videoRefs.current.set(focused, el);
-            }}
-            autoPlay
-            playsInline
-            muted={!audioOn}
-            className="w-full aspect-video bg-black"
-          />
+          <div className="mt-0.5 text-xs text-muted">
+            {globalOn ? t("live.wall.ks_on_hint") : t("live.wall.ks_off_hint")}
+          </div>
+        </div>
+        <Button
+          variant={globalOn ? "danger" : "primary"}
+          size="sm"
+          disabled={toggle.isPending || globalQ.isLoading}
+          onClick={() => setConfirmOpen(true)}
+          data-testid="live-killswitch-toggle"
+        >
+          {globalOn ? t("live.wall.ks_turn_off") : t("live.wall.ks_turn_on")}
+        </Button>
+      </section>
+
+      {!wall.canPlaybackVideo && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span>{t("live.wall.playback_blocked")}</span>
+          <Button size="sm" onClick={() => void wall.startVideo()}>
+            {t("live.wall.playback_start")}
+          </Button>
         </div>
       )}
 
-      {!focused && (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {tiles.length === 0 && (
-            <div className="col-span-full rounded-lg border border-dashed border-slate-200 bg-slate-50 p-10 text-center text-sm text-slate-500">
-              Сейчас никто не в эфире.
+      {unavailable ? (
+        <StateCard title={t("live.wall.unavailable_title")} text={t("live.wall.unavailable_text")} />
+      ) : liveNow.isLoading ? (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" aria-busy="true">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-slate-200 overflow-hidden animate-pulse">
+              <div className="aspect-video bg-slate-200/70" />
+              <div className="h-9 bg-slate-100/70" />
             </div>
-          )}
+          ))}
+        </div>
+      ) : liveNow.isError && !liveNow.data ? (
+        <StateCard
+          title={t("live.wall.error_title")}
+          text={t("live.wall.error_text")}
+          action={
+            <Button size="sm" variant="secondary" onClick={() => void liveNow.refetch()}>
+              {t("common.retry")}
+            </Button>
+          }
+        />
+      ) : rows.length === 0 ? (
+        <StateCard
+          title={t("live.wall.empty_title")}
+          text={
+            enabledOps.length > 0
+              ? t("live.wall.empty_enabled", { n: enabledOps.length })
+              : t("live.wall.empty_none")
+          }
+        />
+      ) : tiles.length === 0 ? (
+        <StateCard title={t("live.wall.no_match")} text="" />
+      ) : (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {tiles.map((tile) => (
-            <button
+            <LiveTile
               key={tile.identity}
-              type="button"
-              onClick={() => setFocused(tile.identity)}
-              className="group text-left rounded-xl border border-slate-200 bg-slate-900 overflow-hidden hover:ring-2 hover:ring-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
-            >
-              <div className="relative">
-                <video
-                  ref={(el) => {
-                    if (el) videoRefs.current.set(tile.identity, el);
-                  }}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full aspect-video bg-black object-cover"
-                />
-                <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-rose-500/90 px-2 py-0.5 text-[10px] font-medium text-white">
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white"></span>
-                  LIVE
-                </span>
-              </div>
-              <div className="px-3 py-2 bg-white text-sm text-slate-900">
-                {tile.operatorName}
-              </div>
-            </button>
+              tile={tile}
+              now={now}
+              connected={connected}
+              onOpen={() => setFocus(tile.identity)}
+            />
           ))}
         </div>
       )}
+
+      {!unavailable && notLiveCount > 0 && (
+        <details className="nf-card p-4" data-testid="live-not-live">
+          <summary className="cursor-pointer text-sm font-semibold text-text">
+            {t("live.wall.not_live", { n: notLiveCount })}
+          </summary>
+          <div className="mt-3 grid gap-4 md:grid-cols-3">
+            {(["paused", "no_shift", "offline"] as const).map((reason) =>
+              notLiveGroups[reason].length === 0 ? null : (
+                <div key={reason}>
+                  <div className="nf-col mb-1.5">
+                    {t(`live.wall.reason_${reason}`)} · {notLiveGroups[reason].length}
+                  </div>
+                  <ul className="space-y-1 text-sm">
+                    {notLiveGroups[reason].map((o) => (
+                      <li key={o.id}>
+                        <Link to={`/operators/${o.id}`} className="text-text hover:underline">
+                          {o.full_name}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ),
+            )}
+          </div>
+        </details>
+      )}
+
+      {focusId && (
+        <div
+          ref={focusRef}
+          className="fixed inset-0 z-[55] flex flex-col bg-black/95"
+          role="dialog"
+          aria-modal="true"
+          aria-label={shownFocusRow?.operator_name ?? focusId}
+          data-testid="live-focus"
+        >
+          <div className="flex flex-wrap items-center gap-3 px-4 py-2 text-white">
+            <span className="text-sm font-semibold truncate">{shownFocusRow?.operator_name ?? focusId}</span>
+            {focusRow && (
+              <span className="text-xs tabular-nums text-white/70">
+                {formatOnAir(focusRow.started_at, now)}
+              </span>
+            )}
+            {focusRow?.on_shift && <Badge tone="ok">{t("live.wall.badge_on_shift")}</Badge>}
+            {focusRow?.is_paused && <Badge tone="warn">{t("live.wall.badge_paused")}</Badge>}
+            <div className="ml-auto flex items-center gap-1">
+              <FocusBtn onClick={() => step(-1)} label={t("live.wall.prev")}>
+                <ChevronLeft className="w-4 h-4" />
+              </FocusBtn>
+              <FocusBtn onClick={() => step(1)} label={t("live.wall.next")}>
+                <ChevronRight className="w-4 h-4" />
+              </FocusBtn>
+              <FocusBtn onClick={toggleFullscreen} label={isFs ? t("live.wall.exit_fullscreen") : t("live.wall.fullscreen")}>
+                {isFs ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </FocusBtn>
+              {shownFocusRow && (
+                <Link
+                  to={`/operators/${shownFocusRow.operator_id}`}
+                  onClick={() => fsElement() && exitFullscreen()}
+                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-white/10"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> {t("live.wall.open_card")}
+                </Link>
+              )}
+              <FocusBtn onClick={closeFocus} label={t("common.close")}>
+                <X className="w-4 h-4" />
+              </FocusBtn>
+            </div>
+          </div>
+          <div className="relative flex-1 min-h-0">
+            {(() => {
+              const p = wall.participants.get(focusId);
+              if (focusEnded) {
+                return (
+                  <div className="absolute inset-0 grid place-items-center text-sm text-white/70">
+                    {t("live.wall.focus_ended")}
+                  </div>
+                );
+              }
+              if (p?.videoTrack) {
+                return (
+                  <LiveVideo track={p.videoTrack} objectFit="contain" className="absolute inset-0 h-full w-full" />
+                );
+              }
+              return (
+                <div className="absolute inset-0 grid place-items-center text-sm text-white/60">
+                  {p && !p.hasVideo && connected ? t("live.wall.no_video") : t("live.wall.tile_connecting")}
+                </div>
+              );
+            })()}
+          </div>
+          <div className="px-4 py-1.5 text-[11px] text-white/40">{t("live.wall.focus_keys")}</div>
+        </div>
+      )}
+
+      <Modal
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title={globalOn ? t("live.wall.ks_confirm_off_title") : t("live.wall.ks_confirm_on_title")}
+      >
+        <p className="text-sm text-text">
+          {globalOn
+            ? t("live.wall.ks_confirm_off", { n: rows.length })
+            : t("live.wall.ks_confirm_on", { n: enabledOps.length })}
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="secondary" size="sm" onClick={() => setConfirmOpen(false)}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            variant={globalOn ? "danger" : "primary"}
+            size="sm"
+            disabled={toggle.isPending}
+            onClick={confirmToggle}
+            data-testid="live-killswitch-confirm"
+          >
+            {toggle.isPending ? "…" : globalOn ? t("live.wall.ks_turn_off") : t("live.wall.ks_turn_on")}
+          </Button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function ConnectionBadge({ connection }: { connection: WallConnection }) {
+  const t = useT();
+  const map: Record<WallConnection, string> = {
+    idle: "bg-slate-100 text-slate-600 border-slate-200",
+    connecting: "bg-amber-50 text-amber-700 border-amber-200",
+    reconnecting: "bg-amber-50 text-amber-700 border-amber-200",
+    connected: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    disconnected: "bg-rose-50 text-rose-700 border-rose-200",
+    error: "bg-rose-50 text-rose-700 border-rose-200",
+    unavailable: "bg-slate-100 text-slate-600 border-slate-200",
+  };
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${map[connection]}`}
+      data-testid="live-connection"
+      data-state={connection}
+    >
+      <span
+        className={`inline-block h-1.5 w-1.5 rounded-full ${
+          connection === "connected"
+            ? "bg-emerald-500"
+            : connection === "connecting" || connection === "reconnecting"
+            ? "animate-pulse bg-amber-500"
+            : connection === "idle" || connection === "unavailable"
+            ? "bg-slate-400"
+            : "bg-rose-500"
+        }`}
+      />
+      {t(`live.wall.conn_${connection}`)}
+    </span>
+  );
+}
+
+function Badge({ tone, children }: { tone: "ok" | "warn"; children: ReactNode }) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+        tone === "ok" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+      }`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function FocusBtn({ onClick, label, children }: { onClick: () => void; label: string; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className="inline-grid place-items-center rounded p-1.5 text-white/80 hover:bg-white/10 hover:text-white"
+    >
+      {children}
+    </button>
+  );
+}
+
+function StateCard({ title, text, action }: { title: string; text: string; action?: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 p-10 text-center">
+      <div className="text-sm font-semibold text-text">{title}</div>
+      {text && <div className="mt-1 text-sm text-muted">{text}</div>}
+      {action && <div className="mt-4 flex justify-center">{action}</div>}
+    </div>
+  );
+}
+
+function LiveTile({
+  tile,
+  now,
+  connected,
+  onOpen,
+}: {
+  tile: Tile;
+  now: number;
+  connected: boolean;
+  onOpen: () => void;
+}) {
+  const t = useT();
+  const { row, participant: p } = tile;
+  const onAir = formatOnAir(row.started_at, now);
+  const receiving = !!p?.videoTrack;
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      data-testid={`live-tile-${tile.identity}`}
+      data-video={receiving ? "true" : "false"}
+      className="group cursor-pointer rounded-xl border border-slate-200 bg-slate-900 overflow-hidden hover:ring-2 hover:ring-rose-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+    >
+      <div className="relative aspect-video bg-black">
+        {receiving ? (
+          <LiveVideo track={p!.videoTrack} className="absolute inset-0 h-full w-full" />
+        ) : (
+          <div className="absolute inset-0 grid place-items-center text-xs text-white/60">
+            {p && !p.hasVideo && connected ? t("live.wall.no_video") : t("live.wall.tile_connecting")}
+          </div>
+        )}
+        {receiving && (
+          <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-rose-500/90 px-2 py-0.5 text-[10px] font-medium text-white">
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
+            LIVE
+          </span>
+        )}
+        {p && isPoor(p.quality) && (
+          <span
+            className="absolute right-2 top-2 inline-block h-2.5 w-2.5 rounded-full bg-amber-400 ring-2 ring-black/40"
+            title={t("live.wall.poor_quality")}
+            aria-label={t("live.wall.poor_quality")}
+          />
+        )}
+        {onAir && (
+          <span className="absolute right-2 bottom-2 rounded bg-black/60 px-1.5 py-0.5 text-[11px] tabular-nums text-white">
+            {onAir}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-1.5 px-3 py-2 text-sm" style={{ background: "var(--bg-card)" }}>
+        <span className="min-w-0 flex-1 truncate font-medium text-text">{row.operator_name}</span>
+        {row.on_shift && <Badge tone="ok">{t("live.wall.badge_on_shift")}</Badge>}
+        {row.is_paused && <Badge tone="warn">{t("live.wall.badge_paused")}</Badge>}
+        <Link
+          to={`/operators/${row.operator_id}`}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          className="shrink-0 text-muted hover:text-text"
+          title={t("live.wall.open_card")}
+          aria-label={t("live.wall.open_card")}
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+        </Link>
+      </div>
     </div>
   );
 }

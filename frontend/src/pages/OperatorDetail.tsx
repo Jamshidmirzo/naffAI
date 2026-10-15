@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { AlertTriangle, ChevronRight, Copy, Download, Eye, EyeOff, History, KeyRound, MessageCircle, Pencil, QrCode, RefreshCw, ShieldOff, ShieldCheck, Target, Trash2, UserPlus } from "lucide-react";
@@ -43,6 +43,8 @@ import {
 } from "../components/ui";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
+import { useOperatorIsLive } from "../lib/liveQueries";
+import { formatOnAir } from "../lib/liveRoom";
 
 function usePeriodTabs(t: (k: string) => string): TabItem<Period>[] {
   return [
@@ -175,7 +177,7 @@ export default function OperatorDetail() {
     status: "active",
     note: "",
     blocking_gate_enabled: false,
-    livestream_enabled: false,
+    livestream_enabled: true,
     managed_by_id: null,
   });
 
@@ -202,6 +204,8 @@ export default function OperatorDetail() {
       api.get<OperatorDetail>(`/operators/${id}/`).then((r) => r.data),
     enabled: !!id,
   });
+  // «Сейчас в эфире» — shares the ["live-now"] cache with the wall.
+  const { data: liveRow } = useOperatorIsLive(id ? Number(id) : null, { enabled: isManager });
   const stickerQ = useQuery<{ sticker: { emoji: string; is_rare: boolean } | null }>({
     queryKey: ["operator-sticker", id],
     queryFn: () =>
@@ -385,7 +389,8 @@ export default function OperatorDetail() {
       status,
       note: d?.note || "",
       blocking_gate_enabled: !!d?.blocking_gate_enabled,
-      livestream_enabled: !!d?.livestream_enabled,
+      // Backend default is ON — a missing field means «on».
+      livestream_enabled: d?.livestream_enabled ?? true,
       // Загружаем текущего owner'а в форму. null → поле выставлено в
       // «не назначен», числовое id — текущий владелец (его можно
       // поменять или сбросить).
@@ -571,6 +576,22 @@ export default function OperatorDetail() {
                 <StatusBadge tone={toneForStatus(s.operator.status)}>
                   {statusLabel(t, s.operator.status)}
                 </StatusBadge>
+              )}
+              {isManager && liveRow && (
+                <Link
+                  to={`/live/wall?focus=${encodeURIComponent(liveRow.participant_identity)}`}
+                  className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold"
+                  style={{ background: "rgba(220,38,38,0.10)", color: "rgb(185,28,28)" }}
+                  title={t("op_detail.live_open_wall")}
+                  data-testid="op-live-badge"
+                >
+                  <span className="relative inline-flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-70" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
+                  </span>
+                  {t("op_detail.live_now_badge")}
+                  <LiveOnAir startedAt={liveRow.started_at} />
+                </Link>
               )}
             </div>
             <div className="text-[13px] mt-1 flex items-center gap-2 flex-wrap">
@@ -1711,10 +1732,10 @@ export default function OperatorDetail() {
             </div>
           </label>
 
-          {/* 2026-10-08: WebRTC live-stream opt-in. По умолчанию OFF;
-              при ON — браузер запросит доступ к камере сразу после
-              логина оператора. Поток идёт в LiveKit SFU (демо-окружение),
-              менеджер видит live-wall на /live/wall. */}
+          {/* WebRTC live-stream. Включено по умолчанию (backend default
+              ON); при ON браузер оператора после входа включает камеру и
+              публикует видео (без звука) в LiveKit — менеджер видит его
+              на /live/wall. Выключение исключает оператора из эфира. */}
           <label
             className="flex items-start gap-3 rounded-xl px-3 py-3 cursor-pointer"
             style={{
@@ -1736,12 +1757,9 @@ export default function OperatorDetail() {
               }
             />
             <div className="flex-1 min-w-0">
-              <div className="text-[13.5px] font-semibold">Live-эфир</div>
+              <div className="text-[13.5px] font-semibold">{t("op_edit.livestream")}</div>
               <div className="text-[12px] text-muted mt-0.5 leading-snug">
-                При включении браузер оператора запросит камеру и начнёт
-                стримить видео (без звука) в live-эфир. Менеджер видит
-                всех в сетке на «Live-эфир» в разделе Посещаемости.
-                Opt-in: включайте точечно после разговора с оператором.
+                {t("op_edit.livestream_hint")}
               </div>
             </div>
           </label>
@@ -1997,3 +2015,15 @@ export default function OperatorDetail() {
 
 // Keep Chip import used somewhere to avoid unused warnings (used by future filters)
 void Chip;
+
+/** Ticking «time on air» for the live badge (own 1 s timer, so the big
+ *  page doesn't re-render every second). */
+function LiveOnAir({ startedAt }: { startedAt: string | null }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const h = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(h);
+  }, []);
+  const v = formatOnAir(startedAt, now);
+  return v ? <span className="tabular-nums font-medium opacity-80">{v}</span> : null;
+}

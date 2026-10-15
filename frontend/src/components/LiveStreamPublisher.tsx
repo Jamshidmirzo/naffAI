@@ -1,274 +1,201 @@
 /**
- * LiveStreamPublisher — mounts in AppShell for `operator`-role users
- * whose `/auth/me/` returned `livestream_enabled=true`. Lazily imports
- * `livekit-client` so the SDK bundle (~250 KB gz) stays off every other
- * page.
+ * LiveStreamPublisher — mounted in AppShell for `operator`-role users.
+ * `enabled` comes from `/auth/me/ → livestream_enabled` (default ON on
+ * the backend; the manager can switch it off on the operator card).
  *
- * Visible UI = a small floating indicator in the bottom-left corner:
- *   • «● в эфире» when the local track is publishing
- *   • «● включение…» during connection
- *   • «✖ камера выключена» when the user denied permission
+ * The component is two things:
+ *   • a headless controller (`useLivePublisher`) that drives the
+ *     framework-free engine in `lib/livePublisher.ts` — connect, camera,
+ *     reconnect/backoff, single-tab lock, killswitch poll, token refresh;
+ *   • a small floating pill (`LivePublisherPill`) in the bottom-left
+ *     corner that reads the global publisher state.
  *
- * Opt-OUT is per-session via the «✖ закрыть эфир» button, but the
- * backend `livestream_enabled` flag is the source of truth across
- * reloads. Manager flips it from the operator card.
- *
- * Note on failure modes: if LiveKit is misconfigured (503 from the
- * backend) we show «эфир недоступен» and silently stop; nothing else
- * on the page is affected.
+ * `ui={false}` keeps the controller and drops the pill (for layouts that
+ * render `LivePublisherPill` / `useLivePublisherStatus` themselves).
  */
 
-import { useEffect, useRef, useState } from "react";
-import { fetchRoomToken } from "../lib/liveRoom";
-import { api } from "../lib/api";
-
-// LiveKit SDK is heavy — load it dynamically on first mount.
-type LivekitSDK = typeof import("livekit-client");
-
-type Status =
-  | "idle"
-  | "connecting"
-  | "live"
-  | "disabled"
-  | "denied"
-  | "error"
-  | "unavailable";
+import { useEffect, useState } from "react";
+import { useLivePublisher, useLivePublisherStatus } from "../lib/livePublisher";
+import { useT } from "../lib/i18n";
 
 interface Props {
-  /** Only mount the component when this is true (operator opt-in). */
+  /** Operator has livestream enabled (from /auth/me/). */
   enabled: boolean;
+  /** Render the floating status pill. */
+  ui?: boolean;
 }
 
-export default function LiveStreamPublisher({ enabled }: Props) {
-  const [status, setStatus] = useState<Status>("idle");
-  const [errText, setErrText] = useState<string>("");
-  const [sdkReady, setSdkReady] = useState(false);
-  // Global killswitch: start as true, poll every 10s. If backend reports
-  // enabled=false — publisher stops. Re-enable spins up again on next tick.
-  const [globalOn, setGlobalOn] = useState<boolean>(true);
-  const sdkRef = useRef<LivekitSDK | null>(null);
-  // Hold a reference to the active Room so cleanup can gracefully
-  // disconnect; `any` because LivekitSDK isn't loaded at mount.
-  const roomRef = useRef<unknown>(null);
-  const cancelledRef = useRef(false);
+export default function LiveStreamPublisher({ enabled, ui = true }: Props) {
+  useLivePublisher({ enabled });
+  if (!enabled || !ui) return null;
+  return <LivePublisherPill />;
+}
 
-  // Polling: /api/live/global-status/ every 10s.
-  // Fail-OPEN: при network error / 404 оставляем publisher работать.
-  // RoomTokenApi сам отдаст 503 если killswitch действительно выключен —
-  // лишняя блокировка на клиенте только мешает (одна сетевая икота ×
-  // paranoid shut-down = оператор никогда не публикует).
+/** Seconds left until `retryAt`, ticking once a second while relevant. */
+function useCountdown(retryAt: number | null): number {
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!enabled) return;
-    let stopped = false;
-    const check = async () => {
-      try {
-        const r = await api.get<{ enabled: boolean }>("/live/global-status/");
-        if (!stopped && typeof r.data?.enabled === "boolean") {
-          setGlobalOn(r.data.enabled);
-        }
-      } catch {
-        // network/404/5xx — не меняем globalOn, пусть RoomTokenApi решает.
-      }
-    };
-    check();
-    const id = window.setInterval(check, 10_000);
-    return () => {
-      stopped = true;
-      window.clearInterval(id);
-    };
-  }, [enabled]);
+    if (retryAt == null) return;
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [retryAt]);
+  return retryAt == null ? 0 : Math.max(0, Math.ceil((retryAt - now) / 1000));
+}
 
-  useEffect(() => {
-    cancelledRef.current = false;
-    if (!enabled || !globalOn) {
-      setStatus("disabled");
-      return;
-    }
-    let aborted = false;
-    (async () => {
-      try {
-        setStatus("connecting");
-        const sdk = await import("livekit-client");
-        if (aborted) return;
-        sdkRef.current = sdk;
-        setSdkReady(true);
-      } catch (e) {
-        if (!aborted) {
-          setStatus("error");
-          setErrText(`SDK: ${(e as Error).message || e}`);
-        }
-      }
-    })();
-    return () => {
-      aborted = true;
-      cancelledRef.current = true;
-    };
-  }, [enabled, globalOn]);
+const Dot = ({ cls }: { cls: string }) => <span className={`inline-block h-2 w-2 rounded-full ${cls}`} />;
 
-  useEffect(() => {
-    if (!enabled || !globalOn || !sdkReady || !sdkRef.current) {
-      // Killswitch disabled mid-session — stop any active room immediately.
-      const room = roomRef.current as { disconnect?: () => Promise<void> } | null;
-      if (room?.disconnect) {
-        room.disconnect().catch(() => {});
-        roomRef.current = null;
-      }
-      return;
-    }
-    const sdk = sdkRef.current;
-    let cancelled = false;
+const pillBtn = "ml-1 rounded-full px-2 py-0.5 font-semibold underline-offset-2 hover:underline";
 
-    (async () => {
-      let token: Awaited<ReturnType<typeof fetchRoomToken>>;
-      try {
-        token = await fetchRoomToken();
-      } catch (e) {
-        const err = e as { response?: { status?: number } };
-        if (err?.response?.status === 503 || err?.response?.status === 404) {
-          setStatus("unavailable");
-          return;
-        }
-        if (err?.response?.status === 403) {
-          setStatus("disabled");
-          return;
-        }
-        setStatus("error");
-        setErrText(`token: ${(e as Error).message || e}`);
-        return;
-      }
-      if (!token.can_publish) {
-        setStatus("disabled");
-        return;
-      }
+export function LivePublisherPill() {
+  const t = useT();
+  const s = useLivePublisherStatus();
+  const secs = useCountdown(s.status === "retrying" || s.status === "error" ? s.retryAt : null);
 
-      const room = new sdk.Room({
-        adaptiveStream: true,
-        dynacast: true,
-        videoCaptureDefaults: {
-          resolution: sdk.VideoPresets.h360.resolution,
-          facingMode: "user",
-        },
-        publishDefaults: {
-          videoSimulcastLayers: [sdk.VideoPresets.h360, sdk.VideoPresets.h360],
-          videoCodec: "h264",
-        },
-      });
-      roomRef.current = room;
-
-      room.on(sdk.RoomEvent.Disconnected, () => {
-        if (!cancelled) setStatus("idle");
-      });
-      room.on(sdk.RoomEvent.MediaDevicesError, (err) => {
-        if (cancelled) return;
-        const msg = (err as Error).message || String(err);
-        if (/NotAllowed|Permission/i.test(msg)) {
-          setStatus("denied");
-        } else {
-          setStatus("error");
-          setErrText(msg);
-        }
-      });
-
-      try {
-        await room.connect(token.ws_url, token.token);
-        if (cancelled) {
-          await room.disconnect();
-          return;
-        }
-        // Publish camera only — audio stays OFF until the manager
-        // explicitly asks for it (future enhancement: data-channel
-        // request).
-        await room.localParticipant.setCameraEnabled(true);
-        setStatus("live");
-      } catch (e) {
-        const msg = (e as Error).message || String(e);
-        if (/NotAllowed|Permission/i.test(msg)) {
-          setStatus("denied");
-        } else {
-          setStatus("error");
-          setErrText(msg);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      const room = roomRef.current as { disconnect?: () => Promise<void> } | null;
-      if (room?.disconnect) {
-        room.disconnect().catch(() => {});
-      }
-      roomRef.current = null;
-    };
-  }, [enabled, globalOn, sdkReady]);
-
-  const handleCloseClick = async () => {
-    const room = roomRef.current as { disconnect?: () => Promise<void> } | null;
-    if (room?.disconnect) {
-      try {
-        await room.disconnect();
-      } catch {
-        // ignore
-      }
-    }
-    setStatus("idle");
-  };
-
-  if (!enabled || status === "disabled") return null;
-  // Operator chose to close the stream for this session — surface a
-  // tiny "resume" affordance but don't dim the whole UI.
-  if (status === "idle") return null;
-  if (status === "unavailable") {
-    // LiveKit not configured (503) — hide silently; no need to spam
-    // operators with ops-level errors.
+  if (s.status === "off" || s.status === "unavailable" || s.status === "disabled_operator") {
     return null;
   }
 
   const base =
     "fixed bottom-4 left-4 z-[80] flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur";
   const palette =
-    status === "live"
+    s.status === "live"
       ? "bg-rose-50/90 border-rose-200 text-rose-700"
-      : status === "connecting"
+      : s.status === "connecting" || s.status === "reconnecting" || s.status === "retrying"
       ? "bg-amber-50/90 border-amber-200 text-amber-700"
+      : s.status === "error" || s.status === "denied" || s.status === "no_camera"
+      ? "bg-rose-50/90 border-rose-200 text-rose-800"
       : "bg-slate-50/90 border-slate-200 text-slate-700";
 
-  return (
-    <div className={`${base} ${palette}`} role="status" aria-live="polite">
-      {status === "live" && (
+  let body: JSX.Element;
+  switch (s.status) {
+    case "live":
+      body = (
         <>
           <span className="relative inline-flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-70"></span>
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500"></span>
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-70" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
           </span>
-          <span>Вы в эфире</span>
+          <span>{t("live.pub.live")}</span>
           <button
             type="button"
-            onClick={handleCloseClick}
+            onClick={s.pause}
             className="ml-1 text-rose-900/70 hover:text-rose-900"
-            title="Закрыть эфир на эту сессию"
+            title={t("live.pub.pause_title")}
+            aria-label={t("live.pub.pause_title")}
           >
             ✕
           </button>
         </>
-      )}
-      {status === "connecting" && (
+      );
+      break;
+    case "connecting":
+      body = (
         <>
-          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-500" />
-          <span>Включение камеры…</span>
+          <Dot cls="animate-pulse bg-amber-500" />
+          <span>{t("live.pub.connecting")}</span>
         </>
-      )}
-      {status === "denied" && (
+      );
+      break;
+    case "reconnecting":
+      body = (
         <>
-          <span className="inline-block h-2 w-2 rounded-full bg-slate-500" />
-          <span>Камера заблокирована браузером</span>
+          <Dot cls="animate-pulse bg-amber-500" />
+          <span>{t("live.pub.reconnecting")}</span>
         </>
-      )}
-      {status === "error" && (
+      );
+      break;
+    case "retrying":
+      body = (
         <>
-          <span className="inline-block h-2 w-2 rounded-full bg-rose-500" />
-          <span title={errText}>Ошибка эфира</span>
+          <Dot cls="bg-amber-500" />
+          <span title={s.errText}>{t("live.pub.retrying", { n: secs })}</span>
+          <button type="button" onClick={s.retryNow} className={pillBtn}>
+            {t("live.pub.retry")}
+          </button>
         </>
-      )}
+      );
+      break;
+    case "paused_by_user":
+      body = (
+        <>
+          <Dot cls="bg-slate-400" />
+          <span>{t("live.pub.paused")}</span>
+          <button type="button" onClick={s.resume} className={pillBtn}>
+            {t("live.pub.resume")}
+          </button>
+        </>
+      );
+      break;
+    case "other_tab":
+      body = (
+        <>
+          <Dot cls="bg-slate-400" />
+          <span>{t("live.pub.other_tab")}</span>
+          {s.kickReason === "DUPLICATE_IDENTITY" && (
+            // Kicked by another device of the same operator — let them take it back.
+            <button type="button" onClick={s.retryNow} className={pillBtn}>
+              {t("live.pub.take_over")}
+            </button>
+          )}
+        </>
+      );
+      break;
+    case "denied":
+      body = (
+        <>
+          <Dot cls="bg-rose-500" />
+          <span title={s.errText}>{t("live.pub.denied")}</span>
+          <span className="hidden sm:inline font-normal opacity-80">· {t("live.pub.denied_hint")}</span>
+          <button type="button" onClick={s.retryNow} className={pillBtn}>
+            {t("live.pub.retry")}
+          </button>
+        </>
+      );
+      break;
+    case "no_camera":
+      body = (
+        <>
+          <Dot cls="bg-rose-500" />
+          <span title={s.errText}>{t("live.pub.no_camera")}</span>
+          <button type="button" onClick={s.retryNow} className={pillBtn}>
+            {t("live.pub.retry")}
+          </button>
+        </>
+      );
+      break;
+    case "disabled_global":
+      body = (
+        <>
+          <Dot cls="bg-slate-400" />
+          <span>{t("live.pub.disabled_global")}</span>
+        </>
+      );
+      break;
+    case "error":
+    default:
+      body = (
+        <>
+          <Dot cls="bg-rose-500" />
+          <span title={s.errText}>
+            {secs > 0 ? t("live.pub.error_retry", { n: secs }) : t("live.pub.error")}
+          </span>
+          <button type="button" onClick={s.retryNow} className={pillBtn}>
+            {t("live.pub.retry")}
+          </button>
+        </>
+      );
+  }
+
+  return (
+    <div
+      className={`${base} ${palette}`}
+      role="status"
+      aria-live="polite"
+      data-testid="live-pill"
+      data-status={s.status}
+    >
+      {body}
     </div>
   );
 }

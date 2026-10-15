@@ -1,88 +1,92 @@
 /**
- * LiveArchive — manager-only list of finished recordings with inline
- * playback via presigned S3 URLs. Minimum filters: operator + date range.
+ * LiveArchive — manager-only list of finished recordings (video-only
+ * mp4, chunked by the hour) with inline playback via presigned URLs.
+ * Filters: operator + date range; server-side limit/offset paging.
  */
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  fetchRecordings,
-  fetchRecordingUrl,
   formatBytes,
   formatDuration,
+  formatRecordingStart,
+  type RecordingRow,
 } from "../lib/liveRoom";
+import { useLiveConfig, useLiveRecordings } from "../lib/liveQueries";
 import { api } from "../lib/api";
+import { Paginator } from "../components/Paginator";
+import RecordingPlayer from "../components/live/RecordingPlayer";
+import { usePageHeader } from "../store/page";
+import { useLangValue, useT } from "../lib/i18n";
 
 type OperatorRow = { id: number; full_name: string };
 
+const PAGE_SIZE = 50;
+const DEFAULT_RETENTION_DAYS = 30;
+
 export default function LiveArchive() {
+  const t = useT();
+  const lang = useLangValue();
+  const config = useLiveConfig();
+  const retention = config.data?.retention_days ?? DEFAULT_RETENTION_DAYS;
+  usePageHeader(
+    { title: t("live.archive.title"), subtitle: t("live.archive.retention", { n: retention }) },
+    [lang, retention],
+  );
+
   const [operatorId, setOperatorId] = useState<number | null>(null);
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
-  const [playing, setPlaying] = useState<{
-    recordingId: number;
-    url: string;
-  } | null>(null);
-  const [urlLoading, setUrlLoading] = useState<number | null>(null);
-  const [urlErr, setUrlErr] = useState<string>("");
+  const [page, setPage] = useState(1);
+  const [playing, setPlaying] = useState<RecordingRow | null>(null);
 
-  // Simple operators dropdown — reuse the existing /operators/ endpoint
-  // (returns the array of operator objects used across the app).
+  // Operators dropdown — /operators/ returns either an array or {results}.
   const operatorsQuery = useQuery<OperatorRow[]>({
     queryKey: ["operators", "simple"],
-    queryFn: () => api.get("/operators/").then((r) => r.data),
+    queryFn: () =>
+      api
+        .get<OperatorRow[] | { results: OperatorRow[] }>("/operators/")
+        .then((r) => (Array.isArray(r.data) ? r.data : r.data?.results ?? [])),
     staleTime: 5 * 60_000,
   });
 
-  const recordingsQuery = useQuery({
-    queryKey: ["live-recordings", operatorId, dateFrom, dateTo],
-    queryFn: () =>
-      fetchRecordings({
-        operator_id: operatorId,
-        date_from: dateFrom || null,
-        date_to: dateTo || null,
-        page_size: 100,
-      }),
+  const recordings = useLiveRecordings({
+    operatorId,
+    dateFrom,
+    dateTo,
+    page,
+    pageSize: PAGE_SIZE,
   });
+  const rows = recordings.data?.results ?? [];
+  const total = recordings.data?.count ?? 0;
 
-  const handlePlay = async (recordingId: number) => {
-    setUrlErr("");
-    setUrlLoading(recordingId);
-    try {
-      const { url } = await fetchRecordingUrl(recordingId);
-      setPlaying({ recordingId, url });
-    } catch (e) {
-      const err = e as { response?: { data?: { detail?: string } } };
-      setUrlErr(
-        err?.response?.data?.detail || (e as Error).message || "Не удалось получить ссылку"
-      );
-    } finally {
-      setUrlLoading(null);
-    }
+  const resetFilters = () => {
+    setOperatorId(null);
+    setDateFrom("");
+    setDateTo("");
+    setPage(1);
+  };
+
+  const statusLabel = (s: string) => {
+    const key = `live.archive.status_${s}`;
+    const v = t(key);
+    return v === key ? s : v;
   };
 
   return (
     <div className="space-y-4">
-      <header className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Архив live-эфира</h1>
-          <p className="text-sm text-slate-500">
-            Записи храняться 30 дней, затем автоматически удаляются из S3.
-          </p>
-        </div>
-      </header>
-
-      <section className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-3">
+      <section className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-3 dark:bg-transparent">
         <label className="flex flex-col text-xs text-slate-600">
-          Оператор
+          {t("live.archive.operator")}
           <select
             value={operatorId ?? ""}
-            onChange={(e) =>
-              setOperatorId(e.target.value ? parseInt(e.target.value, 10) : null)
-            }
+            onChange={(e) => {
+              setOperatorId(e.target.value ? parseInt(e.target.value, 10) : null);
+              setPage(1);
+            }}
             className="mt-1 min-w-[220px] rounded border border-slate-200 bg-white px-2 py-1.5 text-sm"
           >
-            <option value="">Все</option>
+            <option value="">{t("live.archive.all_operators")}</option>
             {(operatorsQuery.data ?? []).map((op) => (
               <option key={op.id} value={op.id}>
                 {op.full_name}
@@ -91,102 +95,91 @@ export default function LiveArchive() {
           </select>
         </label>
         <label className="flex flex-col text-xs text-slate-600">
-          С даты
+          {t("live.archive.date_from")}
           <input
             type="date"
             value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
+            max={dateTo || undefined}
+            onChange={(e) => {
+              setDateFrom(e.target.value);
+              setPage(1);
+            }}
             className="mt-1 rounded border border-slate-200 bg-white px-2 py-1.5 text-sm"
           />
         </label>
         <label className="flex flex-col text-xs text-slate-600">
-          По дату
+          {t("live.archive.date_to")}
           <input
             type="date"
             value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
+            min={dateFrom || undefined}
+            onChange={(e) => {
+              setDateTo(e.target.value);
+              setPage(1);
+            }}
             className="mt-1 rounded border border-slate-200 bg-white px-2 py-1.5 text-sm"
           />
         </label>
         <button
           type="button"
-          onClick={() => {
-            setOperatorId(null);
-            setDateFrom("");
-            setDateTo("");
-          }}
+          onClick={resetFilters}
           className="rounded border border-slate-200 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
         >
-          Сбросить фильтр
+          {t("live.archive.reset")}
         </button>
       </section>
 
-      {urlErr && (
-        <div className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
-          {urlErr}
-        </div>
-      )}
+      {playing && <RecordingPlayer recording={playing} onClose={() => setPlaying(null)} />}
 
-      {playing && (
-        <section className="rounded-xl border border-slate-200 bg-black overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2 bg-slate-900 text-white">
-            <span className="text-sm font-medium">
-              Запись #{playing.recordingId}
-            </span>
-            <button
-              type="button"
-              onClick={() => setPlaying(null)}
-              className="px-2 py-0.5 rounded hover:bg-white/10 text-xs"
-            >
-              Закрыть
-            </button>
-          </div>
-          <video
-            key={playing.url}
-            src={playing.url}
-            controls
-            autoPlay
-            className="w-full aspect-video bg-black"
-          />
-        </section>
-      )}
-
-      <section className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
+      <section className="overflow-x-auto rounded-lg border border-slate-200 bg-white dark:bg-transparent">
+        <table className="w-full text-sm" aria-busy={recordings.isFetching}>
+          <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500 dark:bg-transparent">
             <tr>
-              <th className="px-3 py-2 text-left">Оператор</th>
-              <th className="px-3 py-2 text-left">Начало</th>
-              <th className="px-3 py-2 text-right">Длительность</th>
-              <th className="px-3 py-2 text-right">Размер</th>
-              <th className="px-3 py-2 text-right">Действия</th>
+              <th className="px-3 py-2 text-left">{t("live.archive.col_operator")}</th>
+              <th className="px-3 py-2 text-left">{t("live.archive.col_start")}</th>
+              <th className="px-3 py-2 text-left">{t("live.archive.col_end")}</th>
+              <th className="px-3 py-2 text-right">{t("live.archive.col_duration")}</th>
+              <th className="px-3 py-2 text-right">{t("live.archive.col_size")}</th>
+              <th className="px-3 py-2 text-left">{t("live.archive.col_status")}</th>
+              <th className="px-3 py-2 text-right">{t("common.actions")}</th>
             </tr>
           </thead>
-          <tbody>
-            {recordingsQuery.isLoading && (
+          <tbody className={recordings.isPlaceholderData ? "opacity-60" : undefined}>
+            {recordings.isLoading && (
               <tr>
-                <td colSpan={5} className="px-3 py-10 text-center text-slate-400">
-                  Загрузка…
+                <td colSpan={7} className="px-3 py-10 text-center text-slate-400">
+                  {t("common.loading")}
                 </td>
               </tr>
             )}
-            {!recordingsQuery.isLoading &&
-              (recordingsQuery.data?.results ?? []).length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-3 py-10 text-center text-slate-400">
-                    Записей не найдено.
-                  </td>
-                </tr>
-              )}
-            {(recordingsQuery.data?.results ?? []).map((row) => (
-              <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50">
-                <td className="px-3 py-2 text-slate-900">
-                  {row.operator_name ?? row.participant_identity}
+            {recordings.isError && !recordings.data && (
+              <tr>
+                <td colSpan={7} className="px-3 py-10 text-center text-rose-600">
+                  {t("live.archive.load_failed")}{" "}
+                  <button type="button" className="underline" onClick={() => void recordings.refetch()}>
+                    {t("common.retry")}
+                  </button>
                 </td>
-                <td className="px-3 py-2 text-slate-600">
-                  {row.started_at
-                    ? new Date(row.started_at).toLocaleString("ru-RU")
-                    : "—"}
+              </tr>
+            )}
+            {!recordings.isLoading && !recordings.isError && rows.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-3 py-10 text-center text-slate-400">
+                  {t("live.archive.empty")}
+                </td>
+              </tr>
+            )}
+            {rows.map((row) => (
+              <tr
+                key={row.id}
+                className={`border-t border-slate-100 hover:bg-slate-50/60 ${playing?.id === row.id ? "bg-slate-50/80" : ""}`}
+              >
+                <td className="px-3 py-2 text-text">{row.operator_name ?? row.participant_identity}</td>
+                <td className="px-3 py-2 text-slate-600 tabular-nums">
+                  {formatRecordingStart(row.started_at, lang)}
+                </td>
+                <td className="px-3 py-2 text-slate-600 tabular-nums">
+                  {formatRecordingStart(row.ended_at, lang)}
                 </td>
                 <td className="px-3 py-2 text-right text-slate-600 tabular-nums">
                   {formatDuration(row.duration_s)}
@@ -194,14 +187,14 @@ export default function LiveArchive() {
                 <td className="px-3 py-2 text-right text-slate-600 tabular-nums">
                   {formatBytes(row.size_bytes)}
                 </td>
+                <td className="px-3 py-2 text-slate-600">{statusLabel(row.status)}</td>
                 <td className="px-3 py-2 text-right">
                   <button
                     type="button"
-                    disabled={urlLoading === row.id}
-                    onClick={() => handlePlay(row.id)}
-                    className="rounded bg-slate-900 px-3 py-1 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-60"
+                    onClick={() => setPlaying(row)}
+                    className="rounded bg-slate-900 px-3 py-1 text-xs font-medium text-white hover:bg-slate-700"
                   >
-                    {urlLoading === row.id ? "..." : "Смотреть"}
+                    {t("live.archive.watch")}
                   </button>
                 </td>
               </tr>
@@ -209,6 +202,10 @@ export default function LiveArchive() {
           </tbody>
         </table>
       </section>
+
+      <div className="flex justify-center">
+        <Paginator page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} />
+      </div>
     </div>
   );
 }
