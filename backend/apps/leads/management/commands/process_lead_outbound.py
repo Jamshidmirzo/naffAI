@@ -27,7 +27,7 @@ import time
 from datetime import timedelta
 
 from django.core.management.base import BaseCommand
-from django.db import transaction
+from django.db import connections, transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -240,6 +240,9 @@ class Command(BaseCommand):
                     last_cleanup = time.monotonic()
             except Exception:
                 logger.exception("lead-outbound tick failed")
+                # Fresh connection next tick: after a deploy the worker can
+                # start before `migrate` and keep failing on a stale one.
+                connections.close_all()
                 stats = {"events": 0, "sent": 0}
             if not stats["events"]:
                 time.sleep(opts["idle_sleep"])
