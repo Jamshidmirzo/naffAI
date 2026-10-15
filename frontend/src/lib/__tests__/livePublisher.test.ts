@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLivePublisherEngine,
+  POLL_DISABLED_FAST_FOR_MS,
   POLL_DISABLED_MS,
   POLL_HIDDEN_MS,
   POLL_VISIBLE_MS,
@@ -585,6 +586,26 @@ describe("livePublisher engine", () => {
     expect(FakeRoom.instances).toHaveLength(2);
   });
 
+  it("killswitch off for long: fast polling only for the first minutes", async () => {
+    const h = track(setup());
+    h.globalImpl.fn = async () => ({ enabled: false });
+    h.engine.setEnabled(true);
+    await flush();
+    await vi.advanceTimersByTimeAsync(POLL_VISIBLE_MS);
+    await flush();
+    expect(st(h.engine).status).toBe("disabled_global");
+    await vi.advanceTimersByTimeAsync(POLL_DISABLED_FAST_FOR_MS);
+    await flush();
+    // Past the fast window the cadence is back to 30s: a minute brings at
+    // most 3 polls (one may still be queued at 10s), not 6.
+    const calls = h.fetchGlobalStatus.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(2 * POLL_VISIBLE_MS);
+    await flush();
+    const inMinute = h.fetchGlobalStatus.mock.calls.length - calls;
+    expect(inMinute).toBeGreaterThanOrEqual(2);
+    expect(inMinute).toBeLessThanOrEqual(3);
+  });
+
   it("poll error is fail-open: status unchanged, polling continues", async () => {
     const h = track(setup());
     h.engine.setEnabled(true);
@@ -643,6 +664,7 @@ describe("livePublisher engine", () => {
     expect(h.fetchToken).toHaveBeenCalledTimes(2);
     expect(FakeRoom.instances).toHaveLength(2);
   });
+
 
   it("planned token rotation at expires_at − 10 min", async () => {
     const h = track(setup());

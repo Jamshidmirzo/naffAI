@@ -163,8 +163,10 @@ export interface LivePublisherEngine {
 export const PUBLISHER_LOCK_NAME = "naffai-live-publisher";
 export const POLL_VISIBLE_MS = 30_000;
 export const POLL_HIDDEN_MS = 120_000;
-/** While the killswitch is off we wait for it to come back — poll faster. */
+/** Right after the killswitch goes off a manager often turns it back on —
+ *  poll faster for a few minutes, then fall back to the normal cadence. */
 export const POLL_DISABLED_MS = 10_000;
+export const POLL_DISABLED_FAST_FOR_MS = 3 * 60_000;
 export const SLOW_PROBE_MS = 60_000;
 export const BACKOFF_BASE_MS = 2_000;
 export const BACKOFF_MAX_MS = 60_000;
@@ -610,7 +612,9 @@ export function createLivePublisherEngine(deps: LivePublisherDeps): LivePublishe
   function schedulePoll() {
     clearPoll();
     if (!enabled || lock !== "held") return;
-    const waitingForSwitch = store.getState().status === "disabled_global";
+    const { status, since } = store.getState();
+    const waitingForSwitch =
+      status === "disabled_global" && deps.now() - since < POLL_DISABLED_FAST_FOR_MS;
     pollTimer = timers.setTimeout(
       () => {
         pollTimer = null;
