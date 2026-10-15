@@ -975,6 +975,7 @@ def lead_create_from_webhook(
                     full_name=full_name,
                     product_hint=product_hint,
                     has_card=has_card,
+                    ad=(metadata or {}).get("ad") or {},
                 ),
                 "merged",
             )
@@ -1030,6 +1031,7 @@ def _merge_webhook_lead_into_existing(
     full_name: str,
     product_hint: str,
     has_card: str,
+    ad: dict | None = None,
 ) -> Lead:
     """
     Webhook counterpart of `_merge_sheet_row_into_existing`: soft fields
@@ -1052,6 +1054,13 @@ def _merge_webhook_lead_into_existing(
             "source_id": source.id,
             "external_id": external_id,
             "at": timezone.now().isoformat(),
+            # Атрибуция для статусов обратно (ad_id / utm_*) — у склеенного
+            # лида своей `metadata["ad"]` от этого источника нет.
+            "ad": {
+                k: v
+                for k, v in (ad or {}).items()
+                if k in ("ad_id", "utm_source", "utm_campaign", "utm_content", "source")
+            },
         }
     )
     # Не даём метаданным разрастись от повторных заявок одного клиента.

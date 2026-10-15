@@ -294,9 +294,14 @@ class SheetSource(TimestampedModel):
     webhook_token = models.CharField(
         max_length=64, unique=True, null=True, blank=True, default=None
     )
+    # LeadPixel шлёт его в `X-API-Key` (сверяем hmac.compare_digest). Пустой
+    # ключ у webhook-источника = приём закрыт (401). Ротация —
+    # `create_webhook_source --rotate-key <id>`.
+    webhook_api_key = models.CharField(max_length=128, blank=True, default="")
     # Куда отправлять статусы лидов обратно (LeadPixel: лиды/продажи/ROAS).
-    # {"url": "...", "api_key": "...", "enabled": false}. Формат LeadPixel
-    # пока неизвестен — очередь копится, доставка выключена, пока enabled=false.
+    # {"url": "https://…/api/crm/inbound", "api_key": "lp_…", "enabled": false,
+    #  "status_map": {"<наш код>": "new|qualified|won|lost|junk"}}.
+    # Пока enabled=false — события копятся, sender их не трогает.
     outbound_config = models.JSONField(default=dict, blank=True)
 
     class Meta:
@@ -580,6 +585,7 @@ class LeadOutboundEventKind(models.TextChoices):
     STATUS = "status", "Смена статуса"
     SALE = "sale", "Продажа"
     SALE_RETURNED = "sale_returned", "Возврат продажи"
+    SALE_CANCELLED = "sale_cancelled", "Продажа отклонена/удалена"
 
 
 class LeadOutboundEvent(models.Model):
@@ -597,15 +603,21 @@ class LeadOutboundEvent(models.Model):
         Lead, on_delete=models.CASCADE, related_name="outbound_events"
     )
     kind = models.CharField(max_length=16, choices=LeadOutboundEventKind.choices)
-    # "status:<code>" / "sale:<id>" / "sale_returned:<id>" — гасит дубли
-    # одного и того же события (статус WON из двух путей продажи и т.п.).
+    # Подпись LeadPixel-состояния (status|stage|amount) — гасит повтор того
+    # же состояния (WON из двух путей продажи и т.п.).
     dedupe_key = models.CharField(max_length=128, blank=True, default="")
+    # Готовый объект события LeadPixel (`outbound.leadpixel_event`) на момент
+    # commit'а. Sender шлёт по лиду только последний pending.
     payload = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     next_try_at = models.DateTimeField(null=True, blank=True)
     attempts = models.PositiveSmallIntegerField(default=0)
     delivered_at = models.DateTimeField(null=True, blank=True)
+    # Финальный отказ (400/401 или исчерпаны попытки) — больше не шлём.
+    failed_at = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(blank=True, default="")
+    # Ответ LeadPixel по этому лиду: {"http": 200, "action": …, "matched": …}.
+    response_summary = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ["id"]

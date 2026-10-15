@@ -560,6 +560,20 @@ services:
         condition: service_healthy
     command: ["python", "manage.py", "process_sheet_writebacks"]
 
+  # LeadPixel «статусы обратно»: drains LeadOutboundEvent → POST
+  # /api/crm/inbound (apps/leads/integrations/webhook/outbound.py). Idle and
+  # harmless while no webhook source has outbound_config.enabled + api_key.
+  lead-outbound:
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "manage.py", "process_lead_outbound"]
+
   # Hourly reconcile — compares every active sheet with Lead.status for
   # leads touched in the last 3 days and enqueues writebacks for drift
   # (safety net for the queue). Replaced the nightly srm-only reconcile

@@ -11,7 +11,10 @@ shape. So instead of one schema we accept what is commonly seen:
   "values": ["+998..."]}, ...]}`` — also nested under ``lead`` / ``data``;
 * the Meta webhook envelope:
   ``{"object": "page", "entry": [{"changes": [{"value": {...}}]}]}``;
-* an array of any of the above, or ``{"leads": [...]}``.
+* an array of any of the above, or ``{"leads": [...]}``;
+* LeadPixel (official spec, 2026-10-15): flat ``name`` / ``phone`` /
+  ``meta_lead_id`` / ``ad_*`` / ``utm_*`` / ``comment`` plus every form
+  answer in ``fields: [{"name": ..., "value": ...}]`` (singular ``value``).
 
 Keys are matched case-insensitively after normalisation (punctuation and
 spaces → ``_``), with ru/en/uz variants. Everything we could not map to a
@@ -99,13 +102,12 @@ PRODUCT_KEYS: tuple[str, ...] = (
     "qanday_telefon_xarid_qilmoqchisiz",
     "qaysi_telefon",
     "qanday_telefon",
-    "comment",
-    "комментарий",
-    "izoh",
 )
-PRODUCT_KEY_TOKENS: frozenset[str] = frozenset(
-    {"product", "model", "модель", "товар", "qanday", "qaysi", "вопрос", "question"}
-)
+
+EMAIL_KEYS: tuple[str, ...] = ("email", "e_mail", "mail", "почта", "электронная_почта")
+# LeadPixel кладёт сюда сводку «Заявка из формы Meta · кампания …» — в
+# metadata["comment"], не в product_hint.
+COMMENT_KEYS: tuple[str, ...] = ("comment", "комментарий", "izoh", "note", "notes")
 
 HAS_CARD_KEYS: tuple[str, ...] = (
     "has_card",
@@ -119,6 +121,8 @@ HAS_CARD_KEYS: tuple[str, ...] = (
 # Атрибуция рекламы → metadata["ad"]. Ключ = как храним, значения = как
 # может прийти (после нормализации).
 AD_KEYS: dict[str, tuple[str, ...]] = {
+    # LeadPixel: ключ дедупа и матчинга статусов. Все id — строки.
+    "meta_lead_id": ("meta_lead_id", "metaleadid"),
     "leadgen_id": ("leadgen_id", "leadgenid"),
     "lead_id": ("lead_id", "leadid"),
     "id": ("id",),
@@ -132,7 +136,9 @@ AD_KEYS: dict[str, tuple[str, ...]] = {
     "ad_name": ("ad_name", "adname"),
     "page_id": ("page_id", "pageid"),
     "platform": ("platform", "source_platform"),
-    "created_time": ("created_time", "createdtime", "created_at"),
+    "created_time": ("created_time", "createdtime"),
+    "created_at": ("created_at",),
+    "source": ("source", "lead_source"),
     "is_organic": ("is_organic",),
     "utm_source": ("utm_source",),
     "utm_medium": ("utm_medium",),
@@ -147,6 +153,7 @@ _WRAPPER_KEYS = ("lead", "data", "fields", "answers", "contact", "client", "cust
 _FIELD_LIST_KEYS = ("field_data", "fields", "answers", "custom_fields", "questions")
 # Служебные ключи envelope'а — не тащим в extra.
 _ENVELOPE_KEYS = frozenset({"object", "entry", "changes", "field", "time", "leads"})
+MAX_ANSWERS = 50
 
 
 @dataclass
@@ -156,12 +163,17 @@ class ParsedLead:
     product_hint: str = ""
     has_card: str = ""
     external_id: str = ""
+    email: str = ""
+    comment: str = ""
     ad: dict[str, str] = field(default_factory=dict)
     extra: dict[str, str] = field(default_factory=dict)
+    # Все ответы формы как пришли: [{"name": "qaysi_kurs", "value": "Frontend"}].
+    answers: list[dict[str, str]] = field(default_factory=list)
 
     @property
-    def is_empty(self) -> bool:
-        return not self.phone_raw and not self.full_name
+    def missing_phone(self) -> bool:
+        """Без телефона лид не принимаем (LeadPixel `{}` connect-check → 400)."""
+        return not self.phone_raw
 
 
 def normalize_key(key: Any) -> str:
@@ -221,7 +233,7 @@ def flatten_record(record: dict, _depth: int = 0) -> dict[str, str]:
         if isinstance(value, list) and value and all(isinstance(v, dict) for v in value):
             if key in _FIELD_LIST_KEYS:
                 for k, v in _field_list_to_dict(value).items():
-                    flat.setdefault(k, v)
+                    _put(flat, k, v)
             continue
         if isinstance(value, dict):
             if _depth < 3:
@@ -229,7 +241,7 @@ def flatten_record(record: dict, _depth: int = 0) -> dict[str, str]:
             continue
         if key in _ENVELOPE_KEYS:
             continue
-        flat.setdefault(key, _scalar_text(value))
+        _put(flat, key, _scalar_text(value))
     for key, sub in nested:
         # `lead` / `data` / … — обёртки: поднимаем как есть. Прочие объекты
         # ({"ad": {"id": 1, "name": "x"}}) — с префиксом: ad_id, ad_name.
@@ -237,8 +249,38 @@ def flatten_record(record: dict, _depth: int = 0) -> dict[str, str]:
         # идемпотентность.
         prefix = "" if key in _WRAPPER_KEYS else f"{key}_"
         for k, v in flatten_record(sub, _depth + 1).items():
-            flat.setdefault(f"{prefix}{k}", v)
+            _put(flat, f"{prefix}{k}", v)
     return flat
+
+
+def _put(flat: dict[str, str], key: str, value: str) -> None:
+    """First non-empty value wins: LeadPixel may send `"name": ""` on top
+    and the real name only in `fields`."""
+    if not flat.get(key):
+        flat[key] = value
+
+
+def extract_answers(record: dict, _depth: int = 0) -> list[dict[str, str]]:
+    """Form Q/A in original order and naming (fields / field_data / …)."""
+    out: list[dict[str, str]] = []
+    if not isinstance(record, dict) or _depth > 3:
+        return out
+    for raw_key, value in record.items():
+        key = normalize_key(raw_key)
+        if key in _FIELD_LIST_KEYS and isinstance(value, list):
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("name") or item.get("key") or item.get("field") or item.get("label")
+                if not name:
+                    continue
+                val = item.get("values", item.get("value", item.get("answer")))
+                out.append({"name": str(name)[:128], "value": _scalar_text(val)[:MAX_VALUE_LEN]})
+        elif isinstance(value, dict) and key in _WRAPPER_KEYS:
+            out.extend(extract_answers(value, _depth + 1))
+        if len(out) >= MAX_ANSWERS:
+            break
+    return out[:MAX_ANSWERS]
 
 
 def extract_records(body: Any) -> list[dict]:
@@ -332,15 +374,27 @@ def _pick_phone(flat: dict[str, str]) -> tuple[str, str]:
     return "", ""
 
 
-def _pick_product(flat: dict[str, str], used: set[str]) -> tuple[str, str]:
+_CONTACT_KEYS = frozenset(
+    PHONE_KEYS + NAME_KEYS + FIRST_NAME_KEYS + LAST_NAME_KEYS + EMAIL_KEYS + HAS_CARD_KEYS
+)
+
+
+def _pick_product(flat: dict[str, str], answers: list[dict[str, str]], ad: dict[str, str]) -> tuple[str, str]:
+    """
+    1. a known product key (top level or inside fields);
+    2. the first form answer that is not contact data → «вопрос: ответ»;
+    3. campaign_name / ad_name / form_name.
+    Returns (key_used_or_empty, text).
+    """
     key, val = _first(flat, PRODUCT_KEYS)
     if val:
         return key, val
-    for k, v in flat.items():
-        if k in used or not v:
-            continue
-        if PRODUCT_KEY_TOKENS & set(k.split("_")):
-            return k, v
+    for a in answers:
+        if a["value"] and normalize_key(a["name"]) not in _CONTACT_KEYS:
+            return "", f"{a['name']}: {a['value']}"
+    for k in ("campaign_name", "ad_name", "form_name"):
+        if ad.get(k):
+            return "", ad[k]
     return "", ""
 
 
@@ -348,9 +402,16 @@ def _clip(value: str, n: int = MAX_VALUE_LEN) -> str:
     return value[:n]
 
 
-def parse_lead(record: dict) -> ParsedLead:
-    """One record (already split by `extract_records`) → `ParsedLead`."""
-    flat = flatten_record(record if isinstance(record, dict) else {})
+def parse_lead(record: dict, *, idempotency_key: str = "") -> ParsedLead:
+    """
+    One record (already split by `extract_records`) → `ParsedLead`.
+
+    external_id order: `meta_lead_id` → `Idempotency-Key` header (LeadPixel
+    sends meta_lead_id there too) → leadgen_id / lead_id / id.
+    """
+    record = record if isinstance(record, dict) else {}
+    flat = flatten_record(record)
+    answers = extract_answers(record)
     used: set[str] = set()
 
     phone_key, phone = _pick_phone(flat)
@@ -369,6 +430,12 @@ def parse_lead(record: dict) -> ParsedLead:
     card_key, has_card = _first(flat, HAS_CARD_KEYS)
     if card_key:
         used.add(card_key)
+    email_key, email = _first(flat, EMAIL_KEYS)
+    if email_key:
+        used.add(email_key)
+    comment_key, comment = _first(flat, COMMENT_KEYS)
+    if comment_key:
+        used.add(comment_key)
 
     ad: dict[str, str] = {}
     for target, variants in AD_KEYS.items():
@@ -377,17 +444,30 @@ def parse_lead(record: dict) -> ParsedLead:
             ad[target] = _clip(v, 256)
             used.add(k)
 
-    product_key, product = _pick_product(flat, used)
+    # Синонимы уже взятых полей (top-level `name` + `full_name` из fields и
+    # т.п.) — тоже «использованы», в extra им не место.
+    for keys, taken in ((PHONE_KEYS, phone), (NAME_KEYS, full_name), (EMAIL_KEYS, email)):
+        if taken:
+            used.update(k for k in keys if k in flat)
+
+    product_key, product = _pick_product(flat, answers, ad)
     if product_key:
         used.add(product_key)
-    elif ad.get("form_name"):
-        product = ad["form_name"]
 
-    external_id = ad.get("leadgen_id") or ad.get("lead_id") or ad.get("id") or ""
+    external_id = (
+        ad.get("meta_lead_id")
+        or (idempotency_key or "").strip()
+        or ad.get("leadgen_id")
+        or ad.get("lead_id")
+        or ad.get("id")
+        or ""
+    )
 
+    # Ответы формы уже лежат целиком в `answers` — в extra не дублируем.
+    answer_keys = {normalize_key(a["name"]) for a in answers}
     extra: dict[str, str] = {}
     for k, v in flat.items():
-        if k in used or not v:
+        if k in used or k in answer_keys or not v:
             continue
         if len(extra) >= MAX_EXTRA_KEYS:
             break
@@ -399,6 +479,9 @@ def parse_lead(record: dict) -> ParsedLead:
         product_hint=_clip(product, 256),
         has_card=_clip(has_card, 64),
         external_id=_clip(external_id, 128),
+        email=_clip(email, 254),
+        comment=_clip(comment, 1000),
         ad=ad,
         extra=extra,
+        answers=answers,
     )

@@ -157,6 +157,104 @@ def test_product_falls_back_to_form_name_and_extra_is_bounded():
     assert "name" not in p.extra and "phone" not in p.extra
 
 
-def test_empty_record():
-    assert parse_lead({"foo": "bar"}).is_empty
-    assert not parse_lead({"name": "Only name"}).is_empty
+def test_missing_phone():
+    assert parse_lead({}).missing_phone
+    assert parse_lead({"foo": "bar"}).missing_phone
+    assert parse_lead({"name": "Only name"}).missing_phone
+    assert not parse_lead({"phone": "901234567"}).missing_phone
+
+
+# ---- LeadPixel official payload (2026-10-15) ----------------------------
+
+LEADPIXEL_BODY = {
+    "name": "Ali Valiyev",
+    "phone": "+998901234567",
+    "email": None,
+    "source": "Meta Ads",
+    "meta_lead_id": "1023323200742493",
+    "ad_id": "120249319606330361",
+    "ad_name": "Video 1",
+    "adset_name": "Toshkent 18-35",
+    "campaign_name": "Sentyabr",
+    "form_id": "900112233",
+    "created_at": "2026-09-07T07:12:31.000Z",
+    "utm_source": "facebook",
+    "utm_medium": "cpc",
+    "utm_campaign": "Sentyabr",
+    "utm_content": "120249319606330361",
+    "comment": "Заявка из формы Meta · кампания «Сентябрь» · Meta lead id 1023323200742493",
+    "fields": [
+        {"name": "full_name", "value": "Ali Valiyev"},
+        {"name": "phone_number", "value": "+998901234567"},
+        {"name": "qaysi_kurs", "value": "Frontend"},
+    ],
+}
+
+
+def test_leadpixel_payload():
+    p = parse_lead(LEADPIXEL_BODY)
+    assert p.full_name == "Ali Valiyev"
+    assert p.phone_raw == "+998901234567"
+    assert p.external_id == "1023323200742493"
+    # Нет известного product-ключа → первый «не контактный» ответ формы.
+    assert p.product_hint == "qaysi_kurs: Frontend"
+    assert p.comment.startswith("Заявка из формы Meta")
+    assert p.email == ""
+    assert p.ad == {
+        "meta_lead_id": "1023323200742493",
+        "form_id": "900112233",
+        "campaign_name": "Sentyabr",
+        "adset_name": "Toshkent 18-35",
+        "ad_id": "120249319606330361",
+        "ad_name": "Video 1",
+        "created_at": "2026-09-07T07:12:31.000Z",
+        "source": "Meta Ads",
+        "utm_source": "facebook",
+        "utm_medium": "cpc",
+        "utm_campaign": "Sentyabr",
+        "utm_content": "120249319606330361",
+    }
+    assert p.answers == LEADPIXEL_BODY["fields"]
+    # Ответы формы лежат в answers — в extra не дублируются.
+    assert p.extra == {}
+
+
+def test_leadpixel_empty_top_level_name_falls_back_to_fields():
+    body = {
+        "name": "",
+        "phone": "",
+        "meta_lead_id": "1",
+        "fields": [
+            {"name": "name", "value": "Dilnoza"},
+            {"name": "phone_number", "value": "+998 90 765 43 21"},
+            {"name": "email", "value": "d@example.uz"},
+        ],
+    }
+    p = parse_lead(body)
+    assert (p.full_name, p.phone_raw, p.email) == ("Dilnoza", "+998 90 765 43 21", "d@example.uz")
+
+
+def test_product_known_key_inside_fields_wins():
+    body = {
+        "phone": "901234567",
+        "campaign_name": "Kampaniya",
+        "fields": [
+            {"name": "qaysi_shahar", "value": "Toshkent"},
+            {"name": "qanday_telefon_xarid_qilmoqchisiz?", "value": "iPhone 16"},
+        ],
+    }
+    assert parse_lead(body).product_hint == "iPhone 16"
+
+
+def test_product_falls_back_to_campaign_then_ad_name():
+    assert parse_lead({"phone": "901234567", "campaign_name": "C", "ad_name": "A"}).product_hint == "C"
+    assert parse_lead({"phone": "901234567", "ad_name": "A"}).product_hint == "A"
+    # Только контактные ответы → к кампании.
+    body = {"phone": "901234567", "ad_name": "A", "fields": [{"name": "full_name", "value": "X"}]}
+    assert parse_lead(body).product_hint == "A"
+
+
+def test_external_id_order():
+    assert parse_lead({"phone": "1", "meta_lead_id": "M", "id": "I"}, idempotency_key="H").external_id == "M"
+    assert parse_lead({"phone": "1", "leadgen_id": "G"}, idempotency_key="H").external_id == "H"
+    assert parse_lead({"phone": "1", "leadgen_id": "G", "id": "I"}).external_id == "G"

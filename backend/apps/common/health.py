@@ -34,6 +34,7 @@ Design decisions:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime, timezone as _tz
 
 from django.conf import settings
@@ -87,11 +88,36 @@ EXPECTED_INTERVALS: dict[str, int] = {
     "userclient": 10 * 60,
     # Watchdog itself — ticks every 60s. If stale, /healthz 503s.
     "watchdog": 3 * 60,
-    # NB: `lead_outbound` (process_lead_outbound, статусы в LeadPixel) пишет
-    # heartbeat, но сюда НЕ добавлен намеренно: compose-сервиса пока нет
-    # (формат LeadPixel неизвестен). Добавить вместе с сервисом:
-    #   "lead_outbound": 5 * 60,
+    # LeadPixel status sender (`lead-outbound`, process_lead_outbound) —
+    # idle tick every 5s. Monitored only while some source has outbound
+    # enabled (see CONDITIONAL_SERVICES), otherwise reported "disabled".
+    "lead_outbound": 5 * 60,
 }
+
+
+def _lead_outbound_enabled() -> bool:
+    from apps.leads.integrations.webhook.outbound import lead_outbound_any_enabled
+
+    return lead_outbound_any_enabled()
+
+
+# Services that only matter in some configurations: name → predicate. When
+# the predicate is False (or fails) the snapshot reports status "disabled"
+# instead of missing / stale, so no alert fires for a feature that is off.
+CONDITIONAL_SERVICES: dict[str, Callable[[], bool]] = {
+    "lead_outbound": _lead_outbound_enabled,
+}
+
+
+def _service_enabled(service: str) -> bool:
+    check = CONDITIONAL_SERVICES.get(service)
+    if check is None:
+        return True
+    try:
+        return bool(check())
+    except Exception as exc:  # pragma: no cover — defensive
+        logger.warning("health: condition for %s failed: %s", service, exc)
+        return False
 
 
 def _redis_client():
@@ -166,11 +192,21 @@ def health_snapshot() -> list[dict]:
       - "ok"       — heartbeat present and age <= max_age_s
       - "stale"    — heartbeat present but age > max_age_s
       - "missing"  — no heartbeat key at all (service never ticked)
+      - "disabled" — conditional service whose feature is off
     """
     now = timezone.now()
     out: list[dict] = []
     for service, max_age in sorted(EXPECTED_INTERVALS.items()):
         last = read_heartbeat(service)
+        if not _service_enabled(service):
+            out.append({
+                "service": service,
+                "last_ok_iso": last.isoformat() if last else None,
+                "age_s": None,
+                "max_age_s": max_age,
+                "status": "disabled",
+            })
+            continue
         if last is None:
             out.append({
                 "service": service,

@@ -28,6 +28,7 @@ from .apis import (
     SheetSourceListCreateApi,
     SheetSourcePreviewApi,
     SheetSourceResetWatermarkApi,
+    SheetSourceRotateWebhookKeyApi,
     SheetSourceStatsApi,
     SheetSourceSyncAllApi,
     SheetSourceSyncNowApi,
@@ -76,6 +77,7 @@ sheet_source_urlpatterns = [
     path("<int:pk>/sync-now/", SheetSourceSyncNowApi.as_view()),
     path("<int:pk>/reset-watermark/", SheetSourceResetWatermarkApi.as_view()),
     path("<int:pk>/stats/", SheetSourceStatsApi.as_view()),
+    path("<int:pk>/rotate-webhook-key/", SheetSourceRotateWebhookKeyApi.as_view()),
 ]
 
 alias_urlpatterns = [

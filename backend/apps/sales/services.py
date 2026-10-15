@@ -554,9 +554,10 @@ def _link_sale_to_lead_and_mark_won(*, sale: Sale, lead_id: int, user) -> None:
 
 def _schedule_lead_outbound_sale(*, sale: Sale, kind: str) -> None:
     """
-    Report a sale (or its return) of a webhook-source lead back to the
-    source (LeadPixel ROAS). On commit, deduped per sale; no-op for leads
-    from Google sheets and for unlinked sales. Never raises.
+    Report a sale / its return / reject / deletion of a webhook-source lead
+    back to the source (LeadPixel ROAS): on commit the lead's current
+    LeadPixel state is snapshotted (won + amount, or «Возврат»). No-op for
+    leads from Google sheets and for unlinked sales. Never raises.
     """
     if not sale.lead_id:
         return
@@ -1069,6 +1070,7 @@ def sale_soft_delete(*, sale: Sale, user=None) -> Sale:
         entity_id=sale.id,
         changes={"is_deleted": True},
     )
+    _schedule_lead_outbound_sale(sale=sale, kind="sale_cancelled")
     _schedule_dashboard_cache_bust()
     return sale
 
@@ -1134,6 +1136,7 @@ def sale_reject(*, sale: Sale, user, reason: str) -> Sale:
         },
     )
     _notify_operator_of_reject(sale=sale, reason=reason, user=user)
+    _schedule_lead_outbound_sale(sale=sale, kind="sale_cancelled")
     _schedule_dashboard_cache_bust()
     return sale
 

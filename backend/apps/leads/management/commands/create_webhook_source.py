@@ -3,12 +3,14 @@ Create (or re-key) a webhook lead source — LeadPixel «Своя CRM» and the 
 
     python manage.py create_webhook_source --name "LeadPixel (Meta)" --hot --hot-sla 10 \
         --operators 3,7 --distribution alias_or_rr
-    python manage.py create_webhook_source --rotate 12
+    python manage.py create_webhook_source --rotate 12        # new URL token
+    python manage.py create_webhook_source --rotate-key 12    # new X-API-Key
 
-Prints the intake path `/api/integrations/leads/<token>/` — prepend the
-public host (https://naff.flek.uz) and paste it into LeadPixel as
-«Адрес приёма лидов (webhook)». The source then shows up in «Таблицы»
-like any sheet: operator pool, hot SLA, sales attribution.
+Prints the intake path `/api/integrations/leads/<token>/` (prepend the
+public host, https://naff.flek.uz) and the API key. In LeadPixel: URL →
+«Адрес приёма лидов (webhook)», key → the field LeadPixel sends as
+`X-API-Key`. The source then shows up in «Таблицы» like any sheet:
+operator pool, hot SLA, sales attribution.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from apps.common.exceptions import ApplicationError
 from apps.leads.integrations.webhook.services import (
     webhook_path,
     webhook_source_create,
+    webhook_source_rotate_api_key,
     webhook_source_rotate_token,
 )
 from apps.leads.models import DistributionMode, SheetSource, SheetSourceKind
@@ -43,21 +46,34 @@ class Command(BaseCommand):
             choices=list(DistributionMode.values),
             help="Distribution mode (webhook has no alias → round-robin in practice).",
         )
-        parser.add_argument("--rotate", type=int, help="Rotate the token of webhook source <id>.")
+        parser.add_argument("--rotate", type=int, help="Rotate the URL token of webhook source <id>.")
+        parser.add_argument("--rotate-key", type=int, help="Rotate the X-API-Key of webhook source <id>.")
+
+    def _print(self, src: SheetSource) -> None:
+        self.stdout.write(f"URL: {webhook_path(src.webhook_token)}")
+        self.stdout.write(f"X-API-Key: {src.webhook_api_key}")
+
+    def _webhook_source(self, pk: int) -> SheetSource:
+        src = SheetSource.objects.filter(pk=pk, kind=SheetSourceKind.WEBHOOK).first()
+        if src is None:
+            raise CommandError(f"No webhook source with id={pk}")
+        return src
 
     def handle(self, *args, **opts) -> None:
         if opts.get("rotate"):
-            src = SheetSource.objects.filter(pk=opts["rotate"], kind=SheetSourceKind.WEBHOOK).first()
-            if src is None:
-                raise CommandError(f"No webhook source with id={opts['rotate']}")
-            src = webhook_source_rotate_token(source=src)
+            src = webhook_source_rotate_token(source=self._webhook_source(opts["rotate"]))
             self.stdout.write(self.style.SUCCESS(f"Rotated token of source #{src.id} «{src.name}»"))
-            self.stdout.write(webhook_path(src.webhook_token))
+            self._print(src)
+            return
+        if opts.get("rotate_key"):
+            src = webhook_source_rotate_api_key(source=self._webhook_source(opts["rotate_key"]))
+            self.stdout.write(self.style.SUCCESS(f"Rotated API key of source #{src.id} «{src.name}»"))
+            self._print(src)
             return
 
         name = (opts.get("name") or "").strip()
         if not name:
-            raise CommandError("--name is required (or --rotate <id>)")
+            raise CommandError("--name is required (or --rotate / --rotate-key <id>)")
         sla = int(opts["hot_sla"])
         if not 1 <= sla <= 120:
             raise CommandError("--hot-sla must be within 1..120")
@@ -89,4 +105,4 @@ class Command(BaseCommand):
         except ApplicationError as exc:
             raise CommandError(exc.message) from exc
         self.stdout.write(self.style.SUCCESS(f"Created webhook source #{src.id} «{src.name}»"))
-        self.stdout.write(webhook_path(src.webhook_token))
+        self._print(src)

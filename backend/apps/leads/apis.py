@@ -207,6 +207,9 @@ class SheetSourceSerializer(serializers.ModelSerializer):
     # «Статусы обратно»: api_key в ответах замаскирован, PATCH с маской
     # оставляет старый ключ.
     outbound_config = serializers.JSONField(required=False)
+    # Ключ, который LeadPixel шлёт в X-API-Key. Целиком — только в ответе
+    # на создание / ротацию (context["reveal_webhook_api_key"]), иначе маска.
+    webhook_api_key = serializers.SerializerMethodField()
 
     class Meta:
         model = SheetSource
@@ -215,6 +218,7 @@ class SheetSourceSerializer(serializers.ModelSerializer):
             "name",
             "kind",
             "webhook_url",
+            "webhook_api_key",
             "outbound_config",
             "spreadsheet_id",
             "gid",
@@ -267,6 +271,15 @@ class SheetSourceSerializer(serializers.ModelSerializer):
         path = webhook_path(obj.webhook_token)
         request = self.context.get("request")
         return request.build_absolute_uri(path) if request is not None else path
+
+    def get_webhook_api_key(self, obj) -> str | None:
+        if obj.kind != SheetSourceKind.WEBHOOK:
+            return None
+        from .integrations.webhook.services import mask_secret
+
+        if self.context.get("reveal_webhook_api_key"):
+            return obj.webhook_api_key
+        return mask_secret(obj.webhook_api_key)
 
     def to_representation(self, instance):
         from .integrations.webhook.services import outbound_config_masked
@@ -1229,7 +1242,9 @@ class SheetSourceListCreateApi(ListCreateAPIView):
                     user=request.user,
                 )
             return Response(
-                SheetSourceSerializer(obj, context={"request": request}).data,
+                SheetSourceSerializer(
+                    obj, context={"request": request, "reveal_webhook_api_key": True}
+                ).data,
                 status=status.HTTP_201_CREATED,
             )
         obj = sheet_source_upsert(
@@ -1308,6 +1323,31 @@ class SheetSourceDetailApi(APIView):
             user=request.user,
         )
         return Response(SheetSourceSerializer(updated, context={"request": request}).data)
+
+
+class SheetSourceRotateWebhookKeyApi(APIView):
+    """
+    POST /api/sheet-sources/{id}/rotate-webhook-key/ — new X-API-Key for a
+    webhook source. The full key is returned once, in this response; the
+    old key stops working immediately.
+    """
+
+    permission_classes = [IsTeamLead]
+
+    def post(self, request, pk: int):
+        from .integrations.webhook.services import webhook_source_rotate_api_key
+
+        obj = SheetSource.objects.filter(pk=pk).first()
+        if not obj:
+            return Response({"detail": "Not found"}, status=404)
+        if obj.kind != SheetSourceKind.WEBHOOK:
+            return Response({"detail": "Источник не webhook"}, status=400)
+        obj = webhook_source_rotate_api_key(source=obj, user=request.user)
+        return Response(
+            SheetSourceSerializer(
+                obj, context={"request": request, "reveal_webhook_api_key": True}
+            ).data
+        )
 
 
 class SheetSourcePreviewApi(APIView):

@@ -1,10 +1,18 @@
 """
 Public lead intake: `POST /api/integrations/leads/<token>/`.
 
-The token in the path is the only auth (that is how LeadPixel «Своя CRM»,
-Make, Zapier etc. call a webhook). Unknown / inactive token → 404 so the
-endpoint does not reveal which tokens exist. GET / HEAD on the same URL
-answer 200 — many tools «test» a webhook URL before saving it.
+Auth (LeadPixel spec): `X-API-Key: <source.webhook_api_key>`, checked with
+`hmac.compare_digest`; the token in the path stays as an extra secret.
+Order: unknown / inactive token → 404 (does not reveal which tokens
+exist); known token + missing / wrong key → 401 `{"error": "invalid key"}`
+BEFORE the body is looked at; then size / body checks. GET / HEAD on the
+same URL answer 200 without a key — tools «test» a webhook URL first.
+
+Responses: new lead (also needs_review) → 201, merged / duplicate → 200, always
+with `"id": "<lead id>"` (string — LeadPixel sends it back in statuses).
+No phone (LeadPixel's `{}` connect check) → 400. Only real internal errors
+are 5xx: LeadPixel retries 408/425/429/5xx and treats every other status
+as final. Nothing here calls Google or any HTTP — the 15 s budget is safe.
 
 Body: JSON object / array, `application/x-www-form-urlencoded` or
 multipart form. Parsed flexibly (`parse.py`), every request is journaled
@@ -26,7 +34,7 @@ from rest_framework.views import APIView
 from apps.leads.models import InboundLeadEventOutcome
 from apps.leads.selectors import webhook_source_by_token
 
-from .services import inbound_journal, inbound_leads_process
+from .services import inbound_journal, inbound_leads_process, webhook_api_key_valid
 
 logger = logging.getLogger("leads.webhook")
 
@@ -90,6 +98,9 @@ class LeadWebhookApi(APIView):
         source = webhook_source_by_token(token)
         if source is None:
             return Response({"ok": False, "error": "not found"}, status=404)
+        if not webhook_api_key_valid(source, request.META.get("HTTP_X_API_KEY")):
+            logger.warning("webhook source=%s: invalid X-API-Key from %s", source.id, _client_ip(request))
+            return Response({"ok": False, "error": "invalid key"}, status=401)
 
         try:
             declared = int(request.META.get("CONTENT_LENGTH") or 0)
@@ -114,7 +125,12 @@ class LeadWebhookApi(APIView):
             )
             return Response({"ok": False, "error": str(exc)}, status=400)
 
-        results, is_batch = inbound_leads_process(source=source, body=body, remote_ip=remote_ip)
+        results, is_batch = inbound_leads_process(
+            source=source,
+            body=body,
+            remote_ip=remote_ip,
+            idempotency_key=(request.META.get("HTTP_IDEMPOTENCY_KEY") or "").strip(),
+        )
         logger.info(
             "webhook source=%s ip=%s results=%s",
             source.id,
@@ -137,4 +153,5 @@ class LeadWebhookApi(APIView):
         r = results[0]
         if not r.ok:
             return Response({"ok": False, "error": r.error}, status=http_status)
-        return Response({"ok": True, "lead_id": r.lead_id, "result": r.outcome}, status=http_status)
+        created = r.outcome in (InboundLeadEventOutcome.CREATED, InboundLeadEventOutcome.NEEDS_REVIEW)
+        return Response(r.as_dict(), status=201 if created else 200)
