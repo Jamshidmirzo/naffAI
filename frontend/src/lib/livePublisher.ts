@@ -165,7 +165,7 @@ export const POLL_VISIBLE_MS = 30_000;
 export const POLL_HIDDEN_MS = 120_000;
 /** While the killswitch is off we wait for it to come back — poll faster. */
 export const POLL_DISABLED_MS = 10_000;
-export const SLOW_PROBE_MS = 5 * 60_000;
+export const SLOW_PROBE_MS = 60_000;
 export const BACKOFF_BASE_MS = 2_000;
 export const BACKOFF_MAX_MS = 60_000;
 export const BACKOFF_JITTER_MS = 1_000;
