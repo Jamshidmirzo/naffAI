@@ -46,8 +46,10 @@ def test_live_now_is_scoped_and_explains_who_is_off(team, no_lk):
     data = _api(m1).get("/api/live/live-now/").json()
     assert data["source"] == "db" and data["room_name"] == ROOM
     assert data["live_now"] == []  # op2 belongs to m2
+    op5 = Operator.objects.create(full_name="Eldor", livestream_enabled=False, managed_by=m1)
+    data = _api(m1).get("/api/live/live-now/").json()
     reasons = {r["id"]: r["reason"] for r in data["enabled_operators"]}
-    assert reasons == {op1.id: "no_shift", op3.id: "paused", op4.id: "offline"}
+    assert reasons == {op1.id: "no_shift", op3.id: "paused", op4.id: "offline", op5.id: "disabled"}
 
     data2 = _api(m2).get("/api/live/live-now/").json()
     assert [r["operator_id"] for r in data2["live_now"]] == [op2.id]

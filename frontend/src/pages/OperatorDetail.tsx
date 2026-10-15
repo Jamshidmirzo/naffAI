@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { AlertTriangle, ChevronRight, Copy, Download, Eye, EyeOff, History, KeyRound, MessageCircle, Pencil, QrCode, RefreshCw, ShieldOff, ShieldCheck, Target, Trash2, UserPlus } from "lucide-react";
+import { AlertTriangle, ChevronRight, Copy, Download, Eye, EyeOff, History, KeyRound, MessageCircle, Pencil, QrCode, RefreshCw, ShieldOff, ShieldCheck, Target, Trash2, UserPlus, Video } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../store/auth";
 import { normaliseRole, isManagerLevel } from "../components/RoleGate";
@@ -348,6 +348,18 @@ export default function OperatorDetail() {
     setEditPhones(true);
   };
 
+  // One-click live switch in the header (the same flag as in the edit
+  // form). Turning it off also drops a running stream server-side.
+  const liveFlagMut = useMutation({
+    mutationFn: (on: boolean) => api.patch(`/operators/${id}/`, { livestream_enabled: on }),
+    onSuccess: (_r, on) => {
+      invalidateAccount();
+      qc.invalidateQueries({ queryKey: ["operators"] });
+      qc.invalidateQueries({ queryKey: ["live-now"] });
+      toast.success(t(on ? "op_detail.live_flag_on_done" : "op_detail.live_flag_off_done"));
+    },
+  });
+
   const saveProfileMut = useMutation({
     mutationFn: (payload: {
       full_name: string;
@@ -576,6 +588,24 @@ export default function OperatorDetail() {
                 <StatusBadge tone={toneForStatus(s.operator.status)}>
                   {statusLabel(t, s.operator.status)}
                 </StatusBadge>
+              )}
+              {isManager && detail.data && (
+                <button
+                  type="button"
+                  onClick={() => liveFlagMut.mutate(!(detail.data?.livestream_enabled ?? true))}
+                  disabled={liveFlagMut.isPending}
+                  className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold transition disabled:opacity-60"
+                  style={
+                    detail.data.livestream_enabled ?? true
+                      ? { background: "rgba(220,38,38,0.08)", color: "rgb(185,28,28)", border: "1px solid rgba(220,38,38,0.25)" }
+                      : { background: "var(--faint)", color: "var(--muted)", border: "1px solid var(--border)" }
+                  }
+                  title={t("op_detail.live_flag_hint")}
+                  data-testid="op-live-flag"
+                >
+                  <Video className="w-3.5 h-3.5" />
+                  {t(detail.data.livestream_enabled ?? true ? "op_detail.live_flag_on" : "op_detail.live_flag_off")}
+                </button>
               )}
               {isManager && liveRow && (
                 <Link

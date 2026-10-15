@@ -46,7 +46,7 @@ export type LiveNowRow = {
   is_paused?: boolean;
 };
 
-export type NotLiveReason = "paused" | "no_shift" | "offline";
+export type NotLiveReason = "disabled" | "paused" | "no_shift" | "offline";
 
 export type EnabledOperatorRow = {
   id: number;
@@ -55,6 +55,7 @@ export type EnabledOperatorRow = {
   is_live?: boolean;
   on_shift?: boolean;
   is_paused?: boolean;
+  livestream_enabled?: boolean;
   reason?: NotLiveReason | null;
 };
 

@@ -96,6 +96,8 @@ function enterFullscreen(el: HTMLElement) {
 
 const notLiveReason = (o: EnabledOperatorRow): NotLiveReason =>
   o.reason ?? (o.is_paused ? "paused" : o.on_shift === false ? "no_shift" : "offline");
+// Flag-off operators go last: they are off on purpose, not a problem.
+const NOT_LIVE_ORDER = ["paused", "no_shift", "offline", "disabled"] as const;
 
 const isPoor = (q: string | undefined) => q === "poor" || q === "lost";
 
@@ -133,6 +135,8 @@ export default function LiveWall() {
 
   const rows = liveNow.data?.live_now ?? EMPTY_ROWS;
   const enabledOps = liveNow.data?.enabled_operators ?? EMPTY_OPS;
+  // Operators whose live flag is on (the rest are listed as «эфир выключен»).
+  const flagOnCount = useMemo(() => enabledOps.filter((o) => o.livestream_enabled !== false).length, [enabledOps]);
 
   const searchMatched = useMemo(
     () =>
@@ -169,10 +173,11 @@ export default function LiveWall() {
     [allTiles, onlyVideo],
   );
 
-  // «Не в эфире» — flag on, but not live; grouped by reason.
+  // «Не в эфире» — every working operator who is not live, grouped by reason
+  // (incl. «эфир выключен» — the flag is off on the operator card).
   const notLiveGroups = useMemo(() => {
     const liveIds = new Set(rows.map((r) => r.operator_id));
-    const groups: Record<NotLiveReason, EnabledOperatorRow[]> = { paused: [], no_shift: [], offline: [] };
+    const groups: Record<NotLiveReason, EnabledOperatorRow[]> = { paused: [], no_shift: [], offline: [], disabled: [] };
     for (const o of enabledOps) {
       if (o.is_live ?? liveIds.has(o.id)) continue;
       if (q && !(o.full_name || "").toLowerCase().includes(q)) continue;
@@ -180,7 +185,7 @@ export default function LiveWall() {
     }
     return groups;
   }, [rows, enabledOps, q]);
-  const notLiveCount = notLiveGroups.paused.length + notLiveGroups.no_shift.length + notLiveGroups.offline.length;
+  const notLiveCount = NOT_LIVE_ORDER.reduce((n, r) => n + notLiveGroups[r].length, 0);
 
   // --- focus view ----------------------------------------------------------
 
@@ -280,8 +285,8 @@ export default function LiveWall() {
             </button>
           )}
           <span className="text-sm text-text" data-testid="live-count">
-            {enabledOps.length > 0
-              ? t("live.wall.count", { n: rows.length, m: enabledOps.length })
+            {flagOnCount > 0
+              ? t("live.wall.count", { n: rows.length, m: flagOnCount })
               : t("live.wall.count_short", { n: rows.length })}
           </span>
         </div>
@@ -370,8 +375,8 @@ export default function LiveWall() {
         <StateCard
           title={t("live.wall.empty_title")}
           text={
-            enabledOps.length > 0
-              ? t("live.wall.empty_enabled", { n: enabledOps.length })
+            flagOnCount > 0
+              ? t("live.wall.empty_enabled", { n: flagOnCount })
               : t("live.wall.empty_none")
           }
         />
@@ -397,7 +402,7 @@ export default function LiveWall() {
             {t("live.wall.not_live", { n: notLiveCount })}
           </summary>
           <div className="mt-3 grid gap-4 md:grid-cols-3">
-            {(["paused", "no_shift", "offline"] as const).map((reason) =>
+            {NOT_LIVE_ORDER.map((reason) =>
               notLiveGroups[reason].length === 0 ? null : (
                 <div key={reason}>
                   <div className="nf-col mb-1.5">
@@ -495,7 +500,7 @@ export default function LiveWall() {
         <p className="text-sm text-text">
           {globalOn
             ? t("live.wall.ks_confirm_off", { n: rows.length })
-            : t("live.wall.ks_confirm_on", { n: enabledOps.length })}
+            : t("live.wall.ks_confirm_on", { n: flagOnCount })}
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="secondary" size="sm" onClick={() => setConfirmOpen(false)}>

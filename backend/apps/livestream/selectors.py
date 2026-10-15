@@ -55,11 +55,11 @@ def _open_shift_operator_ids(operator_ids: list[int]) -> set[int]:
     )
 
 
-def livestream_enabled_operators(*, actor) -> QuerySet[Operator]:
-    """Operators who should be on air (flag ON, active / trainee)."""
+def livestream_candidate_operators(*, actor) -> QuerySet[Operator]:
+    """Working operators the manager can see (active / trainee), flag on or
+    off — the wall lists who is not on air and why, incl. «flag off»."""
     return Operator.objects.filter(
         id__in=visible_operator_ids(actor),
-        livestream_enabled=True,
         status__in=[OperatorStatus.ACTIVE, OperatorStatus.TRAINEE],
     ).order_by("full_name")
 
@@ -67,12 +67,13 @@ def livestream_enabled_operators(*, actor) -> QuerySet[Operator]:
 def live_now_payload(*, actor) -> dict[str, Any]:
     """
     Data for the manager's wall: who is live (one row per operator, the
-    newest connection) and who should be but is not, with the reason.
+    newest connection) and every other working operator with the reason
+    they are not on air (disabled / paused / no_shift / offline).
     """
     sessions: dict[int, LivestreamSession] = {}
     for s in live_now_sessions(actor=actor):
         sessions.setdefault(s.operator_id, s)
-    enabled = list(livestream_enabled_operators(actor=actor))
+    enabled = list(livestream_candidate_operators(actor=actor))
     on_shift = _open_shift_operator_ids(
         list({op.id for op in enabled} | set(sessions))
     )
@@ -98,6 +99,8 @@ def live_now_payload(*, actor) -> dict[str, Any]:
         is_live = op.id in sessions
         if is_live:
             reason = None
+        elif not op.livestream_enabled:
+            reason = "disabled"
         elif op.is_paused:
             reason = "paused"
         elif op.id not in on_shift:
@@ -112,6 +115,7 @@ def live_now_payload(*, actor) -> dict[str, Any]:
                 "is_live": is_live,
                 "on_shift": op.id in on_shift,
                 "is_paused": op.is_paused,
+                "livestream_enabled": op.livestream_enabled,
                 "reason": reason,
             }
         )
