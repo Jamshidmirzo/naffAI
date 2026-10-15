@@ -92,6 +92,9 @@ EXPECTED_INTERVALS: dict[str, int] = {
     # idle tick every 5s. Monitored only while some source has outbound
     # enabled (see CONDITIONAL_SERVICES), otherwise reported "disabled".
     "lead_outbound": 5 * 60,
+    # Live reconcile / recording rotation (`live-ops`, live_ops) — every
+    # 30s. Monitored only where LiveKit's server API is configured.
+    "live_ops": 5 * 60,
 }
 
 
@@ -104,8 +107,13 @@ def _lead_outbound_enabled() -> bool:
 # Services that only matter in some configurations: name → predicate. When
 # the predicate is False (or fails) the snapshot reports status "disabled"
 # instead of missing / stale, so no alert fires for a feature that is off.
+def _live_ops_enabled() -> bool:
+    return bool(getattr(settings, "LIVEKIT_API_URL", ""))
+
+
 CONDITIONAL_SERVICES: dict[str, Callable[[], bool]] = {
     "lead_outbound": _lead_outbound_enabled,
+    "live_ops": _live_ops_enabled,
 }
 
 

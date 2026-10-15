@@ -9,6 +9,8 @@
 #   3. one image build, ALL backend services (+ bot) recreated on it — never
 #      again a web on new code and background services on old code
 #   4. health check; if web does not come up → automatic rollback
+#   5. live stack (profile `live`: livekit, livekit-redis, egress) brought
+#      up when .env has LIVEKIT_API_KEY; recreated only if its config changed
 # Frontend is NOT touched unless --frontend is given.
 #
 # Usage:  bash deploy/deploy-prod.sh            # backend
@@ -103,7 +105,7 @@ done
 "${SSH[@]}" "set -e; cd $APP
 NEW=\$(sudo docker images naffai-backend:latest --format '{{.ID}}')
 bad=0
-for c in \$(sudo docker ps --format '{{.Names}}' | grep -E '^naffai-' | grep -vE 'demo|db-1|redis-1|docker-proxy'); do
+for c in \$(sudo docker ps --format '{{.Names}}' | grep -E '^naffai-' | grep -vE 'demo|db-1|redis-1|docker-proxy|livekit|egress'); do
   img=\$(sudo docker inspect -f '{{.Image}}' \$c | cut -c8-19)
   [ \"\$img\" = \"\$NEW\" ] || { echo \"OLD IMAGE: \$c\"; bad=1; }
 done
@@ -111,6 +113,16 @@ echo \"all backend containers on \$NEW (mismatch=\$bad)\"
 sudo docker logs --since 2m naffai-web-1 2>&1 | grep -E 'Applying|Traceback' | head -5 || true
 # keep the last 3 rollback images
 sudo docker images naffai-backend --format '{{.Tag}}' | grep '^rollback-' | sort -r | tail -n +4 | xargs -r -I{} sudo docker rmi naffai-backend:{} >/dev/null 2>&1 || true"
+
+# Live stack (LiveKit + egress) — third-party images, not rebuilt; started
+# when the server has LiveKit keys, recreated only when its config changed.
+echo "== live stack"
+"${SSH[@]}" "set -e; cd $APP
+if ! sudo grep -qE '^LIVEKIT_API_KEY=.+' .env; then echo 'no LIVEKIT_API_KEY in .env — skipped'; exit 0; fi
+FORCE=''
+sudo git diff --quiet $CURRENT HEAD -- docker-compose.prod.yml deploy/livekit 2>/dev/null || FORCE=--force-recreate
+$COMPOSE --profile live up -d \$FORCE livekit-redis livekit egress 2>&1 | grep -E 'Started|Recreated|Running|Error' || true
+sudo docker ps --format '{{.Names}} {{.Status}}' | grep -E 'livekit|egress'"
 
 if [[ $WITH_FRONTEND == 1 ]]; then
   echo "== frontend (main) → /var/www/naff-v2"

@@ -44,6 +44,13 @@ class LivestreamSession(TimestampedModel):
     )
     room_name = models.CharField(max_length=64, db_index=True)
     participant_identity = models.CharField(max_length=64, db_index=True)
+    # LiveKit's per-connection id (PA_…). One identity reconnecting gets a
+    # new sid — `participant_left` of the old connection must not close
+    # the new one.
+    participant_sid = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    # Camera track currently published (track_published / ListParticipants).
+    has_video = models.BooleanField(default=False)
+    video_track_sid = models.CharField(max_length=64, blank=True, default="")
     started_at = models.DateTimeField(db_index=True)
     ended_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(
@@ -60,6 +67,7 @@ class LivestreamSession(TimestampedModel):
         indexes = [
             models.Index(fields=["status", "started_at"]),
             models.Index(fields=["operator", "started_at"]),
+            models.Index(fields=["room_name", "status"]),
         ]
 
     def __str__(self) -> str:
@@ -76,9 +84,11 @@ class RecordingSessionStatus(models.TextChoices):
 
 class RecordingSession(TimestampedModel):
     """
-    One egress artifact → one row. For MVP we rely on LiveKit's
-    `TrackCompositeEgress` which writes a single mp4 per publisher to S3;
-    the per-chunk option (segmented HLS) is a Phase-2 upgrade.
+    One egress artifact → one row. The backend starts a LiveKit *track*
+    egress for each operator camera track (no transcoding: the H.264
+    track goes into an mp4 in S3) and rotates it hourly, so one row is at
+    most an hour of one operator. Rows are created by `recording_start`
+    and synced from egress webhooks / `live_ops`.
     """
 
     livestream_session = models.ForeignKey(
@@ -97,6 +107,7 @@ class RecordingSession(TimestampedModel):
     )
     room_name = models.CharField(max_length=64, db_index=True)
     participant_identity = models.CharField(max_length=64, db_index=True)
+    track_sid = models.CharField(max_length=64, blank=True, default="", db_index=True)
     # LiveKit's egress UUID — unique, we dedupe webhooks on it.
     egress_id = models.CharField(
         max_length=64,
@@ -116,6 +127,10 @@ class RecordingSession(TimestampedModel):
     duration_s = models.PositiveIntegerField(null=True, blank=True)
     size_bytes = models.BigIntegerField(null=True, blank=True)
     error_text = models.TextField(blank=True, default="")
+    # Hourly rotation asked LiveKit to stop this egress (finalising).
+    stop_requested_at = models.DateTimeField(null=True, blank=True)
+    # Past retention: the S3 lifecycle rule removes the object.
+    deleted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-started_at", "-id"]
@@ -131,12 +146,16 @@ class RecordingSession(TimestampedModel):
 class LiveKitWebhookEvent(TimestampedModel):
     """
     Dedupe guard for webhook retries. LiveKit retries webhooks on 5xx so
-    we need to filter by its `id` (per-event UUID). Keep rows 30 days.
+    we need to filter by its `id` (per-event UUID). `live_ops` prunes rows
+    older than LIVEKIT_WEBHOOK_EVENT_RETENTION_DAYS.
     """
 
     event_id = models.CharField(max_length=128, unique=True)
     event_type = models.CharField(max_length=64, db_index=True)
+    room_name = models.CharField(max_length=64, blank=True, default="", db_index=True)
     payload = models.JSONField()
+    # Handler failure (the event is acknowledged anyway, see webhook_ingest).
+    error_text = models.TextField(blank=True, default="")
     received_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:

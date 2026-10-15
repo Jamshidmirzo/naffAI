@@ -28,6 +28,18 @@ def operator_update(*, operator: Operator, user=None, **fields) -> Operator:
     for k, v in fields.items():
         setattr(operator, k, v)
     operator.save()
+    stream_off = old.get("livestream_enabled") and not operator.livestream_enabled
+    deactivated = (
+        "status" in old
+        and old["status"] != OperatorStatus.INACTIVE
+        and operator.status == OperatorStatus.INACTIVE
+    )
+    if stream_off or deactivated:
+        from apps.livestream.services import publisher_kick_on_commit
+
+        publisher_kick_on_commit(
+            operator_id=operator.id, reason="deactivated" if deactivated else "livestream_disabled"
+        )
     audit_log_create(
         user=user,
         action=AuditAction.UPDATE,
@@ -900,6 +912,12 @@ def operator_set_paused(*, operator: Operator, paused: bool, user=None, reason: 
     operator.paused_at = timezone.now() if paused else None
     operator.paused_reason = reason if paused else ""
     operator.save(update_fields=["is_paused", "paused_at", "paused_reason", "updated_at"])
+    if paused:
+        # A paused operator cannot get a new live token; drop the stream
+        # that is already running too.
+        from apps.livestream.services import publisher_kick_on_commit
+
+        publisher_kick_on_commit(operator_id=operator.id, reason=f"paused:{reason}")
 
     audit_log_create(
         user=user,

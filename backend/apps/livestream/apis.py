@@ -12,7 +12,6 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.system_settings.models import SystemSetting
 from apps.system_settings.selectors import livestream_globally_enabled
 from apps.users.models import Role
 from apps.users.permissions import (
@@ -22,8 +21,7 @@ from apps.users.permissions import (
 )
 
 from .selectors import (
-    live_now_as_dicts,
-    livestream_enabled_operators,
+    live_now_payload,
     recording_detail,
     recordings_queryset,
 )
@@ -31,8 +29,13 @@ from .services import (
     LivestreamConfigError,
     LivestreamDisabledError,
     LivestreamWebhookError,
+    livestream_global_set,
+    participants_fetch_cached,
+    recording_enabled,
     recording_presigned_url,
+    room_name,
     room_token_issue,
+    sessions_reconcile,
     verify_webhook_signature,
     webhook_ingest,
 )
@@ -117,25 +120,25 @@ class RoomTokenApi(APIView):
 
 class LiveNowApi(APIView):
     """
-    Manager-facing poll endpoint — who is currently publishing. Lightweight
-    so it can be polled every ~5 seconds from the LiveWall UI.
+    Manager-facing poll endpoint — who is publishing, scoped to the
+    caller's operators. When LiveKit's server API is reachable the rows
+    are reconciled against its participant list first (cached ~10s), so
+    the wall never shows a ghost or misses a publisher for long.
     """
 
     permission_classes = [IsAuthenticated, IsSuperadminOrManager]
 
     def get(self, request):
-        enabled = [
-            {
-                "id": op.id,
-                "full_name": op.full_name,
-                "status": op.status,
-            }
-            for op in livestream_enabled_operators()
-        ]
+        participants = participants_fetch_cached()
+        if participants is not None:
+            sessions_reconcile(participants=participants)
+        payload = live_now_payload(actor=request.user)
         return Response(
             {
-                "live_now": live_now_as_dicts(),
-                "enabled_operators": enabled,
+                "source": "livekit" if participants is not None else "db",
+                "room_name": room_name(),
+                "recording_enabled": recording_enabled(),
+                **payload,
             }
         )
 
@@ -160,11 +163,12 @@ class RecordingListSerializer(serializers.Serializer):
 
 class RecordingListApi(APIView):
     """
-    Manager-facing list of finished recordings. Supports:
+    Manager-facing list of finished recordings (hourly chunks), scoped to
+    the caller's operators. Supports:
         ?operator_id=
         ?date_from=YYYY-MM-DD
         ?date_to=YYYY-MM-DD
-        ?page_size=25 (default 25, max 200)
+        ?limit=50 (max 200; legacy ?page_size=) &offset=
     """
 
     permission_classes = [IsAuthenticated, IsSuperadminOrManager]
@@ -172,17 +176,15 @@ class RecordingListApi(APIView):
     def get(self, request):
         import datetime as _dt
 
-        operator_id = request.query_params.get("operator_id")
-        date_from = request.query_params.get("date_from")
-        date_to = request.query_params.get("date_to")
-        page_size = request.query_params.get("page_size", "25")
+        params = request.query_params
 
-        try:
-            op_id = int(operator_id) if operator_id else None
-        except (TypeError, ValueError):
-            op_id = None
+        def _int(value, default: int | None) -> int | None:
+            try:
+                return int(value) if value not in (None, "") else default
+            except (TypeError, ValueError):
+                return default
 
-        def _parse(d: str | None) -> _dt.date | None:
+        def _date(d: str | None) -> _dt.date | None:
             if not d:
                 return None
             try:
@@ -190,35 +192,33 @@ class RecordingListApi(APIView):
             except ValueError:
                 return None
 
-        try:
-            page = min(max(int(page_size), 1), 200)
-        except (TypeError, ValueError):
-            page = 25
-
+        limit = min(max(_int(params.get("limit", params.get("page_size")), 50) or 50, 1), 200)
+        offset = max(_int(params.get("offset"), 0) or 0, 0)
         qs = recordings_queryset(
-            operator_id=op_id,
-            date_from=_parse(date_from),
-            date_to=_parse(date_to),
+            actor=request.user,
+            operator_id=_int(params.get("operator_id"), None),
+            date_from=_date(params.get("date_from")),
+            date_to=_date(params.get("date_to")),
             only_finished=True,
         )
-
-        rows = []
-        for r in qs[:page]:
-            rows.append(
-                {
-                    "id": r.id,
-                    "operator_id": r.operator_id,
-                    "operator_name": r.operator.full_name if r.operator_id else None,
-                    "participant_identity": r.participant_identity,
-                    "room_name": r.room_name,
-                    "status": r.status,
-                    "started_at": r.started_at,
-                    "ended_at": r.ended_at,
-                    "duration_s": r.duration_s,
-                    "size_bytes": r.size_bytes,
-                }
-            )
-        return Response({"results": RecordingListSerializer(rows, many=True).data})
+        rows = [
+            {
+                "id": r.id,
+                "operator_id": r.operator_id,
+                "operator_name": r.operator.full_name if r.operator_id else None,
+                "participant_identity": r.participant_identity,
+                "room_name": r.room_name,
+                "status": r.status,
+                "started_at": r.started_at,
+                "ended_at": r.ended_at,
+                "duration_s": r.duration_s,
+                "size_bytes": r.size_bytes,
+            }
+            for r in qs[offset : offset + limit]
+        ]
+        return Response(
+            {"count": qs.count(), "results": RecordingListSerializer(rows, many=True).data}
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +230,7 @@ class RecordingUrlApi(APIView):
     permission_classes = [IsAuthenticated, IsSuperadminOrManager]
 
     def get(self, request, pk: int):
-        rec = recording_detail(pk)
+        rec = recording_detail(actor=request.user, pk=pk)
         if rec is None:
             return Response(
                 {"detail": "Запись не найдена."}, status=status.HTTP_404_NOT_FOUND
@@ -260,6 +260,9 @@ class LiveKitWebhookApi(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes: list = []
+    # LiveKit sends every room/track/participant event from one IP — the
+    # anonymous rate limit would drop them. The body is signed instead.
+    throttle_classes: list = []
 
     def post(self, request):
         auth = request.headers.get("Authorization", "")
@@ -307,12 +310,40 @@ class GlobalStatusApi(APIView):
                 {"detail": "Только менеджер может переключать killswitch"},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        enabled = bool(request.data.get("enabled"))
-        s = SystemSetting.get_solo()
-        s.livestream_global_enabled = enabled
-        s.updated_by = request.user
-        s.save(update_fields=["livestream_global_enabled", "updated_by", "updated_at"])
+        ser = KillswitchSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        enabled = ser.validated_data["enabled"]
+        livestream_global_set(enabled=enabled, user=request.user)
         logger.info(
             "live global killswitch set to %s by %s", enabled, request.user.username
         )
         return Response({"enabled": enabled})
+
+
+class KillswitchSerializer(serializers.Serializer):
+    enabled = serializers.BooleanField()
+
+
+# ---------------------------------------------------------------------------
+# GET /live/config/
+# ---------------------------------------------------------------------------
+
+
+class LiveConfigApi(APIView):
+    """What the UI needs to know about this environment's live setup."""
+
+    permission_classes = [IsAuthenticated, IsAuthenticatedAnyRole]
+
+    def get(self, request):
+        from django.conf import settings
+
+        return Response(
+            {
+                "configured": bool(
+                    settings.LIVEKIT_API_KEY and settings.LIVEKIT_API_SECRET and settings.LIVEKIT_WS_URL
+                ),
+                "recording_enabled": recording_enabled(),
+                "room_name": room_name(),
+                "retention_days": settings.LIVEKIT_RECORDING_RETENTION_DAYS,
+            }
+        )

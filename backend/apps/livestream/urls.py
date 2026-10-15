@@ -6,6 +6,7 @@ urlpatterns = [
     path("room-token/", apis.RoomTokenApi.as_view(), name="live-room-token"),
     path("live-now/", apis.LiveNowApi.as_view(), name="live-now"),
     path("global-status/", apis.GlobalStatusApi.as_view(), name="live-global-status"),
+    path("config/", apis.LiveConfigApi.as_view(), name="live-config"),
     path("recordings/", apis.RecordingListApi.as_view(), name="live-recordings"),
     path(
         "recordings/<int:pk>/url/",

@@ -459,6 +459,20 @@ LIVEKIT_S3_ACCESS_KEY = config("LIVEKIT_S3_ACCESS_KEY", default="")
 LIVEKIT_S3_SECRET_KEY = config("LIVEKIT_S3_SECRET_KEY", default="")
 # Only set for S3-compatible stores (DO Spaces / MinIO). Empty = AWS.
 LIVEKIT_S3_ENDPOINT = config("LIVEKIT_S3_ENDPOINT", default="")
+LIVEKIT_S3_FORCE_PATH_STYLE = config("LIVEKIT_S3_FORCE_PATH_STYLE", default=False, cast=bool)
+
+# One LiveKit server serves prod and demo: each backend owns one room and
+# ignores webhooks of the other (`naffai-prod` / `naffai-demo`).
+LIVEKIT_ROOM_NAME = config("LIVEKIT_ROOM_NAME", default="naffai-ops-floor")
+# Internal URL of the LiveKit server API (Twirp) — `http://livekit:7880`
+# inside compose. Empty = no server calls: no kicks, no recording, live-now
+# falls back to webhook-driven rows.
+LIVEKIT_API_URL = config("LIVEKIT_API_URL", default="")
+# Track egress → one mp4 per operator per hour in LIVEKIT_S3_BUCKET.
+LIVEKIT_RECORDING_ENABLED = config("LIVEKIT_RECORDING_ENABLED", default=False, cast=bool)
+LIVEKIT_RECORDING_RETENTION_DAYS = config("LIVEKIT_RECORDING_RETENTION_DAYS", default=30, cast=int)
+LIVEKIT_RECORDING_ROTATE_MINUTES = config("LIVEKIT_RECORDING_ROTATE_MINUTES", default=60, cast=int)
+LIVEKIT_WEBHOOK_EVENT_RETENTION_DAYS = config("LIVEKIT_WEBHOOK_EVENT_RETENTION_DAYS", default=30, cast=int)
 
 # --- Logging ---
 LOG_DIR = config("LOG_DIR", default="")
