@@ -38,6 +38,7 @@ type WritebackColumns = {
 type SheetSource = {
   id: number;
   name: string;
+  kind?: "sheet" | "webhook";
   spreadsheet_id: string;
   gid: number;
   worksheet_name: string;
@@ -169,6 +170,7 @@ function SheetSourcesPanel({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
                 sourceId={src.id}
                 fallbackName={src.name}
                 onConfigure={() => setEdit(src)}
+                isWebhook={src.kind === "webhook"}
               />
             ))}
           </div>
@@ -483,6 +485,7 @@ function SheetSourceForm({
               className="nf-input"
               value={ws}
               onChange={(e) => setWs(e.target.value)}
+              placeholder={t("sheet_src.field_ws_ph")}
             />
           </Field>
           <div className="col-span-2">

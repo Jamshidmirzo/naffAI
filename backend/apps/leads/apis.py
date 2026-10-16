@@ -8,6 +8,8 @@ rules (alias resolution, phone normalization, auto-assignment) live in
 
 from __future__ import annotations
 
+import logging
+
 from rest_framework import serializers, status
 from rest_framework.generics import ListCreateAPIView, RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
@@ -79,6 +81,8 @@ from .services import (
     telegram_link_upsert,
 )
 from apps.users.selectors import visible_operator_ids
+
+logger = logging.getLogger(__name__)
 
 # ---- Serializers ---------------------------------------------------------
 
@@ -210,6 +214,11 @@ class SheetSourceSerializer(serializers.ModelSerializer):
     # Ключ, который LeadPixel шлёт в X-API-Key. Целиком — только в ответе
     # на создание / ротацию (context["reveal_webhook_api_key"]), иначе маска.
     webhook_api_key = serializers.SerializerMethodField()
+    # Tab titles in Google keep leading/trailing spaces («'Yengi target '»);
+    # DRF trims by default and the trimmed name is a range Google rejects.
+    worksheet_name = serializers.CharField(
+        required=False, allow_blank=True, trim_whitespace=False, max_length=128
+    )
 
     class Meta:
         model = SheetSource
@@ -1476,8 +1485,9 @@ class SheetSourceSyncNowApi(APIView):
         except ApplicationError as exc:
             return Response({"detail": exc.message, **exc.extra}, status=400)
         except Exception as exc:
+            logger.exception("sync-now sheet_source=%s failed", src.id)
             return Response(
-                {"detail": f"Sync failed: {exc}"}, status=500
+                {"detail": f"Синхронизация не удалась: {exc}"}, status=500
             )
 
         src.refresh_from_db()

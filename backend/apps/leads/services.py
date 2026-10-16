@@ -278,6 +278,7 @@ def lead_writeback_to_sheet(lead, comment: str = "", raise_errors: bool = False)
         from .integrations.google_sheets.client import (
             GoogleSheetsClient,
             GoogleSheetsUnavailable,
+            resolve_worksheet_name,
         )
     except Exception as exc:  # pragma: no cover
         logger.warning("google-sheets client import failed: %s", exc)
@@ -291,9 +292,7 @@ def lead_writeback_to_sheet(lead, comment: str = "", raise_errors: bool = False)
             raise
         return
 
-    ws_name = sheet_source.worksheet_name or client.worksheet_name_by_gid(
-        sheet_source.spreadsheet_id, sheet_source.gid
-    )
+    ws_name = resolve_worksheet_name(client, sheet_source)
     if not ws_name:
         logger.warning("writeback: cannot resolve worksheet name for gid=%s", sheet_source.gid)
         return

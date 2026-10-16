@@ -61,7 +61,10 @@ class Command(BaseCommand):
 
     def handle(self, *args, **opts) -> None:
         from apps.common.health import record_heartbeat
-        from apps.leads.integrations.google_sheets.client import GoogleSheetsClient
+        from apps.leads.integrations.google_sheets.client import (
+            GoogleSheetsClient,
+            resolve_worksheet_name,
+        )
         from apps.leads.models import (
             Lead,
             LeadStatus,
@@ -99,7 +102,7 @@ class Command(BaseCommand):
             )
             if not leads:
                 continue
-            tab = src.worksheet_name or client.worksheet_name_by_gid(src.spreadsheet_id, src.gid)
+            tab = resolve_worksheet_name(client, src)
             if not tab:
                 self.stderr.write(f"[{src.id}] {src.name}: cannot resolve worksheet")
                 continue

@@ -170,3 +170,23 @@ def test_negative_duration_falls_back_to_wall_clock(operator):
         "fileResults": [{"filename": "x.mp4", "size": "10", "duration": "-1792065986285986201"}]})
     assert row.status == RecordingSessionStatus.FINISHED
     assert row.duration_s == 60
+
+
+@pytest.mark.django_db
+def test_egress_row_insert_race_reads_the_winner(operator):
+    """egress_started webhook and recording_start create the same egress
+    row at once: the loser of unique(egress_id) gets the winner's row
+    instead of an IntegrityError (seen on prod 2026-10-16)."""
+    from apps.livestream.services import _recording_row_create
+
+    _live_session(operator, track="TR_r")
+    winner = RecordingSession.objects.create(
+        egress_id="EG_race", room_name=ROOM, operator=operator, track_sid="TR_r",
+        status=RecordingSessionStatus.RECORDING,
+    )
+    row = _recording_row_create(
+        info={"egressId": "EG_race", "roomName": ROOM}, egress_id="EG_race",
+        track_sid="TR_r", status=RecordingSessionStatus.PENDING,
+    )
+    assert row.pk == winner.pk
+    assert RecordingSession.objects.filter(egress_id="EG_race").count() == 1

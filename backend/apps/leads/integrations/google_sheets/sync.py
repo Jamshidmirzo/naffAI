@@ -29,7 +29,7 @@ from apps.leads.services import (
     sheet_source_bump_watermark,
 )
 
-from .client import GoogleSheetsClient, GoogleSheetsUnavailable
+from .client import GoogleSheetsClient, GoogleSheetsUnavailable, resolve_worksheet_name
 
 logger = logging.getLogger("leads.google_sheets.sync")
 
@@ -51,21 +51,37 @@ class SyncResult:
     resynced: int = 0
 
 
+def _google_error_message(exc: Exception, worksheet_name: str) -> str | None:
+    """Human text for the Google answers a manager can fix; None otherwise."""
+    import httpx
+
+    if not isinstance(exc, httpx.HTTPStatusError):
+        return None
+    code = exc.response.status_code
+    body = exc.response.text or ""
+    if code == 400 and "Unable to parse range" in body:
+        return (
+            f"Вкладка «{worksheet_name}» не найдена в таблице — её переименовали "
+            "или удалили. Проверьте вкладку в настройках источника."
+        )
+    if code == 403:
+        return "Нет доступа к таблице — откройте её сервисному аккаунту (Редактор)."
+    if code == 404:
+        return "Таблица не найдена — проверьте ссылку на неё."
+    return None
+
+
 def sync_one(
     *,
     client: GoogleSheetsClient,
     sheet_source: SheetSource,
     force_full_scan: bool = False,
 ) -> SyncResult:
+    worksheet_name = ""
     try:
         with transaction.atomic():
             sheet_source = SheetSource.objects.select_for_update(of=("self",)).get(pk=sheet_source.id)
-            worksheet_name = sheet_source.worksheet_name
-            if not worksheet_name:
-                worksheet_name = (
-                    client.worksheet_name_by_gid(sheet_source.spreadsheet_id, sheet_source.gid)
-                    or ""
-                )
+            worksheet_name = resolve_worksheet_name(client, sheet_source)
             if not worksheet_name:
                 logger.warning(
                     "No worksheet found for spreadsheet=%s gid=%s",
@@ -163,10 +179,14 @@ def sync_one(
                 resynced=resynced,
             )
     except Exception as exc:
+        friendly = _google_error_message(exc, worksheet_name)
+        message = friendly or str(exc)
         SheetSource.objects.filter(pk=sheet_source.id).update(
-            last_sync_error=str(exc), updated_at=timezone.now()
+            last_sync_error=message[:2000], updated_at=timezone.now()
         )
-        sheet_source.last_sync_error = str(exc)
+        sheet_source.last_sync_error = message
+        if friendly:
+            raise ApplicationError(friendly, {"reason": "google_sheet"}) from exc
         raise
 
 

@@ -28,7 +28,7 @@ from typing import Any
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.operators.models import Operator, OperatorStatus
@@ -780,6 +780,32 @@ def recording_start(*, session_id: int, track_sid: str) -> RecordingSession | No
     return recording_apply_egress_info(info=info) or row
 
 
+def _recording_row_create(*, info: dict[str, Any], egress_id: str, track_sid: str, status: str) -> RecordingSession:
+    """First sight of an egress (webhook before StartTrackEgress returned, or
+    the other way round). Both paths may insert concurrently — the loser of
+    the unique(egress_id) race reads the winner's row."""
+    session = (
+        LivestreamSession.objects.filter(video_track_sid=track_sid).order_by("-started_at").first()
+        if track_sid
+        else None
+    )
+    try:
+        with transaction.atomic():
+            return RecordingSession.objects.create(
+                egress_id=egress_id,
+                livestream_session=session,
+                operator_id=session.operator_id if session else None,
+                room_name=str(info.get("roomName") or ""),
+                participant_identity=session.participant_identity if session else "",
+                track_sid=track_sid,
+                status=status,
+                s3_bucket=getattr(settings, "LIVEKIT_S3_BUCKET", "") or "",
+                started_at=_lk_ts(info.get("startedAt")) or timezone.now(),
+            )
+    except IntegrityError:
+        return RecordingSession.objects.select_for_update().get(egress_id=egress_id)
+
+
 @transaction.atomic
 def recording_apply_egress_info(*, info: dict[str, Any]) -> RecordingSession | None:
     """Sync one EgressInfo (webhook / StartTrackEgress / ListEgress) into
@@ -792,22 +818,7 @@ def recording_apply_egress_info(*, info: dict[str, Any]) -> RecordingSession | N
 
     row = RecordingSession.objects.select_for_update().filter(egress_id=egress_id).first()
     if row is None:
-        session = (
-            LivestreamSession.objects.filter(video_track_sid=track_sid).order_by("-started_at").first()
-            if track_sid
-            else None
-        )
-        row = RecordingSession.objects.create(
-            egress_id=egress_id,
-            livestream_session=session,
-            operator_id=session.operator_id if session else None,
-            room_name=str(info.get("roomName") or ""),
-            participant_identity=session.participant_identity if session else "",
-            track_sid=track_sid,
-            status=new_status,
-            s3_bucket=getattr(settings, "LIVEKIT_S3_BUCKET", "") or "",
-            started_at=_lk_ts(info.get("startedAt")) or timezone.now(),
-        )
+        row = _recording_row_create(info=info, egress_id=egress_id, track_sid=track_sid, status=new_status)
 
     fields: set[str] = set()
     if _STATUS_RANK.get(new_status, 0) > _STATUS_RANK.get(row.status, 0):

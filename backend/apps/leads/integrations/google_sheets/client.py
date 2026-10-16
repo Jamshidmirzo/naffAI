@@ -327,3 +327,29 @@ class GoogleSheetsClient:
                 entry[h] = cell
             out.append(entry)
         return out
+
+
+def resolve_worksheet_name(client: GoogleSheetsClient, sheet_source) -> str:
+    """
+    The tab of a sheet source, found by its gid first.
+
+    The gid survives renames, while the stored `worksheet_name` goes stale
+    (renamed tab, or a form save that trimmed a trailing space — Google
+    keeps «'Yengi target '» and the range «'Yengi target'!A1» is a 400).
+    The stored name is only a fallback when the gid is not in the sheet
+    or the metadata call fails. Returns "" when nothing resolves.
+    """
+    stored = sheet_source.worksheet_name or ""
+    try:
+        by_gid = client.worksheet_name_by_gid(sheet_source.spreadsheet_id, sheet_source.gid)
+    except Exception as exc:  # metadata hiccup — the stored name may still work
+        logger.warning("sheet_source=%s: gid lookup failed: %s", sheet_source.pk, exc)
+        by_gid = None
+    if isinstance(by_gid, str) and by_gid:
+        if stored and stored != by_gid:
+            logger.info(
+                "sheet_source=%s: tab %r found by gid (stored name %r is stale)",
+                sheet_source.pk, by_gid, stored,
+            )
+        return by_gid
+    return stored

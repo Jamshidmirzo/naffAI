@@ -30,9 +30,11 @@ type Props = {
   sourceId: number;
   fallbackName: string;
   onConfigure: () => void;
+  /** Webhook sources (LeadPixel) receive leads by POST — nothing to sync. */
+  isWebhook?: boolean;
 };
 
-export function SheetSourceHealthCard({ sourceId, fallbackName, onConfigure }: Props) {
+export function SheetSourceHealthCard({ sourceId, fallbackName, onConfigure, isWebhook = false }: Props) {
   const t = useT();
   const qc = useQueryClient();
   const [errorOpen, setErrorOpen] = useState(false);
@@ -156,6 +158,11 @@ export function SheetSourceHealthCard({ sourceId, fallbackName, onConfigure }: P
           <div>{t("sheet_src.health.leads_total", { n: String(s?.leads_total ?? 0) })}</div>
         </div>
       </div>
+      {isWebhook ? (
+        <div className="text-[12px] text-muted" style={{ padding: "7px 2px" }}>
+          {t("sheet_src.health.webhook_no_sync")}
+        </div>
+      ) : (
       <div className="flex items-center gap-1.5">
         <button
           className="nf-btn nf-btn--ghost flex-1 text-[12px] flex items-center justify-center gap-1.5"
@@ -184,6 +191,7 @@ export function SheetSourceHealthCard({ sourceId, fallbackName, onConfigure }: P
           {t("sheet_src.health.full_rescan_btn")}
         </button>
       </div>
+      )}
       {status === "bad" && s?.last_sync_error && (
         <div>
           <button
