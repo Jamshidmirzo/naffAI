@@ -103,6 +103,39 @@ async function main() {
   check("manager tile plays video", !!playing, playing || "");
   await wall.screenshot({ path: `${OUT}/wall-${DESIGN}.png` });
 
+  // 2b. v1: the status pill sits in the header, «Выйти» stays clickable.
+  if (DESIGN === "v1") {
+    const inHeader = await opPage.evaluate(() => !!document.querySelector('header [data-testid="live-pill"]'));
+    check("v1 pill is in the header", inHeader);
+    // Geometry, not elementFromPoint: the check-in gate modal may cover the page.
+    const logoutFree = await opPage.evaluate(() => {
+      const btn = Array.from(document.querySelectorAll("aside button")).find((b) => /Выйти|Chiqish/.test(b.textContent || ""));
+      const pill = document.querySelector('[data-testid="live-pill"]');
+      if (!btn || !pill) return `missing ${btn ? "pill" : "logout button"}`;
+      const a = btn.getBoundingClientRect();
+      const b = pill.getBoundingClientRect();
+      const overlap = a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      return overlap ? `pill ${Math.round(b.left)},${Math.round(b.top)} over logout ${Math.round(a.left)},${Math.round(a.top)}` : "ok";
+    });
+    check("logout button is not covered", logoutFree === "ok", logoutFree);
+  }
+
+  // 2c. Snapshot: manager asks, operator's browser answers with a JPEG.
+  t0 = Date.now();
+  const snapReq = await api(mgr.token, "/live/snapshots/", { method: "POST", body: JSON.stringify({ operator_id: opId }) });
+  check("snapshot requested", snapReq.status === 202, `HTTP ${snapReq.status} ${JSON.stringify(snapReq.body).slice(0, 120)}`);
+  const snapId = snapReq.body?.id;
+  const done = snapId && await waitFor(() => api(mgr.token, `/live/snapshots/${snapId}/`).then((r) => r.body?.status !== "pending" && r.body), 15000, 500);
+  check("snapshot answered", done?.status === "done", `${Math.round((Date.now() - t0) / 1000)}s status=${done?.status} ${done?.width}x${done?.height} ${done?.error || ""}`);
+  if (done?.status === "done") {
+    const img = await fetch(`${API}/live/snapshots/${snapId}/image/`, { headers: { Authorization: `Token ${mgr.token}` } });
+    const buf = Buffer.from(await img.arrayBuffer());
+    const jpeg = img.headers.get("content-type") === "image/jpeg" && buf[0] === 0xff && buf[1] === 0xd8 && buf.length > 1000;
+    check("snapshot is a real JPEG", jpeg, `${buf.length} bytes`);
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(`${OUT}/snapshot-${DESIGN}.jpg`, buf);
+  }
+
   // 3. Killswitch off → kicked fast; on → back.
   t0 = Date.now();
   await api(mgr.token, "/live/global-status/", { method: "PATCH", body: JSON.stringify({ enabled: false }) });
@@ -142,6 +175,12 @@ async function main() {
   }, tileSel), 30000);
   check("wall shows the new connection", !!playing2);
   await wall.screenshot({ path: `${OUT}/wall-after-${DESIGN}.png` });
+
+  // 7. Off air → the request is refused with a reason.
+  await second.close();
+  await waitFor(() => liveRow(mgr.token, opId).then((r) => !r), 30000);
+  const off = await api(mgr.token, "/live/snapshots/", { method: "POST", body: JSON.stringify({ operator_id: opId }) });
+  check("snapshot of an off-air operator is refused", off.status === 409, `HTTP ${off.status} code=${off.body?.code}`);
 
   await browser.close();
   const failed = results.filter((r) => !r.ok);
