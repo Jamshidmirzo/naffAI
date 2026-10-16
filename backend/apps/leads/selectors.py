@@ -141,6 +141,39 @@ def leads_by_phone_search(q_digits: str, *, limit: int = 10) -> QuerySet[Lead]:
     )
 
 
+# ---- auto pool: what the refill / morning split may hand out --------------
+#
+# 2026-10-16: the refill took the pool oldest-first and ignored whether the
+# lead's source was switched off. The nightly release_stale_leads put
+# month-old «srm» leads back every night, so 386 of them went out in a day
+# while 46 fresh leads waited in the pool.
+
+
+def auto_pool_source_filter() -> Q:
+    """Leads of a switched-off sheet source stay in the base but are not
+    handed out automatically. Leads without a source (manual, bot) are."""
+    return Q(sheet_source__isnull=True) | Q(sheet_source__active=True)
+
+
+def pool_ids_fresh_first(qs: QuerySet[Lead], *, limit: int | None = None) -> list[int]:
+    """
+    IDs of ``qs`` in hand-out order: leads created in the last
+    ``LEADS_POOL_FRESH_DAYS`` days first, then older ones; oldest first
+    inside each group.
+    """
+    days = int(getattr(settings, "LEADS_POOL_FRESH_DAYS", 3))
+    cutoff = timezone.now() - dt.timedelta(days=days)
+    ids: list[int] = []
+    for part in (qs.filter(created_at__gte=cutoff), qs.filter(created_at__lt=cutoff)):
+        if limit is not None and len(ids) >= limit:
+            break
+        part_ids = part.order_by("created_at", "id").values_list("id", flat=True).distinct()
+        if limit is not None:
+            part_ids = part_ids[: limit - len(ids)]
+        ids.extend(part_ids)
+    return ids
+
+
 def orphan_leads(
     *,
     sheet_source_id: int | None = None,
@@ -170,6 +203,10 @@ def orphan_leads(
         qs = qs.filter(status__in=allowed) if allowed else qs.none()
     if sheet_source_id:
         qs = qs.filter(sheet_source_id=sheet_source_id)
+    else:
+        # Same pool the auto hand-out uses; a switched-off source is still
+        # reachable by picking it explicitly.
+        qs = qs.filter(auto_pool_source_filter())
     if created_from:
         qs = qs.filter(created_at__gte=created_from)
     if created_to:
@@ -1472,12 +1509,16 @@ def _orphan_pool_size() -> int:
     workable = [c for c in active if c not in terminal]
     if not workable:
         return 0
-    return Lead.objects.filter(
-        operator__isnull=True,
-        status__in=workable,
-        phone_invalid=False,
-        needs_review=False,
-    ).count()
+    return (
+        Lead.objects.filter(
+            operator__isnull=True,
+            status__in=workable,
+            phone_invalid=False,
+            needs_review=False,
+        )
+        .filter(auto_pool_source_filter())
+        .count()
+    )
 
 
 def diagnose_operator_assignment(operator: Operator) -> dict:

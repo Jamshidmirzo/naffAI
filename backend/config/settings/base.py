@@ -267,6 +267,9 @@ LEADS_REQUIRE_OPEN_SHIFT = config("LEADS_REQUIRE_OPEN_SHIFT", default=True, cast
 # An operator who is not on shift this many minutes after their shift start
 # loses untouched automatic leads back to the pool (see release_leads_of_absent_operators).
 LEADS_ABSENT_RELEASE_AFTER_MIN = config("LEADS_ABSENT_RELEASE_AFTER_MIN", default=60, cast=int)
+# The pool hands out leads created in the last N days first, older ones after
+# (see apps.leads.selectors.pool_ids_fresh_first).
+LEADS_POOL_FRESH_DAYS = config("LEADS_POOL_FRESH_DAYS", default=3, cast=int)
 IMEI_ONLINE_API_URL = config(
     "IMEI_ONLINE_API_URL",
     default="https://alpha.imeicheck.com/api/modelBrandName",

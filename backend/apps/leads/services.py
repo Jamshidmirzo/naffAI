@@ -1182,6 +1182,8 @@ def refill_operator_leads(
 
     from .selectors import (
         active_lead_status_codes,
+        auto_pool_source_filter,
+        pool_ids_fresh_first,
         terminal_lead_status_codes,
     )
 
@@ -1239,7 +1241,7 @@ def refill_operator_leads(
     # against SELECT DISTINCT, nor against the nullable side of a LEFT JOIN
     # (pool_filter traverses sheet_source → allowed_operators M2M). So we
     # resolve candidate IDs with a plain query, then lock them separately.
-    candidate_ids = list(
+    candidate_ids = pool_ids_fresh_first(
         Lead.objects.filter(
             operator__isnull=True,
             status__in=workable,
@@ -1247,16 +1249,14 @@ def refill_operator_leads(
             needs_review=False,
         )
         .filter(pool_filter)
-        .order_by("created_at")
-        .values_list("id", flat=True)
-        .distinct()[:size]
+        .filter(auto_pool_source_filter()),
+        limit=size,
     )
-    pool_qs = (
-        Lead.objects.filter(id__in=candidate_ids)
-        .select_for_update(skip_locked=True)
-        .order_by("created_at")
+    order = {lead_id: i for i, lead_id in enumerate(candidate_ids)}
+    pool = sorted(
+        Lead.objects.filter(id__in=candidate_ids).select_for_update(skip_locked=True),
+        key=lambda lead: order[lead.id],
     )
-    pool = list(pool_qs)
     if not pool:
         return []
 
@@ -1439,6 +1439,8 @@ def morning_distribute_leads(
 
     from .selectors import (
         active_lead_status_codes,
+        auto_pool_source_filter,
+        pool_ids_fresh_first,
         terminal_lead_status_codes,
     )
 
@@ -1469,15 +1471,20 @@ def morning_distribute_leads(
     if not workable:
         return {}
 
-    pool_qs = Lead.objects.select_for_update(skip_locked=True).filter(
-        operator__isnull=True,
-        status__in=workable,
-        phone_invalid=False,
-        needs_review=False,
-    ).order_by("created_at")
-    if limit is not None:
-        pool_qs = pool_qs[:limit]
-    pool = list(pool_qs)
+    pool_ids = pool_ids_fresh_first(
+        Lead.objects.filter(
+            operator__isnull=True,
+            status__in=workable,
+            phone_invalid=False,
+            needs_review=False,
+        ).filter(auto_pool_source_filter()),
+        limit=limit,
+    )
+    order = {lead_id: i for i, lead_id in enumerate(pool_ids)}
+    pool = sorted(
+        Lead.objects.filter(id__in=pool_ids).select_for_update(skip_locked=True),
+        key=lambda lead: order[lead.id],
+    )
 
     if not pool:
         return {}
