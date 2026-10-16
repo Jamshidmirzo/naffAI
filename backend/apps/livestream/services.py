@@ -37,6 +37,8 @@ from .jwt import JwtError, jwt_hs256, jwt_hs256_decode
 from .livekit_api import LiveKitApiError, S3Output, get_livekit_client
 from .models import (
     LiveKitWebhookEvent,
+    LiveSnapshot,
+    LiveSnapshotStatus,
     LivestreamSession,
     LivestreamSessionStatus,
     RecordingSession,
@@ -947,6 +949,200 @@ def _alert_owner_safe(key: str, text: str) -> None:
         alert_owner(key, text)
     except Exception as exc:  # pragma: no cover — alerting must never break us
         logger.warning("alert_owner(%s) failed: %s", key, exc)
+
+
+# ---------------------------------------------------------------------------
+# Snapshots: one still frame from an operator's live camera
+# ---------------------------------------------------------------------------
+
+SNAPSHOT_TOPIC = "naff.snapshot"
+SNAPSHOT_ATTRIBUTE = "naff.snap"
+# The publisher has this long to upload the frame.
+SNAPSHOT_WAIT_S = 60
+SNAPSHOT_MAX_BYTES = 1_500_000
+_SNAPSHOT_COOLDOWN_S = 5
+
+
+class SnapshotError(RuntimeError):
+    def __init__(self, msg: str, *, code: str, status: int = 409) -> None:
+        super().__init__(msg)
+        self.code = code
+        self.status = status
+
+
+_OFFAIR_TEXT = {
+    "disabled": "Эфир выключен в карточке оператора.",
+    "inactive": "Оператор деактивирован.",
+    "paused": "Оператор на паузе — эфир выключен.",
+    "no_shift": "Оператор не отметился на смене.",
+    "offline": "Оператор сейчас не в эфире (вкладка CRM закрыта или камера не включена).",
+    "no_video": "Оператор подключён, но камера не передаёт видео.",
+}
+
+
+def snapshot_request(*, actor, operator: Operator) -> LiveSnapshot:
+    """
+    Ask the operator's publisher for a frame. Raises SnapshotError when
+    the operator is not on air (code = the wall's off-air reason) or when
+    LiveKit can't be reached; the caller polls the row for the image.
+    """
+    from apps.audit.services import AuditAction, audit_log_create
+
+    from .selectors import offair_reason
+
+    session = (
+        LivestreamSession.objects.filter(
+            operator=operator, room_name=room_name(), status=LivestreamSessionStatus.LIVE
+        )
+        .order_by("-started_at")
+        .first()
+    )
+    if session is None:
+        reason = offair_reason(operator)
+        raise SnapshotError(_OFFAIR_TEXT[reason], code=reason)
+    if not session.has_video:
+        raise SnapshotError(_OFFAIR_TEXT["no_video"], code="no_video")
+    if not cache.add(f"live:snap:cooldown:{operator.id}", 1, _SNAPSHOT_COOLDOWN_S):
+        raise SnapshotError(
+            "Снимок этого оператора только что запрошен — подождите пару секунд.",
+            code="too_often",
+            status=429,
+        )
+    client = get_livekit_client()
+    if client is None:
+        raise SnapshotError("LiveKit не настроен.", code="unavailable", status=503)
+
+    snap = LiveSnapshot.objects.create(operator=operator, requested_by=actor)
+    identity = f"op:{operator.id}"
+    payload = _json.dumps({"type": "snapshot", "id": str(snap.id)}).encode()
+    delivered = False
+    # Two channels, the publisher dedupes by id: a data packet (instant),
+    # and a participant attribute (rides the signal connection, so it
+    # reaches a publish-only participant whatever its data channel does).
+    try:
+        client.send_data(room_name(), [identity], payload, topic=SNAPSHOT_TOPIC)
+        delivered = True
+    except Exception as exc:
+        logger.warning("snapshot %s: send_data failed: %s", snap.id, exc)
+    try:
+        client.set_participant_attributes(room_name(), identity, {SNAPSHOT_ATTRIBUTE: str(snap.id)})
+        delivered = True
+    except Exception as exc:
+        logger.warning("snapshot %s: attribute update failed: %s", snap.id, exc)
+    if not delivered:
+        snapshot_fail(snapshot=snap, error="LiveKit недоступен")
+        raise SnapshotError("Не удалось связаться с эфиром оператора.", code="unavailable", status=503)
+
+    audit_log_create(
+        user=actor,
+        action=AuditAction.CREATE,
+        entity="livestream.LiveSnapshot",
+        entity_id=str(snap.id),
+        changes={"operator_id": operator.id},
+        comment=f"Снимок с эфира: {operator.full_name}",
+    )
+    return snap
+
+
+def _snapshot_lock_open(*, snapshot_id, operator: Operator) -> LiveSnapshot:
+    """Lock a pending request of this operator. Call inside atomic(); an
+    overdue request is marked expired by the caller (see _snapshot_answer)."""
+    snap = LiveSnapshot.objects.select_for_update().filter(pk=snapshot_id).first()
+    if snap is None:
+        raise SnapshotError("Запрос не найден.", code="not_found", status=404)
+    if snap.operator_id != operator.id:
+        raise SnapshotError("Это не ваш запрос.", code="forbidden", status=403)
+    if snap.status != LiveSnapshotStatus.PENDING:
+        raise SnapshotError("Запрос уже закрыт.", code="closed")
+    if timezone.now() - snap.created_at > _dt.timedelta(seconds=SNAPSHOT_WAIT_S):
+        raise _SnapshotOverdue(snap)
+    return snap
+
+
+class _SnapshotOverdue(Exception):
+    def __init__(self, snap: LiveSnapshot) -> None:
+        super().__init__("overdue")
+        self.snap = snap
+
+
+def _snapshot_answer(*, snapshot_id, operator: Operator, apply) -> LiveSnapshot:
+    try:
+        with transaction.atomic():
+            snap = _snapshot_lock_open(snapshot_id=snapshot_id, operator=operator)
+            apply(snap)
+            return snap
+    except _SnapshotOverdue as overdue:
+        snapshot_fail(snapshot=overdue.snap, error="timeout", status=LiveSnapshotStatus.EXPIRED)
+        raise SnapshotError("Запрос устарел.", code="expired") from None
+
+
+def _jpeg_size(data: bytes) -> tuple[int, int] | None:
+    """(width, height) from a JPEG's SOF marker, None if it is not a JPEG."""
+    if len(data) < 4 or data[:2] != b"\xff\xd8":
+        return None
+    i = 2
+    while i + 9 < len(data):
+        if data[i] != 0xFF:
+            i += 1
+            continue
+        marker = data[i + 1]
+        if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7 or marker == 0xFF:
+            i += 1 if marker == 0xFF else 2
+            continue
+        seg_len = int.from_bytes(data[i + 2 : i + 4], "big")
+        if marker in (0xC0, 0xC1, 0xC2):
+            h = int.from_bytes(data[i + 5 : i + 7], "big")
+            w = int.from_bytes(data[i + 7 : i + 9], "big")
+            return w, h
+        i += 2 + seg_len
+    return (0, 0)
+
+
+def snapshot_upload(*, snapshot_id, operator: Operator, data: bytes) -> LiveSnapshot:
+    if len(data) > SNAPSHOT_MAX_BYTES:
+        raise SnapshotError("Слишком большой кадр.", code="too_large", status=400)
+    size = _jpeg_size(data)
+    if size is None:
+        raise SnapshotError("Нужен JPEG.", code="bad_image", status=400)
+
+    def apply(snap: LiveSnapshot) -> None:
+        snap.image = data
+        snap.content_type = "image/jpeg"
+        snap.width, snap.height = (size[0] or None), (size[1] or None)
+        snap.status = LiveSnapshotStatus.DONE
+        snap.taken_at = timezone.now()
+        snap.save(update_fields=["image", "content_type", "width", "height", "status", "taken_at", "updated_at"])
+
+    return _snapshot_answer(snapshot_id=snapshot_id, operator=operator, apply=apply)
+
+
+def snapshot_report_error(*, snapshot_id, operator: Operator, error: str) -> LiveSnapshot:
+    """The publisher could not grab a frame (camera busy, no track)."""
+    return _snapshot_answer(
+        snapshot_id=snapshot_id,
+        operator=operator,
+        apply=lambda snap: snapshot_fail(snapshot=snap, error=error or "capture failed"),
+    )
+
+
+def snapshot_fail(*, snapshot: LiveSnapshot, error: str, status: str = LiveSnapshotStatus.FAILED) -> None:
+    snapshot.status = status
+    snapshot.error_text = (error or "")[:300]
+    snapshot.save(update_fields=["status", "error_text", "updated_at"])
+
+
+def snapshots_expire() -> int:
+    """Pending past the wait window → expired."""
+    cutoff = timezone.now() - _dt.timedelta(seconds=SNAPSHOT_WAIT_S)
+    return LiveSnapshot.objects.filter(
+        status=LiveSnapshotStatus.PENDING, created_at__lt=cutoff
+    ).update(status=LiveSnapshotStatus.EXPIRED, error_text="timeout", updated_at=timezone.now())
+
+
+def snapshots_prune(*, older_than_days: int) -> int:
+    cutoff = timezone.now() - _dt.timedelta(days=older_than_days)
+    deleted, _ = LiveSnapshot.objects.filter(created_at__lt=cutoff).delete()
+    return deleted
 
 
 # ---------------------------------------------------------------------------

@@ -13,6 +13,10 @@ urlpatterns = [
         apis.RecordingUrlApi.as_view(),
         name="live-recording-url",
     ),
+    path("snapshots/", apis.SnapshotCreateApi.as_view(), name="live-snapshot-create"),
+    path("snapshots/<uuid:pk>/", apis.SnapshotDetailApi.as_view(), name="live-snapshot-detail"),
+    path("snapshots/<uuid:pk>/image/", apis.SnapshotImageApi.as_view(), name="live-snapshot-image"),
+    path("snapshots/<uuid:pk>/upload/", apis.SnapshotUploadApi.as_view(), name="live-snapshot-upload"),
     path(
         "webhooks/livekit/",
         apis.LiveKitWebhookApi.as_view(),

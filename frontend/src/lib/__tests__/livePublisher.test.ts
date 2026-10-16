@@ -49,6 +49,8 @@ const RoomEvent = {
   Disconnected: "disconnected",
   MediaDevicesError: "mediaDevicesError",
   MediaDevicesChanged: "mediaDevicesChanged",
+  DataReceived: "dataReceived",
+  ParticipantAttributesChanged: "participantAttributesChanged",
 };
 const TrackEvent = { Ended: "ended" };
 
@@ -89,7 +91,9 @@ const ctl = {
   camera: async (r: FakeRoom): Promise<{ track?: FakeTrack } | undefined> => ({ track: r.track }),
 };
 
-class FakeTrack extends Emitter {}
+class FakeTrack extends Emitter {
+  mediaStreamTrack = { kind: "video", readyState: "live" };
+}
 
 class FakeRoom extends Emitter {
   static instances: FakeRoom[] = [];
@@ -242,7 +246,7 @@ async function flush(n = 30) {
   for (let i = 0; i < n; i++) await Promise.resolve();
 }
 
-function setup(opts: { locks?: FakeLocks | null } = {}) {
+function setup(opts: { locks?: FakeLocks | null; capture?: (t: unknown) => Promise<Blob> } = {}) {
   const tokenImpl = { fn: async () => makeToken() };
   const globalImpl = { fn: async () => ({ enabled: true }) };
   const fetchToken = vi.fn(() => tokenImpl.fn());
@@ -250,6 +254,8 @@ function setup(opts: { locks?: FakeLocks | null } = {}) {
   const locks = opts.locks === undefined ? new FakeLocks() : opts.locks;
   const doc = new FakeDoc();
   const media = new FakeTarget();
+  const captureFrame = vi.fn(opts.capture ?? (async () => new Blob(["jpeg"], { type: "image/jpeg" })));
+  const uploadSnapshot = vi.fn(async (_id: string, _frame: Blob | null, _error?: string) => {});
   const engine = createLivePublisherEngine({
     loadSdk: async () => FakeSdk,
     fetchToken,
@@ -263,6 +269,8 @@ function setup(opts: { locks?: FakeLocks | null } = {}) {
     doc,
     mediaDevices: media,
     random: () => 0,
+    captureFrame,
+    uploadSnapshot,
   });
   const statuses: LivePublisherStatus[] = [];
   engine.store.subscribe((s, prev) => {
@@ -271,7 +279,10 @@ function setup(opts: { locks?: FakeLocks | null } = {}) {
       log.push(`status:${s.status}`);
     }
   });
-  return { engine, fetchToken, fetchGlobalStatus, tokenImpl, globalImpl, locks, doc, media, statuses };
+  return {
+    engine, fetchToken, fetchGlobalStatus, tokenImpl, globalImpl, locks, doc, media, statuses,
+    captureFrame, uploadSnapshot,
+  };
 }
 
 const lastRoom = () => FakeRoom.instances[FakeRoom.instances.length - 1];
@@ -767,6 +778,68 @@ describe("livePublisher engine", () => {
     expect(st(h.engine).status).toBe("off");
     expect(lastRoom().disconnectCalls).toBeGreaterThanOrEqual(1);
     expect(lastRoom().cameraCalls).toBe(0);
+  });
+});
+
+describe("snapshot requests", () => {
+  const packet = (id: string) => new TextEncoder().encode(JSON.stringify({ type: "snapshot", id }));
+
+  it("server data packet → one frame of our camera track is uploaded", async () => {
+    const h = track(setup());
+    h.engine.setEnabled(true);
+    await flush();
+    const room = lastRoom();
+    room.emit(RoomEvent.DataReceived, packet("s-1"), undefined, 0, "naff.snapshot");
+    await flush();
+    expect(h.captureFrame).toHaveBeenCalledWith(room.track.mediaStreamTrack);
+    expect(h.uploadSnapshot).toHaveBeenCalledTimes(1);
+    const [id, frame] = h.uploadSnapshot.mock.calls[0];
+    expect(id).toBe("s-1");
+    expect(frame).toBeInstanceOf(Blob);
+  });
+
+  it("the attribute channel delivers the same id once (dedupe)", async () => {
+    const h = track(setup());
+    h.engine.setEnabled(true);
+    await flush();
+    const room = lastRoom();
+    room.emit(RoomEvent.ParticipantAttributesChanged, { "naff.snap": "s-2" }, room.localParticipant);
+    room.emit(RoomEvent.DataReceived, packet("s-2"), undefined, 0, "naff.snapshot");
+    await flush();
+    expect(h.uploadSnapshot).toHaveBeenCalledTimes(1);
+    expect(h.uploadSnapshot.mock.calls[0][0]).toBe("s-2");
+  });
+
+  it("ignores packets from participants, other topics and others' attributes", async () => {
+    const h = track(setup());
+    h.engine.setEnabled(true);
+    await flush();
+    const room = lastRoom();
+    room.emit(RoomEvent.DataReceived, packet("x"), { identity: "mgr:1" }, 0, "naff.snapshot");
+    room.emit(RoomEvent.DataReceived, packet("y"), undefined, 0, "chat");
+    room.emit(RoomEvent.ParticipantAttributesChanged, { "naff.snap": "z" }, { identity: "op:9" });
+    await flush();
+    expect(h.uploadSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("capture failure is reported instead of leaving the manager waiting", async () => {
+    const h = track(setup({ capture: async () => { throw new Error("busy"); } }));
+    h.engine.setEnabled(true);
+    await flush();
+    lastRoom().emit(RoomEvent.DataReceived, packet("s-3"), undefined, 0, "naff.snapshot");
+    await flush();
+    expect(h.uploadSnapshot).toHaveBeenCalledWith("s-3", null, "capture: busy");
+  });
+
+  it("no camera track → reports it", async () => {
+    ctl.camera = async () => ({ track: undefined });
+    const h = track(setup());
+    h.engine.setEnabled(true);
+    await flush();
+    lastRoom().emit(RoomEvent.DataReceived, packet("s-4"), undefined, 0, "naff.snapshot");
+    await flush();
+    expect(h.captureFrame).not.toHaveBeenCalled();
+    expect(h.uploadSnapshot).toHaveBeenCalledWith("s-4", null, "no camera track");
   });
 });
 

@@ -11,6 +11,7 @@ names — parsing helpers live in `services`.
 
 from __future__ import annotations
 
+import base64
 import logging
 import time
 from dataclasses import dataclass
@@ -143,6 +144,22 @@ class LiveKitClient:
                 return False
             raise
         return True
+
+    def send_data(self, room: str, identities: list[str], payload: bytes, *, topic: str) -> None:
+        """Reliable data packet from the server to these participants."""
+        body = {
+            "room": room,
+            "data": base64.b64encode(payload).decode(),
+            "kind": "RELIABLE",
+            "destinationIdentities": identities,
+            "topic": topic,
+        }
+        self._twirp("RoomService", "SendData", body, room=room)
+
+    def set_participant_attributes(self, room: str, identity: str, attributes: dict[str, str]) -> None:
+        """Merge attributes into a participant (it sees its own update)."""
+        body = {"room": room, "identity": identity, "attributes": attributes}
+        self._twirp("RoomService", "UpdateParticipant", body, room=room)
 
     # --- Egress --------------------------------------------------------------
 

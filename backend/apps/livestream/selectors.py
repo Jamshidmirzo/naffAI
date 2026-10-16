@@ -18,6 +18,7 @@ from apps.operators.models import Operator, OperatorStatus
 from apps.users.selectors import visible_operator_ids
 
 from .models import (
+    LiveSnapshot,
     LivestreamSession,
     LivestreamSessionStatus,
     RecordingSession,
@@ -64,6 +65,22 @@ def livestream_candidate_operators(*, actor) -> QuerySet[Operator]:
     ).order_by("full_name")
 
 
+def offair_reason(op: Operator, *, on_shift: bool | None = None) -> str:
+    """Why an operator is not on air: disabled / inactive / paused /
+    no_shift / offline (connected nowhere though nothing stops them)."""
+    if not op.livestream_enabled:
+        return "disabled"
+    if op.status == OperatorStatus.INACTIVE:
+        return "inactive"
+    if op.is_paused:
+        return "paused"
+    if on_shift is None:
+        on_shift = op.id in _open_shift_operator_ids([op.id])
+    if not on_shift:
+        return "no_shift"
+    return "offline"
+
+
 def live_now_payload(*, actor) -> dict[str, Any]:
     """
     Data for the manager's wall: who is live (one row per operator, the
@@ -97,16 +114,7 @@ def live_now_payload(*, actor) -> dict[str, Any]:
     enabled_rows = []
     for op in enabled:
         is_live = op.id in sessions
-        if is_live:
-            reason = None
-        elif not op.livestream_enabled:
-            reason = "disabled"
-        elif op.is_paused:
-            reason = "paused"
-        elif op.id not in on_shift:
-            reason = "no_shift"
-        else:
-            reason = "offline"
+        reason = None if is_live else offair_reason(op, on_shift=op.id in on_shift)
         enabled_rows.append(
             {
                 "id": op.id,
@@ -149,6 +157,15 @@ def recordings_queryset(
 def recording_detail(*, actor, pk: int) -> RecordingSession | None:
     return (
         RecordingSession.objects.select_related("operator")
+        .filter(pk=pk, operator_id__in=visible_operator_ids(actor))
+        .first()
+    )
+
+
+def snapshot_detail(*, actor, pk) -> LiveSnapshot | None:
+    return (
+        LiveSnapshot.objects.select_related("operator")
+        .defer("image")
         .filter(pk=pk, operator_id__in=visible_operator_ids(actor))
         .first()
     )

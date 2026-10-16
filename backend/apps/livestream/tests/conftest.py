@@ -63,6 +63,14 @@ class FakeLiveKitClient:
         self.participants = [p for p in self.participants if p.get("identity") != identity]
         return len(self.participants) != before
 
+    def send_data(self, room, identities, payload, *, topic):
+        self.calls.append(("send_data", room, list(identities), payload, topic))
+        self._maybe_fail("send_data")
+
+    def set_participant_attributes(self, room, identity, attributes):
+        self.calls.append(("set_participant_attributes", room, identity, dict(attributes)))
+        self._maybe_fail("set_participant_attributes")
+
     def start_track_egress(self, *, room, track_id, filepath, s3):
         self.calls.append(("start_track_egress", room, track_id, filepath, s3.bucket))
         self._maybe_fail("start_track_egress")

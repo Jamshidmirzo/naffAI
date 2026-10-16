@@ -162,6 +162,19 @@ export async function patchGlobalStatus(enabled: boolean): Promise<GlobalStatus>
   return r.data;
 }
 
+/** POST /api/live/snapshots/<id>/upload/ — the publisher answers a
+ *  snapshot request with a JPEG, or with the reason it could not. */
+export async function uploadSnapshot(id: string, frame: Blob | null, error?: string): Promise<void> {
+  const url = `/live/snapshots/${encodeURIComponent(id)}/upload/`;
+  if (frame) {
+    const fd = new FormData();
+    fd.append("image", frame, "snapshot.jpg");
+    await api.post(url, fd);
+  } else {
+    await api.post(url, { error: (error || "capture failed").slice(0, 300) });
+  }
+}
+
 /** GET /api/live/config/ — deployment flags (LiveKit configured, retention). */
 export async function fetchLiveConfig(): Promise<LiveConfig> {
   const r = await api.get<LiveConfig>("/live/config/");

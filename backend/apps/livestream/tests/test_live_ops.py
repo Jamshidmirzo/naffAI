@@ -58,7 +58,7 @@ def test_tick_reconciles_and_records(operator, fake_lk):
 
 @pytest.mark.django_db
 def test_tick_without_livekit_only_heartbeats(no_lk):
-    assert live_ops_tick() == {"configured": False}
+    assert live_ops_tick() == {"configured": False, "snapshots_expired": 0}
 
 
 # --- HTTP client ---------------------------------------------------------------

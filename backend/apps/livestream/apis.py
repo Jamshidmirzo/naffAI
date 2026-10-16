@@ -7,11 +7,14 @@ from __future__ import annotations
 
 import logging
 
+from django.http import HttpResponse
 from rest_framework import serializers, status
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.operators.models import Operator
 from apps.system_settings.selectors import livestream_globally_enabled
 from apps.users.models import Role
 from apps.users.permissions import (
@@ -19,13 +22,17 @@ from apps.users.permissions import (
     IsSuperadminOrManager,
     _role,
 )
+from apps.users.selectors import visible_operator_ids
 
+from .models import LiveSnapshot, LiveSnapshotStatus
 from .selectors import (
     live_now_payload,
     recording_detail,
     recordings_queryset,
+    snapshot_detail,
 )
 from .services import (
+    SNAPSHOT_MAX_BYTES,
     LivestreamConfigError,
     LivestreamDisabledError,
     LivestreamWebhookError,
@@ -35,7 +42,11 @@ from .services import (
     recording_presigned_url,
     room_name,
     room_token_issue,
+    SnapshotError,
     sessions_reconcile,
+    snapshot_report_error,
+    snapshot_request,
+    snapshot_upload,
     verify_webhook_signature,
     webhook_ingest,
 )
@@ -347,3 +358,100 @@ class LiveConfigApi(APIView):
                 "retention_days": settings.LIVEKIT_RECORDING_RETENTION_DAYS,
             }
         )
+
+
+# ---------------------------------------------------------------------------
+# Snapshots: POST /live/snapshots/, GET /live/snapshots/<id>/[image/],
+# POST /live/snapshots/<id>/upload/ (the operator's publisher)
+# ---------------------------------------------------------------------------
+
+
+class SnapshotRequestSerializer(serializers.Serializer):
+    operator_id = serializers.IntegerField()
+
+
+def _snapshot_payload(snap) -> dict:
+    return {
+        "id": str(snap.id),
+        "status": snap.status,
+        "operator_id": snap.operator_id,
+        "operator_name": snap.operator.full_name,
+        "error": snap.error_text,
+        "width": snap.width,
+        "height": snap.height,
+        "created_at": snap.created_at.isoformat(),
+        "taken_at": snap.taken_at.isoformat() if snap.taken_at else None,
+    }
+
+
+def _snapshot_error(exc: SnapshotError) -> Response:
+    return Response({"detail": str(exc), "code": exc.code}, status=exc.status)
+
+
+class SnapshotCreateApi(APIView):
+    """Ask an operator's live camera for one frame. Poll the returned id."""
+
+    permission_classes = [IsAuthenticated, IsSuperadminOrManager]
+
+    def post(self, request):
+        ser = SnapshotRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        op_id = ser.validated_data["operator_id"]
+        if op_id not in set(visible_operator_ids(request.user)):
+            return Response({"detail": "Оператор не найден.", "code": "not_found"}, status=404)
+        operator = Operator.objects.get(pk=op_id)
+        try:
+            snap = snapshot_request(actor=request.user, operator=operator)
+        except SnapshotError as exc:
+            return _snapshot_error(exc)
+        return Response(_snapshot_payload(snap), status=status.HTTP_202_ACCEPTED)
+
+
+class SnapshotDetailApi(APIView):
+    permission_classes = [IsAuthenticated, IsSuperadminOrManager]
+
+    def get(self, request, pk):
+        snap = snapshot_detail(actor=request.user, pk=pk)
+        if snap is None:
+            return Response({"detail": "Снимок не найден."}, status=404)
+        return Response(_snapshot_payload(snap))
+
+
+class SnapshotImageApi(APIView):
+    permission_classes = [IsAuthenticated, IsSuperadminOrManager]
+
+    def get(self, request, pk):
+        snap = snapshot_detail(actor=request.user, pk=pk)
+        if snap is None or snap.status != LiveSnapshotStatus.DONE:
+            return Response({"detail": "Снимка нет."}, status=404)
+        data = LiveSnapshot.objects.values_list("image", flat=True).get(pk=snap.pk)
+        resp = HttpResponse(bytes(data), content_type=snap.content_type or "image/jpeg")
+        resp["Cache-Control"] = "private, max-age=3600"
+        return resp
+
+
+class SnapshotUploadApi(APIView):
+    """The operator's own publisher answers a request: multipart `image`
+    (JPEG), or `error` text when it could not grab a frame."""
+
+    permission_classes = [IsAuthenticated, IsAuthenticatedAnyRole]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def post(self, request, pk):
+        profile = getattr(request.user, "profile", None)
+        operator = getattr(profile, "operator", None) if profile else None
+        if _role(request.user) != Role.OPERATOR or operator is None:
+            return Response({"detail": "Только оператор.", "code": "forbidden"}, status=403)
+        f = request.FILES.get("image")
+        try:
+            if f is None:
+                snap = snapshot_report_error(
+                    snapshot_id=pk, operator=operator, error=str(request.data.get("error") or "")[:300]
+                )
+            else:
+                if f.size > SNAPSHOT_MAX_BYTES:
+                    return Response({"detail": "Слишком большой кадр.", "code": "too_large"}, status=400)
+                snap = snapshot_upload(snapshot_id=pk, operator=operator, data=f.read())
+        except SnapshotError as exc:
+            return _snapshot_error(exc)
+        return Response({"id": str(snap.id), "status": snap.status})

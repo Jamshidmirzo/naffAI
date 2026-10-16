@@ -270,9 +270,10 @@ export default function AppShell() {
       {/* WebRTC live publisher — operator-only. `livestream_enabled` is ON
           by default on the backend; the manager switches it off on the
           operator card. When `/auth/me` says false the controller stays
-          idle (no camera prompt, no network). Engine: lib/livePublisher. */}
+          idle (no camera prompt, no network). Engine: lib/livePublisher.
+          Headless here — the status pill sits in the Header. */}
       {role === "operator" && (
-        <LiveStreamPublisher enabled={!!me.data?.livestream_enabled} />
+        <LiveStreamPublisher enabled={!!me.data?.livestream_enabled} ui={false} />
       )}
     </div>
   );

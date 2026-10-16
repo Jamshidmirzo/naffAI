@@ -13,6 +13,10 @@
  *   • camera denied/absent → `denied` / `no_camera` (retry on device change or click);
  *   • token TTL            → planned reconnect at `expires_at − 10 min`.
  *
+ * It also answers snapshot requests: the server sends a data packet
+ * (topic `naff.snapshot`) and sets the `naff.snap` attribute on us; we
+ * grab one frame of our own camera track and upload it.
+ *
  * All side-effects come in through `deps` (SDK loader, HTTP, locks,
  * timers, document) so the state machine is unit-tested in node with
  * fake timers — see `__tests__/livePublisher.test.ts`.
@@ -24,10 +28,12 @@
 import { useEffect } from "react";
 import { useStore } from "zustand";
 import { createStore, type StoreApi } from "zustand/vanilla";
+import { captureVideoFrame } from "./liveSnapshot";
 import {
   fetchGlobalStatus,
   fetchRoomToken,
   liveErrorCode,
+  uploadSnapshot,
   type GlobalStatus,
   type RoomTokenResponse,
 } from "./liveRoom";
@@ -75,6 +81,8 @@ export interface LivePublisherState {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface PublisherTrackLike {
   on(event: string, cb: (...args: any[]) => void): unknown;
+  /** The camera's MediaStreamTrack (LocalVideoTrack.mediaStreamTrack). */
+  mediaStreamTrack?: unknown;
 }
 
 export interface PublisherRoomLike {
@@ -99,6 +107,8 @@ export interface PublisherSdk {
     Disconnected: string;
     MediaDevicesError: string;
     MediaDevicesChanged: string;
+    DataReceived?: string;
+    ParticipantAttributesChanged?: string;
   };
   TrackEvent: { Ended: string };
   /** Numeric proto enum (with reverse mapping). */
@@ -141,6 +151,10 @@ export interface LivePublisherDeps {
   mediaDevices?: MediaDevicesLike | null;
   /** [0,1) — injectable for deterministic jitter in tests. */
   random?: () => number;
+  /** One JPEG frame of a camera MediaStreamTrack. */
+  captureFrame?: (track: unknown) => Promise<Blob>;
+  /** Answer a snapshot request: the frame, or `null` + why it failed. */
+  uploadSnapshot?: (id: string, frame: Blob | null, error?: string) => Promise<unknown>;
 }
 
 export interface LivePublisherEngine {
@@ -173,6 +187,8 @@ export const BACKOFF_MAX_MS = 60_000;
 export const BACKOFF_JITTER_MS = 1_000;
 export const TOKEN_REFRESH_LEAD_MS = 10 * 60_000;
 const MIN_REFRESH_MS = 60_000;
+export const SNAPSHOT_TOPIC = "naff.snapshot";
+export const SNAPSHOT_ATTRIBUTE = "naff.snap";
 
 // Fallbacks mirror @livekit/protocol `DisconnectReason`; the loaded SDK's
 // enum wins when present.
@@ -228,6 +244,10 @@ export function createLivePublisherEngine(deps: LivePublisherDeps): LivePublishe
   /** Bumped on every connect/teardown — stale async continuations bail out. */
   let gen = 0;
   let room: PublisherRoomLike | null = null;
+  /** Our published camera track while live (snapshots read it). */
+  let camTrack: PublisherTrackLike | null = null;
+  /** Snapshot ids already answered — both channels deliver each one. */
+  const snapsSeen = new Set<string>();
   let sdkCache: PublisherSdk | null = null;
 
   let lock: "none" | "pending" | "held" = "none";
@@ -289,7 +309,10 @@ export function createLivePublisherEngine(deps: LivePublisherDeps): LivePublishe
    *  our own CLIENT_INITIATED disconnect never reaches the handlers. */
   function dropRoom(r: PublisherRoomLike | null): Promise<void> {
     if (!r) return Promise.resolve();
-    if (room === r) room = null;
+    if (room === r) {
+      room = null;
+      camTrack = null;
+    }
     try {
       r.removeAllListeners();
     } catch {
@@ -493,6 +516,25 @@ export function createLivePublisherEngine(deps: LivePublisherDeps): LivePublishe
       lastMediaErr = `${typeof name === "string" ? name : ""} ${errMsg(err)}`;
     });
     r.on(E.MediaDevicesChanged, onDeviceChange);
+    if (E.DataReceived) {
+      r.on(E.DataReceived, (payload: unknown, participant?: unknown, _kind?: unknown, topic?: string) => {
+        // Server packets have no sender participant.
+        if (room !== r || participant || topic !== SNAPSHOT_TOPIC) return;
+        try {
+          const msg = JSON.parse(new TextDecoder().decode(payload as Uint8Array));
+          if (msg?.type === "snapshot" && typeof msg.id === "string") void takeSnapshot(msg.id);
+        } catch {
+          /* not ours */
+        }
+      });
+    }
+    if (E.ParticipantAttributesChanged) {
+      r.on(E.ParticipantAttributesChanged, (changed: Record<string, string> | undefined, participant: unknown) => {
+        if (room !== r || participant !== r.localParticipant) return;
+        const id = changed?.[SNAPSHOT_ATTRIBUTE];
+        if (id) void takeSnapshot(id);
+      });
+    }
     r.on(E.Disconnected, (why?: number) => {
       if (room !== r) return;
       room = null;
@@ -524,6 +566,31 @@ export function createLivePublisherEngine(deps: LivePublisherDeps): LivePublishe
       // e.g. pagehide restored from bfcache) → retry with a fresh token.
       backoff("retrying", name);
     });
+  }
+
+  async function takeSnapshot(id: string) {
+    if (snapsSeen.has(id)) return;
+    snapsSeen.add(id);
+    if (snapsSeen.size > 50) snapsSeen.delete(snapsSeen.values().next().value as string);
+    const upload = deps.uploadSnapshot;
+    if (!upload) return;
+    const mst = camTrack?.mediaStreamTrack;
+    try {
+      if (!mst || !deps.captureFrame) {
+        await upload(id, null, "no camera track");
+        return;
+      }
+      let frame: Blob;
+      try {
+        frame = await deps.captureFrame(mst);
+      } catch (e) {
+        await upload(id, null, `capture: ${errMsg(e)}`);
+        return;
+      }
+      await upload(id, frame);
+    } catch {
+      // Upload failed (network / request expired) — the server times it out.
+    }
   }
 
   function onCameraEnded(r: PublisherRoomLike) {
@@ -602,6 +669,7 @@ export function createLivePublisherEngine(deps: LivePublisherDeps): LivePublishe
     }
 
     attempt = 0;
+    camTrack = pub?.track ?? null;
     setStatus("live");
     pub?.track?.on(sdk.TrackEvent.Ended, () => onCameraEnded(r));
     scheduleRefresh(tok.expires_at);
@@ -772,6 +840,8 @@ function browserDeps(): LivePublisherDeps {
     },
     doc: typeof document !== "undefined" ? document : null,
     mediaDevices: nav?.mediaDevices ?? null,
+    captureFrame: (track) => captureVideoFrame(track as MediaStreamTrack),
+    uploadSnapshot,
   };
 }
 

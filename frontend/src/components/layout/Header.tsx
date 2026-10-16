@@ -7,6 +7,7 @@ import { useT } from "../../lib/i18n";
 import { useAuth } from "../../store/auth";
 import { useSaleSound } from "../../store/saleSound";
 import { normaliseRole } from "../RoleGate";
+import { LivePublisherPill } from "../LiveStreamPublisher";
 
 /**
  * Mute-toggle видимость: доступна любой аутентифицированной роли
@@ -29,6 +30,7 @@ export function Header() {
   const showSoundToggle = useSaleSoundToggleVisible();
   const soundMuted = useSaleSound((s) => s.muted);
   const toggleSound = useSaleSound((s) => s.toggle);
+  const isOperator = normaliseRole(useAuth((s) => s.role)) === "operator";
 
   const onBack = () => {
     if (!back) return;
@@ -72,6 +74,8 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-2">
+        {/* Operator's live status (publisher runs headless in AppShell). */}
+        {isOperator && <LivePublisherPill inline />}
         {showSoundToggle && (
           <button
             type="button"

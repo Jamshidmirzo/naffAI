@@ -18,6 +18,9 @@ Fat-model warning: do NOT add business logic here. Writes live in
 
 from __future__ import annotations
 
+import uuid
+
+from django.conf import settings
 from django.db import models
 
 from apps.common.models import TimestampedModel
@@ -162,3 +165,51 @@ class LiveKitWebhookEvent(TimestampedModel):
         indexes = [
             models.Index(fields=["event_type", "received_at"]),
         ]
+
+
+class LiveSnapshotStatus(models.TextChoices):
+    PENDING = "pending", "Ждём кадр"
+    DONE = "done", "Готов"
+    FAILED = "failed", "Ошибка"
+    EXPIRED = "expired", "Не дождались"
+
+
+class LiveSnapshot(TimestampedModel):
+    """
+    One still frame of an operator's live camera, asked for by a manager
+    (or the ROP agent). The server tells the operator's publisher over
+    LiveKit; the browser grabs a frame from its own camera track and
+    uploads it here. Frames are small JPEGs kept in the row and pruned
+    by `live_ops` after LIVE_SNAPSHOT_RETENTION_DAYS.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    operator = models.ForeignKey(
+        Operator, on_delete=models.CASCADE, related_name="live_snapshots"
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=LiveSnapshotStatus.choices,
+        default=LiveSnapshotStatus.PENDING,
+        db_index=True,
+    )
+    image = models.BinaryField(null=True, blank=True)
+    content_type = models.CharField(max_length=32, blank=True, default="")
+    width = models.PositiveIntegerField(null=True, blank=True)
+    height = models.PositiveIntegerField(null=True, blank=True)
+    error_text = models.CharField(max_length=300, blank=True, default="")
+    taken_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["operator", "-created_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.operator_id} · {self.id} · {self.status}"

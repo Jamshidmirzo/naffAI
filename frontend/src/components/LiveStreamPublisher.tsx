@@ -7,8 +7,9 @@
  *   • a headless controller (`useLivePublisher`) that drives the
  *     framework-free engine in `lib/livePublisher.ts` — connect, camera,
  *     reconnect/backoff, single-tab lock, killswitch poll, token refresh;
- *   • a small floating pill (`LivePublisherPill`) in the bottom-left
- *     corner that reads the global publisher state.
+ *   • a status pill (`LivePublisherPill`) that reads the global
+ *     publisher state. AppShell renders it inline in the Header (it used
+ *     to float bottom-left, right over the sidebar's «Выйти»).
  *
  * `ui={false}` keeps the controller and drops the pill (for layouts that
  * render `LivePublisherPill` / `useLivePublisherStatus` themselves).
@@ -47,7 +48,7 @@ const Dot = ({ cls }: { cls: string }) => <span className={`inline-block h-2 w-2
 
 const pillBtn = "ml-1 rounded-full px-2 py-0.5 font-semibold underline-offset-2 hover:underline";
 
-export function LivePublisherPill() {
+export function LivePublisherPill({ inline = false }: { inline?: boolean } = {}) {
   const t = useT();
   const s = useLivePublisherStatus();
   const secs = useCountdown(s.status === "retrying" || s.status === "error" ? s.retryAt : null);
@@ -56,8 +57,9 @@ export function LivePublisherPill() {
     return null;
   }
 
-  const base =
-    "fixed bottom-4 left-4 z-[80] flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur";
+  const base = inline
+    ? "flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium"
+    : "fixed bottom-4 left-4 z-[80] flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur";
   const palette =
     s.status === "live"
       ? "bg-rose-50/90 border-rose-200 text-rose-700"

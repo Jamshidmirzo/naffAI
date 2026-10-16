@@ -7,7 +7,9 @@ Each tick (default every 30s):
   * recording (LIVEKIT_RECORDING_ENABLED): settle egresses LiveKit no
     longer runs, stop chunks older than LIVEKIT_RECORDING_ROTATE_MINUTES,
     start an egress for every live camera track that has none;
-  * hourly: mark recordings past retention deleted, prune webhook events.
+  * snapshot requests nobody answered within a minute → expired;
+  * hourly: mark recordings past retention deleted, prune webhook events
+    and old snapshots.
 
 Does nothing (but heartbeat) when LIVEKIT_API_URL is empty.
 `--once` runs one tick and prints the counters.
@@ -46,7 +48,11 @@ def live_ops_tick(*, housekeeping: bool = False) -> dict:
                 max_age_minutes=settings.LIVEKIT_RECORDING_ROTATE_MINUTES
             )
             stats["started"] = services.recordings_ensure()
+    stats["snapshots_expired"] = services.snapshots_expire()
     if housekeeping:
+        stats["snapshots_pruned"] = services.snapshots_prune(
+            older_than_days=getattr(settings, "LIVE_SNAPSHOT_RETENTION_DAYS", 7)
+        )
         stats["expired"] = services.recordings_expire(
             retention_days=settings.LIVEKIT_RECORDING_RETENTION_DAYS
         )
@@ -80,7 +86,7 @@ class Command(BaseCommand):
                 stats = live_ops_tick(housekeeping=housekeeping)
                 if housekeeping:
                     last_housekeeping = time.monotonic()
-                if any(stats.get(k) for k in ("synced", "rotated", "started", "expired", "pruned")) or any(
+                if any(stats.get(k) for k in ("synced", "rotated", "started", "expired", "pruned", "snapshots_expired", "snapshots_pruned")) or any(
                     (stats.get("reconcile") or {}).values()
                 ):
                     logger.info("live ops %s", stats)
