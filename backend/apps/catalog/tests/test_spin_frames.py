@@ -133,10 +133,13 @@ def test_replace_removes_old_frames_and_files(
 ):
     white = phone.colors.get(name="White")
     with django_capture_on_commit_callbacks(execute=True):
-        assert _upload(manager_client, phone, [_img(f"{n}.jpg") for n in range(8)], white.id).status_code == 201
-    old_names = list(
-        PhoneSpinFrame.objects.filter(color=white).values_list("image", flat=True)
-    )
+        assert (
+            _upload(
+                manager_client, phone, [_img(f"{n}.jpg") for n in range(8)], white.id
+            ).status_code
+            == 201
+        )
+    old_names = list(PhoneSpinFrame.objects.filter(color=white).values_list("image", flat=True))
     assert all(default_storage.exists(n) for n in old_names)
 
     with django_capture_on_commit_callbacks(execute=True):
@@ -240,7 +243,13 @@ def test_patch_colors_keeps_spin_frames_of_kept_colors(
                 "is_available": True,
                 "sort_order": 1,
             },
-            {"name": "Blue", "hex_code": "#0000ff", "price_override": None, "is_available": True, "sort_order": 0},
+            {
+                "name": "Blue",
+                "hex_code": "#0000ff",
+                "price_override": None,
+                "is_available": True,
+                "sort_order": 0,
+            },
         ]
     }
     with django_capture_on_commit_callbacks(execute=True):

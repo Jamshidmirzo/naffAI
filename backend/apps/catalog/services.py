@@ -279,7 +279,9 @@ _DIGITS_RE = re.compile(r"(\d+)")
 def _natural_key(name: str) -> list:
     """`frame10.jpg` after `frame2.jpg` (plain sort puts it first)."""
     base = os.path.basename(name or "").lower()
-    return [(0, int(part), "") if part.isdigit() else (1, 0, part) for part in _DIGITS_RE.split(base)]
+    return [
+        (0, int(part), "") if part.isdigit() else (1, 0, part) for part in _DIGITS_RE.split(base)
+    ]
 
 
 def _spin_files_delete_on_commit(names) -> None:
@@ -313,7 +315,13 @@ def _spin_validate(files: list) -> None:
             f.seek(0)
             with Image.open(f) as img:
                 img.verify()
-        except (UnidentifiedImageError, OSError, SyntaxError, ValueError, Image.DecompressionBombError):
+        except (
+            UnidentifiedImageError,
+            OSError,
+            SyntaxError,
+            ValueError,
+            Image.DecompressionBombError,
+        ):
             raise ApplicationError(
                 f"Файл {f.name} — не изображение", {"field": "frames", "file": f.name}
             ) from None

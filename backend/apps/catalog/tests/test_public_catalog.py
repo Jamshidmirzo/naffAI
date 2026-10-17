@@ -196,8 +196,11 @@ def test_color_price_override_and_availability(site_client):
         phone=phone, name="Titanium", price_override=Decimal("12000000.00"), sort_order=0
     )
     PhoneColor.objects.create(
-        phone=phone, name="Cheap-but-gone", price_override=Decimal("9000000.00"),
-        is_available=False, sort_order=1,
+        phone=phone,
+        name="Cheap-but-gone",
+        price_override=Decimal("9000000.00"),
+        is_available=False,
+        sort_order=1,
     )
     PhoneColor.objects.create(phone=phone, name="Black", sort_order=2)
 

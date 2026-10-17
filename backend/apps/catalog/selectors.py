@@ -78,7 +78,9 @@ def public_phone_get(*, slug: str) -> PhoneModel | None:
                     Prefetch("spin_frames", queryset=spin_qs)
                 ),
             ),
-            Prefetch("spin_frames", queryset=spin_qs.filter(color__isnull=True), to_attr="spin_colorless"),
+            Prefetch(
+                "spin_frames", queryset=spin_qs.filter(color__isnull=True), to_attr="spin_colorless"
+            ),
             "gallery",
         )
         .first()

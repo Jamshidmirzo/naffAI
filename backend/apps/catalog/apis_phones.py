@@ -184,9 +184,7 @@ class PhoneModelSerializer(serializers.ModelSerializer):
 
     def get_spin_frames(self, obj: PhoneModel) -> list[str]:
         request = self.context.get("request")
-        return [
-            _abs_url(request, f.image) for f in obj.spin_frames.all() if f.color_id is None
-        ]
+        return [_abs_url(request, f.image) for f in obj.spin_frames.all() if f.color_id is None]
 
     def get_marketing_text_uz(self, obj: PhoneModel) -> str:
         try:
