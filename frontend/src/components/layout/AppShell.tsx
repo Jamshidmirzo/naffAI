@@ -213,6 +213,8 @@ export default function AppShell() {
   const auth = useAuth();
   useEffect(() => {
     if (!me.data || !auth.token || !auth.username) return;
+    // Only our own /auth/me/: a previous user's answer must never set the role.
+    if (me.data.username !== auth.username) return;
     if (me.data.role && me.data.role !== auth.role) {
       auth.setAuth(auth.token, auth.username, me.data.role);
     }

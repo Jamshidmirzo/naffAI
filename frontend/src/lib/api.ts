@@ -48,10 +48,21 @@ async function tryRefreshSession(): Promise<boolean> {
   }
 }
 
+// DRF's «no / bad credentials» texts. Before 2026-10-17 the backend sent
+// them with 403; a tab opened before that deploy still may — treat it as 401.
+const NOT_AUTHENTICATED_RE =
+  /(credentials were not provided|invalid token|учетные данные не были предоставлены|недействительный токен|недопустимый токен)/i;
+
+function isNotAuthenticated403(err: AxiosError): boolean {
+  if (err.response?.status !== 403) return false;
+  const detail = (err.response?.data as { detail?: unknown } | undefined)?.detail;
+  return typeof detail === "string" && NOT_AUTHENTICATED_RE.test(detail);
+}
+
 api.interceptors.response.use(
   (r) => r,
   async (err: AxiosError) => {
-    if (err.response?.status === 401) {
+    if (err.response?.status === 401 || isNotAuthenticated403(err)) {
       // Специальный код `pin_required` — это НЕ разлогин, а signal
       // фронту показать PIN-модалку. Никакой очистки localStorage,
       // никакого редиректа. PinGate сам обработает.
@@ -91,7 +102,9 @@ api.interceptors.response.use(
       // expected states handled by the live publisher and wall.
       const url = err.config?.url || "";
       if (!/\/(my|mine)\/?/.test(url) && !/\/live\//.test(url)) {
-        toast.error("Доступ запрещён");
+        // One toast at a time: several polls failing together used to
+        // stack a pile of identical ones.
+        toast.error("Доступ запрещён", { id: "forbidden" });
       }
     }
     return Promise.reject(err);

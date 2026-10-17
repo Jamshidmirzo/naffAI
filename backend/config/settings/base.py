@@ -189,10 +189,15 @@ else:
 # --- DRF ---
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication",
+        # 2026-10-17: Token first. DRF takes WWW-Authenticate from the first
+        # class; with Session first a dead token answered 403, so the SPA
+        # never went back to /login and toasted «Доступ запрещён» on every
+        # poll. Token first also keeps a stray session cookie (/admin) from
+        # overriding the token the SPA sends.
         "rest_framework.authentication.TokenAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
         # 2026-09-06: JWT is appended last so the existing web-CRM auth
-        # (session + DRF token) keeps its priority. Mobile clients set
+        # (token + session) keeps its priority. Mobile clients set
         # `Authorization: Bearer <access>` and hit /api/auth/mobile-*.
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],

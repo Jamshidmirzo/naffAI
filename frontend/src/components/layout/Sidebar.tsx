@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import { useAuth } from "../../store/auth";
 import { isSuperManager, isSuperadmin } from "../RoleGate";
@@ -260,13 +260,14 @@ function Group({ group, badges, index }: GroupProps) {
 
 export function Sidebar({ groups, role }: Props) {
   const auth = useAuth();
-  const nav = useNavigate();
   const t = useT();
   const badges = useBadges(role);
 
   const onLogout = () => {
     auth.logout();
-    nav("/login");
+    // Full reload: the live publisher, intervals and stores of this user
+    // must not survive into the next login on this tab.
+    window.location.replace("/login");
   };
 
   const me = useQuery<{ operator_name: string | null; display_name: string | null }>({
