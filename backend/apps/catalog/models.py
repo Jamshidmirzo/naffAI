@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
+from django.utils.text import slugify
 
 from apps.common.models import TimestampedModel
 
@@ -82,6 +83,16 @@ class PhoneModel(TimestampedModel):
     )
     is_active = models.BooleanField(default=True, db_index=True)
     sort_order = models.IntegerField(default=0)
+    # Public shop site (zetmobile.uz) — the site reads this catalog through
+    # /api/public/catalog/ so prices there are the same numbers operators
+    # quote. `is_active` hides a phone from operators; `show_on_site` is a
+    # separate opt-in for the public site (both must be true there).
+    show_on_site = models.BooleanField(default=False, db_index=True)
+    # Stable URL key on the site. Filled once from brand/model/storage on
+    # first save and never re-derived on rename (links stay alive).
+    site_slug = models.SlugField(max_length=160, unique=True, null=True, blank=True)
+    # `description` is the uz text (operators paste it); this is the ru one.
+    description_ru = models.TextField(blank=True, default="")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -99,6 +110,43 @@ class PhoneModel(TimestampedModel):
         if self.storage_gb:
             parts.append(f"{self.storage_gb}GB")
         return " ".join(parts)
+
+    def save(self, *args, **kwargs):
+        if not self.site_slug:
+            self.site_slug = phone_site_slug_unique(self)
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None and "site_slug" not in update_fields:
+                kwargs["update_fields"] = [*update_fields, "site_slug"]
+        super().save(*args, **kwargs)
+
+
+SITE_SLUG_MAX_LENGTH = 160
+
+
+def phone_site_slug_base(*, brand: str, model_name: str, storage_gb: int | None) -> str:
+    """`Apple` + `iPhone 16 Pro` + 256 → `apple-iphone-16-pro-256gb`."""
+    parts = [brand or "", model_name or ""]
+    if storage_gb:
+        parts.append(f"{storage_gb}gb")
+    # Leave room for a `-NN` collision suffix.
+    base = slugify(" ".join(parts))[: SITE_SLUG_MAX_LENGTH - 8].strip("-")
+    return base or "phone"
+
+
+def phone_site_slug_unique(phone: "PhoneModel") -> str:
+    base = phone_site_slug_base(
+        brand=phone.brand, model_name=phone.model_name, storage_gb=phone.storage_gb
+    )
+    taken = set(
+        PhoneModel.objects.filter(site_slug__startswith=base)
+        .exclude(pk=phone.pk)
+        .values_list("site_slug", flat=True)
+    )
+    slug, n = base, 2
+    while slug in taken:
+        slug = f"{base}-{n}"
+        n += 1
+    return slug
 
 
 class PhoneColor(models.Model):
@@ -126,6 +174,47 @@ class PhoneColor(models.Model):
 
     def __str__(self) -> str:
         return f"{self.phone_id}::{self.name}"
+
+
+class PhoneSpinFrame(models.Model):
+    """
+    One frame of a 360° spin for a phone, per color (`color=None` — the
+    colorless set, for phones without colors). Frames of one set are
+    0..N-1 in rotation order and are always replaced as a whole
+    (`services.phone_spin_replace`), so `index=0` is the preview frame.
+    Stored as WebP, max 1200 px wide.
+    """
+
+    phone = models.ForeignKey(
+        PhoneModel, on_delete=models.CASCADE, related_name="spin_frames"
+    )
+    color = models.ForeignKey(
+        PhoneColor,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="spin_frames",
+    )
+    index = models.PositiveSmallIntegerField()
+    image = models.ImageField(upload_to="catalog/spin/%Y/%m/")
+
+    class Meta:
+        ordering = ["color_id", "index"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["phone", "color", "index"], name="uniq_spin_frame"
+            ),
+            # NULL != NULL inside a unique index — the colorless set needs
+            # its own partial constraint.
+            models.UniqueConstraint(
+                fields=["phone", "index"],
+                condition=models.Q(color__isnull=True),
+                name="uniq_spin_frame_colorless",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.phone_id}::{self.color_id or '-'}::spin#{self.index}"
 
 
 class InstallmentBank(TimestampedModel):
