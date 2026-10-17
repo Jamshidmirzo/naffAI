@@ -9,12 +9,16 @@ need read access to send offers to clients). Writes are manager-only
 
 from __future__ import annotations
 
+import re
+
+from django.db import transaction
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 
+from apps.common.exceptions import ApplicationError
 from apps.users.permissions import IsAuthenticatedAnyRole, IsManager
 
 from .models import PhoneColor, PhoneGalleryPhoto, PhoneModel
@@ -25,6 +29,21 @@ from .quote_builder import (
     installment_rows,
 )
 from .selectors import installment_tiers_for_marketing
+from .services import (
+    phone_colors_sync,
+    phone_spin_clear,
+    phone_spin_files_cleanup,
+    phone_spin_replace,
+)
+
+_SITE_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+
+def _abs_url(request, field) -> str | None:
+    if not field:
+        return None
+    url = field.url
+    return request.build_absolute_uri(url) if request else url
 
 
 class WritesManager(BasePermission):
@@ -41,9 +60,25 @@ WritesTeamLead = WritesManager
 
 
 class PhoneColorSerializer(serializers.ModelSerializer):
+    # 360° frames of this color (urls, rotation order). Read-only: frames
+    # are managed through POST/DELETE /catalog/phones/<id>/spin/.
+    spin_frames = serializers.SerializerMethodField()
+
     class Meta:
         model = PhoneColor
-        fields = ["id", "name", "hex_code", "price_override", "is_available", "sort_order"]
+        fields = [
+            "id",
+            "name",
+            "hex_code",
+            "price_override",
+            "is_available",
+            "sort_order",
+            "spin_frames",
+        ]
+
+    def get_spin_frames(self, obj: PhoneColor) -> list[str]:
+        request = self.context.get("request")
+        return [_abs_url(request, f.image) for f in obj.spin_frames.all()]
 
 
 class PhoneGalleryPhotoSerializer(serializers.ModelSerializer):
@@ -55,11 +90,7 @@ class PhoneGalleryPhotoSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_photo_url(self, obj: PhoneGalleryPhoto) -> str | None:
-        if not obj.photo:
-            return None
-        request = self.context.get("request")
-        url = obj.photo.url
-        return request.build_absolute_uri(url) if request else url
+        return _abs_url(self.context.get("request"), obj.photo)
 
 
 class PhoneModelSerializer(serializers.ModelSerializer):
@@ -79,6 +110,9 @@ class PhoneModelSerializer(serializers.ModelSerializer):
     # operator sees ready-to-quote monthly instalments at a glance
     # without opening a calculator or the marketing text.
     installment_preview = serializers.SerializerMethodField()
+    # Colorless 360° set (phones without colors); per-color sets live in
+    # `colors[].spin_frames`.
+    spin_frames = serializers.SerializerMethodField()
 
     class Meta:
         model = PhoneModel
@@ -99,8 +133,12 @@ class PhoneModelSerializer(serializers.ModelSerializer):
             "stock_status",
             "is_active",
             "sort_order",
+            "show_on_site",
+            "site_slug",
+            "description_ru",
             "colors",
             "gallery",
+            "spin_frames",
             "marketing_text_uz",
             "installment_preview",
             "created_at",
@@ -109,6 +147,7 @@ class PhoneModelSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "cover_image_url",
             "gallery",
+            "spin_frames",
             "marketing_text_uz",
             "installment_preview",
             "created_at",
@@ -120,14 +159,34 @@ class PhoneModelSerializer(serializers.ModelSerializer):
             "camera_mp": {"required": False, "allow_null": True},
             "battery_mah": {"required": False, "allow_null": True},
             "specs_json": {"required": False},
+            # Empty / null → auto-generated from brand + model + storage.
+            "site_slug": {"required": False, "allow_null": True, "allow_blank": True},
+            "description_ru": {"required": False, "allow_blank": True},
         }
 
-    def get_cover_image_url(self, obj: PhoneModel) -> str | None:
-        if not obj.cover_image:
+    def validate_site_slug(self, value: str | None) -> str | None:
+        value = (value or "").strip().lower()
+        if not value:
             return None
+        if not _SITE_SLUG_RE.match(value):
+            raise serializers.ValidationError(
+                "Только латиница в нижнем регистре, цифры и дефис (apple-iphone-16-pro-256gb)"
+            )
+        taken = PhoneModel.objects.filter(site_slug=value)
+        if self.instance is not None:
+            taken = taken.exclude(pk=self.instance.pk)
+        if taken.exists():
+            raise serializers.ValidationError("Этот адрес уже занят другим телефоном")
+        return value
+
+    def get_cover_image_url(self, obj: PhoneModel) -> str | None:
+        return _abs_url(self.context.get("request"), obj.cover_image)
+
+    def get_spin_frames(self, obj: PhoneModel) -> list[str]:
         request = self.context.get("request")
-        url = obj.cover_image.url
-        return request.build_absolute_uri(url) if request else url
+        return [
+            _abs_url(request, f.image) for f in obj.spin_frames.all() if f.color_id is None
+        ]
 
     def get_marketing_text_uz(self, obj: PhoneModel) -> str:
         try:
@@ -148,23 +207,23 @@ class PhoneModelSerializer(serializers.ModelSerializer):
             for r in installment_monthly_rows(obj.price, tiers)
         ]
 
+    @transaction.atomic
     def create(self, validated_data):
         colors_data = validated_data.pop("colors", None) or []
         phone = PhoneModel.objects.create(**validated_data)
-        for c in colors_data:
-            PhoneColor.objects.create(phone=phone, **c)
+        phone_colors_sync(phone=phone, colors_data=colors_data)
         return phone
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         colors_data = validated_data.pop("colors", None)
         for k, v in validated_data.items():
             setattr(instance, k, v)
         instance.save()
         if colors_data is not None:
-            # Full replace on PATCH — simpler than diffing incoming ids.
-            instance.colors.all().delete()
-            for c in colors_data:
-                PhoneColor.objects.create(phone=instance, **c)
+            # Upsert by name — keeps color ids (and their 360° frames) for
+            # colors that are still in the list.
+            phone_colors_sync(phone=instance, colors_data=colors_data)
         return instance
 
 
@@ -174,7 +233,9 @@ class PhoneModelViewSet(viewsets.ModelViewSet):
     serializer_class = PhoneModelSerializer
 
     def get_queryset(self):
-        qs = PhoneModel.objects.all().prefetch_related("colors")
+        qs = PhoneModel.objects.all().prefetch_related(
+            "colors__spin_frames", "spin_frames", "gallery"
+        )
         params = self.request.query_params
         if params.get("search"):
             q = params["search"].strip()
@@ -191,6 +252,11 @@ class PhoneModelViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        phone_spin_files_cleanup(phone=instance)
+        instance.delete()
 
     @action(detail=True, methods=["get"])
     def quote(self, request, pk=None):
@@ -255,3 +321,56 @@ class PhoneModelViewSet(viewsets.ModelViewSet):
             return Response(status=status.HTTP_404_NOT_FOUND)
         item.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # -- 360° spin -------------------------------------------------------
+
+    def _spin_color(self, phone: PhoneModel, raw) -> PhoneColor | None:
+        """`color_id` from the request → PhoneColor of this phone, or None
+        (colorless set). Unknown / someone else's color → ApplicationError."""
+        if raw in (None, "", "null"):
+            return None
+        try:
+            color_id = int(raw)
+        except (TypeError, ValueError):
+            raise ApplicationError("color_id должен быть числом", {"field": "color_id"}) from None
+        color = phone.colors.filter(pk=color_id).first()
+        if color is None:
+            raise ApplicationError("Цвет не принадлежит этому телефону", {"field": "color_id"})
+        return color
+
+    @action(
+        detail=True,
+        methods=["post", "delete"],
+        url_path="spin",
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def spin(self, request, pk=None):
+        """
+        POST   multipart `frames` (8..120 files) + optional `color_id` —
+               replaces the 360° set of that color (none → colorless set).
+        DELETE ?color_id=<id> — removes the set.
+        """
+        phone = self.get_object()
+        try:
+            if request.method == "DELETE":
+                color = self._spin_color(phone, request.query_params.get("color_id"))
+                phone_spin_clear(phone=phone, color=color, user=request.user)
+                return Response(status=status.HTTP_204_NO_CONTENT)
+            color = self._spin_color(phone, request.data.get("color_id"))
+            frames = phone_spin_replace(
+                phone=phone,
+                color=color,
+                files=request.FILES.getlist("frames"),
+                user=request.user,
+            )
+        except ApplicationError as exc:
+            return Response(
+                {"detail": exc.message, **exc.extra}, status=status.HTTP_400_BAD_REQUEST
+            )
+        return Response(
+            {
+                "color_id": color.id if color else None,
+                "frames": [_abs_url(request, f.image) for f in frames],
+            },
+            status=status.HTTP_201_CREATED,
+        )

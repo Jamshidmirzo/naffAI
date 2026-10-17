@@ -1,13 +1,29 @@
 from __future__ import annotations
 
+import io
+import logging
+import os
+import re
 from decimal import Decimal
 
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.db import transaction
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from apps.audit.services import AuditAction, audit_log_create
 from apps.common.exceptions import ApplicationError
 
-from .models import Channel, InstallmentTier, MarketingSettings, PhoneModel
+from .models import (
+    Channel,
+    InstallmentTier,
+    MarketingSettings,
+    PhoneColor,
+    PhoneModel,
+    PhoneSpinFrame,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @transaction.atomic
@@ -203,3 +219,207 @@ def installment_tier_upsert(
         },
     )
     return tier
+
+
+# ---------------------------------------------------------------------------
+# Phone colors — upsert by name. Spin frames hang off PhoneColor, so the old
+# "delete all colors, recreate" PATCH would wipe every 360° set on any edit.
+# ---------------------------------------------------------------------------
+
+_COLOR_FIELDS = ("hex_code", "price_override", "is_available", "sort_order")
+
+
+@transaction.atomic
+def phone_colors_sync(*, phone: PhoneModel, colors_data: list[dict]) -> None:
+    """
+    Make `phone.colors` match `colors_data` (the editor always sends the
+    full list, without ids). Matched by exact `name`: existing colors are
+    updated in place (keeping their id and spin frames), new names are
+    created, names that are gone are deleted — together with their spin
+    frames and the frame files.
+    """
+    existing = {c.name: c for c in phone.colors.all()}
+    seen: set[str] = set()
+    for data in colors_data:
+        name = data["name"]
+        seen.add(name)
+        color = existing.get(name)
+        if color is None:
+            existing[name] = PhoneColor.objects.create(phone=phone, **data)
+            continue
+        changed = [f for f in _COLOR_FIELDS if f in data and getattr(color, f) != data[f]]
+        for f in changed:
+            setattr(color, f, data[f])
+        if changed:
+            color.save(update_fields=changed)
+    stale = [c.id for name, c in existing.items() if name not in seen]
+    if stale:
+        _spin_files_delete_on_commit(
+            PhoneSpinFrame.objects.filter(color_id__in=stale).values_list("image", flat=True)
+        )
+        PhoneColor.objects.filter(id__in=stale).delete()
+
+
+# ---------------------------------------------------------------------------
+# 360° spin frames. A manager uploads a whole set at once (8..120 photos,
+# a turntable shoot); the set replaces the previous one for that color.
+# Frames are normalised to WebP ≤1200 px wide so the site preloads a spin
+# in a few MB.
+# ---------------------------------------------------------------------------
+
+SPIN_MIN_FRAMES = 8
+SPIN_MAX_FRAMES = 120
+SPIN_MAX_FILE_BYTES = 20 * 1024 * 1024
+SPIN_MAX_WIDTH = 1200
+SPIN_WEBP_QUALITY = 80
+
+_DIGITS_RE = re.compile(r"(\d+)")
+
+
+def _natural_key(name: str) -> list:
+    """`frame10.jpg` after `frame2.jpg` (plain sort puts it first)."""
+    base = os.path.basename(name or "").lower()
+    return [(0, int(part), "") if part.isdigit() else (1, 0, part) for part in _DIGITS_RE.split(base)]
+
+
+def _spin_files_delete_on_commit(names) -> None:
+    names = [n for n in names if n]
+    if not names:
+        return
+
+    def _delete():
+        for name in names:
+            try:
+                default_storage.delete(name)
+            except Exception:  # a missing file must not break the request
+                logger.warning("spin: could not delete %s", name, exc_info=True)
+
+    transaction.on_commit(_delete)
+
+
+def _spin_validate(files: list) -> None:
+    if len(files) < SPIN_MIN_FRAMES or len(files) > SPIN_MAX_FRAMES:
+        raise ApplicationError(
+            f"Для 360° нужно от {SPIN_MIN_FRAMES} до {SPIN_MAX_FRAMES} кадров, "
+            f"получено {len(files)}",
+            {"field": "frames"},
+        )
+    for f in files:
+        if f.size > SPIN_MAX_FILE_BYTES:
+            raise ApplicationError(
+                f"Файл {f.name} больше 20 МБ", {"field": "frames", "file": f.name}
+            )
+        try:
+            f.seek(0)
+            with Image.open(f) as img:
+                img.verify()
+        except (UnidentifiedImageError, OSError, SyntaxError, ValueError, Image.DecompressionBombError):
+            raise ApplicationError(
+                f"Файл {f.name} — не изображение", {"field": "frames", "file": f.name}
+            ) from None
+        finally:
+            f.seek(0)
+
+
+def _spin_to_webp(f) -> bytes:
+    """EXIF-rotate, flatten alpha onto white, fit to SPIN_MAX_WIDTH, WebP q80."""
+    f.seek(0)
+    with Image.open(f) as src:
+        # JPEG decoder can downscale by 1/2..1/8 while decoding — big win on
+        # 50 MP camera files. Keeps both sides ≥ SPIN_MAX_WIDTH, so the
+        # EXIF rotation below can't leave the result under-sized.
+        src.draft("RGB", (SPIN_MAX_WIDTH, SPIN_MAX_WIDTH))
+        img = ImageOps.exif_transpose(src)
+        has_alpha = img.mode in ("RGBA", "LA", "PA") or (
+            img.mode == "P" and "transparency" in img.info
+        )
+        if has_alpha:
+            rgba = img.convert("RGBA")
+            img = Image.new("RGB", rgba.size, (255, 255, 255))
+            img.paste(rgba, mask=rgba.getchannel("A"))
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+        if img.width > SPIN_MAX_WIDTH:
+            height = max(1, round(img.height * SPIN_MAX_WIDTH / img.width))
+            img = img.resize((SPIN_MAX_WIDTH, height), Image.Resampling.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="WEBP", quality=SPIN_WEBP_QUALITY)
+    return buf.getvalue()
+
+
+def phone_spin_replace(
+    *, phone: PhoneModel, color: PhoneColor | None, files: list, user=None
+) -> list[PhoneSpinFrame]:
+    """
+    Replace the 360° set of (phone, color) with `files` — order = natural
+    sort of the original file names (`1.jpg, 2.jpg, 10.jpg`). `color=None`
+    is the colorless set. Old frames and their files go away only after
+    the new set is committed.
+    """
+    if color is not None and color.phone_id != phone.id:
+        raise ApplicationError("Цвет не принадлежит этому телефону", {"field": "color_id"})
+    files = list(files)
+    _spin_validate(files)
+    files.sort(key=lambda f: _natural_key(f.name))
+    # Heavy Pillow work happens before the transaction opens.
+    blobs = [_spin_to_webp(f) for f in files]
+
+    prefix = f"{phone.id}-{color.id if color else 'x'}"
+    saved: list[str] = []
+    try:
+        with transaction.atomic():
+            old = PhoneSpinFrame.objects.select_for_update().filter(phone=phone, color=color)
+            old_names = list(old.values_list("image", flat=True))
+            old.delete()
+            frames: list[PhoneSpinFrame] = []
+            for i, data in enumerate(blobs):
+                frame = PhoneSpinFrame(phone=phone, color=color, index=i)
+                frame.image.save(f"{prefix}-{i:03d}.webp", ContentFile(data), save=False)
+                saved.append(frame.image.name)
+                frame.save()
+                frames.append(frame)
+            audit_log_create(
+                user=user,
+                action=AuditAction.UPDATE,
+                entity="catalog.PhoneModel",
+                entity_id=phone.id,
+                changes={"spin": {"color_id": color.id if color else None, "frames": len(frames)}},
+            )
+            _spin_files_delete_on_commit(old_names)
+    except Exception:
+        # Rolled back — the files written for the new set are orphans now.
+        for name in saved:
+            try:
+                default_storage.delete(name)
+            except Exception:
+                logger.warning("spin: could not clean up %s", name, exc_info=True)
+        raise
+    return frames
+
+
+@transaction.atomic
+def phone_spin_clear(*, phone: PhoneModel, color: PhoneColor | None, user=None) -> int:
+    if color is not None and color.phone_id != phone.id:
+        raise ApplicationError("Цвет не принадлежит этому телефону", {"field": "color_id"})
+    qs = PhoneSpinFrame.objects.filter(phone=phone, color=color)
+    names = list(qs.values_list("image", flat=True))
+    deleted = len(names)
+    if deleted:
+        qs.delete()
+        audit_log_create(
+            user=user,
+            action=AuditAction.DELETE,
+            entity="catalog.PhoneModel",
+            entity_id=phone.id,
+            changes={"spin": {"color_id": color.id if color else None, "frames": 0}},
+        )
+        _spin_files_delete_on_commit(names)
+    return deleted
+
+
+def phone_spin_files_cleanup(*, phone: PhoneModel) -> None:
+    """Call inside the transaction that deletes `phone` (cascade drops the
+    frame rows, not the files)."""
+    _spin_files_delete_on_commit(
+        PhoneSpinFrame.objects.filter(phone=phone).values_list("image", flat=True)
+    )

@@ -149,6 +149,9 @@ MEDIA_ROOT = BASE_DIR / "media"
 # has a matching `client_max_body_size 60m` on the VPS.
 DATA_UPLOAD_MAX_MEMORY_SIZE = 60 * 1024 * 1024  # 60 MB total request body
 FILE_UPLOAD_MAX_MEMORY_SIZE = 15 * 1024 * 1024  # 15 MB per single file
+# Django's default is 100 files per request; a 360° spin set is up to 120
+# frames in one multipart POST (catalog/phones/<id>/spin/).
+DATA_UPLOAD_MAX_NUMBER_FILES = 150
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
