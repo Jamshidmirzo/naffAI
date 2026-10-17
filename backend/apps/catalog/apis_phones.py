@@ -17,15 +17,14 @@ from rest_framework.response import Response
 
 from apps.users.permissions import IsAuthenticatedAnyRole, IsManager
 
-from decimal import Decimal
-
-from .models import InstallmentTier, PhoneColor, PhoneGalleryPhoto, PhoneModel
+from .models import PhoneColor, PhoneGalleryPhoto, PhoneModel
 from .quote_builder import (
-    _ceil_thousand,
     build_marketing_text,
     build_phone_quote,
+    installment_monthly_rows,
     installment_rows,
 )
+from .selectors import installment_tiers_for_marketing
 
 
 class WritesManager(BasePermission):
@@ -137,23 +136,17 @@ class PhoneModelSerializer(serializers.ModelSerializer):
             return ""
 
     def get_installment_preview(self, obj: PhoneModel) -> list[dict]:
-        price = obj.price or Decimal("0")
-        if price <= 0:
-            return []
-        tiers = InstallmentTier.objects.filter(
-            is_active=True, show_in_marketing=True
-        ).order_by("sort_order", "months")
-        out: list[dict] = []
-        for t in tiers:
-            if not t.months:
-                continue
-            total = price * (Decimal("1") + t.commission_pct / Decimal("100"))
-            monthly = total / Decimal(t.months)
-            rounded = _ceil_thousand(monthly)
-            if rounded <= 0:
-                continue
-            out.append({"months": int(t.months), "monthly": rounded})
-        return out
+        # Same formula as the marketing text and the public site
+        # (quote_builder.installment_monthly_rows). Tiers are read once per
+        # response, not once per card.
+        tiers = self.context.get("_marketing_tiers")
+        if tiers is None:
+            tiers = installment_tiers_for_marketing()
+            self.context["_marketing_tiers"] = tiers
+        return [
+            {"months": r["months"], "monthly": r["monthly"]}
+            for r in installment_monthly_rows(obj.price, tiers)
+        ]
 
     def create(self, validated_data):
         colors_data = validated_data.pop("colors", None) or []

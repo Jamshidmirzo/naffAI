@@ -26,7 +26,8 @@ from __future__ import annotations
 import math
 from decimal import ROUND_HALF_UP, Decimal
 
-from .models import InstallmentPlan, InstallmentTier, MarketingSettings, PhoneModel
+from .models import InstallmentPlan, MarketingSettings, PhoneModel
+from .selectors import installment_tiers_for_marketing
 
 
 def _tr(ru: str, uz: str, language: str) -> str:
@@ -142,6 +143,41 @@ def _ceil_thousand(value: Decimal) -> int:
     return math.ceil(float(value) / 1000.0) * 1000
 
 
+def installment_monthly_rows(price: Decimal | None, tiers) -> list[dict]:
+    """
+    THE monthly-payment formula for shop-wide tiers — one place for the
+    catalog card strip (`installment_preview`), the marketing text and the
+    public site, so the numbers can never drift apart:
+
+        monthly = ceil_1000(price × (1 + pct/100) / months)
+        total   = monthly × months
+
+    `tiers` — iterable of InstallmentTier, already filtered/ordered by the
+    caller (see `selectors.installment_tiers_for_marketing`). Rows that
+    round to 0 (price 0, months 0) are dropped.
+    """
+    price = price or Decimal("0")
+    if price <= 0:
+        return []
+    rows: list[dict] = []
+    for t in tiers:
+        if not t.months:
+            continue
+        total = price * (Decimal("1") + t.commission_pct / Decimal("100"))
+        monthly = _ceil_thousand(total / Decimal(t.months))
+        if monthly <= 0:
+            continue
+        rows.append(
+            {
+                "months": int(t.months),
+                "commission_pct": str(t.commission_pct),
+                "monthly": monthly,
+                "total": monthly * int(t.months),
+            }
+        )
+    return rows
+
+
 def _fmt_int(n: int, language: str) -> str:
     unit = _tr("сум", "so'm", language)
     return f"{n:,}".replace(",", " ") + f" {unit}"
@@ -199,23 +235,11 @@ def build_marketing_text(phone: PhoneModel, language: str = "uz") -> str:
         lines.append("")
 
     # --- Installments block ---
-    price = phone.price or Decimal("0")
-    tiers = (
-        InstallmentTier.objects.filter(is_active=True, show_in_marketing=True)
-        .order_by("sort_order", "months")
-    )
     tier_lines: list[str] = []
-    for t in tiers:
-        if not t.months:
-            continue
-        total = price * (Decimal("1") + t.commission_pct / Decimal("100"))
-        monthly = total / Decimal(t.months)
-        rounded = _ceil_thousand(monthly)
-        if rounded <= 0:
-            continue
+    for row in installment_monthly_rows(phone.price, installment_tiers_for_marketing()):
         tier_lines.append(
-            f"🔹 {t.months} {_tr('мес', 'oy', lang)} → "
-            f"{_fmt_int(rounded, lang)}{_tr('/мес', 'dan', lang)}"
+            f"🔹 {row['months']} {_tr('мес', 'oy', lang)} → "
+            f"{_fmt_int(row['monthly'], lang)}{_tr('/мес', 'dan', lang)}"
         )
     if tier_lines:
         lines.append("⸻")
