@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import PhotoUploader from "./PhotoUploader";
 import PhotosUploader from "./PhotosUploader";
 import NumericInput from "./NumericInput";
+import SpinFramesEditor from "./SpinFramesEditor";
 import { Select } from "./Select";
 import { useT } from "../lib/i18n";
 import type { PhoneColor, PhoneGalleryPhoto } from "../pages/Catalog";
@@ -13,15 +15,21 @@ export type PhoneDraft = {
   ram_gb: number | null;
   price: string;
   description: string;
+  description_ru: string;
   tagline: string;
   camera_mp: number | null;
   battery_mah: number | null;
   specs_json: Record<string, string>;
   stock_status: "available" | "on_order" | "out";
   is_active: boolean;
+  show_on_site: boolean;
+  /** "" → auto (brand + model + storage) on the backend. */
+  site_slug: string;
   sort_order: number;
   colors: PhoneColor[];
   gallery: PhoneGalleryPhoto[];
+  /** Colorless 360° set — display only, uploads go straight to the API. */
+  spin_frames: string[];
   new_gallery_files: File[];
   gallery_delete_ids?: number[];
   cover_image_file: File | null;
@@ -29,6 +37,8 @@ export type PhoneDraft = {
 };
 
 interface Props {
+  /** null while creating — 360° upload needs a saved phone. */
+  phoneId: number | null;
   draft: PhoneDraft;
   onChange: (d: PhoneDraft) => void;
   onSave: () => void;
@@ -36,10 +46,18 @@ interface Props {
   saving: boolean;
 }
 
-export default function PhoneEditor({ draft, onChange, onSave, onCancel, saving }: Props) {
+export default function PhoneEditor({ phoneId, draft, onChange, onSave, onCancel, saving }: Props) {
   const t = useT();
   const set = <K extends keyof PhoneDraft>(k: K, v: PhoneDraft[K]) =>
     onChange({ ...draft, [k]: v });
+  // Saved color names by id — the backend matches colors by name, so a
+  // renamed color is a new color on save and its 360° set goes away.
+  const [savedNames] = useState(
+    () => new Map(draft.colors.filter((c) => c.id).map((c) => [c.id as number, c.name])),
+  );
+  const savedColors = draft.colors.filter((c) => c.id && savedNames.has(c.id));
+  const showColorless =
+    savedColors.length === 0 || (draft.spin_frames?.length ?? 0) > 0;
 
   const addColor = () =>
     set("colors", [
@@ -335,13 +353,61 @@ export default function PhoneEditor({ draft, onChange, onSave, onCancel, saving 
       </div>
 
       <div>
-        <label className="nf-col mb-1.5 block">{t("catalog.description")}</label>
-        <textarea
-          className="nf-input"
-          rows={2}
-          value={draft.description}
-          onChange={(e) => set("description", e.target.value)}
-        />
+        <label className="nf-col mb-1 block">{t("catalog.spin_title")}</label>
+        <div className="text-[11.5px] text-muted mb-2">{t("catalog.spin_hint")}</div>
+        {phoneId === null ? (
+          <div className="text-[12px] text-muted">{t("catalog.spin_save_first")}</div>
+        ) : (
+          <div className="space-y-2">
+            {savedColors.map((c) => (
+              <SpinFramesEditor
+                key={c.id}
+                phoneId={phoneId}
+                colorId={c.id as number}
+                label={savedNames.get(c.id as number) || c.name}
+                hex={c.hex_code}
+                frames={c.spin_frames || []}
+                warning={
+                  c.name !== savedNames.get(c.id as number) && (c.spin_frames?.length ?? 0) > 0
+                    ? t("catalog.spin_rename_warning")
+                    : undefined
+                }
+              />
+            ))}
+            {showColorless && (
+              <SpinFramesEditor
+                phoneId={phoneId}
+                colorId={null}
+                label={t("catalog.spin_colorless")}
+                frames={draft.spin_frames || []}
+              />
+            )}
+            {draft.colors.some((c) => !c.id) && (
+              <div className="text-[12px] text-muted">{t("catalog.spin_color_unsaved")}</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div>
+          <label className="nf-col mb-1.5 block">{t("catalog.description")}</label>
+          <textarea
+            className="nf-input"
+            rows={3}
+            value={draft.description}
+            onChange={(e) => set("description", e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="nf-col mb-1.5 block">{t("catalog.description_ru")}</label>
+          <textarea
+            className="nf-input"
+            rows={3}
+            value={draft.description_ru}
+            onChange={(e) => set("description_ru", e.target.value)}
+          />
+        </div>
       </div>
 
       <label className="flex items-center gap-2 text-[13px] cursor-pointer">
@@ -352,6 +418,27 @@ export default function PhoneEditor({ draft, onChange, onSave, onCancel, saving 
         />
         {t("catalog.active")}
       </label>
+
+      <div className="space-y-2">
+        <label className="flex items-center gap-2 text-[13px] cursor-pointer">
+          <input
+            type="checkbox"
+            checked={draft.show_on_site}
+            onChange={(e) => set("show_on_site", e.target.checked)}
+          />
+          {t("catalog.show_on_site")}
+        </label>
+        <div>
+          <label className="nf-col mb-1.5 block">{t("catalog.site_slug")}</label>
+          <input
+            className="nf-input font-mono text-[13px]"
+            value={draft.site_slug}
+            onChange={(e) => set("site_slug", e.target.value.toLowerCase())}
+            placeholder={t("catalog.site_slug_ph")}
+            spellCheck={false}
+          />
+        </div>
+      </div>
 
       <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border)]">
         <button type="button" className="nf-btn nf-btn--ghost" onClick={onCancel}>

@@ -11,6 +11,8 @@ import {
   Image as ImageIcon,
   Type,
   Megaphone,
+  Globe,
+  Rotate3d,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
@@ -42,8 +44,14 @@ export type Phone = {
   stock_status: "available" | "on_order" | "out";
   is_active: boolean;
   sort_order: number;
+  /** Public shop site (zetmobile.uz) — separate from `is_active`. */
+  show_on_site: boolean;
+  site_slug: string | null;
+  description_ru: string;
   colors: PhoneColor[];
   gallery: PhoneGalleryPhoto[];
+  /** Colorless 360° set (urls in rotation order); per-color sets are in colors[]. */
+  spin_frames: string[];
   marketing_text_uz?: string;
   installment_preview?: { months: number; monthly: number }[];
 };
@@ -55,6 +63,8 @@ export type PhoneColor = {
   price_override: string | null;
   is_available: boolean;
   sort_order: number;
+  /** Read-only, managed via /catalog/phones/<id>/spin/. */
+  spin_frames?: string[];
 };
 
 export type PhoneGalleryPhoto = {
@@ -71,19 +81,30 @@ const emptyDraft = (): PhoneDraft => ({
   ram_gb: null,
   price: "",
   description: "",
+  description_ru: "",
   tagline: "",
   camera_mp: null,
   battery_mah: null,
   specs_json: {},
   stock_status: "available",
   is_active: true,
+  show_on_site: false,
+  site_slug: "",
   sort_order: 0,
   colors: [],
   gallery: [],
+  spin_frames: [],
   new_gallery_files: [],
   cover_image_file: null,
   cover_image_url: null,
 });
+
+function hasSpin(p: Phone): boolean {
+  return (
+    (p.spin_frames?.length ?? 0) > 0 ||
+    (p.colors || []).some((c) => (c.spin_frames?.length ?? 0) > 0)
+  );
+}
 
 function fmtPrice(v: string | number): string {
   const n = Math.round(Number(v || 0));
@@ -210,13 +231,19 @@ export default function Catalog() {
         ram_gb: draft.ram_gb || null,
         price: draft.price,
         description: draft.description,
+        description_ru: draft.description_ru || "",
         tagline: draft.tagline || "",
         camera_mp: draft.camera_mp || null,
         battery_mah: draft.battery_mah || null,
         specs_json: draft.specs_json || {},
         stock_status: draft.stock_status,
         is_active: draft.is_active,
+        show_on_site: draft.show_on_site,
+        // Empty → the backend derives it from brand + model + storage.
+        site_slug: draft.site_slug.trim() || null,
         sort_order: draft.sort_order,
+        // Colors are matched by name on the backend — a kept name keeps its
+        // row (and its 360° frames).
         colors: draft.colors.map((c) => ({
           name: c.name,
           hex_code: c.hex_code,
@@ -349,15 +376,19 @@ export default function Catalog() {
       ram_gb: p.ram_gb,
       price: p.price,
       description: p.description,
+      description_ru: p.description_ru || "",
       tagline: p.tagline || "",
       camera_mp: p.camera_mp ?? null,
       battery_mah: p.battery_mah ?? null,
       specs_json: p.specs_json || {},
       stock_status: p.stock_status,
       is_active: p.is_active,
+      show_on_site: !!p.show_on_site,
+      site_slug: p.site_slug || "",
       sort_order: p.sort_order,
       colors: p.colors || [],
       gallery: p.gallery || [],
+      spin_frames: p.spin_frames || [],
       new_gallery_files: [],
       gallery_delete_ids: [],
       cover_image_file: null,
@@ -422,8 +453,32 @@ export default function Catalog() {
               t={t}
             />
             <div className="p-4 flex-1 flex flex-col">
-              <div className="text-[15px] font-semibold truncate">
-                {p.brand} {p.model_name}
+              <div className="flex items-center gap-1.5 min-w-0">
+                <div className="text-[15px] font-semibold truncate">
+                  {p.brand} {p.model_name}
+                </div>
+                {p.show_on_site && (
+                  <span
+                    className="shrink-0 inline-flex items-center gap-1 text-[10.5px] font-medium px-1.5 py-0.5 rounded-full"
+                    style={{
+                      background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+                      color: "var(--accent)",
+                    }}
+                    title={t("catalog.show_on_site")}
+                  >
+                    <Globe className="w-3 h-3" />
+                    {t("catalog.on_site_badge")}
+                  </span>
+                )}
+                {hasSpin(p) && (
+                  <span
+                    className="shrink-0 inline-flex items-center gap-0.5 text-[10.5px] text-muted"
+                    title={t("catalog.spin_title")}
+                  >
+                    <Rotate3d className="w-3 h-3" />
+                    360°
+                  </span>
+                )}
               </div>
               <div className="text-[12px] text-muted mt-0.5">
                 {p.storage_gb ? `${p.storage_gb}GB` : ""}
@@ -588,6 +643,7 @@ export default function Catalog() {
       >
         {editing && canEdit && (
           <PhoneEditor
+            phoneId={editingId}
             draft={editing}
             onChange={setEditing}
             onSave={() => save.mutate({ ...editing, id: editingId ?? undefined } as any)}
