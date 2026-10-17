@@ -51,6 +51,9 @@ urlpatterns = [
     path("imei/", include("apps.catalog.urls_imei")),
     # Catalog v1 — phones + installment plans (demo).
     path("catalog/", include("apps.catalog.urls_catalog")),
+    # Public read-only catalog for the shop website (zetmobile.uz):
+    # X-Site-Key = settings.PUBLIC_CATALOG_KEY, no session / token auth.
+    path("public/catalog/", include(("apps.catalog.urls_public", "public_catalog"))),
     path("sales/", include("apps.sales.urls")),
     path("payroll/", include("apps.payroll.urls")),
     path("analytics/", include("apps.analytics.urls")),

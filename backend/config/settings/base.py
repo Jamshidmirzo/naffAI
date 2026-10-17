@@ -541,3 +541,11 @@ REST_FRAMEWORK.setdefault("DEFAULT_THROTTLE_RATES", {})
 REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["attendance_scan_ip"] = "20/min"
 # Публичный webhook-приём лидов (/api/integrations/leads/<token>/), per-IP.
 REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["lead_webhook"] = "120/min"
+# Публичный каталог для сайта магазина (/api/public/catalog/), per-IP —
+# запросы идут с сервера сайта (SSR), поэтому лимит щедрый.
+REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["public_catalog"] = "600/min"
+
+# --- Public catalog (shop website) ---
+# Shared secret the site sends as `X-Site-Key`. Empty = public catalog off
+# (every request 401).
+PUBLIC_CATALOG_KEY = config("PUBLIC_CATALOG_KEY", default="")
