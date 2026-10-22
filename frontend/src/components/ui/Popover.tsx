@@ -15,8 +15,9 @@ import { cn } from "./cn";
  * `overflow: hidden / auto` or trapped in a low stacking context.
  *
  * Positioning is computed from the trigger's getBoundingClientRect()
- * with useLayoutEffect + rAF, and recomputed on scroll (capture)
- * and window resize while the popover is open. Handles outside-click
+ * with useLayoutEffect + rAF, and recomputed on scroll (capture),
+ * window resize and content resize while the popover is open. Opens
+ * upwards when there is no room below. Handles outside-click
  * (accounts for portalled content) and Escape.
  *
  * Public API is intentionally minimal so existing components (Select,
@@ -75,9 +76,33 @@ export function Popover({
     const r = trigger.getBoundingClientRect();
     const content = contentRef.current;
     const contentWidth = content?.offsetWidth ?? 0;
+    // Vertical fit: open upwards when the list doesn't fit below the
+    // trigger but there is more room above, and cap the height to the
+    // room left — inside a modal the body can't scroll, so a list that
+    // runs past the bottom edge is simply unreachable. maxHeight is set
+    // on the DOM node directly and reset before measuring, so a cap from
+    // the previous pass never sticks.
+    let h = 0;
+    if (content) {
+      content.style.maxHeight = "";
+      content.style.overflowY = "";
+      h = content.offsetHeight;
+    }
+    const viewportH = document.documentElement.clientHeight;
+    const below = viewportH - r.bottom - sideOffset - 8;
+    const above = r.top - sideOffset - 8;
+    const up = h > below && above > below;
+    const room = Math.max(160, up ? above : below);
+    if (content && h > room) {
+      content.style.maxHeight = `${room}px`;
+      content.style.overflowY = "auto";
+      h = room;
+    }
     // scrollY/X so that once written into document.body's frame the
     // coords stay glued to the trigger even if the page is scrolled.
-    const top = r.bottom + window.scrollY + sideOffset;
+    const top = up
+      ? r.top + window.scrollY - sideOffset - h
+      : r.bottom + window.scrollY + sideOffset;
     let left: number;
     if (matchTriggerWidth) {
       left = r.left + window.scrollX;
@@ -118,9 +143,17 @@ export function Popover({
     // when a scrollable card underneath moves.
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onResize);
+    // The list shrinks while the user types in its search box — an
+    // upward list must move down with it to stay glued to the trigger.
+    const ro =
+      typeof ResizeObserver !== "undefined" && contentRef.current
+        ? new ResizeObserver(() => compute())
+        : null;
+    if (ro && contentRef.current) ro.observe(contentRef.current);
     return () => {
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onResize);
+      ro?.disconnect();
     };
   }, [open, compute]);
 
@@ -136,7 +169,11 @@ export function Popover({
       onClose();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      // Close only the list: modals listen for Escape on window, which
+      // comes after document in the bubble phase.
+      e.stopPropagation();
+      onClose();
     };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
