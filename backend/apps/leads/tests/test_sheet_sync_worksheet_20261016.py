@@ -154,3 +154,15 @@ def test_writeback_uses_tab_found_by_gid(monkeypatch):
     assert client.update_cells.called
     written_range = str(client.update_cells.call_args)
     assert "'Yengi target '!" in written_range
+
+
+def test_raw_values_quotes_plus_in_tab_name():
+    # 2026-10-30, prod «Tashkent + aralash»: an unquoted `+` reached Google
+    # as a space → 400 «Unable to parse range».
+    from apps.leads.integrations.google_sheets.client import GoogleSheetsClient
+
+    client = GoogleSheetsClient.__new__(GoogleSheetsClient)
+    client._get = MagicMock(return_value={"values": [["a"]]})
+    assert client.raw_values("sid", "'Tashkent + aralash'!A1:ZZ") == [["a"]]
+    url = client._get.call_args.args[0]
+    assert url.endswith("/sid/values/%27Tashkent%20%2B%20aralash%27!A1:ZZ")
