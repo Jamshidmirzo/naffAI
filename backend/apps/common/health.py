@@ -95,6 +95,9 @@ EXPECTED_INTERVALS: dict[str, int] = {
     # Live reconcile / recording rotation (`live-ops`, live_ops) — every
     # 30s. Monitored only where LiveKit's server API is configured.
     "live_ops": 5 * 60,
+    # Meta Ads statistics (`meta-ads-sync`, sync_meta_ads --loop) — hourly.
+    # Monitored only while some ad account is switched on.
+    "meta_ads_sync": 3 * 3600,
 }
 
 
@@ -111,9 +114,16 @@ def _live_ops_enabled() -> bool:
     return bool(getattr(settings, "LIVEKIT_API_URL", ""))
 
 
+def _meta_ads_sync_enabled() -> bool:
+    from apps.marketing.models import MetaAdAccount
+
+    return MetaAdAccount.objects.filter(is_active=True).exists()
+
+
 CONDITIONAL_SERVICES: dict[str, Callable[[], bool]] = {
     "lead_outbound": _lead_outbound_enabled,
     "live_ops": _live_ops_enabled,
+    "meta_ads_sync": _meta_ads_sync_enabled,
 }
 
 

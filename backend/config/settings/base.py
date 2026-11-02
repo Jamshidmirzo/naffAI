@@ -389,6 +389,22 @@ TG_SESSION_ENCRYPTION_CURRENT_VERSION = config(
     default=str(max((int(v) for v in TG_SESSION_ENCRYPTION_KEYS), default=1)),
     cast=int,
 )
+# Meta Ads (Marketing API) — токены `marketing.MetaConnection` шифруются
+# отдельным ключом (утечка одного ключа не раскрывает остальные секреты).
+# Без ключа подключить Meta нельзя (API отвечает понятной ошибкой), всё
+# остальное работает. Сгенерировать: `python -c "from cryptography.fernet
+# import Fernet; print(Fernet.generate_key().decode())"`.
+META_TOKEN_ENCRYPTION_KEY = config("META_TOKEN_ENCRYPTION_KEY", default="")
+META_TOKEN_ENCRYPTION_KEYS: dict[str, str] = {}
+if META_TOKEN_ENCRYPTION_KEY:
+    META_TOKEN_ENCRYPTION_KEYS["1"] = META_TOKEN_ENCRYPTION_KEY
+META_TOKEN_ENCRYPTION_CURRENT_VERSION = config(
+    "META_TOKEN_ENCRYPTION_CURRENT_VERSION",
+    default=str(max((int(v) for v in META_TOKEN_ENCRYPTION_KEYS), default=1)),
+    cast=int,
+)
+META_GRAPH_VERSION = config("META_GRAPH_VERSION", default="v26.0")
+META_GRAPH_TIMEOUT_SECONDS = config("META_GRAPH_TIMEOUT_SECONDS", default=30, cast=int)
 # Feature flag: transcribe voice messages via Whisper (0 = skipped, 1 = enabled)
 TG_TRANSCRIBE_VOICE = config("TG_TRANSCRIBE_VOICE", default=False, cast=bool)
 TG_TRANSCRIBE_PROVIDER = config("TG_TRANSCRIBE_PROVIDER", default="openai")

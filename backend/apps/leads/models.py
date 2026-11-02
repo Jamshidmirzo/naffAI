@@ -303,6 +303,18 @@ class SheetSource(TimestampedModel):
     #  "status_map": {"<наш код>": "new|qualified|won|lost|junk"}}.
     # Пока enabled=false — события копятся, sender их не трогает.
     outbound_config = models.JSONField(default=dict, blank=True)
+    # SMM-специалист (таргетолог), чья реклама льёт в этот источник. Все
+    # лиды источника и продажи по ним засчитываются ему (кабинет SMM,
+    # `apps.marketing.smm_selectors.smm_leads_q`). У одного SMM может быть
+    # сколько угодно источников, у источника — один SMM.
+    smm = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="smm_sources",
+        limit_choices_to={"profile__role": "smm"},
+    )
 
     class Meta:
         ordering = ["name"]

@@ -666,7 +666,21 @@ async def main() -> None:
         now = timezone.localtime()
         start, end, _, _ = get_period_range(period, now)
 
-        html_text = await asyncio.to_thread(render_sales_by_sheet_source, start, end, lang)
+        def _smm_user_id() -> int | None:
+            from apps.tg_bot.models import BotChat
+
+            chat = (
+                BotChat.objects.select_related("linked_profile")
+                .filter(chat_id=cb.message.chat.id)
+                .first()
+            )
+            profile = chat.linked_profile if chat else None
+            return profile.user_id if profile and profile.role == "smm" else None
+
+        smm_id = await asyncio.to_thread(_smm_user_id)
+        html_text = await asyncio.to_thread(
+            render_sales_by_sheet_source, start, end, lang, smm_id
+        )
         if not html_text:
             await cb.message.answer(
                 "Bu davr uchun sotuvlar yo'q"

@@ -11,6 +11,19 @@ from .apis import (
     MarketingExportApi,
     MarkRecommendationDoneApi,
 )
+from .smm_apis import (
+    MetaAdAccountDetailApi,
+    MetaAdAccountListApi,
+    MetaAdAccountSyncApi,
+    MetaConnectionCheckApi,
+    MetaConnectionDetailApi,
+    MetaConnectionListCreateApi,
+    SmmDashboardApi,
+    SmmLeadsApi,
+    SmmListApi,
+    SmmOverviewApi,
+    SmmSourcesApi,
+)
 
 urlpatterns = [
     # Legacy
@@ -30,4 +43,17 @@ urlpatterns = [
     # AdSpend CRUD
     path("adspend/", AdSpendListCreateApi.as_view()),
     path("adspend/<int:adspend_id>/", AdSpendDetailApi.as_view()),
+
+    # SMM-специалисты (таргетологи) + Meta Ads
+    path("smm/", SmmListApi.as_view()),
+    path("smm/overview/", SmmOverviewApi.as_view()),
+    path("smm/dashboard/", SmmDashboardApi.as_view()),
+    path("smm/leads/", SmmLeadsApi.as_view()),
+    path("smm/<int:smm_id>/sources/", SmmSourcesApi.as_view()),
+    path("meta/connections/", MetaConnectionListCreateApi.as_view()),
+    path("meta/connections/<int:connection_id>/", MetaConnectionDetailApi.as_view()),
+    path("meta/connections/<int:connection_id>/check/", MetaConnectionCheckApi.as_view()),
+    path("meta/ad-accounts/", MetaAdAccountListApi.as_view()),
+    path("meta/ad-accounts/<int:account_id>/", MetaAdAccountDetailApi.as_view()),
+    path("meta/ad-accounts/<int:account_id>/sync/", MetaAdAccountSyncApi.as_view()),
 ]

@@ -31,6 +31,7 @@ from apps.common.validators import normalize_uz_phone
 from apps.operators.models import Operator, OperatorStatus
 
 
+from .integrations.webhook.parse import ad_from_sheet_row
 from .models import (
     DistributionMode,
     Lead,
@@ -753,6 +754,11 @@ def lead_create_from_sheet_row(
                 phone_alt = candidate
                 break
     metadata = _extract_metadata(raw_row, cm)
+    # Колонки Meta (ad_id, campaign_name…) → metadata["ad"], как у вебхука:
+    # по ним кабинет SMM склеивает лиды таблицы с расходом объявления.
+    ad = ad_from_sheet_row(raw_row)
+    if ad:
+        metadata["ad"] = ad
 
     # Phone-level dedup (2026-08-30): the historical idempotency key was
     # (sheet_source, sheet_row_index) — but managers routinely re-add the
@@ -2779,6 +2785,27 @@ def lead_recover_from_system_lost(*, lead: Lead, user=None) -> Lead:
 # Module-level import so tests can `patch("apps.leads.services.GoogleSheetsClient")`
 # without reaching into the integration package. Both symbols are safe to
 # import at load — the client constructor is what performs the auth work.
+def sheet_source_set_smm(*, source: SheetSource, smm_id: int | None, user=None) -> SheetSource:
+    """
+    Привязать источник (таблицу или вебхук) к SMM-специалисту. `None` —
+    отвязать. Роль проверяет вызывающий (сериализатор / marketing API).
+    """
+    old = source.smm_id
+    if old == smm_id:
+        return source
+    source.smm_id = smm_id
+    source.save(update_fields=["smm", "updated_at"])
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="leads.SheetSource",
+        entity_id=source.id,
+        changes={"smm_id": {"old": old, "new": smm_id}},
+        comment="Привязка к SMM-специалисту",
+    )
+    return source
+
+
 from .integrations.google_sheets.client import (  # noqa: E402
     GoogleSheetsClient,
     GoogleSheetsUnavailable,

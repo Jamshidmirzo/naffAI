@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 
+from django.contrib.auth import get_user_model
 from rest_framework import serializers, status
 from rest_framework.generics import ListCreateAPIView, RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
@@ -77,10 +78,13 @@ from .services import (
     morning_distribute_leads,
     operator_alias_upsert,
     retry_export_to_sheet,
+    sheet_source_set_smm,
     sheet_source_upsert,
     telegram_link_upsert,
 )
 from apps.users.selectors import visible_operator_ids
+
+User = get_user_model()
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +223,10 @@ class SheetSourceSerializer(serializers.ModelSerializer):
     worksheet_name = serializers.CharField(
         required=False, allow_blank=True, trim_whitespace=False, max_length=128
     )
+    # SMM-специалист (таргетолог), которому засчитываются лиды источника.
+    # Пишется отдельным сервисом `sheet_source_set_smm` (см. create/patch).
+    smm_id = serializers.IntegerField(required=False, allow_null=True)
+    smm_name = serializers.SerializerMethodField()
 
     class Meta:
         model = SheetSource
@@ -244,6 +252,8 @@ class SheetSourceSerializer(serializers.ModelSerializer):
             "allowed_operator_ids",
             "is_hot",
             "hot_sla_minutes",
+            "smm_id",
+            "smm_name",
         ]
         read_only_fields = [
             "id",
@@ -251,6 +261,20 @@ class SheetSourceSerializer(serializers.ModelSerializer):
             "last_synced_row",
             "default_operator_name",
         ]
+
+    def get_smm_name(self, obj) -> str | None:
+        if not obj.smm_id or obj.smm is None:
+            return None
+        return obj.smm.get_full_name() or obj.smm.username
+
+    def validate_smm_id(self, value):
+        if value in (None, 0):
+            return None
+        from apps.users.models import Role
+
+        if not User.objects.filter(pk=value, profile__role=Role.SMM).exists():
+            raise serializers.ValidationError("Пользователь не найден или у него не роль SMM.")
+        return value
 
     def validate_allowed_operator_ids(self, value):
         """
@@ -1250,6 +1274,8 @@ class SheetSourceListCreateApi(ListCreateAPIView):
                     data={"outbound_config": data["outbound_config"]},
                     user=request.user,
                 )
+            if "smm_id" in data:
+                obj = sheet_source_set_smm(source=obj, smm_id=data["smm_id"], user=request.user)
             return Response(
                 SheetSourceSerializer(
                     obj, context={"request": request, "reveal_webhook_api_key": True}
@@ -1272,6 +1298,8 @@ class SheetSourceListCreateApi(ListCreateAPIView):
             ),
             user=request.user,
         )
+        if "smm_id" in data:
+            obj = sheet_source_set_smm(source=obj, smm_id=data["smm_id"], user=request.user)
         return Response(
             SheetSourceSerializer(obj, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
@@ -1316,6 +1344,10 @@ class SheetSourceDetailApi(APIView):
                 allowed_operator_ids=allowed_ids,
                 user=request.user,
             )
+            if "smm_id" in data:
+                updated = sheet_source_set_smm(
+                    source=updated, smm_id=data["smm_id"], user=request.user
+                )
             return Response(SheetSourceSerializer(updated, context={"request": request}).data)
         updated = sheet_source_upsert(
             name=data.get("name", obj.name),
@@ -1331,6 +1363,8 @@ class SheetSourceDetailApi(APIView):
             allowed_operator_ids=allowed_ids,
             user=request.user,
         )
+        if "smm_id" in data:
+            updated = sheet_source_set_smm(source=updated, smm_id=data["smm_id"], user=request.user)
         return Response(SheetSourceSerializer(updated, context={"request": request}).data)
 
 

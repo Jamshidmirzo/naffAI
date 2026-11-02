@@ -457,6 +457,7 @@ class UserListCreateApi(APIView):
                 Role.TEAM_LEAD,
                 Role.SUPER_MANAGER,
                 Role.SUPERADMIN,
+                Role.SMM,
             ],
             default=Role.MANAGER,
         )
@@ -476,6 +477,7 @@ class UserListCreateApi(APIView):
             Role.TEAM_LEAD,
             Role.SUPER_MANAGER,
             Role.SUPERADMIN,
+            Role.SMM,
         }
         role_param = (request.query_params.get("role") or "").strip()
         role_filter: set[str] = set()
@@ -612,7 +614,11 @@ class UserListCreateApi(APIView):
             user.save(update_fields=["first_name", "last_name"])
 
         user_password_set(user=user, plain=plain)
-        matching_op = Operator.objects.filter(phone=username).first()
+        # SMM — внешний таргетолог, к оператору его не привязываем, даже если
+        # логин совпал с номером оператора.
+        matching_op = (
+            None if role == Role.SMM else Operator.objects.filter(phone=username).first()
+        )
         Profile.objects.update_or_create(
             user=user,
             defaults={"role": role, "reports_to": reports_to_user, "operator": matching_op},

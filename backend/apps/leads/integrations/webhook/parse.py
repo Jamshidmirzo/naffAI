@@ -147,6 +147,19 @@ AD_KEYS: dict[str, tuple[str, ...]] = {
     "utm_term": ("utm_term",),
 }
 
+# Колонки рекламной атрибуции, которые берём из строки Google-таблицы
+# (стандартная выгрузка лид-форм Meta / интеграция Meta → Google Sheets).
+# Общие `id` / `source` / `created_at` не берём — в чужих таблицах они
+# означают что угодно.
+SHEET_AD_KEYS: tuple[str, ...] = (
+    "form_id", "form_name", "campaign_id", "campaign_name", "adset_id",
+    "adset_name", "ad_id", "ad_name", "platform", "is_organic",
+    "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term",
+)
+# Выгрузка Meta префиксует id: «ag:1202…» (ad), «as:» (adset), «c:», «f:», «l:».
+_META_ID_PREFIX_RE = re.compile(r"^(?:ag|as|c|f|l):(?=\d)")
+
+
 # Вложенные «обёртки», содержимое которых поднимаем на верхний уровень.
 _WRAPPER_KEYS = ("lead", "data", "fields", "answers", "contact", "client", "customer", "custom_fields")
 # Списки вида [{"name": ..., "values": [...]}] (Meta field_data и похожие).
@@ -325,6 +338,30 @@ def extract_records(body: Any) -> list[dict]:
 
     _walk(body)
     return out[:MAX_RECORDS]
+
+
+def ad_from_sheet_row(row: dict) -> dict[str, str]:
+    """
+    Рекламная атрибуция из строки таблицы → формат `metadata["ad"]` (как у
+    вебхука). Заголовки нормализуются тем же `normalize_key`, поэтому
+    «Ad ID», «ad_id», «AD-ID» одинаковы. Пусто, если таких колонок нет.
+    """
+    flat: dict[str, str] = {}
+    for k, v in (row or {}).items():
+        if not isinstance(k, str) or k.startswith("__"):
+            continue
+        text = _scalar_text(v)
+        if text:
+            flat.setdefault(normalize_key(k), text)
+    ad: dict[str, str] = {}
+    for target in SHEET_AD_KEYS:
+        _, v = _first(flat, AD_KEYS[target])
+        if not v:
+            continue
+        if target.endswith("_id"):
+            v = _META_ID_PREFIX_RE.sub("", v)
+        ad[target] = _clip(v, 256)
+    return ad
 
 
 def _first(flat: dict[str, str], keys: tuple[str, ...]) -> tuple[str, str]:

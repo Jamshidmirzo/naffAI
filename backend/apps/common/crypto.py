@@ -210,9 +210,17 @@ tg_session_vault = FernetVault(
 )
 
 
+meta_token_vault = FernetVault(
+    keys_setting_name="META_TOKEN_ENCRYPTION_KEYS",
+    current_version_setting_name="META_TOKEN_ENCRYPTION_CURRENT_VERSION",
+    purpose="meta_token",
+    legacy_key_setting_name="META_TOKEN_ENCRYPTION_KEY",
+)
+
 __all__ = [
     "FernetVault",
     "FernetVaultError",
     "operator_password_vault",
     "tg_session_vault",
+    "meta_token_vault",
 ]
