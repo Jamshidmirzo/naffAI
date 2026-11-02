@@ -35,7 +35,6 @@ from apps.leads.models import (
 )
 from apps.leads.services import lead_create_from_webhook
 
-from .outbound import LEADPIXEL_DEFAULT_URL, LEADPIXEL_STATUSES
 from .parse import extract_records, parse_lead
 
 logger = logging.getLogger("leads.webhook")
@@ -107,7 +106,6 @@ def webhook_source_create(
         hot_sla_minutes=hot_sla_minutes,
         webhook_token=_new_token(),
         webhook_api_key=_new_api_key(),
-        outbound_config={"url": LEADPIXEL_DEFAULT_URL, "api_key": "", "enabled": False},
     )
     if operator_ids:
         src.allowed_operators.set(operator_ids)
@@ -163,34 +161,6 @@ def webhook_source_rotate_token(*, source: SheetSource, user=None) -> SheetSourc
     return source
 
 
-def outbound_config_merge(current: dict | None, incoming: dict | None) -> dict:
-    """
-    PATCH semantics for `outbound_config`: only url / api_key / enabled;
-    a masked api_key coming back from the UI (contains «•») keeps the old one.
-    """
-    merged = {"url": LEADPIXEL_DEFAULT_URL, "api_key": "", "enabled": False, **(current or {})}
-    for key, value in (incoming or {}).items():
-        if key == "api_key":
-            if value is None or "•" in str(value):
-                continue
-            merged["api_key"] = str(value).strip()[:512]
-        elif key == "url":
-            merged["url"] = str(value or "").strip()[:512] or LEADPIXEL_DEFAULT_URL
-        elif key == "enabled":
-            merged["enabled"] = bool(value)
-        elif key == "status_map" and isinstance(value, dict):
-            merged["status_map"] = {
-                str(k)[:64]: str(v) for k, v in value.items() if str(v) in LEADPIXEL_STATUSES
-            }
-    return merged
-
-
-def outbound_config_masked(config: dict | None) -> dict:
-    cfg = {"url": LEADPIXEL_DEFAULT_URL, "api_key": "", "enabled": False, **(config or {})}
-    cfg["api_key"] = mask_secret(cfg.get("api_key"))
-    return cfg
-
-
 @transaction.atomic
 def webhook_source_update(
     *,
@@ -217,9 +187,6 @@ def webhook_source_update(
         if field in data:
             setattr(source, field, data[field])
             changed[field] = data[field].id if hasattr(data[field], "id") else data[field]
-    if "outbound_config" in data:
-        source.outbound_config = outbound_config_merge(source.outbound_config, data["outbound_config"])
-        changed["outbound_config"] = outbound_config_masked(source.outbound_config)
     source.save()
     if allowed_operator_ids is not None:
         source.allowed_operators.set(allowed_operator_ids)
@@ -247,7 +214,7 @@ class InboundResult:
     def as_dict(self) -> dict:
         out: dict[str, Any] = {"ok": self.ok, "lead_id": self.lead_id, "result": self.outcome}
         if self.lead_id is not None:
-            # LeadPixel хранит наш id строкой и шлёт его же в статусах.
+            # Отправитель получает наш id строкой (для своей сверки).
             out["id"] = str(self.lead_id)
         if self.error:
             out["error"] = self.error
@@ -304,7 +271,7 @@ def _duplicate(source: SheetSource, record: dict, external_id: str, remote_ip) -
     return InboundResult(ok=True, outcome=InboundLeadEventOutcome.DUPLICATE, lead_id=lead_id)
 
 
-# Текст из спеки LeadPixel: их connect-check шлёт `{}` и ждёт 400.
+# `{}` (проверка соединения отправителем) и запись без телефона → 400.
 MISSING_PHONE_ERROR = "phone and meta_lead_id required"
 
 
@@ -317,8 +284,7 @@ def inbound_lead_process(
 ) -> InboundResult:
     parsed = parse_lead(record, idempotency_key=idempotency_key)
     if parsed.missing_phone:
-        # meta_lead_id обязателен только «по спеке LeadPixel»; generic-отправители
-        # без него принимаются — дедуп тогда по телефону.
+        # Без телефона лид не принимаем; без meta_lead_id — принимаем, дедуп по телефону.
         err = MISSING_PHONE_ERROR
         inbound_journal(
             source=source,
@@ -337,8 +303,7 @@ def inbound_lead_process(
     if parsed.ad:
         metadata["ad"] = parsed.ad
     if ext and not (parsed.ad or {}).get("meta_lead_id") and idempotency_key.strip() == ext:
-        # meta_lead_id пришёл только заголовком Idempotency-Key — сохраним,
-        # по нему LeadPixel матчит статусы.
+        # meta_lead_id пришёл только заголовком Idempotency-Key — сохраним.
         metadata.setdefault("ad", {})["meta_lead_id"] = ext
     if parsed.answers:
         metadata["answers"] = parsed.answers
@@ -423,8 +388,7 @@ def inbound_leads_process(
             remote_ip=remote_ip,
         )
         return [InboundResult(ok=False, outcome=InboundLeadEventOutcome.INVALID, error=err)], False
-    # Idempotency-Key описывает ОДИН лид (LeadPixel: один лид на запрос) —
-    # к пачке его не применяем.
+    # Idempotency-Key описывает ОДИН лид — к пачке его не применяем.
     key = (idempotency_key or "")[:128] if len(records) == 1 else ""
     return [
         inbound_lead_process(source=source, record=rec, remote_ip=remote_ip, idempotency_key=key)

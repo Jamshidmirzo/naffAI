@@ -1023,8 +1023,6 @@ def lead_create_from_webhook(
         comment=f"Приём по webhook: {source.name}"[:500],
     )
     _finish_new_lead_assignment(lead=lead, routing=routing, sheet_source=source)
-    # Первый статус обратно в источник («лид принят / назначен»).
-    lead_outbound_schedule_status(lead)
     return lead, "created"
 
 
@@ -1041,9 +1039,7 @@ def _merge_webhook_lead_into_existing(
     """
     Webhook counterpart of `_merge_sheet_row_into_existing`: soft fields
     only, hard fields (status / operator / sheet_source) untouched, trail in
-    `metadata["duplicate_webhook_events"]`. The trail also tells the
-    outbound queue to report this lead's statuses to `source` even though
-    `existing.sheet_source` points elsewhere.
+    `metadata["duplicate_webhook_events"]`.
     """
     changed_fields, change_diff = _apply_soft_fields(
         existing,
@@ -1085,20 +1081,7 @@ def _merge_webhook_lead_into_existing(
         },
         comment=f"Дедуп на приёме webhook ({source.name}): склеен с существующим лидом"[:500],
     )
-    lead_outbound_schedule_status(existing)
     return existing
-
-
-def lead_outbound_schedule_status(lead: Lead) -> None:
-    """Status event for webhook sources (no-op for sheet leads). Never raises."""
-    if not lead.sheet_source_id and not (lead.metadata or {}).get("duplicate_webhook_events"):
-        return  # ручной / бот-лид без источника — точно не webhook
-    try:
-        from .integrations.webhook.outbound import outbound_schedule
-
-        outbound_schedule(lead_id=lead.id, kind="status")
-    except Exception:
-        logger.exception("lead outbound schedule failed lead=%s", getattr(lead, "id", None))
 
 
 @transaction.atomic
@@ -1857,9 +1840,6 @@ def lead_update_status(
         comment=comment,
     )
     _schedule_writeback(lead.id, comment=comment)
-    # Webhook-источники (LeadPixel) получают статус обратно; для лидов из
-    # Google-шитов — no-op.
-    lead_outbound_schedule_status(lead)
 
     # Wave-1 (2026-08-22): смена статуса лида пересчитывает dashboard-summary
     # (лид ушёл из «в работе» в won/lost/etc → KPI меняется) и lead-stats
@@ -2227,19 +2207,7 @@ def lead_convert_to_sale(*, lead: Lead, user=None, sale_data: dict):
         lead.id,
         comment=(sale.bonus_note or f"→ Sale #{sale.id}"),
     )
-    lead_outbound_schedule_status(lead)
-    _outbound_schedule_sale(lead_id=lead.id, sale_id=sale.id, kind="sale")
     return sale
-
-
-def _outbound_schedule_sale(*, lead_id: int | None, sale_id: int, kind: str) -> None:
-    """Sale / sale_returned event for webhook sources. Never raises."""
-    try:
-        from .integrations.webhook.outbound import outbound_schedule
-
-        outbound_schedule(lead_id=lead_id, kind=kind, sale_id=sale_id)
-    except Exception:
-        logger.exception("lead outbound schedule failed lead=%s sale=%s", lead_id, sale_id)
 
 
 # ---- Telegram link cache -------------------------------------------------
@@ -2708,7 +2676,6 @@ def lead_mark_system_lost(
         },
         comment=(comment or f"System-lost: {reason}")[:500],
     )
-    lead_outbound_schedule_status(lead)
     return lead
 
 
@@ -2775,7 +2742,6 @@ def lead_recover_from_system_lost(*, lead: Lead, user=None) -> Lead:
         },
         comment=f"Recovered from system-lost ({reason})",
     )
-    lead_outbound_schedule_status(lead)
     return lead
 
 

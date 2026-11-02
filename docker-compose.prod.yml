@@ -560,20 +560,6 @@ services:
         condition: service_healthy
     command: ["python", "manage.py", "process_sheet_writebacks"]
 
-  # LeadPixel «статусы обратно»: drains LeadOutboundEvent → POST
-  # /api/crm/inbound (apps/leads/integrations/webhook/outbound.py). Idle and
-  # harmless while no webhook source has outbound_config.enabled + api_key.
-  lead-outbound:
-    image: naffai-backend:latest
-    pull_policy: never
-    logging: *default-logging
-    restart: unless-stopped
-    env_file: .env
-    depends_on:
-      db:
-        condition: service_healthy
-    command: ["python", "manage.py", "process_lead_outbound"]
-
   # Meta Ads (Marketing API) — hourly spend / leads / video stats for ad
   # accounts switched on in «Настройки → Meta Ads» (кабинет SMM). Idle while
   # no account is active; tokens are decrypted with META_TOKEN_ENCRYPTION_KEY.

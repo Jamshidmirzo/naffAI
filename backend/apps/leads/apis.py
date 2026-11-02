@@ -212,9 +212,6 @@ class SheetSourceSerializer(serializers.ModelSerializer):
     )
     # Для kind=webhook: абсолютный адрес приёма лидов (вставить в LeadPixel).
     webhook_url = serializers.SerializerMethodField()
-    # «Статусы обратно»: api_key в ответах замаскирован, PATCH с маской
-    # оставляет старый ключ.
-    outbound_config = serializers.JSONField(required=False)
     # Ключ, который LeadPixel шлёт в X-API-Key. Целиком — только в ответе
     # на создание / ротацию (context["reveal_webhook_api_key"]), иначе маска.
     webhook_api_key = serializers.SerializerMethodField()
@@ -236,7 +233,6 @@ class SheetSourceSerializer(serializers.ModelSerializer):
             "kind",
             "webhook_url",
             "webhook_api_key",
-            "outbound_config",
             "spreadsheet_id",
             "gid",
             "worksheet_name",
@@ -313,21 +309,6 @@ class SheetSourceSerializer(serializers.ModelSerializer):
         if self.context.get("reveal_webhook_api_key"):
             return obj.webhook_api_key
         return mask_secret(obj.webhook_api_key)
-
-    def to_representation(self, instance):
-        from .integrations.webhook.services import outbound_config_masked
-
-        data = super().to_representation(instance)
-        data["outbound_config"] = outbound_config_masked(instance.outbound_config)
-        return data
-
-    def validate_outbound_config(self, value):
-        if not isinstance(value, dict):
-            raise serializers.ValidationError("outbound_config должен быть объектом.")
-        url = str(value.get("url") or "").strip()
-        if url and not url.startswith(("http://", "https://")):
-            raise serializers.ValidationError("url должен начинаться с http:// или https://")
-        return value
 
     def validate(self, attrs):
         # Google-шиту при создании нужны spreadsheet_id + gid (раньше это
@@ -1250,10 +1231,7 @@ class SheetSourceListCreateApi(ListCreateAPIView):
         default_op = data.get("default_operator")
         allowed_ops = data.get("allowed_operators")  # list[Operator] | None
         if data.get("kind") == SheetSourceKind.WEBHOOK:
-            from .integrations.webhook.services import (
-                webhook_source_create,
-                webhook_source_update,
-            )
+            from .integrations.webhook.services import webhook_source_create
 
             obj = webhook_source_create(
                 name=data["name"],
@@ -1268,12 +1246,6 @@ class SheetSourceListCreateApi(ListCreateAPIView):
                 active=data.get("active", True),
                 user=request.user,
             )
-            if "outbound_config" in data:
-                obj = webhook_source_update(
-                    source=obj,
-                    data={"outbound_config": data["outbound_config"]},
-                    user=request.user,
-                )
             if "smm_id" in data:
                 obj = sheet_source_set_smm(source=obj, smm_id=data["smm_id"], user=request.user)
             return Response(
@@ -1647,8 +1619,6 @@ class SheetSourceHealthOverviewApi(APIView):
                         received_at__gte=now - timedelta(hours=24),
                         outcome__in=["invalid", "error"],
                     ).count(),
-                    "outbound_pending": s.outbound_events.filter(delivered_at__isnull=True).count(),
-                    "outbound_enabled": bool((s.outbound_config or {}).get("enabled")),
                 }
 
             sources_data.append({
