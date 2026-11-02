@@ -513,8 +513,16 @@ def smm_leads_qs(
     elif ad_id:
         qs = qs.filter(metadata__ad__ad_id=ad_id)
     if campaign:
+        # LeadPixel шлёт только название кампании, Meta — id: берём и лиды,
+        # чьё объявление (по ad_id) из этой кампании.
+        camp_ads = list(
+            MetaAd.objects.filter(Q(campaign_id=campaign) | Q(campaign_name=campaign))
+            .values_list("ad_id", flat=True)
+        )
         qs = qs.filter(
-            Q(metadata__ad__campaign_id=campaign) | Q(metadata__ad__campaign_name=campaign)
+            Q(metadata__ad__campaign_id=campaign)
+            | Q(metadata__ad__campaign_name=campaign)
+            | Q(metadata__ad__ad_id__in=camp_ads)
         )
     if source_id:
         qs = qs.filter(sheet_source_id=source_id)

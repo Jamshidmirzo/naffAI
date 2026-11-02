@@ -262,6 +262,18 @@ def test_smm_sees_only_self_even_with_param(api, smm_a, smm_b, sheet_a, hook_b):
 
 
 @pytest.mark.django_db
+def test_leads_filter_by_campaign_id_matches_leads_by_ad(api, smm_a, sheet_a, account_a):
+    MetaAd.objects.create(ad_account=account_a, ad_id="ad1", campaign_id="c1", campaign_name="Noyabr")
+    _lead(sheet_a, ad_id="ad1", day=timezone.localdate())  # у лида LeadPixel нет campaign_id
+    _lead(sheet_a, ad_id="ad2", campaign_name="Noyabr", day=timezone.localdate())
+    _lead(sheet_a, ad_id="ad3", campaign_name="Other", day=timezone.localdate())
+    api.force_authenticate(smm_a)
+    assert api.get("/api/marketing/smm/leads/?campaign=c1").data["count"] == 1
+    assert api.get("/api/marketing/smm/leads/?campaign=Noyabr").data["count"] == 2
+    assert api.get(f"/api/marketing/smm/leads/?ad_id={NO_AD}").data["count"] == 0
+
+
+@pytest.mark.django_db
 def test_smm_blocked_from_manager_and_crm_endpoints(api, smm_a, account_a):
     api.force_authenticate(smm_a)
     for url in (
