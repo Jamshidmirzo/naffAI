@@ -249,6 +249,65 @@ class MetaAdInsightDaily(models.Model):
         return f"{self.ad_id} {self.date}: {self.spend} {self.currency}"
 
 
+class MetaPage(TimestampedModel):
+    """
+    Страница Facebook специалиста с лид-формами. Когда `leads_enabled`, воркер
+    `sync_meta_leads` раз в минуту забирает новые заявки всех её форм и кладёт
+    их в `source` (webhook-источник без HTTP-приёма) — дальше как обычный лид:
+    раздача операторам, дедуп по телефону, `metadata["ad"]` с ad_id.
+    """
+
+    connection = models.ForeignKey(
+        MetaConnection, on_delete=models.CASCADE, related_name="pages"
+    )
+    page_id = models.CharField(max_length=64, unique=True)
+    name = models.CharField(max_length=255, blank=True, default="")
+    # Права токена на странице (MANAGE / ADVERTISE / …) — для подсказки в UI.
+    tasks = models.JSONField(default=list, blank=True)
+    smm = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="smm_meta_pages",
+        limit_choices_to={"profile__role": "smm"},
+    )
+    source = models.ForeignKey(
+        "leads.SheetSource",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="meta_pages",
+    )
+    leads_enabled = models.BooleanField(default=False)
+    # Берём только заявки, созданные позже этого момента (ставится при включении).
+    leads_since = models.DateTimeField(null=True, blank=True)
+    last_polled_at = models.DateTimeField(null=True, blank=True)
+    last_poll_error = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["name", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.name or self.page_id} ({self.page_id})"
+
+
+class MetaLeadForm(TimestampedModel):
+    page = models.ForeignKey(MetaPage, on_delete=models.CASCADE, related_name="forms")
+    form_id = models.CharField(max_length=64, unique=True)
+    name = models.CharField(max_length=512, blank=True, default="")
+    status = models.CharField(max_length=32, blank=True, default="")
+    # Время самой свежей заявки, которую уже забрали (created_time из Meta).
+    last_lead_at = models.DateTimeField(null=True, blank=True)
+    leads_imported = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["page", "name"]
+
+    def __str__(self) -> str:
+        return f"{self.name or self.form_id} ({self.form_id})"
+
+
 class FxRate(models.Model):
     """Курс ЦБ Узбекистана: сколько сумов за 1 единицу `currency` на `date`."""
 

@@ -20,8 +20,9 @@ from apps.common.crypto import FernetVaultError, meta_token_vault
 from apps.users.models import Role
 
 from .integrations.meta.client import MetaApiError, MetaClient
+from .integrations.meta.leads import meta_page_ensure_source, meta_page_leads_sync
 from .integrations.meta.sync import meta_account_sync, meta_token_decrypt
-from .models import MetaAdAccount, MetaConnection
+from .models import MetaAdAccount, MetaConnection, MetaPage
 
 User = get_user_model()
 
@@ -74,6 +75,25 @@ def meta_accounts_refresh(conn: MetaConnection, client: MetaClient) -> list[Meta
     return out
 
 
+def meta_pages_refresh(conn: MetaConnection, client: MetaClient) -> list[MetaPage]:
+    """Upsert страниц, которые видит токен. smm / leads_enabled не трогаем."""
+    out: list[MetaPage] = []
+    for row in client.pages():
+        page_id = str(row.get("id") or "")
+        if not page_id:
+            continue
+        page, _ = MetaPage.objects.update_or_create(
+            page_id=page_id,
+            defaults={
+                "connection": conn,
+                "name": str(row.get("name") or "")[:255],
+                "tasks": [str(t) for t in (row.get("tasks") or [])][:20],
+            },
+        )
+        out.append(page)
+    return out
+
+
 def _check_with_client(conn: MetaConnection, client: MetaClient) -> MetaConnection:
     me = client.me()
     conn.meta_user_id = str(me.get("id") or "")[:64]
@@ -82,6 +102,11 @@ def _check_with_client(conn: MetaConnection, client: MetaClient) -> MetaConnecti
     conn.last_checked_at = timezone.now()
     conn.last_error = ""
     meta_accounts_refresh(conn, client)
+    try:
+        meta_pages_refresh(conn, client)
+    except MetaApiError as exc:
+        # Без pages_show_list статистика рекламы всё равно работает.
+        conn.last_error = f"Страницы Facebook недоступны: {exc}"[:2000]
     return conn
 
 
@@ -227,6 +252,48 @@ def meta_ad_account_sync_now(account: MetaAdAccount, *, days: int | None = None)
     return meta_account_sync(account, days=days)
 
 
+def meta_page_update(
+    page: MetaPage,
+    *,
+    smm_id=_UNSET,
+    leads_enabled: bool | None = None,
+    backfill_hours: int = 0,
+    user=None,
+) -> MetaPage:
+    """
+    Назначить страницу SMM и/или включить забор заявок. При включении
+    заявки берутся начиная с «сейчас − backfill_hours» (0..168), чтобы
+    операторам не прилетела разом вся история формы.
+    """
+    changes: dict = {}
+    if smm_id is not _UNSET:
+        smm = _resolve_smm(smm_id)
+        changes["smm"] = {"old": page.smm_id, "new": smm.id if smm else None}
+        page.smm = smm
+    if leads_enabled is not None and bool(leads_enabled) != page.leads_enabled:
+        changes["leads_enabled"] = {"old": page.leads_enabled, "new": bool(leads_enabled)}
+        page.leads_enabled = bool(leads_enabled)
+        if page.leads_enabled:
+            hours = max(0, min(int(backfill_hours or 0), 168))
+            page.leads_since = timezone.now() - dt.timedelta(hours=hours)
+            changes["leads_since"] = page.leads_since.isoformat()
+    page.save()
+    if page.leads_enabled or page.source_id:
+        meta_page_ensure_source(page, user=user)
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="meta_page",
+        entity_id=page.id,
+        changes=changes,
+    )
+    return page
+
+
+def meta_page_sync_now(page: MetaPage) -> dict:
+    return meta_page_leads_sync(page)
+
+
 __all__ = [
     "meta_accounts_refresh",
     "meta_ad_account_sync_now",
@@ -235,4 +302,7 @@ __all__ = [
     "meta_connection_create",
     "meta_connection_delete",
     "meta_connection_replace_token",
+    "meta_page_sync_now",
+    "meta_page_update",
+    "meta_pages_refresh",
 ]

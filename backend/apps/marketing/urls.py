@@ -18,6 +18,9 @@ from .smm_apis import (
     MetaConnectionCheckApi,
     MetaConnectionDetailApi,
     MetaConnectionListCreateApi,
+    MetaPageDetailApi,
+    MetaPageListApi,
+    MetaPageSyncApi,
     SmmDashboardApi,
     SmmLeadsApi,
     SmmListApi,
@@ -56,4 +59,7 @@ urlpatterns = [
     path("meta/ad-accounts/", MetaAdAccountListApi.as_view()),
     path("meta/ad-accounts/<int:account_id>/", MetaAdAccountDetailApi.as_view()),
     path("meta/ad-accounts/<int:account_id>/sync/", MetaAdAccountSyncApi.as_view()),
+    path("meta/pages/", MetaPageListApi.as_view()),
+    path("meta/pages/<int:page_id>/", MetaPageDetailApi.as_view()),
+    path("meta/pages/<int:page_id>/sync/", MetaPageSyncApi.as_view()),
 ]

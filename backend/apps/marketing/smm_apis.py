@@ -14,6 +14,9 @@
   GET   /marketing/meta/ad-accounts/
   PATCH /marketing/meta/ad-accounts/<id>/        {smm_id, is_active}
   POST  /marketing/meta/ad-accounts/<id>/sync/   синхронизировать сейчас
+  GET   /marketing/meta/pages/                   страницы Facebook (лид-формы)
+  PATCH /marketing/meta/pages/<id>/              {smm_id, leads_enabled, backfill_hours}
+  POST  /marketing/meta/pages/<id>/sync/         забрать заявки сейчас
 """
 
 from __future__ import annotations
@@ -41,8 +44,10 @@ from .meta_services import (
     meta_connection_create,
     meta_connection_delete,
     meta_connection_replace_token,
+    meta_page_sync_now,
+    meta_page_update,
 )
-from .models import MetaAdAccount, MetaConnection
+from .models import MetaAdAccount, MetaConnection, MetaPage
 from .smm_selectors import (
     smm_card,
     smm_dashboard,
@@ -123,6 +128,41 @@ def _account_row(a: MetaAdAccount) -> dict:
     }
 
 
+def _page_row(p: MetaPage) -> dict:
+    forms = list(p.forms.all())
+    return {
+        "id": p.id,
+        "connection_id": p.connection_id,
+        "page_id": p.page_id,
+        "name": p.name,
+        "tasks": p.tasks,
+        "smm_id": p.smm_id,
+        "smm_name": (p.smm.get_full_name() or p.smm.username) if p.smm_id and p.smm else None,
+        "leads_enabled": p.leads_enabled,
+        "leads_since": _iso(p.leads_since),
+        "source_id": p.source_id,
+        "source_name": p.source.name if p.source_id and p.source else None,
+        "source_active": bool(p.source.active) if p.source_id and p.source else None,
+        "last_polled_at": _iso(p.last_polled_at),
+        "last_poll_error": p.last_poll_error,
+        "forms": [
+            {
+                "id": f.id,
+                "form_id": f.form_id,
+                "name": f.name,
+                "status": f.status,
+                "last_lead_at": _iso(f.last_lead_at),
+                "leads_imported": f.leads_imported,
+            }
+            for f in forms
+        ],
+    }
+
+
+def _pages_qs():
+    return MetaPage.objects.select_related("smm", "source").prefetch_related("forms")
+
+
 def _connection_row(c: MetaConnection) -> dict:
     return {
         "id": c.id,
@@ -134,6 +174,7 @@ def _connection_row(c: MetaConnection) -> dict:
         "last_error": c.last_error,
         "created_at": _iso(c.created_at),
         "accounts": [_account_row(a) for a in c.ad_accounts.select_related("smm").all()],
+        "pages": [_page_row(p) for p in _pages_qs().filter(connection=c)],
     }
 
 
@@ -343,3 +384,55 @@ class MetaAdAccountSyncApi(APIView):
             return Response({"detail": str(exc), "account": _account_row(account)}, status=502)
         account.refresh_from_db()
         return Response({"result": result, "account": _account_row(account)})
+
+
+# ---- Meta pages (лид-формы) ----------------------------------------------
+
+
+class MetaPageListApi(APIView):
+    permission_classes = [IsSuperadminOrManager]
+
+    def get(self, request):
+        return Response([_page_row(p) for p in _pages_qs()])
+
+
+class MetaPageDetailApi(APIView):
+    """PATCH {smm_id?, leads_enabled?, backfill_hours?}"""
+
+    permission_classes = [IsSuperadminOrManager]
+
+    def patch(self, request, page_id: int):
+        page = _pages_qs().filter(pk=page_id).first()
+        if page is None:
+            return _bad("not found", 404)
+        data = request.data or {}
+        kwargs: dict = {}
+        if "smm_id" in data:
+            kwargs["smm_id"] = data.get("smm_id")
+        if "leads_enabled" in data:
+            kwargs["leads_enabled"] = bool(data.get("leads_enabled"))
+        raw = str(data.get("backfill_hours") or "0")
+        kwargs["backfill_hours"] = int(raw) if raw.isdigit() else 0
+        try:
+            page = meta_page_update(page, user=request.user, **kwargs)
+        except ValueError as exc:
+            return _bad(str(exc))
+        return Response(_page_row(_pages_qs().get(pk=page.pk)))
+
+
+class MetaPageSyncApi(APIView):
+    """Забрать новые заявки страницы прямо сейчас."""
+
+    permission_classes = [IsSuperadminOrManager]
+
+    def post(self, request, page_id: int):
+        page = MetaPage.objects.select_related("connection", "source").filter(pk=page_id).first()
+        if page is None:
+            return _bad("not found", 404)
+        if not page.leads_enabled:
+            return _bad("Сначала включите забор заявок для страницы.")
+        try:
+            result = meta_page_sync_now(page)
+        except MetaApiError as exc:
+            return Response({"detail": str(exc), "page": _page_row(_pages_qs().get(pk=page.pk))}, status=502)
+        return Response({"result": result, "page": _page_row(_pages_qs().get(pk=page.pk))})

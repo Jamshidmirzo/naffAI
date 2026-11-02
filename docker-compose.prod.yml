@@ -574,6 +574,20 @@ services:
         condition: service_healthy
     command: ["python", "manage.py", "sync_meta_ads", "--loop"]
 
+  # Meta lead forms → leads (replaces LeadPixel): every 60s pulls new leads of
+  # Facebook pages switched on in «Настройки → Meta Ads» into their source
+  # (hot, round-robin to operators, attributed to the page's SMM).
+  meta-leads-sync:
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "manage.py", "sync_meta_leads", "--loop"]
+
   # Hourly reconcile — compares every active sheet with Lead.status for
   # leads touched in the last 3 days and enqueues writebacks for drift
   # (safety net for the queue). Replaced the nightly srm-only reconcile

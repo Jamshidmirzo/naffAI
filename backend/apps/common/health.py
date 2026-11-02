@@ -94,6 +94,9 @@ EXPECTED_INTERVALS: dict[str, int] = {
     # Meta Ads statistics (`meta-ads-sync`, sync_meta_ads --loop) — hourly.
     # Monitored only while some ad account is switched on.
     "meta_ads_sync": 3 * 3600,
+    # Meta lead forms → leads (`meta-leads-sync`, sync_meta_leads --loop) —
+    # every 60s. Monitored only while some page has lead import switched on.
+    "meta_leads_sync": 5 * 60,
 }
 
 
@@ -110,9 +113,16 @@ def _meta_ads_sync_enabled() -> bool:
     return MetaAdAccount.objects.filter(is_active=True).exists()
 
 
+def _meta_leads_sync_enabled() -> bool:
+    from apps.marketing.models import MetaPage
+
+    return MetaPage.objects.filter(leads_enabled=True).exists()
+
+
 CONDITIONAL_SERVICES: dict[str, Callable[[], bool]] = {
     "live_ops": _live_ops_enabled,
     "meta_ads_sync": _meta_ads_sync_enabled,
+    "meta_leads_sync": _meta_leads_sync_enabled,
 }
 
 

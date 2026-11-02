@@ -104,7 +104,7 @@ class FakeGraph:
             rows = self.insights_pages[page] if page < len(self.insights_pages) else []
             body: dict = {"data": rows}
             if page + 1 < len(self.insights_pages):
-                nxt = request.url.copy_merge_params({"page": str(page + 1)})
+                nxt = request.url.copy_merge_params({"page": str(page + 1), "access_token": "EAAtoken"})
                 body["paging"] = {"next": str(nxt)}
             return httpx.Response(200, json=body)
         return httpx.Response(404, json={"error": {"message": "unknown path", "code": 100}})
@@ -158,13 +158,15 @@ def test_client_follows_paging_and_sends_params():
     with _client(graph) as c:
         rows = list(c.insights("111", TODAY - dt.timedelta(days=1), TODAY))
     assert [r["date_start"] for r in rows] == ["2026-11-01", "2026-10-31"]
+    assert all("EAAtoken" not in str(c.url) for c in graph.calls)  # paging.next тоже
     first = graph.calls[0]
     assert first.url.path == "/v26.0/act_111/insights"
     q = parse_qs(urlparse(str(first.url)).query)
     assert q["level"] == ["ad"] and q["time_increment"] == ["1"]
     assert json.loads(q["time_range"][0]) == {"since": "2026-10-31", "until": "2026-11-01"}
     assert "video_thruplay_watched_actions" in q["fields"][0]
-    assert q["access_token"] == ["EAAtoken"]
+    assert "access_token" not in q
+    assert first.headers["Authorization"] == "Bearer EAAtoken"
 
 
 def test_client_retries_rate_limit_then_succeeds():

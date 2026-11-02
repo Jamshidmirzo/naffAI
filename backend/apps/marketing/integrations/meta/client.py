@@ -19,6 +19,7 @@ import logging
 import time
 from collections.abc import Callable, Iterator
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 from django.conf import settings
@@ -66,6 +67,22 @@ AD_FIELDS = (
 )
 
 AD_ACCOUNT_FIELDS = ("id", "account_id", "name", "currency", "timezone_name", "account_status")
+
+# Lead Ads retrieval (page token + leads_retrieval / pages_manage_ads / pages_show_list).
+LEAD_FIELDS = (
+    "id",
+    "created_time",
+    "ad_id",
+    "ad_name",
+    "adset_id",
+    "adset_name",
+    "campaign_id",
+    "campaign_name",
+    "form_id",
+    "field_data",
+    "is_organic",
+    "platform",
+)
 
 
 class MetaApiError(Exception):
@@ -123,9 +140,22 @@ class MetaClient:
         self.version = version or settings.META_GRAPH_VERSION
         self._sleep = sleep
         self._max_retries = max_retries
+        self._transport = transport
+        self._timeout = timeout
         self._http = httpx.Client(
             timeout=timeout or settings.META_GRAPH_TIMEOUT_SECONDS,
             transport=transport,
+        )
+
+    def with_token(self, token: str) -> MetaClient:
+        """Same settings, another token (page access token for lead forms)."""
+        return MetaClient(
+            token,
+            version=self.version,
+            timeout=self._timeout,
+            transport=self._transport,
+            sleep=self._sleep,
+            max_retries=self._max_retries,
         )
 
     def close(self) -> None:
@@ -144,14 +174,15 @@ class MetaClient:
 
     def _get(self, url: str, params: dict | None = None) -> dict:
         query = dict(params or {})
-        # `paging.next` URLs already carry access_token and every param.
-        if "access_token=" not in url:
-            query["access_token"] = self.token
+        # Токен — только заголовком: URL попадает в логи (httpx INFO, nginx).
+        # `paging.next` от Meta несёт access_token в query — вырезаем.
+        url = _strip_token(url)
+        headers = {"Authorization": f"Bearer {self.token}"}
         attempt = 0
         while True:
             attempt += 1
             try:
-                resp = self._http.get(url, params=query or None)
+                resp = self._http.get(url, params=query or None, headers=headers)
             except httpx.HTTPError as exc:
                 err = MetaApiError(f"сеть: {exc}", http_status=599)
             else:
@@ -211,6 +242,43 @@ class MetaClient:
     def ads(self, account_id: str) -> Iterator[dict]:
         params = {"fields": ",".join(AD_FIELDS), "limit": 200}
         yield from self._paged(f"{_act(account_id)}/ads", params)
+
+    # ---- Lead Ads -------------------------------------------------------
+
+    def pages(self) -> list[dict]:
+        """Pages the token can act on, each with its own page access token."""
+        return list(
+            self._paged("me/accounts", {"fields": "id,name,tasks,access_token", "limit": 100})
+        )
+
+    def page_token(self, page_id: str) -> str:
+        body = self._get(self._url(str(page_id)), {"fields": "access_token"})
+        return str(body.get("access_token") or "")
+
+    def lead_forms(self, page_id: str) -> list[dict]:
+        """Needs a page access token (see `with_token`)."""
+        return list(
+            self._paged(
+                f"{page_id}/leadgen_forms", {"fields": "id,name,status,created_time", "limit": 100}
+            )
+        )
+
+    def form_leads(self, form_id: str, since: dt.datetime | None = None) -> Iterator[dict]:
+        """Leads of a form created after `since` (Meta keeps them ~90 days)."""
+        params: dict = {"fields": ",".join(LEAD_FIELDS), "limit": 100}
+        if since is not None:
+            params["filtering"] = json.dumps(
+                [{"field": "time_created", "operator": "GREATER_THAN", "value": int(since.timestamp())}]
+            )
+        yield from self._paged(f"{form_id}/leads", params)
+
+
+def _strip_token(url: str) -> str:
+    if "access_token=" not in url:
+        return url
+    parts = urlsplit(url)
+    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != "access_token"]
+    return urlunsplit(parts._replace(query=urlencode(query)))
 
 
 def _act(account_id: str) -> str:
