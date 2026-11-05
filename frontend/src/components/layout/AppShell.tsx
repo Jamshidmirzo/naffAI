@@ -35,6 +35,7 @@ function useManagerGroups(
         { to: "/calls", label: t("nav.calls") },
         { to: "/leads", label: t("nav.leads"), badgeKey: "leadsReview" },
         { to: "/leads/orphans", label: t("nav.orphans"), badgeKey: "orphans" },
+        { to: "/leads/paste", label: t("nav.paste") },
       ],
     },
     {

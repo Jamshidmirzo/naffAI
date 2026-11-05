@@ -54,8 +54,10 @@ from .selectors import (
     operator_open_callbacks_count,
     operator_quota_blocking_leads,
     operator_yesterday_backlog_count,
+    PASTE_MAX_ROWS,
     operators_distribution_status,
     orphan_leads,
+    paste_rows_classify,
     stranded_on_inactive_operators,
     system_lost_leads_qs,
     system_lost_summary,
@@ -74,6 +76,7 @@ from .services import (
     lead_update_phone,
     lead_update_status,
     leads_bulk_reassign,
+    leads_paste_distribute,
     morning_distribute_leads,
     operator_alias_upsert,
     retry_export_to_sheet,
@@ -1127,6 +1130,101 @@ class LeadsBulkReassignApi(APIView):
             return Response({"detail": exc.message, **exc.extra}, status=400)
         return Response(result)
 
+
+
+# ---- «Вставить и раздать» (paste & distribute) ----------------------------
+
+
+class PasteRowSerializer(serializers.Serializer):
+    full_name = serializers.CharField(required=False, allow_blank=True, default="", max_length=500)
+    phone = serializers.CharField(required=False, allow_blank=True, default="", max_length=200)
+    phone_alt = serializers.CharField(required=False, allow_blank=True, default="", max_length=200)
+    product_hint = serializers.CharField(required=False, allow_blank=True, default="", max_length=1000)
+    has_card = serializers.CharField(required=False, allow_blank=True, default="", max_length=200)
+    comment = serializers.CharField(required=False, allow_blank=True, default="", max_length=2000)
+
+
+class PastePreviewInputSerializer(serializers.Serializer):
+    rows = PasteRowSerializer(many=True, allow_empty=False, max_length=PASTE_MAX_ROWS)
+    operator_ids = serializers.ListField(
+        child=serializers.IntegerField(), required=False, default=list, max_length=200
+    )
+
+
+class PasteDistributeInputSerializer(PastePreviewInputSerializer):
+    operator_ids = serializers.ListField(
+        child=serializers.IntegerField(), allow_empty=False, max_length=200
+    )
+    sheet_source_id = serializers.IntegerField(required=False, allow_null=True)
+    take_existing = serializers.BooleanField(required=False, default=True)
+
+
+class LeadsPastePreviewApi(APIView):
+    """
+    POST /api/leads/paste/preview/
+
+    Dry run of «Вставить и раздать»: what happens to every pasted row
+    (new / take / keep / invalid / duplicate), nothing is written.
+    """
+
+    permission_classes = [IsManager]
+
+    def post(self, request):
+        ser = PastePreviewInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        rows = paste_rows_classify(
+            ser.validated_data["rows"], operator_ids=ser.validated_data["operator_ids"]
+        )
+        summary = {kind: 0 for kind in ("new", "take", "keep", "invalid", "duplicate")}
+        out = []
+        for row in rows:
+            summary[row["kind"]] += 1
+            lead = row["lead"]
+            out.append(
+                {
+                    "index": row["index"],
+                    "kind": row["kind"],
+                    "full_name": row["full_name"],
+                    "phone": row["phone"],
+                    "phone_raw": row["phone_raw"],
+                    "product_hint": row["product_hint"],
+                    "called_today": row["called_today"],
+                    "lead_id": lead.id if lead else None,
+                    "lead_status": lead.status if lead else None,
+                    "lead_operator_id": lead.operator_id if lead else None,
+                    "lead_operator": (
+                        lead.operator.full_name if lead and lead.operator_id else None
+                    ),
+                }
+            )
+        return Response({"rows": out, "summary": summary})
+
+
+class LeadsPasteDistributeApi(APIView):
+    """
+    POST /api/leads/paste/distribute/
+
+    Create / take over the pasted leads and hand them out evenly to the
+    chosen operators right now (`leads_paste_distribute`).
+    """
+
+    permission_classes = [IsManager]
+
+    def post(self, request):
+        ser = PasteDistributeInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+        try:
+            result = leads_paste_distribute(
+                rows=data["rows"],
+                operator_ids=data["operator_ids"],
+                sheet_source_id=data.get("sheet_source_id"),
+                take_existing=data["take_existing"],
+                user=request.user,
+            )
+        except ApplicationError as exc:
+            return Response({"detail": exc.message, **exc.extra}, status=400)
+        return Response(result)
 
 # ---- Distribution-status panel (менеджерский диагностический виджет) ----
 

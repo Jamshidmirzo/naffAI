@@ -51,6 +51,7 @@ import MyTeamSales from "./pages/MyTeamSales";
 import DeletedOperators from "./pages/DeletedOperators";
 import Settings from "./pages/Settings";
 import OrphanLeads from "./pages/OrphanLeads";
+import PasteDistribute from "./pages/PasteDistribute";
 import SystemLostLeads from "./pages/SystemLostLeads";
 import OperatorSaleCreate from "./pages/OperatorSaleCreate";
 import SalesPending from "./pages/SalesPending";
@@ -128,6 +129,7 @@ export default function App() {
           />
           <Route path="/leads" element={<RoleGate allow={["manager"]}><Leads /></RoleGate>} />
           <Route path="/leads/orphans" element={<RoleGate allow={["manager"]}><OrphanLeads /></RoleGate>} />
+          <Route path="/leads/paste" element={<RoleGate allow={["manager"]}><PasteDistribute /></RoleGate>} />
           <Route path="/leads/system-lost" element={<SuperadminGate><SystemLostLeads /></SuperadminGate>} />
           <Route path="/settings" element={<RoleGate allow={["manager"]}><Settings /></RoleGate>} />
           <Route path="/calls" element={<RoleGate allow={["manager"]}><Calls /></RoleGate>} />

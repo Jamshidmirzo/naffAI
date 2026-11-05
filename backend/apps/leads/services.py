@@ -2991,3 +2991,164 @@ def retry_export_to_sheet() -> dict:
         }
     finally:
         cache.delete(_RETRY_EXPORT_LOCK_KEY)
+
+
+# ---- «Вставить и раздать» (paste & distribute) -----------------------------
+
+
+@transaction.atomic
+def leads_paste_distribute(
+    *,
+    rows: list[dict],
+    operator_ids: list[int],
+    sheet_source_id: int | None = None,
+    take_existing: bool = True,
+    user=None,
+) -> dict:
+    """
+    A manager pasted rows copied from a sheet and picked who gets them:
+    create the new leads and hand everything out evenly to `operator_ids`
+    right away (the operator with the fewest leads of this batch goes next).
+
+    - new phone → `lead_create` (MANUAL; `sheet_source` only for the stats)
+      and `lead_reassign` to the next operator;
+    - an open lead with this phone held by someone else (or lying in the
+      pool) → taken over when `take_existing`: status and history stay,
+      empty soft fields are filled from the row, a pending qimmatlik retry
+      is dropped so the watcher doesn't deal it out again;
+    - already with a chosen operator, bad phone, phone repeated in the
+      paste → skipped.
+
+    A pause or a missing shift does not block — the manager's choice wins
+    (see `availability`); the page shows those operators with a warning.
+    """
+    from uuid import uuid4
+
+    from .selectors import PASTE_MAX_ROWS, PasteRowKind, paste_rows_classify
+
+    if not rows:
+        raise ApplicationError("Нет строк для раздачи", {"field": "rows"})
+    if len(rows) > PASTE_MAX_ROWS:
+        raise ApplicationError(
+            f"За раз можно раздать не больше {PASTE_MAX_ROWS} строк", {"field": "rows"}
+        )
+    op_ids = list(dict.fromkeys(int(i) for i in operator_ids))
+    if not op_ids:
+        raise ApplicationError("Выберите операторов", {"field": "operator_ids"})
+    ops_by_id = {op.id: op for op in Operator.objects.filter(pk__in=op_ids)}
+    missing = [i for i in op_ids if i not in ops_by_id]
+    if missing:
+        raise ApplicationError(
+            "Оператор не найден", {"field": "operator_ids", "operator_ids": missing}
+        )
+    inactive = [i for i in op_ids if ops_by_id[i].status != OperatorStatus.ACTIVE]
+    if inactive:
+        raise ApplicationError(
+            "Нельзя раздать неактивным операторам",
+            {"field": "operator_ids", "operator_ids": inactive},
+        )
+    operators = [ops_by_id[i] for i in op_ids]
+
+    sheet_source = None
+    if sheet_source_id:
+        sheet_source = SheetSource.objects.filter(pk=sheet_source_id).first()
+        if sheet_source is None:
+            raise ApplicationError("Источник не найден", {"field": "sheet_source_id"})
+
+    batch_id = uuid4().hex[:12]
+    reason = "Вставить и раздать"
+    per_op = {op.id: 0 for op in operators}
+
+    def next_operator() -> Operator:
+        op = min(operators, key=lambda o: per_op[o.id])  # ties → picked order
+        per_op[op.id] += 1
+        return op
+
+    created = 0
+    taken: list[dict] = []
+    skipped = {
+        PasteRowKind.KEEP: 0,
+        PasteRowKind.INVALID: 0,
+        PasteRowKind.DUPLICATE: 0,
+        "not_taken": 0,
+    }
+    lead_ids: list[int] = []
+
+    for row in paste_rows_classify(rows, operator_ids=op_ids):
+        kind = row["kind"]
+        if kind == PasteRowKind.NEW:
+            metadata = {"paste_batch": batch_id}
+            if row["comment"]:
+                metadata["comment_text"] = row["comment"]
+            lead = lead_create(
+                user=user,
+                full_name=row["full_name"],
+                phone=row["phone_raw"],
+                product_hint=row["product_hint"],
+                has_card=row["has_card"],
+                metadata=metadata,
+                auto_assign=False,
+            )
+            extra: list[str] = []
+            if row["phone_alt"]:
+                lead.phone_alt = row["phone_alt"]
+                extra.append("phone_alt")
+            if sheet_source is not None:
+                lead.sheet_source = sheet_source
+                extra.append("sheet_source")
+            if extra:
+                lead.save(update_fields=extra)
+            lead_reassign(lead=lead, new_operator=next_operator(), user=user, reason=reason)
+            created += 1
+        elif kind == PasteRowKind.TAKE:
+            if not take_existing:
+                skipped["not_taken"] += 1
+                continue
+            lead = Lead.objects.select_for_update().select_related("operator").get(pk=row["lead"].pk)
+            old_operator = lead.operator.full_name if lead.operator_id else ""
+            fields: list[str] = []
+            for field in ("full_name", "product_hint", "has_card", "phone_alt"):
+                if row[field] and not getattr(lead, field):
+                    setattr(lead, field, row[field])
+                    fields.append(field)
+            metadata = dict(lead.metadata or {})
+            metadata.pop("qimmatlik_retry_at", None)
+            if row["comment"] and not metadata.get("comment_text"):
+                metadata["comment_text"] = row["comment"]
+            metadata["paste_batch"] = batch_id
+            lead.metadata = metadata
+            lead.save(update_fields=[*fields, "metadata", "updated_at"])
+            new_operator = next_operator()
+            lead_reassign(lead=lead, new_operator=new_operator, user=user, reason=reason)
+            taken.append({"lead_id": lead.id, "from": old_operator, "to": new_operator.full_name})
+        else:
+            skipped[kind] += 1
+            continue
+        lead_ids.append(lead.id)
+
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="leads.PasteDistribute",
+        entity_id=0,
+        changes={
+            "batch": batch_id,
+            "rows": len(rows),
+            "created": created,
+            "taken": len(taken),
+            "skipped": skipped,
+            "assigned": {str(k): v for k, v in per_op.items()},
+            "sheet_source_id": sheet_source.id if sheet_source else None,
+            "lead_ids": lead_ids,
+        },
+        comment=f"Вставить и раздать: {created} новых, {len(taken)} забрано",
+    )
+    return {
+        "batch": batch_id,
+        "total": created + len(taken),
+        "created": created,
+        "taken": len(taken),
+        "taken_from": taken,
+        "skipped": skipped,
+        "assigned": {str(k): v for k, v in per_op.items()},
+    }
