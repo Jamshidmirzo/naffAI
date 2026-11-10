@@ -1,10 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Download } from "lucide-react";
 import { api } from "../lib/api";
 import { formatUZS, formatNumber } from "../lib/format";
 import { usePageHeader } from "../store/page";
-import { useT } from "../lib/i18n";
-import { TabPill, type TabItem } from "../components/ui";
+import { useT, useLangValue } from "../lib/i18n";
+import { useAuth } from "../store/auth";
+import { normaliseRole } from "../components/RoleGate";
+import { TabPill, toast, type TabItem } from "../components/ui";
+
+const BONUS_PCT_KEY = "naffai_tablo_bonus_pct";
+
+function readBonusPct(): string {
+  try {
+    return localStorage.getItem(BONUS_PCT_KEY) || "3";
+  } catch {
+    return "3";
+  }
+}
 
 const REFRESH_SEC = 60;
 
@@ -314,6 +327,44 @@ export default function Leaderboard() {
   const totalSum = rows.reduce((a, r) => a + (Number(r.total) || 0), 0);
   const totalCount = rows.reduce((a, r) => a + (Number(r.count) || 0), 0);
 
+  // Excel «operator → summa → N% bonus» — only for managers; operators
+  // see the same board but get no export.
+  const lang = useLangValue();
+  const isManager = normaliseRole(useAuth((s) => s.role)) !== "operator";
+  const [bonusPct, setBonusPct] = useState(readBonusPct);
+  const [downloading, setDownloading] = useState(false);
+
+  const downloadExcel = async () => {
+    setDownloading(true);
+    try {
+      try {
+        localStorage.setItem(BONUS_PCT_KEY, bonusPct);
+      } catch {
+        /* private mode — keep the in-memory value */
+      }
+      const r = await api.get("/analytics/leaderboard/export.xlsx", {
+        params: { ...(period === "all" ? {} : { period }), percent: bonusPct || "0", lang },
+        responseType: "blob",
+      });
+      const url = window.URL.createObjectURL(
+        new Blob([r.data], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+      );
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `tablo-${period}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error(t("common.error"));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const tabs: TabItem<Period>[] = [
     { value: "day", label: t("leaderboard.period_today") },
     { value: "week", label: t("leaderboard.period_week") },
@@ -345,6 +396,31 @@ export default function Leaderboard() {
               {formatUZS(totalSum)}
             </span>
           </span>
+          {isManager && (
+            <span className="flex items-center gap-2" title={t("leaderboard.export_title")}>
+              <label className="flex items-center gap-1.5">
+                {t("leaderboard.bonus_pct")}
+                <input
+                  className="nf-input tabular-nums text-center"
+                  style={{ width: 56, padding: "6px 8px" }}
+                  inputMode="decimal"
+                  value={bonusPct}
+                  onChange={(e) => setBonusPct(e.target.value.replace(/[^0-9.,]/g, "").slice(0, 5))}
+                  aria-label={t("leaderboard.bonus_pct")}
+                />
+                %
+              </label>
+              <button
+                type="button"
+                className="nf-btn nf-btn--secondary"
+                style={{ padding: "7px 12px" }}
+                onClick={downloadExcel}
+                disabled={downloading || rows.length === 0}
+              >
+                <Download className="w-3.5 h-3.5" /> {downloading ? "…" : "Excel"}
+              </button>
+            </span>
+          )}
         </div>
       </div>
 

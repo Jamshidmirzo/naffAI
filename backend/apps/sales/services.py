@@ -1098,6 +1098,34 @@ def sale_confirm(*, sale: Sale, user=None) -> Sale:
     return sale
 
 
+def sale_set_oxs_mark(*, sale: Sale, user, marked: bool) -> Sale:
+    """Ставит / снимает галочку «OXS ga urildi». Повторная отметка не
+    перезаписывает, кто и когда отметил первым."""
+    if marked == (sale.oxs_marked_at is not None):
+        return sale
+    old = sale.oxs_marked_at.isoformat() if sale.oxs_marked_at else None
+    if marked:
+        sale.oxs_marked_at = timezone.now()
+        sale.oxs_marked_by = user if getattr(user, "is_authenticated", False) else None
+    else:
+        sale.oxs_marked_at = None
+        sale.oxs_marked_by = None
+    sale.save(update_fields=["oxs_marked_at", "oxs_marked_by", "updated_at"])
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="sales.Sale",
+        entity_id=sale.id,
+        changes={
+            "oxs_marked_at": {
+                "old": old,
+                "new": sale.oxs_marked_at.isoformat() if sale.oxs_marked_at else None,
+            }
+        },
+    )
+    return sale
+
+
 @transaction.atomic
 def sale_reject(*, sale: Sale, user, reason: str) -> Sale:
     """

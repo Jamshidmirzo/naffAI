@@ -111,6 +111,17 @@ class Sale(TimestampedModel):
     rejection_reason = models.TextField(blank=True, default="")
     rejected_at = models.DateTimeField(null=True, blank=True)
 
+    # Галочка «OXS ga urildi»: менеджер отмечает продажу после того, как
+    # перенёс её в OXS. Пустое время = ещё не перенесена.
+    oxs_marked_at = models.DateTimeField(null=True, blank=True)
+    oxs_marked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="oxs_marked_sales",
+    )
+
     class Meta:
         ordering = ["-sold_at"]
         indexes = [

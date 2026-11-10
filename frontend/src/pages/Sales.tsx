@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Download, Filter, Plus, RotateCcw, Search } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Download, Filter, Plus, RotateCcw, Search } from "lucide-react";
 import { api } from "../lib/api";
-import { formatDate, formatUZS } from "../lib/format";
+import { formatDate, formatDateTime, formatUZS } from "../lib/format";
 import { MultiSelectPopover } from "../components/MultiSelectPopover";
 import { Select } from "../components/Select";
-import { Button, Chip, StatusBadge } from "../components/ui";
+import { Button, Chip, StatusBadge, toast } from "../components/ui";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
 
@@ -126,10 +126,12 @@ export default function Sales() {
   const partnerIds = searchParams.getAll("partner_ids").map(Number).filter(Boolean);
   const operatorIds = searchParams.getAll("operator_ids").map(Number).filter(Boolean);
   const sheetSourceId = searchParams.get("sheet_source_id") || "";
+  const oxsVal = searchParams.get("oxs") || "";
 
   const anyFilterActive = useMemo(
-    () => Boolean(dateFrom || dateTo || partnerIds.length || operatorIds.length || sheetSourceId),
-    [dateFrom, dateTo, partnerIds.length, operatorIds.length, sheetSourceId],
+    () =>
+      Boolean(dateFrom || dateTo || partnerIds.length || operatorIds.length || sheetSourceId || oxsVal),
+    [dateFrom, dateTo, partnerIds.length, operatorIds.length, sheetSourceId, oxsVal],
   );
 
   useEffect(() => {
@@ -280,6 +282,37 @@ export default function Sales() {
 
   const rows = sales.data?.results || [];
 
+  // «OXS ga urildi» tick: optimistic flip in the cached page, server
+  // answer (who/when) written back; a failed call restores the old row.
+  const qc = useQueryClient();
+  const [oxsBusy, setOxsBusy] = useState<number[]>([]);
+  const toggleOxs = async (sale: any) => {
+    if (oxsBusy.includes(sale.id)) return;
+    const marked = !sale.oxs_marked_at;
+    const patchRow = (fields: Record<string, unknown>) =>
+      qc.setQueryData<Paginated<any>>(queryKey, (old) =>
+        old && {
+          ...old,
+          results: old.results.map((r) => (r.id === sale.id ? { ...r, ...fields } : r)),
+        },
+      );
+    setOxsBusy((b) => [...b, sale.id]);
+    patchRow({ oxs_marked_at: marked ? new Date().toISOString() : null });
+    try {
+      const r = await api.post(`/sales/${sale.id}/oxs/`, { marked });
+      patchRow(r.data);
+      if (oxsVal) qc.invalidateQueries({ queryKey: ["sales"] });
+    } catch {
+      patchRow({
+        oxs_marked_at: sale.oxs_marked_at,
+        oxs_marked_by_name: sale.oxs_marked_by_name,
+      });
+      toast.error(t("common.error"));
+    } finally {
+      setOxsBusy((b) => b.filter((id) => id !== sale.id));
+    }
+  };
+
   return (
     <div className="mx-auto max-w-[1180px] flex flex-col gap-5">
       {/* --- TOOLBAR --- */}
@@ -325,6 +358,7 @@ export default function Sales() {
                   dateTo ? 1 : 0,
                   partnerIds.length ? 1 : 0,
                   operatorIds.length ? 1 : 0,
+                  oxsVal ? 1 : 0,
                 ].reduce((a, b) => a + b, 0)}
               </span>
             )}
@@ -399,6 +433,20 @@ export default function Sales() {
               ]}
             />
           </div>
+          <div>
+            <div className="nf-col mb-1.5">OXS</div>
+            <div className="flex gap-2">
+              {[
+                { v: "", label: t("sales.oxs_all") },
+                { v: "false", label: t("sales.oxs_todo") },
+                { v: "true", label: t("sales.oxs_done") },
+              ].map((o) => (
+                <Chip key={o.v} active={oxsVal === o.v} onClick={() => update({ oxs: o.v || null })}>
+                  {o.label}
+                </Chip>
+              ))}
+            </div>
+          </div>
           {anyFilterActive && (
             <button type="button" className="nf-btn nf-btn--ghost" onClick={resetFilters}>
               <RotateCcw className="w-3.5 h-3.5" /> Сбросить
@@ -468,8 +516,9 @@ export default function Sales() {
       <section className="nf-card overflow-hidden">
         <div
           className="grid gap-2 px-6 pt-5 pb-3 nf-col"
-          style={{ gridTemplateColumns: "90px 1.1fr .9fr .9fr 1.2fr .9fr .9fr .8fr" }}
+          style={{ gridTemplateColumns: "34px 90px 1.1fr .9fr .9fr 1.2fr .9fr .9fr .8fr" }}
         >
+          <div title={t("sales.oxs_mark")}>{t("sales.oxs_col")}</div>
           <div>Время</div>
           <div>Оператор</div>
           <div>Источник</div>
@@ -494,10 +543,23 @@ export default function Sales() {
                 onClick={() => nav(`/sales/${s.id}`)}
                 className="nf-row animate-nfFadeUp"
                 style={{
-                  gridTemplateColumns: "90px 1.1fr .9fr .9fr 1.2fr .9fr .9fr .8fr",
+                  gridTemplateColumns: "34px 90px 1.1fr .9fr .9fr 1.2fr .9fr .9fr .8fr",
                   animationDelay: `${0.03 + i * 0.045}s`,
                 }}
               >
+                <OxsTick
+                  marked={!!s.oxs_marked_at}
+                  busy={oxsBusy.includes(s.id)}
+                  title={
+                    s.oxs_marked_at
+                      ? t("sales.oxs_done_by", {
+                          who: s.oxs_marked_by_name || "—",
+                          when: formatDateTime(s.oxs_marked_at),
+                        }) + `\n${t("sales.oxs_unmark")}`
+                      : t("sales.oxs_mark")
+                  }
+                  onToggle={() => toggleOxs(s)}
+                />
                 <div className="text-muted tabular-nums">{formatDate(s.sold_at)}</div>
                 <div className="truncate font-medium">
                   {s.operator_name || "—"}
@@ -573,5 +635,46 @@ export default function Sales() {
         )}
       </section>
     </div>
+  );
+}
+
+function OxsTick({
+  marked,
+  busy,
+  title,
+  onToggle,
+}: {
+  marked: boolean;
+  busy: boolean;
+  title: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      aria-pressed={marked}
+      disabled={busy}
+      onClick={(e) => {
+        // The row itself opens the sale — the tick must not.
+        e.stopPropagation();
+        onToggle();
+      }}
+      className="group grid place-items-center rounded-full transition"
+      style={{
+        width: 22,
+        height: 22,
+        border: marked ? "1.5px solid var(--success)" : "1.5px solid var(--border-btn, var(--border))",
+        background: marked ? "var(--success)" : "transparent",
+        color: marked ? "#fff" : "var(--muted)",
+        opacity: busy ? 0.6 : 1,
+      }}
+    >
+      <Check
+        className={marked ? "w-3.5 h-3.5" : "w-3.5 h-3.5 opacity-0 group-hover:opacity-60 transition"}
+        strokeWidth={3}
+      />
+    </button>
   );
 }

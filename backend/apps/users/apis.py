@@ -108,6 +108,7 @@ class MeApi(APIView):
                 "birth_date": birth_date,
                 "is_birthday_today": is_birthday_today,
                 "livestream_enabled": livestream_enabled,
+                "nav_order": list(getattr(profile, "nav_order", None) or []),
             }
         )
 
@@ -177,6 +178,22 @@ class MeApi(APIView):
                             operator.birth_date.isoformat() if operator.birth_date else None
                         )
                         response_payload["is_birthday_today"] = operator.is_birthday_today()
+
+        # --- nav_order (свой порядок пунктов меню) ---
+        if "nav_order" in request.data:
+            raw = request.data.get("nav_order")
+            if raw is None:
+                raw = []
+            if (
+                not isinstance(raw, list)
+                or len(raw) > 300
+                or not all(isinstance(k, str) and 0 < len(k) <= 128 for k in raw)
+            ):
+                errors["nav_order"] = "must be a list of menu keys"
+            else:
+                profile.nav_order = list(dict.fromkeys(raw))
+                profile.save(update_fields=["nav_order"])
+                response_payload["nav_order"] = profile.nav_order
 
         # Fallback совместимости: старый контракт возвращал 400 при
         # отсутствии preferred_language — сохраняем то же поведение,

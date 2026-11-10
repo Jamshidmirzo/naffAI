@@ -8,13 +8,8 @@ import MonthPicker from "../components/MonthPicker";
 import { Button, Eyebrow } from "../components/ui";
 import { usePageHeader } from "../store/page";
 import { useT } from "../lib/i18n";
+import TopOperatorsCard from "../components/analytics/TopOperatorsCard";
 
-interface LeaderboardRow {
-  operator_id: number;
-  operator_name: string;
-  total: number | string;
-  count?: number | string;
-}
 interface ByChannelRow {
   channel_name: string;
   total: number | string;
@@ -47,13 +42,6 @@ interface HeatmapPayload {
   matrix: number[][];
 }
 
-function millions(n: number) {
-  if (Math.abs(n) >= 1_000_000)
-    return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")} млн`;
-  if (Math.abs(n) >= 1_000) return `${Math.round(n / 1_000)} тыс`;
-  return Math.round(n).toString();
-}
-
 export default function Analytics() {
   const [choice, setChoice] = useState<MonthChoice>({ kind: "current" });
   const params = buildPeriodParams("month", choice);
@@ -67,11 +55,6 @@ export default function Analytics() {
     Object.entries(params).filter(([, v]) => v != null) as [string, string][],
   ).toString();
 
-  const lb = useQuery<LeaderboardRow[]>({
-    queryKey: ["lb", paramKey],
-    queryFn: () =>
-      api.get<LeaderboardRow[]>("/analytics/leaderboard/", { params }).then((r) => r.data),
-  });
   const ch = useQuery<ByChannelRow[]>({
     queryKey: ["by-channel", paramKey],
     queryFn: () =>
@@ -298,80 +281,8 @@ export default function Analytics() {
         )}
       </section>
 
-      {/* Leaderboard bars */}
-      <section
-        className="nf-card p-6 animate-nfFadeUp"
-        style={{ animationDelay: "0.1s" }}
-      >
-        <div className="flex items-center justify-between mb-5">
-          <div>
-            <div className="text-[15px] font-semibold tracking-tight">
-              {t("analytics.top_operators_title")}
-            </div>
-            <div className="text-[12.5px] text-muted mt-0.5">
-              {t("analytics.top_operators_hint", { period: title })}
-            </div>
-          </div>
-        </div>
-        <div className="flex flex-col gap-3">
-          {(lb.data ?? []).length === 0 && (
-            <div className="text-[13px] text-muted text-center py-6">Нет данных</div>
-          )}
-          {(() => {
-            const max = Math.max(
-              1,
-              ...(lb.data ?? []).map((r) => Number(r.total)),
-            );
-            return (lb.data ?? []).slice(0, 10).map((r, i) => {
-              const total = Number(r.total);
-              const pct = (total / max) * 100;
-              return (
-                <div
-                  key={r.operator_id}
-                  className="grid items-center gap-3 animate-nfFadeUp"
-                  style={{
-                    gridTemplateColumns: "22px 1fr auto",
-                    animationDelay: `${0.03 + i * 0.045}s`,
-                  }}
-                >
-                  <div
-                    className="grid place-items-center text-[11px] tabular-nums font-semibold"
-                    style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: 99,
-                      background: i === 0 ? "var(--accent-grad)" : "var(--faint)",
-                      color: i === 0 ? "#fff" : "var(--muted)",
-                    }}
-                  >
-                    {i + 1}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[13.5px] font-medium truncate mb-1">
-                      {r.operator_name}
-                    </div>
-                    <div
-                      className="h-[5px] rounded-full overflow-hidden"
-                      style={{ background: "var(--faint)" }}
-                    >
-                      <div
-                        className="h-full rounded-full transition-all duration-700 ease-nf"
-                        style={{
-                          width: `${pct}%`,
-                          background: "var(--accent-grad)",
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="text-[13px] tabular-nums font-semibold shrink-0">
-                    {millions(total)}
-                  </div>
-                </div>
-              );
-            });
-          })()}
-        </div>
-      </section>
+      {/* Top operators — own filters + click-through to sales */}
+      <TopOperatorsCard pageChoice={choice} />
 
       {/* Top models */}
       <section

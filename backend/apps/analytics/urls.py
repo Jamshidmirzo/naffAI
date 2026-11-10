@@ -9,6 +9,7 @@ from .apis import (
     DashboardSummaryApi,
     KpiApi,
     LeaderboardApi,
+    LeaderboardExportApi,
     LeadHealthApi,
     LeadStatsApi,
     LeadsDistributionApi,
@@ -21,6 +22,7 @@ from .apis import (
 urlpatterns = [
     path("kpi/", KpiApi.as_view()),
     path("leaderboard/", LeaderboardApi.as_view()),
+    path("leaderboard/export.xlsx", LeaderboardExportApi.as_view()),
     path("by-channel/", ByChannelApi.as_view()),
     path("by-model/", ByModelApi.as_view()),
     path("by-source/", BySourceApi.as_view()),

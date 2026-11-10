@@ -7,6 +7,7 @@ from .apis import (
     SaleImportExcelApi,
     SaleListCreateApi,
     SaleMineListApi,
+    SaleOxsMarkApi,
     SalePendingListApi,
     SaleRejectApi,
     SaleReturnApi,
@@ -27,4 +28,5 @@ urlpatterns = [
     path("<int:pk>/return/", SaleReturnApi.as_view()),
     path("<int:pk>/confirm/", SaleConfirmApi.as_view()),
     path("<int:pk>/reject/", SaleRejectApi.as_view()),
+    path("<int:pk>/oxs/", SaleOxsMarkApi.as_view()),
 ]

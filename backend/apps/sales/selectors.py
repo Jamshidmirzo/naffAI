@@ -9,7 +9,9 @@ from .models import Sale, SaleOperator
 
 
 def sale_queryset(*, include_deleted: bool = False) -> QuerySet[Sale]:
-    qs = Sale.objects.select_related("operator", "channel", "created_by").prefetch_related(
+    qs = Sale.objects.select_related(
+        "operator", "channel", "created_by", "oxs_marked_by"
+    ).prefetch_related(
         "gifts",
         # Payment-split + multi-photo prefetches so the SaleSerializer's
         # nested output (`partner_lines`, `contract_photos_all`) doesn't
@@ -48,6 +50,7 @@ def sale_list(
     status: str | None = None,
     is_returned: bool | None = None,
     sheet_source_id: int | None = None,
+    oxs_marked: bool | None = None,
     visible_operator_ids: list[int] | None = None,
 ) -> QuerySet[Sale]:
     """
@@ -110,6 +113,8 @@ def sale_list(
             Q(sheet_source_id=sheet_source_id)
             | Q(lead__sheet_source_id=sheet_source_id)
         ).distinct()
+    if oxs_marked is not None:
+        qs = qs.filter(oxs_marked_at__isnull=not oxs_marked)
     return qs.order_by("-sold_at", "-id")
 
 
