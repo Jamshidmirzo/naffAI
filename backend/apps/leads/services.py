@@ -1616,8 +1616,10 @@ def leads_bulk_reassign(
             )
 
     # Блокируем строки — на случай гонки с morning-splitter / watcher.
+    # of=("self",): operator — nullable FK, select_related даёт LEFT JOIN,
+    # а Postgres не берёт FOR UPDATE на nullable-стороне outer join.
     locked = list(
-        Lead.objects.select_for_update(skip_locked=True)
+        Lead.objects.select_for_update(skip_locked=True, of=("self",))
         .filter(pk__in=lead_ids)
         .select_related("operator")
     )
@@ -3104,7 +3106,13 @@ def leads_paste_distribute(
             if not take_existing:
                 skipped["not_taken"] += 1
                 continue
-            lead = Lead.objects.select_for_update().select_related("operator").get(pk=row["lead"].pk)
+            # of=("self",): operator is a nullable FK, so select_related makes a
+            # LEFT JOIN — Postgres refuses FOR UPDATE on its nullable side.
+            lead = (
+                Lead.objects.select_for_update(of=("self",))
+                .select_related("operator")
+                .get(pk=row["lead"].pk)
+            )
             old_operator = lead.operator.full_name if lead.operator_id else ""
             fields: list[str] = []
             for field in ("full_name", "product_hint", "has_card", "phone_alt"):

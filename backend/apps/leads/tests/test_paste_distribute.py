@@ -121,6 +121,24 @@ def test_open_lead_of_another_operator_is_taken(mgr):
 
 
 @pytest.mark.django_db
+def test_open_lead_without_operator_is_taken(mgr):
+    # Lead from the free pool (operator NULL) — the take path locks it with a
+    # LEFT JOIN on operator; Postgres used to answer 500 here.
+    new = _op("New")
+    lead = Lead.objects.create(phone="+998901234567", status="new", operator=None)
+
+    res = leads_paste_distribute(
+        rows=[_row("90 123 45 67")], operator_ids=[new.id], user=mgr
+    )
+
+    assert res["taken"] == 1
+    assert res["taken_from"] == [{"lead_id": lead.id, "from": "", "to": "New"}]
+    lead.refresh_from_db()
+    assert lead.operator_id == new.id
+    assert Lead.objects.count() == 1
+
+
+@pytest.mark.django_db
 def test_take_existing_off_leaves_open_lead_alone(mgr):
     old, new = _op("Old"), _op("New")
     lead = Lead.objects.create(phone="+998901234567", status="no_answer", operator=old)
