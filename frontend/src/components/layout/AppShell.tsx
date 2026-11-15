@@ -112,6 +112,7 @@ function useManagerGroups(
         { to: "/bot-subscribers", label: t("nav.bot_subscribers") },
         { to: "/marketing", label: t("nav.marketing") },
         { to: "/marketing/sources", label: t("nav.marketing_sources") },
+        { to: "/settings/meta-ads", label: t("nav.meta_ads") },
       ],
     },
     {
