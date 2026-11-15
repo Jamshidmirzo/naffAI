@@ -16,6 +16,8 @@ export interface Me {
   is_birthday_today: boolean;
   /** True если оператор включён в WebRTC-живой стрим (manager тоггл). */
   livestream_enabled: boolean;
+  /** Own sidebar order (entry keys); empty — default order. */
+  nav_order?: string[];
 }
 
 /**

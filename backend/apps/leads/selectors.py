@@ -14,6 +14,7 @@ from django.conf import settings
 from django.db.models import Case, Count, IntegerField, Q, QuerySet, Value, When
 from django.utils import timezone
 
+from apps.common.validators import normalize_uz_phone
 from apps.operators.models import Operator, OperatorStatus
 
 from .models import Lead, OperatorSheetAlias, SheetSource, TelegramLink
@@ -1269,7 +1270,12 @@ def operators_distribution_status() -> list[dict]:
       - postponed_count
       - eligible        (bool)
       - reason          (str, RU) — «ок» если eligible, иначе причина
+      - is_paused
+      - unavailable_reason  — None | "paused" | "not_on_shift" (может ли
+        оператор получать лиды автоматически прямо сейчас)
     """
+    from .availability import operators_available_for_auto_leads
+
     batch = _rr_batch_size()
     morning_gate = _morning_gate_enabled()
 
@@ -1306,6 +1312,11 @@ def operators_distribution_status() -> list[dict]:
         .order_by("id")
     )
 
+    available_ids = set(
+        operators_available_for_auto_leads(Operator.objects.filter(pk__in=[o.pk for o in ops]))
+        .values_list("pk", flat=True)
+    )
+
     rows: list[dict] = []
     for op in ops:
         working = op._working_count  # type: ignore[attr-defined]
@@ -1329,6 +1340,12 @@ def operators_distribution_status() -> list[dict]:
                 "postponed_count": postponed,
                 "eligible": eligible,
                 "reason": "ок — участвует в RR" if eligible else "; ".join(reasons),
+                "is_paused": op.is_paused,
+                "unavailable_reason": (
+                    None if op.pk in available_ids
+                    else "paused" if op.is_paused
+                    else "not_on_shift"
+                ),
             }
         )
 
@@ -2034,3 +2051,100 @@ def find_operators_by_freetext(query: str, *, limit: int = 5) -> list[Operator]:
     ]
     matched.sort(key=lambda o: (o.status, o.id))
     return matched[:limit]
+
+
+# ---- «Вставить и раздать» (paste & distribute) -----------------------------
+
+PASTE_MAX_ROWS = 500
+
+
+class PasteRowKind:
+    NEW = "new"  # no open lead with this phone → a lead is created
+    TAKE = "take"  # open lead held by someone else → moved to a chosen operator
+    KEEP = "keep"  # open lead already with one of the chosen operators → left as is
+    INVALID = "invalid"  # no usable phone
+    DUPLICATE = "duplicate"  # same phone earlier in the same paste
+
+
+def active_leads_by_phones(phones) -> dict[str, Lead]:
+    """
+    Newest NON-terminal lead per normalized phone — the same rule the sheet
+    import uses for its phone dedup (`services._find_active_lead_by_phone`).
+    """
+    phones = [p for p in set(phones) if p]
+    if not phones:
+        return {}
+    terminal = set(terminal_lead_status_codes()) | set(TERMINAL_LEAD_STATUSES)
+    found: dict[str, Lead] = {}
+    qs = (
+        Lead.objects.filter(phone__in=phones)
+        .exclude(status__in=terminal)
+        .select_related("operator")
+        .order_by("-updated_at", "-id")
+    )
+    for lead in qs:
+        found.setdefault(lead.phone, lead)
+    return found
+
+
+def _paste_text(row: dict, key: str, limit: int) -> str:
+    val = row.get(key)
+    return "" if val is None else str(val).strip()[:limit]
+
+
+def paste_rows_classify(rows: list[dict], *, operator_ids) -> list[dict]:
+    """
+    What «Вставить и раздать» will do with every pasted row.
+
+    `rows` are dicts with `full_name / phone / phone_alt / product_hint /
+    has_card / comment` (the column roles the manager picked). Returns one
+    dict per row, same order: the cleaned fields plus `kind` (PasteRowKind),
+    `lead` (the open Lead for take/keep, else None) and `called_today`.
+    """
+    from apps.calls.models import CallAttempt
+
+    chosen = {int(i) for i in operator_ids}
+    parsed: list[dict] = []
+    for idx, row in enumerate(rows):
+        phone_raw = _paste_text(row, "phone", 64)
+        phone, valid = normalize_uz_phone(phone_raw)
+        alt, alt_valid = normalize_uz_phone(_paste_text(row, "phone_alt", 64))
+        parsed.append(
+            {
+                "index": idx,
+                "full_name": _paste_text(row, "full_name", 128),
+                "phone_raw": phone_raw,
+                "phone": phone if valid else "",
+                "phone_alt": alt if alt_valid and alt != phone else "",
+                "product_hint": _paste_text(row, "product_hint", 256),
+                "has_card": _paste_text(row, "has_card", 64),
+                "comment": _paste_text(row, "comment", 1000),
+                "kind": PasteRowKind.NEW if valid else PasteRowKind.INVALID,
+                "lead": None,
+                "called_today": False,
+            }
+        )
+
+    open_leads = active_leads_by_phones(r["phone"] for r in parsed)
+    called_today = set(
+        CallAttempt.objects.filter(
+            lead_id__in=[ld.id for ld in open_leads.values()],
+            created_at__date=timezone.localdate(),
+        ).values_list("lead_id", flat=True)
+    )
+
+    seen: set[str] = set()
+    for r in parsed:
+        if r["kind"] == PasteRowKind.INVALID:
+            continue
+        if r["phone"] in seen:
+            r["kind"] = PasteRowKind.DUPLICATE
+            continue
+        seen.add(r["phone"])
+        lead = open_leads.get(r["phone"])
+        if lead is None:
+            continue
+        r["lead"] = lead
+        r["called_today"] = lead.id in called_today
+        r["kind"] = PasteRowKind.KEEP if lead.operator_id in chosen else PasteRowKind.TAKE
+    return parsed

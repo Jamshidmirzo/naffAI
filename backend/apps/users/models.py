@@ -113,6 +113,9 @@ class Profile(models.Model):
             "owner (superadmin). NULL для прочих ролей или legacy-профилей."
         ),
     )
+    # Свой порядок пунктов бокового меню (ключи пунктов и заголовков
+    # разделов, см. frontend Sidebar). Пустой список — порядок по умолчанию.
+    nav_order = models.JSONField(default=list, blank=True)
     # 2026-08-15: attendance PIN изначально жил здесь (per-manager). Через
     # день переехал в `AttendanceSettings.pin_hash` (один общий PIN на
     # всех менеджеров, ставит superadmin) — поле удалено миграцией
