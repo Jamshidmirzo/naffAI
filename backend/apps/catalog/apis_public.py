@@ -124,6 +124,11 @@ def _card(phone: PhoneModel, *, request, tiers, first_frames) -> dict:
         "installment_from": (
             {"months": cheapest["months"], "monthly": cheapest["monthly"]} if cheapest else None
         ),
+        # Every marketing tier for `price_from` — the site's budget filter
+        # and term switch work on the list without a detail call per phone.
+        "installments": rows,
+        "camera_mp": phone.camera_mp,
+        "battery_mah": phone.battery_mah,
         "sort_order": phone.sort_order,
         "updated_at": phone.updated_at,
     }

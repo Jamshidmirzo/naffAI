@@ -53,18 +53,18 @@ CARD_KEYS = {
     "has_spin",
     "colors",
     "installment_from",
+    "installments",
+    "camera_mp",
+    "battery_mah",
     "sort_order",
     "updated_at",
 }
 DETAIL_EXTRA_KEYS = {
     "description_uz",
     "description_ru",
-    "camera_mp",
-    "battery_mah",
     "specs",
     "gallery",
     "spin",
-    "installments",
 }
 
 
@@ -226,6 +226,9 @@ def test_price_from_uses_cheapest_available_color(site_client):
     assert card["price_from"] == 8_000_000
     # installment_from is the lowest monthly row for price_from (24 m @ 75%).
     assert card["installment_from"] == {"months": 24, "monthly": 584_000}
+    # The list card carries every tier row for price_from too.
+    assert {r["months"]: r["monthly"] for r in card["installments"]}[24] == 584_000
+    assert all(r["total"] == r["monthly"] * r["months"] for r in card["installments"])
 
 
 def test_money_rounds_half_up(site_client):
