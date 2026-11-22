@@ -124,8 +124,12 @@ class GoogleSheetsClient:
 
     def raw_values(self, spreadsheet_id: str, sheet_range: str) -> list[list[str]]:
         """Range in A1 notation — e.g. `'Sheet1'!A1:Z`."""
+        from urllib.parse import quote
+
+        # httpx leaves a literal `+` in the path and Google reads it as a
+        # space, so «Tashkent + aralash» 400'd. Quote like update_cells.
         data = self._get(
-            f"{_SHEETS_API_ROOT}/{spreadsheet_id}/values/{sheet_range}",
+            f"{_SHEETS_API_ROOT}/{spreadsheet_id}/values/{quote(sheet_range, safe='!:')}",
             params={"valueRenderOption": "FORMATTED_VALUE"},
         )
         return data.get("values", [])

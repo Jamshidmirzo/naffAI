@@ -28,6 +28,7 @@ function useManagerGroups(
 ): SidebarGroup[] {
   return [
     {
+      id: "main",
       items: [
         { to: "/", label: t("nav.dashboard"), end: true },
         { to: "/sales", label: t("nav.sales") },
@@ -35,9 +36,11 @@ function useManagerGroups(
         { to: "/calls", label: t("nav.calls") },
         { to: "/leads", label: t("nav.leads"), badgeKey: "leadsReview" },
         { to: "/leads/orphans", label: t("nav.orphans"), badgeKey: "orphans" },
+        { to: "/leads/paste", label: t("nav.paste") },
       ],
     },
     {
+      id: "analytics",
       title: t("sidebar.analytics"),
       items: [
         { to: "/analytics", label: t("nav.analytics") },
@@ -48,6 +51,7 @@ function useManagerGroups(
       ],
     },
     {
+      id: "attendance",
       title: t("sidebar.attendance"),
       items: [
         { to: "/attendance/today", label: t("nav.attendance_today") },
@@ -67,6 +71,7 @@ function useManagerGroups(
       ],
     },
     {
+      id: "team",
       title: t("sidebar.team"),
       items: [
         { to: "/operators", label: t("nav.operators") },
@@ -85,6 +90,7 @@ function useManagerGroups(
       ],
     },
     {
+      id: "catalogs",
       title: t("sidebar.catalogs"),
       items: [
         { to: "/catalog", label: t("nav.catalog") },
@@ -97,6 +103,7 @@ function useManagerGroups(
       ],
     },
     {
+      id: "ai_tg",
       title: t("sidebar.ai_tg"),
       items: [
         { to: "/ai-chat", label: t("nav.ai_chat") },
@@ -105,9 +112,11 @@ function useManagerGroups(
         { to: "/bot-subscribers", label: t("nav.bot_subscribers") },
         { to: "/marketing", label: t("nav.marketing") },
         { to: "/marketing/sources", label: t("nav.marketing_sources") },
+        { to: "/settings/meta-ads", label: t("nav.meta_ads") },
       ],
     },
     {
+      id: "system",
       items: [
         { to: "/audit", label: t("nav.audit") },
         // Superadmin-only: страница «Системно потерянные» (то, что
@@ -129,6 +138,7 @@ function useSuperManagerGroups(t: (k: string) => string): SidebarGroup[] {
   // главных пункта + leaderboard / lessons / profile + журнал удалений.
   return [
     {
+      id: "branch",
       items: [
         { to: "/team/sales", label: t("nav.my_team_sales"), end: true },
         { to: "/sales/pending", label: t("nav.sales_pending"), badgeKey: "salesPending" },
@@ -138,6 +148,7 @@ function useSuperManagerGroups(t: (k: string) => string): SidebarGroup[] {
       ],
     },
     {
+      id: "analytics",
       title: t("sidebar.analytics"),
       items: [
         { to: "/analytics", label: t("nav.analytics") },
@@ -145,12 +156,38 @@ function useSuperManagerGroups(t: (k: string) => string): SidebarGroup[] {
       ],
     },
     {
-      items: [
-        { to: "/lessons/today", label: t("nav.lesson_today") },
-        { to: "/profile", label: t("nav.profile") },
-      ],
+      id: "me",
+      // «Darslar — bugun» moved out of the top block (manager request
+      // 2026-11-08): the manager nav glued below keeps the same route in
+      // «Jamoa», so it now shows up there.
+      items: [{ to: "/profile", label: t("nav.profile") }],
     },
   ];
+}
+
+/**
+ * Super-manager nav + full manager nav glued together: groups with the
+ * same id merge (one «Tahlil» instead of two) and a route shows up once,
+ * at its first place. Without this «Tasdiqlash kutmoqda», «Tahlil» and
+ * «Tablo» were listed twice.
+ */
+function mergeNav(...lists: SidebarGroup[][]): SidebarGroup[] {
+  const out: SidebarGroup[] = [];
+  const seen = new Set<string>();
+  const byId = new Map<string, SidebarGroup>();
+  for (const group of lists.flat()) {
+    const items = group.items.filter((it) => !seen.has(it.to));
+    items.forEach((it) => seen.add(it.to));
+    const existing = group.id ? byId.get(group.id) : undefined;
+    if (existing) {
+      existing.items.push(...items);
+      continue;
+    }
+    const copy = { ...group, items };
+    if (group.id) byId.set(group.id, copy);
+    out.push(copy);
+  }
+  return out.filter((g) => g.items.length > 0);
 }
 
 function useOperatorGroups(t: (k: string) => string): SidebarGroup[] {
@@ -195,7 +232,7 @@ export default function AppShell() {
   const groups = role === "operator"
     ? operatorGroups
     : isSuperadmin(rawRole) || isSuperManager(rawRole)
-    ? [...superManagerGroups, ...managerGroups]
+    ? mergeNav(superManagerGroups, managerGroups)
     : managerGroups;
 
   // Read the operator's preferred content language from the profile so

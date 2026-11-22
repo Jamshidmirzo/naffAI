@@ -9,9 +9,9 @@ Pre-sale domain: Lead + assignments + Google-Sheets sync configuration.
 - `SheetSource` + `OperatorSheetAlias` — per-worksheet column mapper and
   operator-name aliases used by the sync command.
 - `SheetSource.kind=webhook` — the same per-source config, but leads are
-  POSTed to `/api/integrations/leads/<token>/` (LeadPixel etc.);
-  `InboundLeadEvent` journals every POST, `LeadOutboundEvent` queues
-  statuses / sales back to the source.
+  pushed: POSTed to `/api/integrations/leads/<token>/` (site forms) or
+  pulled from Meta lead forms (`apps.marketing.integrations.meta.leads`);
+  `InboundLeadEvent` journals every incoming lead.
 - `TelegramLink` — phone→username cache so the frontend "Написать в TG"
   button opens `https://t.me/{username}` when we know it, and falls back to
   `tg://resolve?phone=+998…` otherwise.
@@ -47,7 +47,7 @@ class LeadSource(models.TextChoices):
     MANUAL = "manual", "Ручной ввод"
     BOT = "bot", "Telegram-бот"
     # 2026-10-15: лид пришёл POST'ом на /api/integrations/leads/<token>/
-    # (LeadPixel → «Своя CRM» и подобные). sheet_source = webhook-источник.
+    # (заявки с сайта, лид-формы Meta). sheet_source = webhook-источник.
     WEBHOOK = "webhook", "Webhook"
 
 
@@ -161,7 +161,8 @@ class SheetSourceKind(models.TextChoices):
     """
     Where a source's leads come from. `sheet` — Google Sheets worksheet
     polled by `sync_sheets_leads`. `webhook` — leads are POSTed to
-    `/api/integrations/leads/<webhook_token>/` (LeadPixel etc.); no Google
+    `/api/integrations/leads/<webhook_token>/` (site forms) or pulled from
+    Meta lead forms (no token then); no Google
     calls, no row index, no writeback — but the same per-source routing
     (allowed operators, distribution mode, hot SLA, sales attribution).
     """
@@ -294,15 +295,22 @@ class SheetSource(TimestampedModel):
     webhook_token = models.CharField(
         max_length=64, unique=True, null=True, blank=True, default=None
     )
-    # LeadPixel шлёт его в `X-API-Key` (сверяем hmac.compare_digest). Пустой
+    # Отправитель шлёт его в `X-API-Key` (сверяем hmac.compare_digest). Пустой
     # ключ у webhook-источника = приём закрыт (401). Ротация —
     # `create_webhook_source --rotate-key <id>`.
     webhook_api_key = models.CharField(max_length=128, blank=True, default="")
-    # Куда отправлять статусы лидов обратно (LeadPixel: лиды/продажи/ROAS).
-    # {"url": "https://…/api/crm/inbound", "api_key": "lp_…", "enabled": false,
-    #  "status_map": {"<наш код>": "new|qualified|won|lost|junk"}}.
-    # Пока enabled=false — события копятся, sender их не трогает.
-    outbound_config = models.JSONField(default=dict, blank=True)
+    # SMM-специалист (таргетолог), чья реклама льёт в этот источник. Все
+    # лиды источника и продажи по ним засчитываются ему (кабинет SMM,
+    # `apps.marketing.smm_selectors.smm_leads_q`). У одного SMM может быть
+    # сколько угодно источников, у источника — один SMM.
+    smm = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="smm_sources",
+        limit_choices_to={"profile__role": "smm"},
+    )
 
     class Meta:
         ordering = ["name"]
@@ -579,55 +587,6 @@ class InboundLeadEvent(models.Model):
 
     def __str__(self) -> str:
         return f"InboundLeadEvent#{self.pk} src={self.source_id} {self.outcome}"
-
-
-class LeadOutboundEventKind(models.TextChoices):
-    STATUS = "status", "Смена статуса"
-    SALE = "sale", "Продажа"
-    SALE_RETURNED = "sale_returned", "Возврат продажи"
-    SALE_CANCELLED = "sale_cancelled", "Продажа отклонена/удалена"
-
-
-class LeadOutboundEvent(models.Model):
-    """
-    Очередь «статусы обратно» для webhook-источников (LeadPixel хочет
-    видеть лиды → продажи → ROAS). Пишется on_commit из lead/sale сервисов,
-    вычищается `process_lead_outbound`. Пока у источника
-    `outbound_config.enabled` не true — события копятся и не трогаются.
-    """
-
-    source = models.ForeignKey(
-        SheetSource, on_delete=models.CASCADE, related_name="outbound_events"
-    )
-    lead = models.ForeignKey(
-        Lead, on_delete=models.CASCADE, related_name="outbound_events"
-    )
-    kind = models.CharField(max_length=16, choices=LeadOutboundEventKind.choices)
-    # Подпись LeadPixel-состояния (status|stage|amount) — гасит повтор того
-    # же состояния (WON из двух путей продажи и т.п.).
-    dedupe_key = models.CharField(max_length=128, blank=True, default="")
-    # Готовый объект события LeadPixel (`outbound.leadpixel_event`) на момент
-    # commit'а. Sender шлёт по лиду только последний pending.
-    payload = models.JSONField(default=dict, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    next_try_at = models.DateTimeField(null=True, blank=True)
-    attempts = models.PositiveSmallIntegerField(default=0)
-    delivered_at = models.DateTimeField(null=True, blank=True)
-    # Финальный отказ (400/401 или исчерпаны попытки) — больше не шлём.
-    failed_at = models.DateTimeField(null=True, blank=True)
-    last_error = models.TextField(blank=True, default="")
-    # Ответ LeadPixel по этому лиду: {"http": 200, "action": …, "matched": …}.
-    response_summary = models.JSONField(default=dict, blank=True)
-
-    class Meta:
-        ordering = ["id"]
-        indexes = [
-            models.Index(fields=["delivered_at", "next_try_at"], name="lead_outbound_due_idx"),
-            models.Index(fields=["source", "lead"], name="lead_outbound_src_lead_idx"),
-        ]
-
-    def __str__(self) -> str:
-        return f"LeadOutboundEvent#{self.pk} {self.kind} lead={self.lead_id}"
 
 
 class LeadAssignmentSource(models.TextChoices):

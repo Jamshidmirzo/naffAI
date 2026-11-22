@@ -121,3 +121,24 @@ class IsSuperadmin(BasePermission):
         if request.user and request.user.is_superuser:
             return True
         return _is_superadmin(request.user)
+
+
+class IsSmm(BasePermission):
+    """SMM-специалист (таргетолог): только свой кабинет в /marketing/smm/."""
+
+    def has_permission(self, request, view) -> bool:
+        return _role(request.user) == Role.SMM
+
+
+class IsSmmOrManager(BasePermission):
+    """
+    Кабинет SMM: сам SMM (видит только себя — scope в view) или любой
+    senior. SMM намеренно НЕ входит в `IsAuthenticatedAnyRole`, чтобы не
+    получить доступ к остальному CRM.
+    """
+
+    def has_permission(self, request, view) -> bool:
+        if request.user and request.user.is_superuser:
+            return True
+        role = _role(request.user)
+        return role == Role.SMM or role in SENIOR_ROLES

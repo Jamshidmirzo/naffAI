@@ -88,20 +88,16 @@ EXPECTED_INTERVALS: dict[str, int] = {
     "userclient": 10 * 60,
     # Watchdog itself — ticks every 60s. If stale, /healthz 503s.
     "watchdog": 3 * 60,
-    # LeadPixel status sender (`lead-outbound`, process_lead_outbound) —
-    # idle tick every 5s. Monitored only while some source has outbound
-    # enabled (see CONDITIONAL_SERVICES), otherwise reported "disabled".
-    "lead_outbound": 5 * 60,
     # Live reconcile / recording rotation (`live-ops`, live_ops) — every
     # 30s. Monitored only where LiveKit's server API is configured.
     "live_ops": 5 * 60,
+    # Meta Ads statistics (`meta-ads-sync`, sync_meta_ads --loop) — hourly.
+    # Monitored only while some ad account is switched on.
+    "meta_ads_sync": 3 * 3600,
+    # Meta lead forms → leads (`meta-leads-sync`, sync_meta_leads --loop) —
+    # every 60s. Monitored only while some page has lead import switched on.
+    "meta_leads_sync": 5 * 60,
 }
-
-
-def _lead_outbound_enabled() -> bool:
-    from apps.leads.integrations.webhook.outbound import lead_outbound_any_enabled
-
-    return lead_outbound_any_enabled()
 
 
 # Services that only matter in some configurations: name → predicate. When
@@ -111,9 +107,22 @@ def _live_ops_enabled() -> bool:
     return bool(getattr(settings, "LIVEKIT_API_URL", ""))
 
 
+def _meta_ads_sync_enabled() -> bool:
+    from apps.marketing.models import MetaAdAccount
+
+    return MetaAdAccount.objects.filter(is_active=True).exists()
+
+
+def _meta_leads_sync_enabled() -> bool:
+    from apps.marketing.models import MetaPage
+
+    return MetaPage.objects.filter(leads_enabled=True).exists()
+
+
 CONDITIONAL_SERVICES: dict[str, Callable[[], bool]] = {
-    "lead_outbound": _lead_outbound_enabled,
     "live_ops": _live_ops_enabled,
+    "meta_ads_sync": _meta_ads_sync_enabled,
+    "meta_leads_sync": _meta_leads_sync_enabled,
 }
 
 

@@ -1,4 +1,5 @@
 import datetime as dt
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from django.core.cache import cache
 from django.utils import timezone as djtz
@@ -51,10 +52,22 @@ def _window(request) -> tuple[dt.datetime | None, dt.datetime | None]:
         p_from, p_to = resolve_period(period)
         if p_from is not None:
             return p_from, p_to
+    # Bare `YYYY-MM-DD` (calendar range) must cover the whole last day —
+    # parse_datetime would turn `date_to` into midnight and drop that day.
     return (
-        _parse(request.query_params.get("date_from")),
-        _parse(request.query_params.get("date_to")),
+        parse_dt_start(request.query_params.get("date_from")),
+        parse_dt_end(request.query_params.get("date_to")),
     )
+
+
+def _int_list(request, key: str) -> list[int]:
+    out = []
+    for raw in request.query_params.getlist(key):
+        try:
+            out.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    return out
 
 
 class KpiApi(APIView):
@@ -94,8 +107,80 @@ class LeaderboardApi(APIView):
                 date_to=date_to,
                 limit=limit,
                 operator_ids=visible_operator_ids(request.user),
+                partner_ids=_int_list(request, "partner_ids") or None,
             )
         )
+
+
+def _bonus_percent(raw: str | None) -> Decimal:
+    try:
+        pct = Decimal(str(raw).replace(",", ".")) if raw not in (None, "") else Decimal("3")
+    except (InvalidOperation, ValueError):
+        pct = Decimal("3")
+    return min(max(pct, Decimal("0")), Decimal("100"))
+
+
+class LeaderboardExportApi(APIView):
+    """Табло → Excel: оператор, сумма продаж и бонус N% (по умолчанию 3%).
+
+    Те же фильтры, что у /analytics/leaderboard/ (period | date_from/date_to,
+    partner_ids) и та же видимость операторов. Последняя строка — JAMI.
+    """
+
+    permission_classes = [IsTeamLeadOrManagerReadOnly]
+
+    def get(self, request):
+        date_from, date_to = _window(request)
+        pct = _bonus_percent(request.query_params.get("percent"))
+        uz = request.query_params.get("lang", "uz") != "ru"
+        rows = leaderboard(
+            date_from=date_from,
+            date_to=date_to,
+            limit=None,
+            operator_ids=visible_operator_ids(request.user),
+            partner_ids=_int_list(request, "partner_ids") or None,
+        )
+
+        def bonus(total) -> int:
+            value = Decimal(str(total)) * pct / Decimal("100")
+            return int(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+        pct_label = f"{pct.normalize():f}%"
+        body = [
+            [
+                i,
+                r["operator_name"],
+                r["count"],
+                int(Decimal(str(r["total"]))),
+                pct_label,
+                bonus(r["total"]),
+            ]
+            for i, r in enumerate(rows, start=1)
+        ]
+        grand_total = sum((Decimal(str(r["total"])) for r in rows), Decimal("0"))
+        wb = new_workbook()
+        write_sheet(
+            wb,
+            title="Tablo" if uz else "Табло",
+            headers=(
+                ["№", "Operator", "Sotuvlar", "Savdo summasi", "Foiz", "Bonus"]
+                if uz
+                else ["№", "Оператор", "Продаж", "Сумма продаж", "Процент", "Бонус"]
+            ),
+            rows=body,
+            money_columns=[3, 5],
+            int_columns=[2],
+            totals_row=[
+                "",
+                "JAMI" if uz else "ИТОГО",
+                sum(r["count"] for r in rows),
+                int(grand_total),
+                pct_label,
+                bonus(grand_total),
+            ],
+        )
+        stamp = djtz.localtime().strftime("%Y-%m-%d")
+        return workbook_response(wb, f"tablo-{stamp}.xlsx")
 
 
 class ByChannelApi(APIView):

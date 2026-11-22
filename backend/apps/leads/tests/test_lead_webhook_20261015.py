@@ -1,6 +1,6 @@
 """
-Webhook lead intake + «статусы обратно» по официальной спеке LeadPixel
-(2026-10-15).
+Webhook lead intake (generic JSON / Meta lead object / the former LeadPixel
+format, 2026-10-15). «Статусы обратно» в LeadPixel удалены 2026-11-02.
 
 Pins:
   * POST /api/integrations/leads/<token>/ — 404 for a wrong token; 401
@@ -13,9 +13,7 @@ Pins:
   * routing like a sheet row (pool, availability, hot SLA, merge, review);
   * Google sync paths and health endpoints don't touch Google for webhook
     sources;
-  * outbound: status mapping, won + amount + at from the live sale, refund
-    → lost «Возврат», per-lead coalescing, 200 / 400 / 401 / 429 handling,
-    `leadpixel_check_key`, `create_webhook_source` key flow.
+  * `create_webhook_source` key flow.
 """
 
 from __future__ import annotations
@@ -37,14 +35,11 @@ from rest_framework.test import APIClient
 from apps.attendance.models import AttendanceLog
 from apps.attendance.selectors import attendance_settings_get
 from apps.catalog.models import Channel
-from apps.leads.integrations.webhook import outbound
 from apps.leads.integrations.webhook.services import webhook_source_create
-from apps.leads.management.commands import process_lead_outbound as sender
 from apps.leads.models import (
     DistributionMode,
     InboundLeadEvent,
     Lead,
-    LeadOutboundEvent,
     LeadSource,
     LeadStatus,
     LeadStatusLabel,
@@ -143,26 +138,6 @@ def _mgr_client() -> APIClient:
     c = APIClient()
     c.force_authenticate(user=user)
     return c
-
-
-def _enable(source: SheetSource, **cfg) -> SheetSource:
-    source.outbound_config = {
-        "url": outbound.LEADPIXEL_DEFAULT_URL,
-        "api_key": "lp_test_key",
-        "enabled": True,
-        **cfg,
-    }
-    source.save(update_fields=["outbound_config"])
-    return source
-
-
-def _resp(code: int, body=None, headers=None):
-    r = MagicMock()
-    r.status_code = code
-    r.text = json.dumps(body) if body is not None else ""
-    r.json.return_value = body
-    r.headers = headers or {}
-    return r
 
 
 # ---- inbound: routing / auth -------------------------------------------
@@ -389,13 +364,6 @@ def test_webhook_lead_never_enqueues_sheet_writeback(src, ops, django_capture_on
     assert not SheetWritebackJob.objects.filter(lead=lead).exists()
 
 
-def test_intake_makes_no_outbound_http_inline(src, ops, django_capture_on_commit_callbacks):
-    _enable(src)
-    with patch("httpx.post") as post, django_capture_on_commit_callbacks(execute=True):
-        assert _post(src, LEADPIXEL_BODY).status_code == 201
-    post.assert_not_called()
-
-
 # ---- Google sync paths / health / manager API ---------------------------
 
 
@@ -440,32 +408,19 @@ def test_health_overview_and_stats_for_webhook_source(src):
     assert r.status_code == 200 and r.json()["is_healthy"] is True
 
 
-def test_sheet_source_api_masks_keys_and_patches_outbound(src):
-    _enable(src, api_key="lp_secret-1234", enabled=False)
+def test_sheet_source_api_masks_webhook_key(src):
     c = _mgr_client()
     data = c.get(f"/api/sheet-sources/{src.id}/").json()
     assert data["kind"] == "webhook"
     assert data["webhook_url"].endswith(f"/api/integrations/leads/{src.webhook_token}/")
     assert data["webhook_api_key"] == f"••••{src.webhook_api_key[-4:]}"
-    assert data["outbound_config"]["api_key"] == "••••1234"
-    assert src.webhook_api_key not in json.dumps(data) and "secret" not in json.dumps(data)
+    assert src.webhook_api_key not in json.dumps(data)
+    assert "outbound_config" not in data
 
-    r = c.patch(
-        f"/api/sheet-sources/{src.id}/",
-        {"name": "LP", "outbound_config": {"api_key": "••••1234", "enabled": True,
-                                           "status_map": {"qimmatlik_qildi": "lost", "x": "bogus"}}},
-        format="json",
-    )
+    r = c.patch(f"/api/sheet-sources/{src.id}/", {"name": "Site"}, format="json")
     assert r.status_code == 200, r.content
     src.refresh_from_db()
-    assert src.name == "LP"
-    assert src.outbound_config["api_key"] == "lp_secret-1234"
-    assert src.outbound_config["enabled"] is True
-    assert src.outbound_config["status_map"] == {"qimmatlik_qildi": "lost"}
-
-    r = c.patch(f"/api/sheet-sources/{src.id}/", {"outbound_config": {"api_key": "lp_new"}}, format="json")
-    src.refresh_from_db()
-    assert src.outbound_config["api_key"] == "lp_new"
+    assert src.name == "Site"
 
 
 def test_sheet_source_api_create_and_rotate_reveal_key_once():
@@ -474,7 +429,6 @@ def test_sheet_source_api_create_and_rotate_reveal_key_once():
     assert r.status_code == 201, r.content
     src = SheetSource.objects.get(name="LP2")
     assert r.json()["webhook_api_key"] == src.webhook_api_key and len(src.webhook_api_key) >= 40
-    assert r.json()["outbound_config"]["url"] == outbound.LEADPIXEL_DEFAULT_URL
 
     old = src.webhook_api_key
     r = c.post(f"/api/sheet-sources/{src.id}/rotate-webhook-key/")
@@ -488,347 +442,7 @@ def test_sheet_source_api_create_and_rotate_reveal_key_once():
     assert r.status_code == 400 and "spreadsheet_id" in r.json() and "gid" in r.json()
 
 
-# ---- outbound: mapping ---------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("code", "expected"),
-    [
-        ("new", "new"), ("assigned", "new"), ("no_answer", "new"), ("no_answer_2", "new"),
-        ("needs_review", "new"),
-        ("in_progress", "qualified"), ("callback_scheduled", "qualified"),
-        ("contacted_telegram", "qualified"), ("phone_on", "qualified"),
-        ("won", "won"),
-        ("lost", "lost"), ("archived", "lost"), ("has_debt", "lost"),
-        ("notogri_raqam", "junk"),
-    ],
-)
-def test_status_mapping_defaults(src, code, expected):
-    lead = Lead.objects.create(full_name="X", phone="+998901000001", status=code, sheet_source=src)
-    assert outbound.map_status(lead, src) == expected
-
-
-def test_status_mapping_junk_custom_and_override(src):
-    lead = Lead.objects.create(full_name="X", phone="", phone_invalid=True, status="needs_review", sheet_source=src)
-    assert outbound.map_status(lead, src) == "junk"
-    lead = Lead.objects.create(full_name="X", phone="+998901000002", status="lost", sheet_source=src,
-                               metadata={"lost_reason": "invalid_phone_from_sheet"})
-    assert outbound.map_status(lead, src) == "junk"
-    lead.metadata = {"lost_reason": "stranded_on_inactive_operator"}
-    assert outbound.map_status(lead, src) == "lost"
-
-    LeadStatusLabel.objects.update_or_create(code="ishonchdan_olgan", defaults={"label_ru": "Ушёл", "is_terminal": True})
-    LeadStatusLabel.objects.update_or_create(code="oylab_koradi", defaults={"label_ru": "Думает", "is_terminal": False})
-    lead.metadata = {}
-    lead.status = "ishonchdan_olgan"
-    assert outbound.map_status(lead, src) == "lost"
-    lead.status = "oylab_koradi"
-    assert outbound.map_status(lead, src) == "qualified"
-
-    _enable(src, status_map={"oylab_koradi": "new"})
-    assert outbound.map_status(lead, src) == "new"
-
-
-def _webhook_lead(src, phone="901000001", meta="LG-1") -> Lead:
-    r = _post(src, {"name": "A", "phone": phone, "meta_lead_id": meta, "utm_source": "facebook"})
-    return Lead.objects.get(pk=r.json()["lead_id"])
-
-
-def test_creation_emits_new_with_stage_and_attribution(src, sheet, ops, django_capture_on_commit_callbacks):
-    with django_capture_on_commit_callbacks(execute=True):
-        lead = _webhook_lead(src)
-    ev = LeadOutboundEvent.objects.get()
-    p = ev.payload
-    assert p["id"] == str(lead.id) and p["status"] == "new"
-    assert p["stage"] == LeadStatusLabel.objects.get(code="assigned").label_ru
-    assert p["meta_lead_id"] == "LG-1" and p["utm_source"] == "facebook"
-    assert p["phone"] == "+998901000001" and p["name"] == "A"
-    assert "amount" not in p and p["at"] and p["created_at"]
-
-    sheet_lead, _ = lead_create_from_sheet_row(
-        sheet_source=sheet, row_index=2, raw_row={"name": "S", "phone": "909999999"}
-    )
-    with django_capture_on_commit_callbacks(execute=True):
-        lead_update_status(lead=lead, status=LeadStatus.IN_PROGRESS)
-        lead_update_status(lead=sheet_lead, status=LeadStatus.IN_PROGRESS)
-    with django_capture_on_commit_callbacks(execute=True):
-        lead_update_status(lead=lead, status=LeadStatus.CALLBACK_SCHEDULED)
-    # Две смены в ОДНОЙ транзакции дают один снимок (состояние на commit).
-    with django_capture_on_commit_callbacks(execute=True):
-        lead_update_status(lead=lead, status=LeadStatus.NO_ANSWER)
-        lead_update_status(lead=lead, status=LeadStatus.PHONE_ON)
-    events = list(LeadOutboundEvent.objects.order_by("id"))
-    assert all(e.lead_id == lead.id for e in events)
-    assert [e.payload["status"] for e in events] == ["new", "qualified", "qualified", "qualified"]
-    # stage = ярлык нашего статуса из каталога LeadStatusLabel.
-    assert events[2].payload["stage"] == outbound._status_label("callback_scheduled")
-    assert events[3].payload["stage"] == outbound._status_label("phone_on") != "phone_on"
-
-
-def test_merged_lead_emits_current_status(src, sheet, ops, django_capture_on_commit_callbacks):
-    existing, _ = lead_create_from_sheet_row(
-        sheet_source=sheet, row_index=2, raw_row={"name": "Old", "phone": "901234567"}
-    )
-    lead_update_status(lead=existing, status=LeadStatus.IN_PROGRESS)
-    with django_capture_on_commit_callbacks(execute=True):
-        _post(src, LEADPIXEL_BODY)
-    ev = LeadOutboundEvent.objects.get()
-    assert ev.source_id == src.id and ev.lead_id == existing.id
-    assert ev.payload["status"] == "qualified"
-    assert ev.payload["meta_lead_id"] == "1023323200742493"
-    assert ev.payload["ad_id"] == "120249319606330361"
-
-
-def _sale_data(channel, **kw):
-    return {"imei": "490154203237518", "phone_model": "iPhone 15", "channel_id": channel.id,
-            "amount": Decimal("4500000"), "discount": Decimal("500000"), **kw}
-
-
-def test_won_with_amount_at_and_refund_to_lost(src, ops, django_capture_on_commit_callbacks):
-    from apps.sales.services import sale_mark_returned
-
-    channel = Channel.objects.create(name="Alif")
-    with django_capture_on_commit_callbacks(execute=True):
-        lead = _webhook_lead(src)
-    sold_at = timezone.now() - timedelta(days=1)
-    with django_capture_on_commit_callbacks(execute=True):
-        # client_phone → sale_create сам найдёт лид и проставит WON: оба пути
-        # дают одно состояние — одно событие.
-        sale = lead_convert_to_sale(
-            lead=lead, sale_data=_sale_data(channel, client_phone="+998901000001", sold_at=sold_at)
-        )
-    won = LeadOutboundEvent.objects.filter(payload__status="won")
-    assert won.count() == 1
-    p = won.get().payload
-    assert p["amount"] == 4_000_000 and isinstance(p["amount"], int)
-    assert p["currency"] == "UZS"
-    assert p["at"] == sale.sold_at.isoformat()
-    assert p["stage"] == "Продажа"
-
-    # Статус-хук при живой продаже не отменяет её: всё ещё won + amount.
-    with django_capture_on_commit_callbacks(execute=True):
-        lead_update_status(lead=lead, status=LeadStatus.IN_PROGRESS)
-    last = LeadOutboundEvent.objects.order_by("-id").first().payload
-    assert last["status"] == "won" and last["amount"] == 4_000_000
-
-    lead_update_status(lead=lead, status=LeadStatus.WON)
-    with django_capture_on_commit_callbacks(execute=True):
-        sale_mark_returned(sale=sale, reason="brak")
-    last = LeadOutboundEvent.objects.order_by("-id").first().payload
-    assert last["status"] == "lost" and last["stage"] == "Возврат"
-    assert "amount" not in last
-
-
-def test_rejected_sale_cancels_and_pending_is_not_a_sale(src, ops, django_capture_on_commit_callbacks):
-    from apps.sales.models import SaleStatus
-    from apps.sales.services import sale_confirm, sale_create, sale_reject
-
-    channel = Channel.objects.create(name="Alif")
-    with django_capture_on_commit_callbacks(execute=True):
-        lead = _webhook_lead(src)
-    sale = sale_create(imei="490154203237518", phone_model="X", channel_id=channel.id,
-                       operator_id=lead.operator_id, amount=Decimal("2000000"))
-    # Pending-продажу с фото договора в тесте не собрать — переводим руками.
-    type(sale).objects.filter(pk=sale.pk).update(status=SaleStatus.PENDING, lead=lead)
-    sale.refresh_from_db()
-    with django_capture_on_commit_callbacks(execute=True):
-        lead_update_status(lead=lead, status=LeadStatus.WON)
-    last = LeadOutboundEvent.objects.order_by("-id").first().payload
-    assert last["status"] == "qualified" and "amount" not in last
-
-    with django_capture_on_commit_callbacks(execute=True):
-        sale_confirm(sale=sale)
-    last = LeadOutboundEvent.objects.order_by("-id").first().payload
-    assert (last["status"], last["amount"]) == ("won", 2_000_000)
-
-    type(sale).objects.filter(pk=sale.pk).update(status=SaleStatus.PENDING)
-    sale.refresh_from_db()
-    with django_capture_on_commit_callbacks(execute=True):
-        sale_reject(sale=sale, user=None, reason="фейк")
-    last = LeadOutboundEvent.objects.order_by("-id").first().payload
-    assert (last["status"], last["stage"]) == ("lost", "Возврат")
-
-
-def test_system_lost_invalid_phone_is_junk(src, ops, django_capture_on_commit_callbacks):
-    with django_capture_on_commit_callbacks(execute=True):
-        lead = _webhook_lead(src)
-    with django_capture_on_commit_callbacks(execute=True):
-        lead_mark_system_lost(lead=lead, reason="invalid_phone_from_sheet")
-    assert LeadOutboundEvent.objects.order_by("-id").first().payload["status"] == "junk"
-
-
-def test_sheet_lead_sale_enqueues_nothing(sheet, ops, django_capture_on_commit_callbacks):
-    channel = Channel.objects.create(name="Alif")
-    lead, _ = lead_create_from_sheet_row(sheet_source=sheet, row_index=2, raw_row={"name": "S", "phone": "909999999"})
-    with django_capture_on_commit_callbacks(execute=True):
-        lead_convert_to_sale(lead=lead, sale_data=_sale_data(channel))
-    assert not LeadOutboundEvent.objects.exists()
-
-
-# ---- outbound: sender ----------------------------------------------------
-
-
-def _run_once():
-    call_command("process_lead_outbound", "--once", stdout=io.StringIO())
-
-
-def test_sender_coalesces_per_lead_and_skips_disabled(ops, django_capture_on_commit_callbacks):
-    off = webhook_source_create(name="Off")
-    on = _enable(webhook_source_create(name="On"))
-    with django_capture_on_commit_callbacks(execute=True):
-        _webhook_lead(off, phone="901000001", meta="OFF-1")
-        lead = _webhook_lead(on, phone="901000002", meta="ON-1")
-        lead2 = _webhook_lead(on, phone="901000003", meta="ON-2")
-    with django_capture_on_commit_callbacks(execute=True):
-        lead_update_status(lead=lead, status=LeadStatus.IN_PROGRESS)
-    with django_capture_on_commit_callbacks(execute=True):
-        lead_update_status(lead=lead, status=LeadStatus.LOST)
-    assert LeadOutboundEvent.objects.filter(source=on, lead=lead).count() == 3
-
-    ok = _resp(200, {"ok": True, "results": [
-        {"id": str(lead.id), "action": "updated", "matched": "id", "status": "lost"},
-        {"id": str(lead2.id), "action": "created", "matched": "meta_lead_id", "status": "new"},
-    ]})
-    with patch("httpx.post", return_value=ok) as post:
-        _run_once()
-    assert post.call_count == 1
-    args, kwargs = post.call_args
-    assert args[0] == outbound.LEADPIXEL_DEFAULT_URL
-    assert kwargs["headers"]["X-API-Key"] == "lp_test_key"
-    assert kwargs["timeout"] == 15.0
-    sent = kwargs["json"]["events"]
-    # Один объект на лид — последнее состояние.
-    assert [(o["id"], o["status"]) for o in sent] == [(str(lead.id), "lost"), (str(lead2.id), "new")]
-
-    on_events = LeadOutboundEvent.objects.filter(source=on)
-    assert all(e.delivered_at is not None for e in on_events)
-    assert on_events.filter(lead=lead).last().response_summary["action"] == "updated"
-    off_ev = LeadOutboundEvent.objects.get(source=off)
-    assert off_ev.delivered_at is None and off_ev.attempts == 0 and off_ev.failed_at is None
-
-
-def test_sender_requires_api_key(ops, django_capture_on_commit_callbacks):
-    src = _enable(webhook_source_create(name="NoKey"), api_key="")
-    with django_capture_on_commit_callbacks(execute=True):
-        _webhook_lead(src)
-    with patch("httpx.post") as post:
-        _run_once()
-    post.assert_not_called()
-
-
-@pytest.mark.parametrize("code", [400, 401])
-def test_sender_400_401_are_final(ops, django_capture_on_commit_callbacks, code):
-    src = _enable(webhook_source_create(name="On"))
-    with django_capture_on_commit_callbacks(execute=True):
-        _webhook_lead(src)
-    with patch("httpx.post", return_value=_resp(code, {"error": "nope"})) as post:
-        _run_once()
-        _run_once()
-    assert post.call_count == 1
-    ev = LeadOutboundEvent.objects.get()
-    assert ev.failed_at is not None and ev.delivered_at is None
-    assert f"HTTP {code}" in ev.last_error and "nope" in ev.last_error
-
-
-def test_sender_400_with_item_errors_fails_only_those(ops, django_capture_on_commit_callbacks):
-    src = _enable(webhook_source_create(name="On"))
-    with django_capture_on_commit_callbacks(execute=True):
-        bad = _webhook_lead(src, phone="901000001", meta="B")
-        good = _webhook_lead(src, phone="901000002", meta="G")
-    err = _resp(400, {"ok": False, "errors": [{"index": 0, "reason": "status is invalid"}]})
-    with patch("httpx.post", return_value=err):
-        _run_once()
-    assert LeadOutboundEvent.objects.get(lead=bad).failed_at is not None
-    g = LeadOutboundEvent.objects.get(lead=good)
-    assert g.failed_at is None and g.attempts == 0
-    ok = _resp(200, {"ok": True, "results": [{"id": str(good.id), "action": "created"}]})
-    with patch("httpx.post", return_value=ok) as post:
-        _run_once()
-    assert [o["id"] for o in post.call_args.kwargs["json"]["events"]] == [str(good.id)]
-
-
-def test_sender_429_retry_after(ops, django_capture_on_commit_callbacks):
-    src = _enable(webhook_source_create(name="On"))
-    with django_capture_on_commit_callbacks(execute=True):
-        _webhook_lead(src)
-    before = timezone.now()
-    with patch("httpx.post", return_value=_resp(429, {"error": "slow down"}, {"Retry-After": "120"})) as post:
-        _run_once()
-        _run_once()  # ещё рано — не шлём
-    assert post.call_count == 1
-    ev = LeadOutboundEvent.objects.get()
-    assert ev.attempts == 1 and ev.failed_at is None and ev.delivered_at is None
-    assert 110 <= (ev.next_try_at - before).total_seconds() <= 130
-
-
-def test_sender_5xx_and_timeout_backoff_60s(ops, django_capture_on_commit_callbacks):
-    import httpx
-
-    src = _enable(webhook_source_create(name="On"))
-    with django_capture_on_commit_callbacks(execute=True):
-        _webhook_lead(src)
-    before = timezone.now()
-    with patch("httpx.post", side_effect=httpx.ReadTimeout("slow")):
-        _run_once()
-    ev = LeadOutboundEvent.objects.get()
-    assert ev.attempts == 1 and "ReadTimeout" in ev.last_error
-    assert 55 <= (ev.next_try_at - before).total_seconds() <= 65
-
-    LeadOutboundEvent.objects.update(next_try_at=timezone.now())
-    with patch("httpx.post", return_value=_resp(503, {"error": "down"})):
-        _run_once()
-    ev.refresh_from_db()
-    assert ev.attempts == 2 and ev.failed_at is None
-    assert ev.next_try_at > timezone.now() + timedelta(seconds=100)  # 2 мин
-
-
-def test_sender_gives_up_after_max_attempts(ops, django_capture_on_commit_callbacks):
-    src = _enable(webhook_source_create(name="On"))
-    with django_capture_on_commit_callbacks(execute=True):
-        _webhook_lead(src)
-    LeadOutboundEvent.objects.update(attempts=sender.MAX_ATTEMPTS - 1)
-    with patch("httpx.post", return_value=_resp(502)):
-        _run_once()
-    assert LeadOutboundEvent.objects.get().failed_at is not None
-
-
-def test_batches_respect_count_and_size():
-    objs = [{"id": str(i), "status": "new"} for i in range(450)]
-    assert [len(b) for b in outbound.batches(objs)] == [200, 200, 50]
-    big = [{"id": str(i), "status": "new", "stage": "x" * 2000} for i in range(200)]
-    chunks = outbound.batches(big)
-    assert len(chunks) > 1
-    assert all(len(json.dumps({"events": c}).encode()) <= 256 * 1024 for c in chunks)
-
-
-def test_cleanup_deletes_old_delivered(src, ops, django_capture_on_commit_callbacks):
-    with django_capture_on_commit_callbacks(execute=True):
-        _webhook_lead(src)
-        _webhook_lead(src, phone="901000002", meta="2")
-    LeadOutboundEvent.objects.update(delivered_at=timezone.now() - timedelta(days=31))
-    LeadOutboundEvent.objects.filter(pk=LeadOutboundEvent.objects.last().pk).update(delivered_at=None)
-    assert sender.cleanup_delivered() == 1
-    assert LeadOutboundEvent.objects.count() == 1
-
-
 # ---- commands --------------------------------------------------------------
-
-
-@pytest.mark.parametrize(("code", "ok"), [(400, True), (401, False)])
-def test_leadpixel_check_key(src, code, ok):
-    _enable(src)
-    resp = _resp(code, {"error": "id is required" if code == 400 else "invalid key"})
-    out = io.StringIO()
-    with patch("httpx.post", return_value=resp) as post:
-        if ok:
-            call_command("leadpixel_check_key", "--source", str(src.id), stdout=out)
-            assert "key OK" in out.getvalue()
-        else:
-            with pytest.raises(CommandError, match="bad key"):
-                call_command("leadpixel_check_key", "--source", str(src.id), stdout=out)
-    assert post.call_args.kwargs["json"] == {}
-    assert post.call_args.kwargs["headers"]["X-API-Key"] == "lp_test_key"
-    assert not LeadOutboundEvent.objects.exists()
 
 
 def test_create_webhook_source_command_prints_url_and_key(ops):
@@ -858,14 +472,6 @@ def test_two_webhook_sources_do_not_collide_on_sheet_unique_key(ops):
     b = webhook_source_create(name="B")
     assert a.spreadsheet_id == b.spreadsheet_id == "" and a.gid == b.gid == 0
     assert a.webhook_token != b.webhook_token and a.webhook_api_key != b.webhook_api_key
-
-
-def test_health_lead_outbound_disabled_until_a_source_is_enabled(src):
-    from apps.common import health
-
-    assert health._service_enabled("lead_outbound") is False
-    _enable(src)
-    assert health._service_enabled("lead_outbound") is True
 
 
 def test_analytics_sales_by_source_counts_webhook_leads(src):

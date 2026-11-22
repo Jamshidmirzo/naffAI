@@ -31,6 +31,7 @@ from apps.common.validators import normalize_uz_phone
 from apps.operators.models import Operator, OperatorStatus
 
 
+from .integrations.webhook.parse import ad_from_sheet_row
 from .models import (
     DistributionMode,
     Lead,
@@ -753,6 +754,11 @@ def lead_create_from_sheet_row(
                 phone_alt = candidate
                 break
     metadata = _extract_metadata(raw_row, cm)
+    # Колонки Meta (ad_id, campaign_name…) → metadata["ad"], как у вебхука:
+    # по ним кабинет SMM склеивает лиды таблицы с расходом объявления.
+    ad = ad_from_sheet_row(raw_row)
+    if ad:
+        metadata["ad"] = ad
 
     # Phone-level dedup (2026-08-30): the historical idempotency key was
     # (sheet_source, sheet_row_index) — but managers routinely re-add the
@@ -1017,8 +1023,6 @@ def lead_create_from_webhook(
         comment=f"Приём по webhook: {source.name}"[:500],
     )
     _finish_new_lead_assignment(lead=lead, routing=routing, sheet_source=source)
-    # Первый статус обратно в источник («лид принят / назначен»).
-    lead_outbound_schedule_status(lead)
     return lead, "created"
 
 
@@ -1035,9 +1039,7 @@ def _merge_webhook_lead_into_existing(
     """
     Webhook counterpart of `_merge_sheet_row_into_existing`: soft fields
     only, hard fields (status / operator / sheet_source) untouched, trail in
-    `metadata["duplicate_webhook_events"]`. The trail also tells the
-    outbound queue to report this lead's statuses to `source` even though
-    `existing.sheet_source` points elsewhere.
+    `metadata["duplicate_webhook_events"]`.
     """
     changed_fields, change_diff = _apply_soft_fields(
         existing,
@@ -1079,20 +1081,7 @@ def _merge_webhook_lead_into_existing(
         },
         comment=f"Дедуп на приёме webhook ({source.name}): склеен с существующим лидом"[:500],
     )
-    lead_outbound_schedule_status(existing)
     return existing
-
-
-def lead_outbound_schedule_status(lead: Lead) -> None:
-    """Status event for webhook sources (no-op for sheet leads). Never raises."""
-    if not lead.sheet_source_id and not (lead.metadata or {}).get("duplicate_webhook_events"):
-        return  # ручной / бот-лид без источника — точно не webhook
-    try:
-        from .integrations.webhook.outbound import outbound_schedule
-
-        outbound_schedule(lead_id=lead.id, kind="status")
-    except Exception:
-        logger.exception("lead outbound schedule failed lead=%s", getattr(lead, "id", None))
 
 
 @transaction.atomic
@@ -1616,8 +1605,10 @@ def leads_bulk_reassign(
             )
 
     # Блокируем строки — на случай гонки с morning-splitter / watcher.
+    # of=("self",): operator — nullable FK, select_related даёт LEFT JOIN,
+    # а Postgres не берёт FOR UPDATE на nullable-стороне outer join.
     locked = list(
-        Lead.objects.select_for_update(skip_locked=True)
+        Lead.objects.select_for_update(skip_locked=True, of=("self",))
         .filter(pk__in=lead_ids)
         .select_related("operator")
     )
@@ -1851,9 +1842,6 @@ def lead_update_status(
         comment=comment,
     )
     _schedule_writeback(lead.id, comment=comment)
-    # Webhook-источники (LeadPixel) получают статус обратно; для лидов из
-    # Google-шитов — no-op.
-    lead_outbound_schedule_status(lead)
 
     # Wave-1 (2026-08-22): смена статуса лида пересчитывает dashboard-summary
     # (лид ушёл из «в работе» в won/lost/etc → KPI меняется) и lead-stats
@@ -2221,19 +2209,7 @@ def lead_convert_to_sale(*, lead: Lead, user=None, sale_data: dict):
         lead.id,
         comment=(sale.bonus_note or f"→ Sale #{sale.id}"),
     )
-    lead_outbound_schedule_status(lead)
-    _outbound_schedule_sale(lead_id=lead.id, sale_id=sale.id, kind="sale")
     return sale
-
-
-def _outbound_schedule_sale(*, lead_id: int | None, sale_id: int, kind: str) -> None:
-    """Sale / sale_returned event for webhook sources. Never raises."""
-    try:
-        from .integrations.webhook.outbound import outbound_schedule
-
-        outbound_schedule(lead_id=lead_id, kind=kind, sale_id=sale_id)
-    except Exception:
-        logger.exception("lead outbound schedule failed lead=%s sale=%s", lead_id, sale_id)
 
 
 # ---- Telegram link cache -------------------------------------------------
@@ -2702,7 +2678,6 @@ def lead_mark_system_lost(
         },
         comment=(comment or f"System-lost: {reason}")[:500],
     )
-    lead_outbound_schedule_status(lead)
     return lead
 
 
@@ -2769,7 +2744,6 @@ def lead_recover_from_system_lost(*, lead: Lead, user=None) -> Lead:
         },
         comment=f"Recovered from system-lost ({reason})",
     )
-    lead_outbound_schedule_status(lead)
     return lead
 
 
@@ -2779,6 +2753,27 @@ def lead_recover_from_system_lost(*, lead: Lead, user=None) -> Lead:
 # Module-level import so tests can `patch("apps.leads.services.GoogleSheetsClient")`
 # without reaching into the integration package. Both symbols are safe to
 # import at load — the client constructor is what performs the auth work.
+def sheet_source_set_smm(*, source: SheetSource, smm_id: int | None, user=None) -> SheetSource:
+    """
+    Привязать источник (таблицу или вебхук) к SMM-специалисту. `None` —
+    отвязать. Роль проверяет вызывающий (сериализатор / marketing API).
+    """
+    old = source.smm_id
+    if old == smm_id:
+        return source
+    source.smm_id = smm_id
+    source.save(update_fields=["smm", "updated_at"])
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="leads.SheetSource",
+        entity_id=source.id,
+        changes={"smm_id": {"old": old, "new": smm_id}},
+        comment="Привязка к SMM-специалисту",
+    )
+    return source
+
+
 from .integrations.google_sheets.client import (  # noqa: E402
     GoogleSheetsClient,
     GoogleSheetsUnavailable,
@@ -2991,3 +2986,170 @@ def retry_export_to_sheet() -> dict:
         }
     finally:
         cache.delete(_RETRY_EXPORT_LOCK_KEY)
+
+
+# ---- «Вставить и раздать» (paste & distribute) -----------------------------
+
+
+@transaction.atomic
+def leads_paste_distribute(
+    *,
+    rows: list[dict],
+    operator_ids: list[int],
+    sheet_source_id: int | None = None,
+    take_existing: bool = True,
+    user=None,
+) -> dict:
+    """
+    A manager pasted rows copied from a sheet and picked who gets them:
+    create the new leads and hand everything out evenly to `operator_ids`
+    right away (the operator with the fewest leads of this batch goes next).
+
+    - new phone → `lead_create` (MANUAL; `sheet_source` only for the stats)
+      and `lead_reassign` to the next operator;
+    - an open lead with this phone held by someone else (or lying in the
+      pool) → taken over when `take_existing`: status and history stay,
+      empty soft fields are filled from the row, a pending qimmatlik retry
+      is dropped so the watcher doesn't deal it out again;
+    - already with a chosen operator, bad phone, phone repeated in the
+      paste → skipped.
+
+    A pause or a missing shift does not block — the manager's choice wins
+    (see `availability`); the page shows those operators with a warning.
+    """
+    from uuid import uuid4
+
+    from .selectors import PASTE_MAX_ROWS, PasteRowKind, paste_rows_classify
+
+    if not rows:
+        raise ApplicationError("Нет строк для раздачи", {"field": "rows"})
+    if len(rows) > PASTE_MAX_ROWS:
+        raise ApplicationError(
+            f"За раз можно раздать не больше {PASTE_MAX_ROWS} строк", {"field": "rows"}
+        )
+    op_ids = list(dict.fromkeys(int(i) for i in operator_ids))
+    if not op_ids:
+        raise ApplicationError("Выберите операторов", {"field": "operator_ids"})
+    ops_by_id = {op.id: op for op in Operator.objects.filter(pk__in=op_ids)}
+    missing = [i for i in op_ids if i not in ops_by_id]
+    if missing:
+        raise ApplicationError(
+            "Оператор не найден", {"field": "operator_ids", "operator_ids": missing}
+        )
+    inactive = [i for i in op_ids if ops_by_id[i].status != OperatorStatus.ACTIVE]
+    if inactive:
+        raise ApplicationError(
+            "Нельзя раздать неактивным операторам",
+            {"field": "operator_ids", "operator_ids": inactive},
+        )
+    operators = [ops_by_id[i] for i in op_ids]
+
+    sheet_source = None
+    if sheet_source_id:
+        sheet_source = SheetSource.objects.filter(pk=sheet_source_id).first()
+        if sheet_source is None:
+            raise ApplicationError("Источник не найден", {"field": "sheet_source_id"})
+
+    batch_id = uuid4().hex[:12]
+    reason = "Вставить и раздать"
+    per_op = {op.id: 0 for op in operators}
+
+    def next_operator() -> Operator:
+        op = min(operators, key=lambda o: per_op[o.id])  # ties → picked order
+        per_op[op.id] += 1
+        return op
+
+    created = 0
+    taken: list[dict] = []
+    skipped = {
+        PasteRowKind.KEEP: 0,
+        PasteRowKind.INVALID: 0,
+        PasteRowKind.DUPLICATE: 0,
+        "not_taken": 0,
+    }
+    lead_ids: list[int] = []
+
+    for row in paste_rows_classify(rows, operator_ids=op_ids):
+        kind = row["kind"]
+        if kind == PasteRowKind.NEW:
+            metadata = {"paste_batch": batch_id}
+            if row["comment"]:
+                metadata["comment_text"] = row["comment"]
+            lead = lead_create(
+                user=user,
+                full_name=row["full_name"],
+                phone=row["phone_raw"],
+                product_hint=row["product_hint"],
+                has_card=row["has_card"],
+                metadata=metadata,
+                auto_assign=False,
+            )
+            extra: list[str] = []
+            if row["phone_alt"]:
+                lead.phone_alt = row["phone_alt"]
+                extra.append("phone_alt")
+            if sheet_source is not None:
+                lead.sheet_source = sheet_source
+                extra.append("sheet_source")
+            if extra:
+                lead.save(update_fields=extra)
+            lead_reassign(lead=lead, new_operator=next_operator(), user=user, reason=reason)
+            created += 1
+        elif kind == PasteRowKind.TAKE:
+            if not take_existing:
+                skipped["not_taken"] += 1
+                continue
+            # of=("self",): operator is a nullable FK, so select_related makes a
+            # LEFT JOIN — Postgres refuses FOR UPDATE on its nullable side.
+            lead = (
+                Lead.objects.select_for_update(of=("self",))
+                .select_related("operator")
+                .get(pk=row["lead"].pk)
+            )
+            old_operator = lead.operator.full_name if lead.operator_id else ""
+            fields: list[str] = []
+            for field in ("full_name", "product_hint", "has_card", "phone_alt"):
+                if row[field] and not getattr(lead, field):
+                    setattr(lead, field, row[field])
+                    fields.append(field)
+            metadata = dict(lead.metadata or {})
+            metadata.pop("qimmatlik_retry_at", None)
+            if row["comment"] and not metadata.get("comment_text"):
+                metadata["comment_text"] = row["comment"]
+            metadata["paste_batch"] = batch_id
+            lead.metadata = metadata
+            lead.save(update_fields=[*fields, "metadata", "updated_at"])
+            new_operator = next_operator()
+            lead_reassign(lead=lead, new_operator=new_operator, user=user, reason=reason)
+            taken.append({"lead_id": lead.id, "from": old_operator, "to": new_operator.full_name})
+        else:
+            skipped[kind] += 1
+            continue
+        lead_ids.append(lead.id)
+
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="leads.PasteDistribute",
+        entity_id=0,
+        changes={
+            "batch": batch_id,
+            "rows": len(rows),
+            "created": created,
+            "taken": len(taken),
+            "skipped": skipped,
+            "assigned": {str(k): v for k, v in per_op.items()},
+            "sheet_source_id": sheet_source.id if sheet_source else None,
+            "lead_ids": lead_ids,
+        },
+        comment=f"Вставить и раздать: {created} новых, {len(taken)} забрано",
+    )
+    return {
+        "batch": batch_id,
+        "total": created + len(taken),
+        "created": created,
+        "taken": len(taken),
+        "taken_from": taken,
+        "skipped": skipped,
+        "assigned": {str(k): v for k, v in per_op.items()},
+    }

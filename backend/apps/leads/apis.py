@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 
+from django.contrib.auth import get_user_model
 from rest_framework import serializers, status
 from rest_framework.generics import ListCreateAPIView, RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
@@ -54,8 +55,10 @@ from .selectors import (
     operator_open_callbacks_count,
     operator_quota_blocking_leads,
     operator_yesterday_backlog_count,
+    PASTE_MAX_ROWS,
     operators_distribution_status,
     orphan_leads,
+    paste_rows_classify,
     stranded_on_inactive_operators,
     system_lost_leads_qs,
     system_lost_summary,
@@ -74,13 +77,17 @@ from .services import (
     lead_update_phone,
     lead_update_status,
     leads_bulk_reassign,
+    leads_paste_distribute,
     morning_distribute_leads,
     operator_alias_upsert,
     retry_export_to_sheet,
+    sheet_source_set_smm,
     sheet_source_upsert,
     telegram_link_upsert,
 )
 from apps.users.selectors import visible_operator_ids
+
+User = get_user_model()
 
 logger = logging.getLogger(__name__)
 
@@ -208,9 +215,6 @@ class SheetSourceSerializer(serializers.ModelSerializer):
     )
     # Для kind=webhook: абсолютный адрес приёма лидов (вставить в LeadPixel).
     webhook_url = serializers.SerializerMethodField()
-    # «Статусы обратно»: api_key в ответах замаскирован, PATCH с маской
-    # оставляет старый ключ.
-    outbound_config = serializers.JSONField(required=False)
     # Ключ, который LeadPixel шлёт в X-API-Key. Целиком — только в ответе
     # на создание / ротацию (context["reveal_webhook_api_key"]), иначе маска.
     webhook_api_key = serializers.SerializerMethodField()
@@ -219,6 +223,10 @@ class SheetSourceSerializer(serializers.ModelSerializer):
     worksheet_name = serializers.CharField(
         required=False, allow_blank=True, trim_whitespace=False, max_length=128
     )
+    # SMM-специалист (таргетолог), которому засчитываются лиды источника.
+    # Пишется отдельным сервисом `sheet_source_set_smm` (см. create/patch).
+    smm_id = serializers.IntegerField(required=False, allow_null=True)
+    smm_name = serializers.SerializerMethodField()
 
     class Meta:
         model = SheetSource
@@ -228,7 +236,6 @@ class SheetSourceSerializer(serializers.ModelSerializer):
             "kind",
             "webhook_url",
             "webhook_api_key",
-            "outbound_config",
             "spreadsheet_id",
             "gid",
             "worksheet_name",
@@ -244,6 +251,8 @@ class SheetSourceSerializer(serializers.ModelSerializer):
             "allowed_operator_ids",
             "is_hot",
             "hot_sla_minutes",
+            "smm_id",
+            "smm_name",
         ]
         read_only_fields = [
             "id",
@@ -251,6 +260,20 @@ class SheetSourceSerializer(serializers.ModelSerializer):
             "last_synced_row",
             "default_operator_name",
         ]
+
+    def get_smm_name(self, obj) -> str | None:
+        if not obj.smm_id or obj.smm is None:
+            return None
+        return obj.smm.get_full_name() or obj.smm.username
+
+    def validate_smm_id(self, value):
+        if value in (None, 0):
+            return None
+        from apps.users.models import Role
+
+        if not User.objects.filter(pk=value, profile__role=Role.SMM).exists():
+            raise serializers.ValidationError("Пользователь не найден или у него не роль SMM.")
+        return value
 
     def validate_allowed_operator_ids(self, value):
         """
@@ -289,21 +312,6 @@ class SheetSourceSerializer(serializers.ModelSerializer):
         if self.context.get("reveal_webhook_api_key"):
             return obj.webhook_api_key
         return mask_secret(obj.webhook_api_key)
-
-    def to_representation(self, instance):
-        from .integrations.webhook.services import outbound_config_masked
-
-        data = super().to_representation(instance)
-        data["outbound_config"] = outbound_config_masked(instance.outbound_config)
-        return data
-
-    def validate_outbound_config(self, value):
-        if not isinstance(value, dict):
-            raise serializers.ValidationError("outbound_config должен быть объектом.")
-        url = str(value.get("url") or "").strip()
-        if url and not url.startswith(("http://", "https://")):
-            raise serializers.ValidationError("url должен начинаться с http:// или https://")
-        return value
 
     def validate(self, attrs):
         # Google-шиту при создании нужны spreadsheet_id + gid (раньше это
@@ -1128,6 +1136,101 @@ class LeadsBulkReassignApi(APIView):
         return Response(result)
 
 
+
+# ---- «Вставить и раздать» (paste & distribute) ----------------------------
+
+
+class PasteRowSerializer(serializers.Serializer):
+    full_name = serializers.CharField(required=False, allow_blank=True, default="", max_length=500)
+    phone = serializers.CharField(required=False, allow_blank=True, default="", max_length=200)
+    phone_alt = serializers.CharField(required=False, allow_blank=True, default="", max_length=200)
+    product_hint = serializers.CharField(required=False, allow_blank=True, default="", max_length=1000)
+    has_card = serializers.CharField(required=False, allow_blank=True, default="", max_length=200)
+    comment = serializers.CharField(required=False, allow_blank=True, default="", max_length=2000)
+
+
+class PastePreviewInputSerializer(serializers.Serializer):
+    rows = PasteRowSerializer(many=True, allow_empty=False, max_length=PASTE_MAX_ROWS)
+    operator_ids = serializers.ListField(
+        child=serializers.IntegerField(), required=False, default=list, max_length=200
+    )
+
+
+class PasteDistributeInputSerializer(PastePreviewInputSerializer):
+    operator_ids = serializers.ListField(
+        child=serializers.IntegerField(), allow_empty=False, max_length=200
+    )
+    sheet_source_id = serializers.IntegerField(required=False, allow_null=True)
+    take_existing = serializers.BooleanField(required=False, default=True)
+
+
+class LeadsPastePreviewApi(APIView):
+    """
+    POST /api/leads/paste/preview/
+
+    Dry run of «Вставить и раздать»: what happens to every pasted row
+    (new / take / keep / invalid / duplicate), nothing is written.
+    """
+
+    permission_classes = [IsManager]
+
+    def post(self, request):
+        ser = PastePreviewInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        rows = paste_rows_classify(
+            ser.validated_data["rows"], operator_ids=ser.validated_data["operator_ids"]
+        )
+        summary = {kind: 0 for kind in ("new", "take", "keep", "invalid", "duplicate")}
+        out = []
+        for row in rows:
+            summary[row["kind"]] += 1
+            lead = row["lead"]
+            out.append(
+                {
+                    "index": row["index"],
+                    "kind": row["kind"],
+                    "full_name": row["full_name"],
+                    "phone": row["phone"],
+                    "phone_raw": row["phone_raw"],
+                    "product_hint": row["product_hint"],
+                    "called_today": row["called_today"],
+                    "lead_id": lead.id if lead else None,
+                    "lead_status": lead.status if lead else None,
+                    "lead_operator_id": lead.operator_id if lead else None,
+                    "lead_operator": (
+                        lead.operator.full_name if lead and lead.operator_id else None
+                    ),
+                }
+            )
+        return Response({"rows": out, "summary": summary})
+
+
+class LeadsPasteDistributeApi(APIView):
+    """
+    POST /api/leads/paste/distribute/
+
+    Create / take over the pasted leads and hand them out evenly to the
+    chosen operators right now (`leads_paste_distribute`).
+    """
+
+    permission_classes = [IsManager]
+
+    def post(self, request):
+        ser = PasteDistributeInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+        try:
+            result = leads_paste_distribute(
+                rows=data["rows"],
+                operator_ids=data["operator_ids"],
+                sheet_source_id=data.get("sheet_source_id"),
+                take_existing=data["take_existing"],
+                user=request.user,
+            )
+        except ApplicationError as exc:
+            return Response({"detail": exc.message, **exc.extra}, status=400)
+        return Response(result)
+
 # ---- Distribution-status panel (менеджерский диагностический виджет) ----
 
 
@@ -1226,10 +1329,7 @@ class SheetSourceListCreateApi(ListCreateAPIView):
         default_op = data.get("default_operator")
         allowed_ops = data.get("allowed_operators")  # list[Operator] | None
         if data.get("kind") == SheetSourceKind.WEBHOOK:
-            from .integrations.webhook.services import (
-                webhook_source_create,
-                webhook_source_update,
-            )
+            from .integrations.webhook.services import webhook_source_create
 
             obj = webhook_source_create(
                 name=data["name"],
@@ -1244,12 +1344,8 @@ class SheetSourceListCreateApi(ListCreateAPIView):
                 active=data.get("active", True),
                 user=request.user,
             )
-            if "outbound_config" in data:
-                obj = webhook_source_update(
-                    source=obj,
-                    data={"outbound_config": data["outbound_config"]},
-                    user=request.user,
-                )
+            if "smm_id" in data:
+                obj = sheet_source_set_smm(source=obj, smm_id=data["smm_id"], user=request.user)
             return Response(
                 SheetSourceSerializer(
                     obj, context={"request": request, "reveal_webhook_api_key": True}
@@ -1272,6 +1368,8 @@ class SheetSourceListCreateApi(ListCreateAPIView):
             ),
             user=request.user,
         )
+        if "smm_id" in data:
+            obj = sheet_source_set_smm(source=obj, smm_id=data["smm_id"], user=request.user)
         return Response(
             SheetSourceSerializer(obj, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
@@ -1316,6 +1414,10 @@ class SheetSourceDetailApi(APIView):
                 allowed_operator_ids=allowed_ids,
                 user=request.user,
             )
+            if "smm_id" in data:
+                updated = sheet_source_set_smm(
+                    source=updated, smm_id=data["smm_id"], user=request.user
+                )
             return Response(SheetSourceSerializer(updated, context={"request": request}).data)
         updated = sheet_source_upsert(
             name=data.get("name", obj.name),
@@ -1331,6 +1433,8 @@ class SheetSourceDetailApi(APIView):
             allowed_operator_ids=allowed_ids,
             user=request.user,
         )
+        if "smm_id" in data:
+            updated = sheet_source_set_smm(source=updated, smm_id=data["smm_id"], user=request.user)
         return Response(SheetSourceSerializer(updated, context={"request": request}).data)
 
 
@@ -1613,8 +1717,6 @@ class SheetSourceHealthOverviewApi(APIView):
                         received_at__gte=now - timedelta(hours=24),
                         outcome__in=["invalid", "error"],
                     ).count(),
-                    "outbound_pending": s.outbound_events.filter(delivered_at__isnull=True).count(),
-                    "outbound_enabled": bool((s.outbound_config or {}).get("enabled")),
                 }
 
             sources_data.append({

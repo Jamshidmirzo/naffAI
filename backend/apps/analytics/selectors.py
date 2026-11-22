@@ -199,6 +199,7 @@ def leaderboard(
     date_to: dt.datetime | None = None,
     limit: int | None = 20,
     operator_ids: list[int] | None = None,
+    partner_ids: list[int] | None = None,
 ) -> list[dict]:
     """Per-operator credit aggregated from SaleOperator lines (multi-op aware).
 
@@ -206,10 +207,20 @@ def leaderboard(
     window — used by the big-screen dashboard which shows the full ranking.
 
     `operator_ids` — ownership scope (empty list → zero rows).
+    `partner_ids` — only sales paid through one of these partners (hamkor),
+    matched on the primary channel or any SalePartner line, same as the
+    sales list filter.
     """
+    qs = _line_qs(SaleOperator, date_from=date_from, date_to=date_to, operator_ids=operator_ids)
+    if partner_ids:
+        from django.db.models import Q as _Q
+
+        sale_ids = Sale.objects.filter(
+            _Q(channel_id__in=partner_ids) | _Q(partner_lines__partner_id__in=partner_ids)
+        ).values("id")
+        qs = qs.filter(sale_id__in=sale_ids)
     qs = (
-        _line_qs(SaleOperator, date_from=date_from, date_to=date_to, operator_ids=operator_ids)
-        .values("operator_id", "operator__full_name", "operator__status")
+        qs.values("operator_id", "operator__full_name", "operator__status")
         .annotate(total=Sum("amount"), count=Count("sale", distinct=True), avg_ticket=Avg("amount"))
         .order_by("-total")
     )

@@ -547,26 +547,8 @@ def _link_sale_to_lead_and_mark_won(*, sale: Sale, lead_id: int, user) -> None:
                 user=user,
                 comment=f"Продажа №{sale.id}: авто-конвертация по phone-match",
             )
-        _schedule_lead_outbound_sale(sale=sale, kind="sale")
     except Exception:
         logger.exception("link_sale_to_lead failed sale=%s lead_id=%s", sale.id, lead_id)
-
-
-def _schedule_lead_outbound_sale(*, sale: Sale, kind: str) -> None:
-    """
-    Report a sale / its return / reject / deletion of a webhook-source lead
-    back to the source (LeadPixel ROAS): on commit the lead's current
-    LeadPixel state is snapshotted (won + amount, or «Возврат»). No-op for
-    leads from Google sheets and for unlinked sales. Never raises.
-    """
-    if not sale.lead_id:
-        return
-    try:
-        from apps.leads.integrations.webhook.outbound import outbound_schedule
-
-        outbound_schedule(lead_id=sale.lead_id, kind=kind, sale_id=sale.id)
-    except Exception:
-        logger.exception("lead outbound schedule failed sale=%s", sale.id)
 
 
 def _broadcast_new_sale(sale, primary_op, operator_lines, total) -> None:
@@ -1051,7 +1033,6 @@ def sale_mark_returned(*, sale: Sale, reason: str, user=None) -> Sale:
         changes={"is_returned": True, "return_reason": reason},
         comment="Возврат",
     )
-    _schedule_lead_outbound_sale(sale=sale, kind="sale_returned")
     _schedule_dashboard_cache_bust()
     return sale
 
@@ -1070,7 +1051,6 @@ def sale_soft_delete(*, sale: Sale, user=None) -> Sale:
         entity_id=sale.id,
         changes={"is_deleted": True},
     )
-    _schedule_lead_outbound_sale(sale=sale, kind="sale_cancelled")
     _schedule_dashboard_cache_bust()
     return sale
 
@@ -1093,8 +1073,35 @@ def sale_confirm(*, sale: Sale, user=None) -> Sale:
         entity_id=sale.id,
         changes={"status": {"old": old_status, "new": "confirmed"}},
     )
-    _schedule_lead_outbound_sale(sale=sale, kind="sale")
     _schedule_dashboard_cache_bust()
+    return sale
+
+
+def sale_set_oxs_mark(*, sale: Sale, user, marked: bool) -> Sale:
+    """Ставит / снимает галочку «OXS ga urildi». Повторная отметка не
+    перезаписывает, кто и когда отметил первым."""
+    if marked == (sale.oxs_marked_at is not None):
+        return sale
+    old = sale.oxs_marked_at.isoformat() if sale.oxs_marked_at else None
+    if marked:
+        sale.oxs_marked_at = timezone.now()
+        sale.oxs_marked_by = user if getattr(user, "is_authenticated", False) else None
+    else:
+        sale.oxs_marked_at = None
+        sale.oxs_marked_by = None
+    sale.save(update_fields=["oxs_marked_at", "oxs_marked_by", "updated_at"])
+    audit_log_create(
+        user=user,
+        action=AuditAction.UPDATE,
+        entity="sales.Sale",
+        entity_id=sale.id,
+        changes={
+            "oxs_marked_at": {
+                "old": old,
+                "new": sale.oxs_marked_at.isoformat() if sale.oxs_marked_at else None,
+            }
+        },
+    )
     return sale
 
 
@@ -1136,7 +1143,6 @@ def sale_reject(*, sale: Sale, user, reason: str) -> Sale:
         },
     )
     _notify_operator_of_reject(sale=sale, reason=reason, user=user)
-    _schedule_lead_outbound_sale(sale=sale, kind="sale_cancelled")
     _schedule_dashboard_cache_bust()
     return sale
 

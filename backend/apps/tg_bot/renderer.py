@@ -63,9 +63,16 @@ def render_report_full(report: BotReport, chat: BotChat) -> ReportRender:
     buttons: list[InlineButton] = []
     seen_urls: set[str] = set()
 
+    # SMM-чат: продажи по источникам — только его источники (+ сводка рекламы).
+    profile = getattr(chat, "linked_profile", None)
+    smm_id = profile.user_id if profile is not None and profile.role == "smm" else None
+
     for block in blocks:
         try:
-            piece = block.render(start, end, language)
+            if smm_id is not None and block.slug == "sales_by_sheet_source":
+                piece = block.render(start, end, language, smm_id=smm_id)
+            else:
+                piece = block.render(start, end, language)
         except Exception:
             import logging
 

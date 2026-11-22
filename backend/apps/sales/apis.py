@@ -35,6 +35,7 @@ from .services import (
     sale_mark_returned,
     sale_partial_update,
     sale_reject,
+    sale_set_oxs_mark,
     sale_soft_delete,
 )
 
@@ -136,6 +137,7 @@ class SaleSerializer(serializers.ModelSerializer):
     # detail queryset annotate `total_price`, but we fall back to a
     # Python compute for safety (e.g. after a fresh `sale_create`).
     total_price = serializers.SerializerMethodField()
+    oxs_marked_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Sale
@@ -170,6 +172,8 @@ class SaleSerializer(serializers.ModelSerializer):
             "contract_photos_all",
             "rejection_reason",
             "rejected_at",
+            "oxs_marked_at",
+            "oxs_marked_by_name",
             "created_at",
             "updated_at",
         ]
@@ -190,9 +194,17 @@ class SaleSerializer(serializers.ModelSerializer):
             "contract_photos_all",
             "rejection_reason",
             "rejected_at",
+            "oxs_marked_at",
+            "oxs_marked_by_name",
             "created_at",
             "updated_at",
         ]
+
+    def get_oxs_marked_by_name(self, obj) -> str | None:
+        user = obj.oxs_marked_by if obj.oxs_marked_at else None
+        if user is None:
+            return None
+        return user.get_full_name() or user.username
 
     def get_total_price(self, obj) -> str:
         annotated = getattr(obj, "total_price", None)
@@ -377,6 +389,7 @@ class SaleListFilterSerializer(serializers.Serializer):
     )
     is_returned = serializers.BooleanField(required=False)
     sheet_source_id = serializers.IntegerField(required=False)
+    oxs = serializers.BooleanField(required=False)
 
 
 class SaleListCreateApi(ListCreateAPIView):
@@ -417,6 +430,8 @@ class SaleListCreateApi(ListCreateAPIView):
             filter_data["is_returned"] = qp.get("is_returned")
         if qp.get("sheet_source_id"):
             filter_data["sheet_source_id"] = qp.get("sheet_source_id")
+        if qp.get("oxs") not in (None, ""):
+            filter_data["oxs"] = qp.get("oxs")
 
         ser = SaleListFilterSerializer(data=filter_data)
         ser.is_valid(raise_exception=True)
@@ -432,6 +447,7 @@ class SaleListCreateApi(ListCreateAPIView):
             status=v.get("status"),
             is_returned=v.get("is_returned"),
             sheet_source_id=v.get("sheet_source_id"),
+            oxs_marked=v.get("oxs"),
             # Ownership scope — superadmin sees everything (helper returns
             # all ids), super_manager только свою ветку, manager — свои +
             # legacy unassigned pool (fallback). Operators normally не
@@ -558,6 +574,34 @@ class SaleConfirmApi(APIView):
             return Response({"detail": "Not found"}, status=404)
         sale_confirm(sale=sale, user=request.user)
         return Response(SaleSerializer(sale).data)
+
+
+class SaleOxsMarkApi(APIView):
+    """POST {"marked": true|false} — галочка «OXS ga urildi» на продаже."""
+
+    permission_classes = [IsTeamLead]
+
+    def post(self, request, pk: int):
+        sale = sale_get(pk)
+        if not sale or not _sale_visible(sale, request.user):
+            return Response({"detail": "Not found"}, status=404)
+        raw = (request.data or {}).get("marked", True)
+        marked = raw if isinstance(raw, bool) else str(raw).lower() in ("1", "true", "yes")
+        sale_set_oxs_mark(sale=sale, user=request.user, marked=marked)
+        return Response(
+            {
+                "id": sale.id,
+                "oxs_marked_at": sale.oxs_marked_at,
+                "oxs_marked_by_name": SaleSerializer().get_oxs_marked_by_name(sale),
+            }
+        )
+
+
+def _sale_visible(sale: Sale, user) -> bool:
+    allowed = set(visible_operator_ids(user))
+    if sale.operator_id in allowed:
+        return True
+    return sale.operator_lines.filter(operator_id__in=allowed).exists()
 
 
 class SaleRejectApi(APIView):

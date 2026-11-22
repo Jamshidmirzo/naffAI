@@ -474,17 +474,29 @@ def _mask_phone(phone: str) -> str:
 
 
 def render_sales_by_sheet_source(
-    start: dt.datetime, end: dt.datetime, language: str
+    start: dt.datetime, end: dt.datetime, language: str, smm_id: int | None = None
 ) -> BlockOutput:
     """Продажи, сгруппированные по источнику лида (Sheet / реклама).
 
     Основной ключ — денормализованный ``Sale.sheet_source``;
     если он не заполнен (старые продажи), падаем в ``Sale.lead.sheet_source``.
     Если ни того, ни другого нет — агрегируем в бакет «без источника».
+
+    ``smm_id`` — отчёт для SMM-специалиста: только продажи по его
+    источникам + сводка рекламы (лиды, расход, цена лида, ROMI).
     """
     unknown = _tr("Без источника", "Manbasiz", language)
+
+    def _sales():
+        qs = _confirmed_sales_qs(start, end)
+        if smm_id is not None:
+            from apps.marketing.smm_selectors import smm_sales_q
+
+            qs = qs.filter(smm_sales_q(smm_id))
+        return qs
+
     qs = (
-        _confirmed_sales_qs(start, end)
+        _sales()
         .annotate(
             source_name=Coalesce(
                 "sheet_source__name",
@@ -497,7 +509,8 @@ def render_sales_by_sheet_source(
         .order_by("-total")
     )
     rows = list(qs)
-    if not rows:
+    smm_summary = _smm_summary_lines(start, end, language, smm_id) if smm_id is not None else []
+    if not rows and not smm_summary:
         return None
 
     unit = _tr("сум", "so'm", language)
@@ -546,11 +559,11 @@ def render_sales_by_sheet_source(
 
         # Fetch top 20 individual sales for this source
         if name == unknown:
-            sales_qs = _confirmed_sales_qs(start, end).filter(
+            sales_qs = _sales().filter(
                 sheet_source__isnull=True, lead__sheet_source__isnull=True
             )
         else:
-            sales_qs = _confirmed_sales_qs(start, end).filter(
+            sales_qs = _sales().filter(
                 Q(sheet_source__name=name) | Q(lead__sheet_source__name=name)
             )
 
@@ -590,7 +603,40 @@ def render_sales_by_sheet_source(
     lines.append(
         f"<b>{total_label}:</b> {_fmt_amount_full(grand_total)} {unit} · {grand_cnt} {sale_word}"
     )
+    if smm_summary:
+        lines.append("")
+        lines.extend(smm_summary)
     return "\n".join(lines)
+
+
+def _smm_summary_lines(
+    start: dt.datetime, end: dt.datetime, language: str, smm_id: int
+) -> list[str]:
+    """Сводка кабинета SMM за период: лиды CRM/Meta, расход, цена лида, ROMI."""
+    from apps.marketing.smm_selectors import smm_dashboard
+
+    d_from = timezone.localtime(start).date()
+    d_to = timezone.localtime(end - dt.timedelta(seconds=1)).date()
+    d = smm_dashboard(smm_id=smm_id, date_from=d_from, date_to=d_to, lang=language)
+    t = d["totals"]
+    has_spend = Decimal(t["spend"] or "0") > 0
+    if not t["crm_leads"] and not has_spend:
+        return []
+    cur = "$" if (d["currency"] or "USD") == "USD" else f"{d['currency']} "
+    lines = [f"📣 <b>{_tr('Реклама', 'Reklama', language)}:</b>"]
+    lines.append(
+        f"{_tr('Лиды в CRM', 'CRM lidlar', language)}: <b>{t['crm_leads']}</b>"
+        + (f" · Meta: {t['meta_leads']}" if t["meta_leads"] else "")
+    )
+    if has_spend:
+        lines.append(f"{_tr('Расход', 'Xarajat', language)}: <b>{cur}{t['spend']}</b>")
+        if t["cpl"]:
+            lines.append(f"{_tr('Цена лида', 'Lid narxi', language)}: <b>{cur}{t['cpl']}</b>")
+        if t["romi_pct"] is not None:
+            lines.append(f"ROMI: <b>{t['romi_pct']}%</b>")
+    if t["conv_rate"] is not None:
+        lines.append(f"{_tr('Конверсия в продажу', 'Sotuvga konversiya', language)}: {t['conv_rate']}%")
+    return lines
 
 
 # ---------------------------------------------------------------------------

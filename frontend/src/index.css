@@ -6,13 +6,15 @@
    Layered z-index scale (2026-09-24).
    Everything positioned above the page flow must pull its z-index
    from these tokens, not literal numbers, so a Portal-based Popover
-   is guaranteed to sit above the sticky header but under the modal
-   and toast layers. See components/ui/Popover.tsx.
+   is guaranteed to sit above the sticky header and above modals —
+   most selects live inside a modal (e.g. «assign to operator»), and
+   under it the list was hidden behind the blurred backdrop
+   (2026-10-22). Toasts stay on top. See components/ui/Popover.tsx.
    ============================================================ */
 :root {
   --z-header: 40;
-  --z-popover: 55;
   --z-modal: 60;
+  --z-popover: 70;
   --z-toast: 80;
 }
 

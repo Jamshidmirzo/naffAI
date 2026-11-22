@@ -560,10 +560,10 @@ services:
         condition: service_healthy
     command: ["python", "manage.py", "process_sheet_writebacks"]
 
-  # LeadPixel «статусы обратно»: drains LeadOutboundEvent → POST
-  # /api/crm/inbound (apps/leads/integrations/webhook/outbound.py). Idle and
-  # harmless while no webhook source has outbound_config.enabled + api_key.
-  lead-outbound:
+  # Meta Ads (Marketing API) — hourly spend / leads / video stats for ad
+  # accounts switched on in «Настройки → Meta Ads» (кабинет SMM). Idle while
+  # no account is active; tokens are decrypted with META_TOKEN_ENCRYPTION_KEY.
+  meta-ads-sync:
     image: naffai-backend:latest
     pull_policy: never
     logging: *default-logging
@@ -572,7 +572,21 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: ["python", "manage.py", "process_lead_outbound"]
+    command: ["python", "manage.py", "sync_meta_ads", "--loop"]
+
+  # Meta lead forms → leads (replaces LeadPixel): every 60s pulls new leads of
+  # Facebook pages switched on in «Настройки → Meta Ads» into their source
+  # (hot, round-robin to operators, attributed to the page's SMM).
+  meta-leads-sync:
+    image: naffai-backend:latest
+    pull_policy: never
+    logging: *default-logging
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "manage.py", "sync_meta_leads", "--loop"]
 
   # Hourly reconcile — compares every active sheet with Lead.status for
   # leads touched in the last 3 days and enqueues writebacks for drift
